@@ -1,0 +1,51 @@
+[package]
+name = "agenthub-codex-acp"
+version = "0.9.0"
+edition = "2024"
+authors = ["Zed <hi@zed.dev>"]
+license = "Apache-2.0"
+description = "An ACP-compatible coding agent powered by Codex"
+repository = "https://github.com/hawkingrei/agenthub"
+homepage = "https://github.com/hawkingrei/agenthub"
+
+[[bin]]
+name = "agenthub-codex-acp"
+path = "src/main.rs"
+
+[lib]
+name = "agenthub_codex_acp"
+path = "src/lib.rs"
+
+[dependencies]
+agent-client-protocol = { version = "=0.9.3", features = ["unstable"] }
+anyhow = "1"
+async-trait = "0.1"
+clap = "4"
+codex-apply-patch = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-arg0 = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-common = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["cli"] }
+codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-mcp-server = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-protocol = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-login = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+itertools = "0.14.0"
+mcp-types = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+regex-lite = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shlex = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+heck = "0.5.0"
+unicode-segmentation = "1.11.0"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["test-support"] }
+
+[lints.rust]
+let-underscore = "warn"
+rust-2018-idioms = "warn"
+unused = "warn"

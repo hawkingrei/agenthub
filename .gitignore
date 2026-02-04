@@ -1,0 +1,8 @@
+/target
+.agenthub
+.cache
+.cargo
+.DS_Store
+web/node_modules
+web/dist
+web/.vite
