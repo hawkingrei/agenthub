@@ -1,11 +1,12 @@
 # AgentHub
 
-AgentHub is a single-binary service for managing and interacting with remote AI agents. It provides a web UI, ACP-based structured output rendering, and persistent sessions backed by SQLite.
+AgentHub is a single-binary service for managing and interacting with remote AI agents. It provides a web UI, ACP-based structured output rendering, and persistent sessions backed by SQLite. It also supports A2A (agent-to-agent) orchestration for multi-agent workflows.
 
 ## Features
 
 - Create, start, stop, and delete agents
 - ACP event rendering (messages, tool calls, plan, commands, debug)
+- A2A orchestration for multi-agent collaboration
 - Session persistence even when the browser is closed
 - Passkey-based login with device join flow
 - Safe path enforcement and audit logging
