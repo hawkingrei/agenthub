@@ -95,6 +95,28 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       const text = String(parsed.text ?? "");
       const last = messages[messages.length - 1];
       const is_chunk = parsed.chunk === true;
+      const messageId =
+        typeof parsed.message_id === "string" ? parsed.message_id : null;
+      if (
+        messageId &&
+        messages.some(
+          (msg) =>
+            msg.kind === "user_message" &&
+            msg.message_id === messageId &&
+            msg.session_id === (event.session_id ?? null)
+        )
+      ) {
+        continue;
+      }
+      if (
+        parsed.type === "user_message" &&
+        last &&
+        last.kind === "user_message" &&
+        last.session_id === (event.session_id ?? null) &&
+        last.text === text
+      ) {
+        continue;
+      }
       if (
         is_chunk &&
         last &&
@@ -107,8 +129,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
           kind: parsed.type,
           text,
           session_id: event.session_id ?? null,
-          message_id:
-            typeof parsed.message_id === "string" ? parsed.message_id : null,
+          message_id: messageId,
           chunk: is_chunk,
         });
       }

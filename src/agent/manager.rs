@@ -184,20 +184,42 @@ impl AgentManager {
         })
     }
 
-    pub async fn list_events(&self, agent_id: &str, limit: i64) -> anyhow::Result<Vec<AgentEvent>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT agent_id, session_id, seq, ts, stream, message
-            FROM agent_events
-            WHERE agent_id = ?1
-            ORDER BY seq DESC
-            LIMIT ?2
-            "#,
-        )
-        .bind(agent_id)
-        .bind(limit)
-        .fetch_all(&self.db)
-        .await?;
+    pub async fn list_events(
+        &self,
+        agent_id: &str,
+        limit: i64,
+        before_seq: Option<i64>,
+    ) -> anyhow::Result<Vec<AgentEvent>> {
+        let rows = if let Some(before_seq) = before_seq {
+            sqlx::query(
+                r#"
+                SELECT agent_id, session_id, seq, ts, stream, message
+                FROM agent_events
+                WHERE agent_id = ?1 AND seq < ?2
+                ORDER BY seq DESC
+                LIMIT ?3
+                "#,
+            )
+            .bind(agent_id)
+            .bind(before_seq)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT agent_id, session_id, seq, ts, stream, message
+                FROM agent_events
+                WHERE agent_id = ?1
+                ORDER BY seq DESC
+                LIMIT ?2
+                "#,
+            )
+            .bind(agent_id)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        };
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
@@ -220,21 +242,40 @@ impl AgentManager {
         agent_id: &str,
         session_id: &str,
         limit: i64,
+        before_seq: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT agent_id, session_id, seq, ts, stream, message
-            FROM agent_events
-            WHERE agent_id = ?1 AND session_id = ?2
-            ORDER BY seq DESC
-            LIMIT ?3
-            "#,
-        )
-        .bind(agent_id)
-        .bind(session_id)
-        .bind(limit)
-        .fetch_all(&self.db)
-        .await?;
+        let rows = if let Some(before_seq) = before_seq {
+            sqlx::query(
+                r#"
+                SELECT agent_id, session_id, seq, ts, stream, message
+                FROM agent_events
+                WHERE agent_id = ?1 AND session_id = ?2 AND seq < ?3
+                ORDER BY seq DESC
+                LIMIT ?4
+                "#,
+            )
+            .bind(agent_id)
+            .bind(session_id)
+            .bind(before_seq)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT agent_id, session_id, seq, ts, stream, message
+                FROM agent_events
+                WHERE agent_id = ?1 AND session_id = ?2
+                ORDER BY seq DESC
+                LIMIT ?3
+                "#,
+            )
+            .bind(agent_id)
+            .bind(session_id)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        };
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
@@ -584,7 +625,12 @@ impl AgentManager {
         Ok(handle.output_tx.subscribe())
     }
 
-    pub async fn send_input(&self, agent_id: &str, input: &str) -> anyhow::Result<()> {
+    pub async fn send_input(
+        &self,
+        agent_id: &str,
+        input: &str,
+        message_id: Option<&str>,
+    ) -> anyhow::Result<()> {
         let guard = self.inner.read().await;
         let handle = guard
             .get(agent_id)
@@ -603,11 +649,14 @@ impl AgentManager {
             }
             AgentInput::Acp(sender) => {
                 let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                let message_id = message_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| seq.to_string());
                 let message = serde_json::json!({
                     "type": "user_message",
                     "text": input,
                     "chunk": false,
-                    "message_id": seq.to_string()
+                    "message_id": message_id
                 })
                 .to_string();
                 let output = AgentOutput {
