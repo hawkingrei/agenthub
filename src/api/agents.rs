@@ -175,7 +175,10 @@ async fn list_events(
             .list_events_for_session(&agent_id, session_id, limit, before_seq)
             .await?
     } else {
-        state.agents.list_events(&agent_id, limit, before_seq).await?
+        state
+            .agents
+            .list_events(&agent_id, limit, before_seq)
+            .await?
     };
     Ok(Json(events))
 }

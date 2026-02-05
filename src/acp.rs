@@ -227,7 +227,9 @@ pub async fn spawn_acp_session(
             while let Some(prompt) = prompt_rx.recv().await {
                 let request = PromptRequest::new(
                     session_id.clone(),
-                    vec![ContentBlock::Text(agent_client_protocol::TextContent::new(prompt))],
+                    vec![ContentBlock::Text(agent_client_protocol::TextContent::new(
+                        prompt,
+                    ))],
                 );
                 if let Err(err) = conn.prompt(request).await {
                     sink.emit_system(format!("acp prompt error: {err}")).await;

@@ -8,6 +8,7 @@ use agent_client_protocol::{
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
     SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
 };
+use codex_core::auth::AuthMode;
 use codex_core::{
     NewThread, ResponseItem, RolloutRecorder, ThreadManager, ThreadSortKey,
     auth::{AuthManager, read_codex_api_key_from_env, read_openai_api_key_from_env},
@@ -18,7 +19,6 @@ use codex_core::{
     find_thread_path_by_id_str, parse_cursor, parse_turn_item,
     protocol::{InitialHistory, SessionSource},
 };
-use codex_core::auth::AuthMode;
 use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
 use codex_protocol::{ThreadId, protocol::SessionMetaLine};
 use std::{
