@@ -22,17 +22,22 @@
 body {
   margin: 0;
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app {
   width: 100%;
   margin: 0;
-  padding: 2px 8px 4px;
+  padding: 2px 8px 0;
   min-height: 100vh;
+  height: 100vh;
+  overflow: auto;
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 header {
@@ -93,6 +98,28 @@ h1 {
   padding: 10px 12px;
   border-radius: 8px;
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.error-text {
+  flex: 1;
+}
+
+.error-close {
+  border: none;
+  background: transparent;
+  color: #8a2323;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.error-close:hover {
+  color: #6c1b1b;
 }
 
 section {
@@ -110,6 +137,12 @@ section {
   gap: 6px;
   align-items: start;
   padding: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace.collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .workspace-left,
@@ -118,13 +151,23 @@ section {
   border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 4px 6px;
-  min-height: 360px;
+  min-height: 0;
+  height: 100%;
+}
+
+.workspace-left.collapsed {
+  display: none;
+}
+
+.agents-backdrop {
+  display: none;
 }
 
 .workspace-right {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 input {
@@ -179,6 +222,7 @@ button {
   border-radius: 12px;
   padding: 10px;
   box-shadow: var(--shadow);
+  margin-top: auto;
 }
 
 .input button {
@@ -231,7 +275,7 @@ button {
 
 .agent-name {
   font-weight: 700;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .agent-row-meta {
@@ -331,16 +375,40 @@ button {
   padding: 12px;
   border-radius: 8px;
   min-height: 220px;
-  overflow: visible;
+  overflow: auto;
   white-space: pre-wrap;
+  min-height: 0;
+  height: 100%;
 }
 
 .output-body {
   max-height: none;
-  overflow: auto;
-  display: grid;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding-right: 6px;
+  min-height: 0;
+  flex: 1;
+}
+
+.acp {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.acp-conversation {
+  overflow: auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .output-header {
@@ -349,10 +417,17 @@ button {
   gap: 10px;
 }
 
+.output-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .output-subtitle {
   font-size: 13px;
   color: #7a7a7a;
 }
+
 
 .acp {
   display: grid;
@@ -502,6 +577,18 @@ button {
   font-style: italic;
 }
 
+.acp-thought-fold summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #6a5a7a;
+  margin-bottom: 6px;
+}
+
+.acp-thought-fold pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .acp-calls {
   display: grid;
   gap: 10px;
@@ -561,10 +648,12 @@ button {
 
 .acp-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-top: 0;
+  margin-bottom: 2px;
+  padding-top: 0;
 }
 
 .acp-title {
@@ -669,6 +758,12 @@ button {
   color: var(--muted);
 }
 
+.acp-plan {
+  overflow: auto;
+  min-height: 0;
+  max-height: 100%;
+}
+
 .acp-commands ul,
 .acp-debug ul {
   list-style: none;
@@ -716,7 +811,7 @@ button {
   border-radius: 14px;
   padding: 10px 12px;
   line-height: 1.6;
-  max-width: 800px;
+  max-width: 100%;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -726,9 +821,21 @@ button {
   border-color: #cfe6ff;
 }
 
-.acp-bubble.agent_thought {
+.acp-bubble.agent_thought,
+.acp-bubble.agent_thinking {
   background: #fff8e6;
   border-color: #f0d9a5;
+  width: 100%;
+}
+
+.acp-thought-more {
+  margin-top: 6px;
+}
+
+.acp-thought-more summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .acp-bubble code {
@@ -747,6 +854,7 @@ button {
   border-radius: 8px;
   overflow: auto;
   margin: 8px 0;
+  white-space: pre-wrap;
 }
 
 .acp-bubble pre code {
@@ -857,8 +965,89 @@ button {
 }
 
 .toolbar-actions {
-  display: flex;
-  gap: 10px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+@media (max-width: 1024px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-left {
+    order: 2;
+  }
+
+  .workspace-right {
+    order: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 2px 4px 0;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .workspace-left,
+  .workspace-right {
+    border-radius: 8px;
+    padding: 4px;
+  }
+
+  .workspace-left {
+    position: fixed;
+    top: 64px;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 30;
+    overflow: auto;
+    box-shadow: 0 24px 60px rgba(15, 20, 30, 0.35);
+  }
+
+  .agents-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 18, 0.4);
+    z-index: 20;
+    display: block;
+  }
+
+  .workspace-left.collapsed + .workspace-right {
+    position: relative;
+    z-index: 1;
+  }
+
+  .agent-row {
+    padding: 6px;
+  }
+
+  .output-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .input.docked {
+    flex-direction: column;
+  }
+
+  .input.docked textarea {
+    min-height: 80px;
+  }
+
+  .input.docked button {
+    height: 38px;
+    font-size: 12px;
+    padding: 6px 10px;
+  }
 }
 
 .admin-grid {
