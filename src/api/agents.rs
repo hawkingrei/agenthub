@@ -40,6 +40,11 @@ pub struct SetCodeModeRequest {
     pub code_mode: bool,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct SendInputRequest {
+    pub input: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PermissionListQuery {
     pub status: Option<String>,
@@ -57,6 +62,7 @@ pub fn router(state: AppState) -> Router {
         .route("/:id", get(get_agent))
         .route("/:id/start", post(start_agent))
         .route("/:id/stop", post(stop_agent))
+        .route("/:id/input", post(send_input))
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
@@ -82,7 +88,7 @@ async fn create_agent(
         worktree_mode: parse_worktree_mode(payload.worktree_mode.as_deref()),
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
-        code_mode: payload.code_mode.unwrap_or(false),
+        code_mode: payload.code_mode.unwrap_or(true),
     };
     let agent = state.agents.create_agent(config).await?;
     Ok(Json(agent))
@@ -135,6 +141,17 @@ async fn delete_agent(
     let _user = require_user(&headers, &state).await?;
     let _ = state.agents.stop_agent(&agent_id).await;
     state.agents.delete_agent(&agent_id).await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn send_input(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SendInputRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state.agents.send_input(&agent_id, &payload.input).await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 

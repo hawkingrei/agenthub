@@ -432,8 +432,10 @@ impl PromptState {
         }
 
         match event {
+            EventMsg::ThreadNameUpdated(..) | EventMsg::PlanDelta(..) => {}
             EventMsg::TurnStarted(TurnStartedEvent {
                 model_context_window,
+                ..
             }) => {
                 info!("Task started with context window of {model_context_window:?}");
             }
@@ -490,7 +492,7 @@ impl PromptState {
                 // Create a ToolCall notification for the search beginning
                 self.start_web_search(client, call_id).await;
             }
-            EventMsg::WebSearchEnd(WebSearchEndEvent { call_id, query }) => {
+            EventMsg::WebSearchEnd(WebSearchEndEvent { call_id, query, .. }) => {
                 info!("Web search query received: call_id={call_id}, query={query}");
                 // Send update that the search is in progress with the query
                 // (WebSearchEnd just means we have the query, not that results are ready)
@@ -1488,6 +1490,7 @@ impl TaskState {
             // Expected but ignore
             EventMsg::TurnStarted(..)
             | EventMsg::ThreadRolledBack(..)
+            | EventMsg::ThreadNameUpdated(..)
             | EventMsg::ItemStarted(..)
             | EventMsg::ItemCompleted(..)
             | EventMsg::TokenCount(..)
@@ -1534,6 +1537,7 @@ impl TaskState {
             | EventMsg::ListCustomPromptsResponse(..)
             | EventMsg::ListSkillsResponse(..)
             | EventMsg::PlanUpdate(..)
+            | EventMsg::PlanDelta(..)
             | EventMsg::EnteredReviewMode(..)
             | EventMsg::ExitedReviewMode(..)
             | EventMsg::DeprecationNotice(..)
@@ -2117,6 +2121,7 @@ impl<A: Auth> ThreadActor<A> {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: Some(model_to_use.clone()),
                 effort: Some(effort_to_use),
                 summary: None,
@@ -2161,6 +2166,7 @@ impl<A: Auth> ThreadActor<A> {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: None,
                 effort: Some(Some(effort)),
                 summary: None,
@@ -2412,6 +2418,7 @@ impl<A: Auth> ThreadActor<A> {
                 cwd: None,
                 approval_policy: Some(preset.approval),
                 sandbox_policy: Some(preset.sandbox.clone()),
+                windows_sandbox_level: None,
                 model: None,
                 effort: None,
                 summary: None,
@@ -2476,6 +2483,7 @@ impl<A: Auth> ThreadActor<A> {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: Some(model_to_use.clone()),
                 effort: Some(effort_to_use),
                 summary: None,
@@ -2805,7 +2813,7 @@ impl<A: Auth> ThreadActor<A> {
                     .await;
             }
             ResponseItem::WebSearchCall { id, action, .. } => {
-                let (title, call_id) = web_search_action_to_title_and_id(id, action);
+                let (title, call_id) = web_search_action_to_title_and_id(id, action.as_ref());
                 let Some(call_id) = call_id else {
                     return; // Skip unknown web search actions
                 };
@@ -3008,10 +3016,13 @@ fn extract_tool_call_content_from_changes(
 /// Extract title and call_id from a WebSearchAction (used for replay)
 fn web_search_action_to_title_and_id(
     id: &Option<String>,
-    action: &codex_protocol::models::WebSearchAction,
+    action: Option<&codex_protocol::models::WebSearchAction>,
 ) -> (String, Option<String>) {
+    let Some(action) = action else {
+        return ("Unknown".to_string(), None);
+    };
     match action {
-        codex_protocol::models::WebSearchAction::Search { query } => {
+        codex_protocol::models::WebSearchAction::Search { query, .. } => {
             let title = query.clone().unwrap_or_else(|| "Web search".to_string());
             let call_id = id
                 .clone()

@@ -46,7 +46,7 @@ export function App() {
   >("use_existing");
   const [worktreeRepo, setWorktreeRepo] = useState("");
   const [worktreeRef, setWorktreeRef] = useState("");
-  const [codeMode, setCodeMode] = useState(false);
+  const [codeMode, setCodeMode] = useState(true);
   const [safePathInput, setSafePathInput] = useState("");
   const [joinQr, setJoinQr] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
@@ -188,6 +188,18 @@ export function App() {
             session_id: payload.session_id,
             seq,
           };
+          if (payload.stream === "acp") {
+            const status = parseRunStatus(payload.message);
+            if (status) {
+              setAgents((prev) =>
+                prev.map((agent) =>
+                  agent.id === payload.agent_id
+                    ? { ...agent, status: statusToAgentStatus(status) }
+                    : agent
+                )
+              );
+            }
+          }
           setOutputs((prev) =>
             [...prev, line].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
           );
@@ -200,7 +212,9 @@ export function App() {
           }));
         }
       } catch {
-        // ignore
+        if (typeof event.data === "string") {
+          setError(event.data);
+        }
       }
     };
     ws.onclose = () => {
@@ -208,7 +222,14 @@ export function App() {
         wsRef.current = null;
       }
     };
+    const poll = window.setInterval(() => {
+      const current = wsRef.current;
+      if (!current || current.readyState !== WebSocket.OPEN) {
+        loadAgentEvents(activeAgent, activeSessionId);
+      }
+    }, 2000);
     return () => {
+      window.clearInterval(poll);
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
@@ -361,16 +382,26 @@ export function App() {
         worktree_mode: worktreeMode,
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
-        code_mode: codeMode,
+        code_mode: true,
       });
       setAgents((prev) => [agent, ...prev]);
+      try {
+        const res = await api.startAgent(token, agent.id);
+        setActiveSessionId(res.session_id);
+        setAgentSessions((prev) => ({ ...prev, [agent.id]: res.session_id }));
+        setActiveAgent(agent.id);
+        setOutputs([]);
+        await refreshAgents();
+      } catch {
+        // ignore start failure; keep created agent
+      }
       setAgentName("");
       setAgentWorkdir("");
       setAgentCommand("agenthub-codex-acp");
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
       setWorktreeRef("");
-      setCodeMode(false);
+      setCodeMode(true);
       setShowCreateAgent(false);
     } catch (err) {
       const hint = formatWorktreeError(err);
@@ -454,29 +485,20 @@ export function App() {
 
   const onSendInput = async () => {
     if (!input.trim()) return;
-    const text = input.trim();
-    setInput("");
     if (!token || !activeAgent) return;
-    if (!activeSessionId) {
-      setError("no active session");
-      return;
-    }
-    setOutputs((prev) => [
-      ...prev,
-      {
-        agent_id: activeAgent,
-        session_id: activeSessionId,
-        ts: Math.floor(Date.now() / 1000),
-        stream: "acp",
-        message: JSON.stringify({ type: "user_message", text }),
-      },
-    ]);
+    const text = input.trim();
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "input", data: text }));
+      setInput("");
       return;
     }
-    setError("websocket not connected");
+    try {
+      await api.sendInput(token, activeAgent, text);
+      setInput("");
+    } catch (err) {
+      setError(String(err || "websocket not connected"));
+    }
   };
 
   const onRespondPermission = async (
@@ -704,95 +726,75 @@ export function App() {
             <div className="agent-layout">
               <div className="agent-list">
                 {agents.map((agent) => (
-                  <button
+                  <div
                     key={agent.id}
                     className={
                       activeAgent === agent.id ? "agent-row active" : "agent-row"
                     }
-                  onClick={() => {
-                    setActiveAgent(agent.id);
-                    setActiveSessionId(agentSessions[agent.id] ?? null);
-                  }}
-                >
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setActiveAgent(agent.id);
+                      setActiveSessionId(agentSessions[agent.id] ?? null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setActiveAgent(agent.id);
+                        setActiveSessionId(agentSessions[agent.id] ?? null);
+                      }
+                    }}
+                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}`}
+                  >
                     <div className="agent-row-head">
                       <span className="agent-name">{agent.name}</span>
-                      <span className={`agent-status ${agent.status}`}>
-                        {agent.status}
-                      </span>
-                    </div>
-                    <div className="agent-row-meta">{agent.command}</div>
-                  </button>
-                ))}
-              </div>
-              <div className="agent-detail">
-                {activeAgentRecord ? (
-                  <>
-                    <div className="agent-detail-head">
-                      <h3>{activeAgentRecord.name}</h3>
-                      <span
-                        className={`agent-status ${activeAgentRecord.status}`}
-                      >
-                        {activeAgentRecord.status}
-                      </span>
-                    </div>
-                    <div className="agent-detail-meta">
-                      <div>
-                        <span className="label">ID</span>
-                        <span className="value">{activeAgentRecord.id}</span>
-                      </div>
-                      <div>
-                        <span className="label">Command</span>
-                        <span className="value">
-                          {activeAgentRecord.command}
+                      <div className="agent-row-actions">
+                        <span className={`agent-status ${agent.status}`}>
+                          {agent.status}
                         </span>
-                      </div>
-                      <div>
-                        <span className="label">Workdir</span>
-                        <span className="value">
-                          {activeAgentRecord.workdir}
-                        </span>
-                      </div>
-                    </div>
-                    {auth.role === "root" && (
-                      <label className="checkbox-row compact">
-                        <input
-                          type="checkbox"
-                          checked={activeAgentRecord.code_mode}
-                          onChange={(e) =>
-                            onSetCodeMode(
-                              activeAgentRecord.id,
-                              e.target.checked
-                            )
+                        <button
+                          className="icon-button small"
+                          disabled={agent.status === "running"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (agent.status !== "running") {
+                              onStartAgent(agent.id);
+                            }
+                          }}
+                          title={
+                            agent.status === "running"
+                              ? "Already running"
+                              : "Start"
                           }
-                        />
-                        <span>Code mode</span>
-                      </label>
-                    )}
-                    <div className="actions">
-                      {activeAgentRecord.status !== "running" && (
-                        <button
-                          onClick={() => onStartAgent(activeAgentRecord.id)}
                         >
-                          Start
+                          ▶
                         </button>
-                      )}
-                      {activeAgentRecord.status === "running" && (
+                        {agent.status === "running" && (
+                          <button
+                            className="icon-button small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onStopAgent(agent.id);
+                            }}
+                            title="Stop"
+                          >
+                            ⏹
+                          </button>
+                        )}
                         <button
-                          onClick={() => onStopAgent(activeAgentRecord.id)}
+                          className="icon-button small danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteAgent(agent.id);
+                          }}
+                          title="Delete"
                         >
-                          Stop
+                          🗑
                         </button>
-                      )}
-                      <button
-                        onClick={() => onDeleteAgent(activeAgentRecord.id)}
-                      >
-                        Delete
-                      </button>
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="empty">Select an agent to view details.</div>
-                )}
+                    <div className="agent-row-meta">{agent.workdir}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -1002,6 +1004,21 @@ export function App() {
             ) : (
               <div className="empty">Select an agent to view output.</div>
             )}
+            <div className="input docked">
+              <textarea
+                placeholder="Send input (Enter to send, Shift+Enter for newline)"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    onSendInput();
+                  }
+                }}
+                rows={2}
+              />
+              <button onClick={onSendInput}>Send</button>
+            </div>
           </div>
         </section>
       )}
@@ -1066,14 +1083,6 @@ export function App() {
                 >
                   <option value="agenthub-codex-acp">agenthub-codex-acp</option>
                 </select>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={codeMode}
-                    onChange={(e) => setCodeMode(e.target.checked)}
-                  />
-                  <span>Code mode</span>
-                </label>
               </div>
               {worktreeError && (
                 <div className="worktree-error">
@@ -1100,23 +1109,6 @@ export function App() {
         </div>
       )}
 
-      {auth && (
-        <div className="input docked">
-          <textarea
-            placeholder="Send input (Enter to send, Shift+Enter for newline)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSendInput();
-              }
-            }}
-            rows={2}
-          />
-          <button onClick={onSendInput}>Send</button>
-        </div>
-      )}
       {auth && activeAgent && acpPermissions.length > 0 && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -1783,4 +1775,25 @@ function renderMarkdown(input: string): string {
     out += safe;
   });
   return out;
+}
+
+function parseRunStatus(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
+    if (parsed?.type === "run_status" && typeof parsed.status === "string") {
+      return parsed.status;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function statusToAgentStatus(status: string): AgentRecord["status"] {
+  if (status === "running") return "running";
+  if (status === "failed") return "failed";
+  if (status === "completed" || status === "cancelled") return "stopped";
+  return "stopped";
 }

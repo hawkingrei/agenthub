@@ -15,22 +15,31 @@
   --shadow: 0 18px 40px rgba(17, 29, 43, 0.08);
 }
 
+:root * {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .app {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 24px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 8px 4px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 h1 {
@@ -61,6 +70,24 @@ h1 {
   border-color: #222;
 }
 
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-button.small {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  padding: 0;
+}
+
+.icon-button.danger {
+  border-color: #f0c3c3;
+  background: #fff3f3;
+  color: #8a2323;
+}
+
 .error {
   background: #ffe2e2;
   padding: 10px 12px;
@@ -71,32 +98,32 @@ h1 {
 section {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 6px;
   box-shadow: var(--shadow);
 }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
+  gap: 6px;
   align-items: start;
-  padding: 12px;
+  padding: 0;
 }
 
 .workspace-left,
 .workspace-right {
   background: #fff;
   border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 12px;
-  min-height: 520px;
+  border-radius: 10px;
+  padding: 4px 6px;
+  min-height: 360px;
 }
 
 .workspace-right {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -147,12 +174,10 @@ button {
 }
 
 .input.docked {
-  position: sticky;
-  bottom: 12px;
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px;
   box-shadow: var(--shadow);
 }
 
@@ -166,25 +191,19 @@ button {
   flex-wrap: wrap;
 }
 
-.agent-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
 .agent-list {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .agent-row {
   text-align: left;
   border: 1px solid #e0e0e0;
   border-radius: 10px;
-  padding: 12px;
+  padding: 8px;
   background: #fff;
   cursor: pointer;
+  user-select: none;
 }
 
 .agent-row:hover {
@@ -204,8 +223,15 @@ button {
   margin-bottom: 6px;
 }
 
+.agent-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .agent-name {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 17px;
 }
 
 .agent-row-meta {
@@ -235,40 +261,6 @@ button {
 .agent-status.completed {
   background: #e9f7ea;
   color: #1f6b2a;
-}
-
-.agent-detail {
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 16px;
-  background: #fff;
-  min-height: 240px;
-}
-
-.agent-detail-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.agent-detail-meta {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: #333;
-  margin-bottom: 12px;
-}
-
-.agent-detail-meta .label {
-  display: inline-block;
-  min-width: 72px;
-  color: #7a7a7a;
-}
-
-.agent-detail-meta .value {
-  word-break: break-all;
 }
 
 .empty {
@@ -344,7 +336,7 @@ button {
 }
 
 .output-body {
-  max-height: 70vh;
+  max-height: none;
   overflow: auto;
   display: grid;
   gap: 12px;

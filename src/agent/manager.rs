@@ -254,6 +254,7 @@ impl AgentManager {
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
+        let session_id = Uuid::new_v4().to_string();
         let workdir = expand_tilde(&agent.workdir);
         let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
         if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
@@ -276,17 +277,22 @@ impl AgentManager {
             .await
         {
             let _ = self
+                .record_failed_session(&agent.id, &session_id, &err.to_string())
+                .await;
+            let _ = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
                 .await;
             return Err(err);
         }
         if let Err(err) = self.ensure_safe_path(&workdir).await {
             let _ = self
+                .record_failed_session(&agent.id, &session_id, &err.to_string())
+                .await;
+            let _ = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
                 .await;
             return Err(err);
         }
-        let session_id = Uuid::new_v4().to_string();
 
         let is_acp = self.is_acp_command(&agent.command);
         let command_path = self.resolve_command_path(&agent.command, is_acp);
@@ -304,6 +310,9 @@ impl AgentManager {
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
+                let _ = self
+                    .record_failed_session(&agent.id, &session_id, &err.to_string())
+                    .await;
                 let _ = self
                     .update_agent_status(&agent.id, AgentStatus::Failed)
                     .await;
@@ -346,6 +355,9 @@ impl AgentManager {
         .await
         {
             let _ = self
+                .record_failed_session(&agent.id, &session_id, "session insert failed")
+                .await;
+            let _ = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
                 .await;
             return Err(err.into());
@@ -363,6 +375,9 @@ impl AgentManager {
                 Some(stdout) => stdout,
                 None => {
                     let _ = self
+                        .record_failed_session(&agent.id, &session_id, "acp stdout missing")
+                        .await;
+                    let _ = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
                         .await;
                     return Err(anyhow::anyhow!("acp stdout missing"));
@@ -371,6 +386,9 @@ impl AgentManager {
             let stdin = match stdin.lock().await.take() {
                 Some(stdin) => stdin,
                 None => {
+                    let _ = self
+                        .record_failed_session(&agent.id, &session_id, "acp stdin missing")
+                        .await;
                     let _ = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
                         .await;
@@ -391,6 +409,9 @@ impl AgentManager {
             {
                 Ok(handle) => handle,
                 Err(err) => {
+                    let _ = self
+                        .record_failed_session(&agent.id, &session_id, &err.to_string())
+                        .await;
                     let _ = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
                         .await;
@@ -513,6 +534,45 @@ impl AgentManager {
         Ok(())
     }
 
+    async fn record_failed_session(
+        &self,
+        agent_id: &str,
+        session_id: &str,
+        message: &str,
+    ) -> anyhow::Result<()> {
+        let now = Utc::now().timestamp();
+        let seq = now_nanos();
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'failed', ?3, ?4)
+            "#,
+        )
+        .bind(session_id)
+        .bind(agent_id)
+        .bind(now)
+        .bind(now)
+        .execute(&self.db)
+        .await;
+
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(session_id)
+        .bind(seq)
+        .bind(now)
+        .bind(stream_to_str(&OutputStream::System))
+        .bind(format!("start failed: {}", message))
+        .execute(&self.db)
+        .await;
+
+        Ok(())
+    }
+
     pub async fn subscribe_output(
         &self,
         agent_id: &str,
@@ -542,6 +602,37 @@ impl AgentManager {
                 }
             }
             AgentInput::Acp(sender) => {
+                let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                let message = serde_json::json!({
+                    "type": "user_message",
+                    "text": input,
+                    "chunk": false,
+                    "message_id": seq.to_string()
+                })
+                .to_string();
+                let output = AgentOutput {
+                    agent_id: agent_id.to_string(),
+                    session_id: handle.session_id.clone(),
+                    seq,
+                    ts: Utc::now().timestamp(),
+                    stream: OutputStream::Acp,
+                    message: message.clone(),
+                };
+                let _ = handle.output_tx.send(output);
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(&handle.session_id)
+                .bind(seq)
+                .bind(Utc::now().timestamp())
+                .bind(stream_to_str(&OutputStream::Acp))
+                .bind(message)
+                .execute(&self.db)
+                .await;
                 sender.send(input.to_string()).await?;
                 Ok(())
             }

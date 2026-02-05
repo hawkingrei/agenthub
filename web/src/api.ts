@@ -209,6 +209,11 @@ export const api = {
       { method: "POST" }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
+  sendInput: (token: string, id: string, input: string) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/input`, token, {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {
       method: "POST",

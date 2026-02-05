@@ -1,4 +1,4 @@
-.PHONY: build-web run run-web build
+.PHONY: build-web run run-web build test
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
@@ -8,13 +8,15 @@ build-web:
 	cd web && npm run build
 
 build:
-	mkdir -p $(CARGO_HOME)
 	cargo build
 
-run:
-	cd web && npm run build
-	mkdir -p $(CARGO_HOME)
+run: build-web
 	cargo run
+
+test:
+	cargo test
+	cd web && npm test
+
 
 reset:
 	rm -f $$HOME/.agenthub/agenthub.db
