@@ -1,4 +1,5 @@
 [source."ssh://git@github.com/JakkuSakura/tungstenite-rs.git"]
+git = "ssh://git@github.com/JakkuSakura/tungstenite-rs.git"
 replace-with = "tungstenite-rs-https"
 
 [source.tungstenite-rs-https]
