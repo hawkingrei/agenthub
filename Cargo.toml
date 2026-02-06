@@ -4,6 +4,9 @@ members = [".", "agenthub-codex-acp"]
 [patch.crates-io]
 tokio-tungstenite = { git = "https://github.com/JakkuSakura/tokio-tungstenite", branch = "proxy-support" }
 
+[replace]
+"tungstenite:0.28.0" = { git = "https://github.com/JakkuSakura/tungstenite-rs", branch = "proxy-support" }
+
 [package]
 name = "agenthub"
 version = "0.1.0"

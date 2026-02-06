@@ -2,7 +2,6 @@
 .agenthub
 .cache
 .cargo
-!.cargo/config.toml
 .DS_Store
 web/node_modules
 web/dist
