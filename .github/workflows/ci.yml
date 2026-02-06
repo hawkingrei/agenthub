@@ -18,6 +18,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+      - name: Prepare web dist
+        run: mkdir -p web/dist
       - name: Test
         run: cargo test --all
 
