@@ -87,6 +87,12 @@ h1 {
   padding: 0;
 }
 
+.icon-button.code-active {
+  background: #111827;
+  border-color: #111827;
+  color: #fff;
+}
+
 .icon-button.danger {
   border-color: #f0c3c3;
   background: #fff3f3;
@@ -279,9 +285,17 @@ button {
 }
 
 .agent-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-size: 12px;
   color: #5a5a5a;
   word-break: break-all;
+}
+
+.agent-code-mode {
+  font-size: 11px;
+  color: #7a7a7a;
 }
 
 .agent-status {

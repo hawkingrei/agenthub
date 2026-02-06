@@ -567,7 +567,7 @@ export function App() {
         worktree_mode: worktreeMode,
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
-        code_mode: true,
+        code_mode: codeMode,
       });
       setAgents((prev) => [agent, ...prev]);
       try {
@@ -961,11 +961,30 @@ export function App() {
                         setActiveSessionId(agentSessions[agent.id] ?? null);
                       }
                     }}
-                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}`}
+                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
                   >
                     <div className="agent-row-head">
                       <span className="agent-name">{agent.name}</span>
                       <div className="agent-row-actions">
+                        <button
+                          className={
+                            agent.code_mode
+                              ? "icon-button small code-active"
+                              : "icon-button small"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSetCodeMode(agent.id, !agent.code_mode);
+                          }}
+                          title={
+                            agent.code_mode
+                              ? "Disable code mode"
+                              : "Enable code mode"
+                          }
+                          aria-pressed={agent.code_mode}
+                        >
+                          CM
+                        </button>
                         <span className={`agent-status ${agent.status}`}>
                           {agent.status}
                         </span>
@@ -1010,7 +1029,12 @@ export function App() {
                         </button>
                       </div>
                     </div>
-                    <div className="agent-row-meta">{agent.workdir}</div>
+                    <div className="agent-row-meta">
+                      <span>{agent.workdir}</span>
+                      <span className="agent-code-mode">
+                        Code mode: {agent.code_mode ? "on" : "off"}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1030,7 +1054,8 @@ export function App() {
               </div>
               {activeAgentRecord && (
                 <span className="output-subtitle">
-                  {activeAgentRecord.name}
+                  {activeAgentRecord.name} · Code mode:{" "}
+                  {activeAgentRecord.code_mode ? "on" : "off"}
                 </span>
               )}
             </div>
@@ -1363,6 +1388,16 @@ export function App() {
                 >
                   <option value="agenthub-codex-acp">agenthub-codex-acp</option>
                 </select>
+              </div>
+              <div className="checkbox-row">
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={codeMode}
+                    onChange={(e) => setCodeMode(e.target.checked)}
+                  />
+                  <span>Code mode</span>
+                </label>
               </div>
               {worktreeError && (
                 <div className="worktree-error">
