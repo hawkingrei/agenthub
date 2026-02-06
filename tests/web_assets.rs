@@ -14,7 +14,7 @@ fn styles_keep_acp_conversation_scoped() {
         "styles.css should define .acp-conversation"
     );
     assert!(
-        css.contains(".acp {\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n}"),
+        css.contains(".acp {\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n  overflow: hidden;\n}"),
         "acp container should be flex and height constrained"
     );
     assert!(
