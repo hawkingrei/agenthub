@@ -29,17 +29,181 @@ describe("buildAcpView", () => {
         ts: 1,
         stream: "acp",
         session_id: "s1",
-        message: JSON.stringify({ type: "agent_message", text: "Hello" }),
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Hello",
+          chunk: true,
+        }),
       },
       {
         ts: 2,
         stream: "acp",
         session_id: "s1",
-        message: JSON.stringify({ type: "agent_message", text: " World" }),
+        message: JSON.stringify({
+          type: "agent_message",
+          text: " World",
+          chunk: true,
+        }),
       },
     ];
     const view = buildAcpView(events);
     expect(view.messages.length).toBe(1);
     expect(view.messages[0].text).toBe("Hello World");
+  });
+
+  it("does not merge non-chunk messages from the same session", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "Hello",
+          chunk: false,
+          message_id: "m1",
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "Again",
+          chunk: false,
+          message_id: "m2",
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.messages.length).toBe(2);
+    expect(view.messages[0].text).toBe("Hello");
+    expect(view.messages[1].text).toBe("Again");
+  });
+
+  it("merges chunked agent_thought messages", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "Line 1",
+          chunk: true,
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "\nLine 2",
+          chunk: true,
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.messages.length).toBe(1);
+    expect(view.messages[0].text).toBe("Line 1\nLine 2");
+  });
+
+  it("tracks thinking timestamps while in thought and clears after message", () => {
+    const thinkingEvents = [
+      {
+        ts: 10,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "Thinking...",
+          chunk: false,
+        }),
+      },
+      {
+        ts: 12,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "More",
+          chunk: true,
+        }),
+      },
+    ];
+    const viewWhileThinking = buildAcpView(thinkingEvents);
+    expect(viewWhileThinking.thinkingStartTs).toBe(10);
+
+    const finishedEvents = [
+      ...thinkingEvents,
+      {
+        ts: 20,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Done",
+          chunk: false,
+        }),
+      },
+    ];
+    const viewAfterMessage = buildAcpView(finishedEvents);
+    expect(viewAfterMessage.thinkingStartTs).toBe(null);
+  });
+
+  it("clears thinking timestamp on tool calls", () => {
+    const events = [
+      {
+        ts: 10,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "Thinking...",
+          chunk: false,
+        }),
+      },
+      {
+        ts: 12,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-1",
+          title: "Tool Call",
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.thinkingStartTs).toBe(null);
+  });
+
+  it("clears thinking timestamp on run status updates", () => {
+    const events = [
+      {
+        ts: 10,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_thought",
+          text: "Thinking...",
+          chunk: false,
+        }),
+      },
+      {
+        ts: 12,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "running",
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.thinkingStartTs).toBe(null);
+    expect(view.runStatus?.status).toBe("running");
   });
 });

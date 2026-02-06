@@ -1,3 +1,8 @@
+import {
+  clearAuthAndRedirect,
+  shouldRedirectOnAuthError,
+} from "./auth_redirect";
+
 export type AgentConfig = {
   name: string;
   workdir: string;
@@ -113,6 +118,20 @@ export type VapidRotateResponse = {
   public_key: string;
 };
 
+function parseApiErrorText(raw: string): string | null {
+  if (!raw) return null;
+  if (!raw.trim().startsWith("{")) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.error === "string") {
+      return parsed.error;
+    }
+  } catch {
+    return raw;
+  }
+  return raw;
+}
+
 function authHeaders(token: string | null): HeadersInit {
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
@@ -132,8 +151,12 @@ async function apiFetch<T>(
     },
   });
   if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(msg || res.statusText);
+    const raw = await res.text();
+    const msg = parseApiErrorText(raw);
+    if (shouldRedirectOnAuthError(res.status, token, msg)) {
+      clearAuthAndRedirect();
+    }
+    throw new Error(raw || res.statusText);
   }
   return (await res.json()) as T;
 }
@@ -209,6 +232,11 @@ export const api = {
       { method: "POST" }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
+  sendInput: (token: string, id: string, input: string, message_id?: string) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/input`, token, {
+      method: "POST",
+      body: JSON.stringify({ input, message_id }),
+    }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {
       method: "POST",
@@ -218,10 +246,12 @@ export const api = {
     token: string,
     id: string,
     limit = 500,
-    sessionId?: string
+    sessionId?: string,
+    beforeSeq?: number | null
   ) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (sessionId) params.set("session_id", sessionId);
+    if (beforeSeq != null) params.set("before_seq", String(beforeSeq));
     return apiFetch<AgentEvent[]>(
       `/api/agents/${id}/events?${params.toString()}`,
       token

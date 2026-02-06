@@ -8,6 +8,7 @@ use agent_client_protocol::{
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
     SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
 };
+use codex_core::auth::AuthMode;
 use codex_core::{
     NewThread, ResponseItem, RolloutRecorder, ThreadManager, ThreadSortKey,
     auth::{AuthManager, read_codex_api_key_from_env, read_openai_api_key_from_env},
@@ -18,7 +19,7 @@ use codex_core::{
     find_thread_path_by_id_str, parse_cursor, parse_turn_item,
     protocol::{InitialHistory, SessionSource},
 };
-use codex_login::{AuthMode, CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
+use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
 use codex_protocol::{ThreadId, protocol::SessionMetaLine};
 use std::{
     cell::RefCell,
@@ -154,6 +155,7 @@ impl CodexAgent {
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
+                            scopes: None,
                         },
                     );
                 }
@@ -184,6 +186,7 @@ impl CodexAgent {
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
+                            scopes: None,
                         },
                     );
                 }
@@ -249,12 +252,12 @@ impl Agent for CodexAgent {
 
         // Check before starting login flow if already authenticated with the same method
         if let Some(auth) = self.auth_manager.auth().await {
-            match (auth.mode, auth_method) {
+            match (auth.internal_auth_mode(), auth_method) {
                 (
                     AuthMode::ApiKey,
                     CodexAuthMethod::CodexApiKey | CodexAuthMethod::OpenAiApiKey,
                 )
-                | (AuthMode::ChatGPT, CodexAuthMethod::ChatGpt) => {
+                | (AuthMode::Chatgpt, CodexAuthMethod::ChatGpt) => {
                     return Ok(AuthenticateResponse::new());
                 }
                 _ => {}

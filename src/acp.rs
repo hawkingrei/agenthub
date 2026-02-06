@@ -225,8 +225,12 @@ pub async fn spawn_acp_session(
             let _ = ready_tx.send(Ok(()));
 
             while let Some(prompt) = prompt_rx.recv().await {
-                let request =
-                    PromptRequest::new(session_id.clone(), vec![ContentBlock::from(prompt)]);
+                let request = PromptRequest::new(
+                    session_id.clone(),
+                    vec![ContentBlock::Text(agent_client_protocol::TextContent::new(
+                        prompt,
+                    ))],
+                );
                 if let Err(err) = conn.prompt(request).await {
                     sink.emit_system(format!("acp prompt error: {err}")).await;
                 }
@@ -278,7 +282,8 @@ fn json_message(kind: &str, content: &ContentBlock) -> Value {
     let text = content_to_text(content);
     serde_json::json!({
         "type": kind,
-        "text": text
+        "text": text,
+        "chunk": true
     })
 }
 

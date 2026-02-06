@@ -98,3 +98,27 @@ agenthub/
 - Worktree 策略实现与 UI
 - Admin 端 agent code mode 开关
 - 统一配置文件加载与校验
+- A2A 多智能体并行与排序：全局有序事件流（建议 DB 自增序列或单点发号器）
+
+## 11. 变更记录
+
+### 2026-02-05
+
+- ACP 会话视图改为“底部堆叠 + 可滚动”，并在新消息到来时自动吸底（用户手动上滚后不强制吸底）
+- ACP 容器高度约束与滚动行为修正（`output-body`/`acp`/`acp-conversation` 统一使用 flex 约束）
+- ACP 思考块折叠规则调整：仅在首次 agent_message 出现后折叠
+- 用户输入消息去重：引入 `message_id`，避免 WS 与 HTTP 双通道导致的重复展示
+- 会话过滤规则放宽：允许 `session_id` 缺失的消息进入当前会话视图
+- 移动端体验优化：Agents 面板改为覆盖式抽屉并增加遮罩；输入区与按钮尺寸缩小
+- Agents 折叠按钮统一放到 Output 标题旁，避免折叠后无法恢复
+- UI 空白收紧：`acp-head` 顶部空白减少并改为 `align-items: flex-start`
+- 新增样式守卫测试：`tests/web_assets.rs` 确认 ACP 容器关键样式（避免回归）
+- 输出历史改为“上滑加载”：滚动接近顶部时从数据库增量拉取更早记录（移除固定 Recent 标签）
+- Conversation 视图改为瀑布流顺序展示：`agent_thought` 作为独立 `agent_thinking` 气泡，按 `seq` 插入在用户与 AI 回复之间
+- `agent_thinking` 在思考结束后默认折叠，思考进行中保持展开
+- 本地输入事件补齐全局 `seq` 并参与排序，避免多条用户输入被错误合并或乱序
+- A2A 需求补充：多机器人发言的全局顺序必须严格可重放
+- Output 滚动策略调整：`output-body` 固定高度并禁用自身滚动，ACP/Terminal 内部各自滚动显示
+- 输出历史自动补齐：当当前会话消息不足时，自动向上翻页拉取更早记录
+- 默认激活运行中的 Agent：首次进入页面若未选中，自动选择第一个运行中的 Agent（否则选择列表首个）
+- 输入区固定在 Output 底部（`.input.docked` 使用 `margin-top: auto`）

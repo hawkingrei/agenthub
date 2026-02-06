@@ -1,60 +1,19 @@
-# ACP adapter for Codex
+# AgentHub Codex ACP Adapter
 
-Use [Codex](https://github.com/openai/codex) from [ACP-compatible](https://agentclientprotocol.com) clients such as [Zed](https://zed.dev)!
+AgentHub’s built-in Codex ACP adapter, based on Zed’s Codex ACP implementation. It provides full ACP capabilities (tool calls, permissions, commands, plans, modes, MCP servers, and more).
 
-This tool implements an ACP adapter around the Codex CLI, supporting:
+## Usage
 
-- Context @-mentions
-- Images
-- Tool calls (with permission requests)
-- Following
-- Edit review
-- TODO lists
-- Slash commands:
-  - /review (with optional instructions)
-  - /review-branch
-  - /review-commit
-  - /init
-  - /compact
-  - /logout
-  - Custom Prompts
-- Client MCP servers
-- Auth Methods:
-  - ChatGPT subscription (requires paid subscription and doesn't work in remote projects)
-  - CODEX_API_KEY
-  - OPENAI_API_KEY
-
-Learn more about the [Agent Client Protocol](https://agentclientprotocol.com/).
-
-## How to use
-
-### Zed
-
-The latest version of Zed can already use this adapter out of the box.
-
-To use Codex, open the Agent Panel and click "New Codex Thread" from the `+` button menu in the top-right.
-
-Read the docs on [External Agent](https://zed.dev/docs/ai/external-agents) support.
-
-### Other clients
-
-Or try it with any of the other [ACP compatible clients](https://agentclientprotocol.com/overview/clients)!
-
-#### Installation
-
-Install the adapter from the latest release for your architecture and OS: https://github.com/zed-industries/codex-acp/releases
-
-You can then use `codex-acp` as a regular ACP agent:
+Select `agenthub-codex-acp` as the command in the AgentHub create page.
+You can also run it directly:
 
 ```
-OPENAI_API_KEY=sk-... codex-acp
+agenthub-codex-acp
 ```
 
-Or via npm:
+## Notes
 
-```
-npx @zed-industries/codex-acp
-```
+- No npm distribution; binary-only.
 
 ## License
 

@@ -33,11 +33,18 @@ pub struct StartAgentResponse {
 pub struct ListEventsQuery {
     pub limit: Option<i64>,
     pub session_id: Option<String>,
+    pub before_seq: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SetCodeModeRequest {
     pub code_mode: bool,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SendInputRequest {
+    pub input: String,
+    pub message_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +64,7 @@ pub fn router(state: AppState) -> Router {
         .route("/:id", get(get_agent))
         .route("/:id/start", post(start_agent))
         .route("/:id/stop", post(stop_agent))
+        .route("/:id/input", post(send_input))
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
@@ -82,7 +90,7 @@ async fn create_agent(
         worktree_mode: parse_worktree_mode(payload.worktree_mode.as_deref()),
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
-        code_mode: payload.code_mode.unwrap_or(false),
+        code_mode: payload.code_mode.unwrap_or(true),
     };
     let agent = state.agents.create_agent(config).await?;
     Ok(Json(agent))
@@ -138,6 +146,20 @@ async fn delete_agent(
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
+async fn send_input(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SendInputRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .agents
+        .send_input(&agent_id, &payload.input, payload.message_id.as_deref())
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
 async fn list_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -146,13 +168,17 @@ async fn list_events(
 ) -> Result<Json<Vec<crate::agent::AgentEvent>>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let limit = query.limit.unwrap_or(500);
+    let before_seq = query.before_seq;
     let events = if let Some(session_id) = query.session_id.as_deref() {
         state
             .agents
-            .list_events_for_session(&agent_id, session_id, limit)
+            .list_events_for_session(&agent_id, session_id, limit, before_seq)
             .await?
     } else {
-        state.agents.list_events(&agent_id, limit).await?
+        state
+            .agents
+            .list_events(&agent_id, limit, before_seq)
+            .await?
     };
     Ok(Json(events))
 }

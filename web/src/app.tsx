@@ -11,6 +11,18 @@ import {
   VapidInfo,
 } from "./api";
 import { buildAcpView } from "./acp";
+import {
+  shouldIgnoreAgentWsError,
+  shouldOpenAgentSocket,
+  sanitizeAgentError,
+} from "./agent_ws";
+import { ErrorBanner } from "./error_banner";
+import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
+import {
+  buildConversationMessages,
+  ConversationItem,
+  windowConversation,
+} from "./conversation";
 
 type AuthState = {
   token: string;
@@ -24,6 +36,7 @@ type OutputLine = AgentEvent;
 
 
 export function App() {
+  const eventLimit = 200;
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = localStorage.getItem("agenthub_auth");
     return raw ? (JSON.parse(raw) as AuthState) : null;
@@ -46,7 +59,7 @@ export function App() {
   >("use_existing");
   const [worktreeRepo, setWorktreeRepo] = useState("");
   const [worktreeRef, setWorktreeRef] = useState("");
-  const [codeMode, setCodeMode] = useState(false);
+  const [codeMode, setCodeMode] = useState(true);
   const [safePathInput, setSafePathInput] = useState("");
   const [joinQr, setJoinQr] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
@@ -64,6 +77,7 @@ export function App() {
     Record<string, OutputLine[]>
   >({});
   const loadSeq = useRef(0);
+  const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [acpPermissions, setAcpPermissions] = useState<AcpPermissionRecord[]>(
     []
@@ -73,6 +87,16 @@ export function App() {
   const [input, setInput] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
+  const acpConversationRef = useRef<HTMLDivElement | null>(null);
+  const acpStickToBottomRef = useRef(true);
+  const pendingScrollAdjustRef = useRef<{
+    prevHeight: number;
+    prevTop: number;
+  } | null>(null);
+  const [eventMeta, setEventMeta] = useState<
+    Record<string, { oldestSeq: number | null; hasMore: boolean; loading: boolean }>
+  >({});
+  const [agentsCollapsed, setAgentsCollapsed] = useState(false);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [acpTab, setAcpTab] = useState<
     "conversation" | "tools" | "plan" | "commands" | "debug"
@@ -81,16 +105,88 @@ export function App() {
     AcpPermissionRecord[]
   >([]);
   const [thinkingTick, setThinkingTick] = useState(0);
+  const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const acpView = useMemo(
     () => buildAcpView(outputs),
     [outputs, thinkingTick]
   );
+  const conversationMessages = useMemo<ConversationItem[]>(
+    () => buildConversationMessages(acpView.messages, activeSessionId),
+    [acpView.messages, activeSessionId]
+  );
+  const conversationWindow = useMemo(
+    () => windowConversation(conversationMessages, conversationStickToBottom, 200),
+    [conversationMessages, conversationStickToBottom]
+  );
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!activeAgent) return;
+    const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+    const meta = eventMeta[key];
+    if (!meta || meta.loading || !meta.hasMore) return;
+    const minMessages = 12;
+    if (conversationMessages.length >= minMessages) return;
+    loadOlderEvents();
+  }, [conversationMessages.length, acpTab, activeAgent, activeSessionId, eventMeta]);
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    const el = acpConversationRef.current;
+    if (!el) return;
+    if (!conversationStickToBottom) return;
+    el.scrollTop = el.scrollHeight;
+  }, [conversationWindow.items.length, acpTab, conversationStickToBottom]);
+  useEffect(() => {
+    const el = acpConversationRef.current;
+    const pending = pendingScrollAdjustRef.current;
+    if (!el || !pending) return;
+    const nextHeight = el.scrollHeight;
+    el.scrollTop = nextHeight - pending.prevHeight + pending.prevTop;
+    pendingScrollAdjustRef.current = null;
+  }, [acpView.messages.length]);
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
   );
+  const activeAgentStatus = activeAgentRecord?.status ?? null;
 
   const token = auth?.token ?? null;
+  const mergeOutputs = (existing: OutputLine[], incoming: OutputLine[]) => {
+    const merged = [...existing, ...incoming];
+    const seen = new Set<string>();
+    const deduped: OutputLine[] = [];
+    for (const line of merged) {
+      const key =
+        line.seq != null
+          ? String(line.seq)
+          : `${line.ts}-${line.stream}-${line.message}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(line);
+    }
+    return deduped.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  };
+  const appendOutputLine = (existing: OutputLine[], line: OutputLine) => {
+    if (existing.length === 0) return [line];
+    const lineSeq = line.seq ?? 0;
+    const lastSeq = existing[existing.length - 1].seq ?? 0;
+    if (lineSeq >= lastSeq) {
+      return [...existing, line];
+    }
+    const next = existing.slice();
+    let lo = 0;
+    let hi = next.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const midSeq = next[mid].seq ?? 0;
+      if (midSeq <= lineSeq) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    next.splice(lo, 0, line);
+    return next;
+  };
   const refreshAgents = async () => {
     if (!token) return;
     try {
@@ -107,6 +203,16 @@ export function App() {
   }, [token]);
 
   useEffect(() => {
+    if (activeAgent || agents.length === 0) return;
+    const running = agents.find((agent) => agent.status === "running");
+    const next = running ?? agents[0];
+    if (next) {
+      setActiveAgent(next.id);
+      setActiveSessionId(agentSessions[next.id] ?? null);
+    }
+  }, [agents, activeAgent, agentSessions]);
+
+  useEffect(() => {
     api.authStatus().then((res) => setRootInitialized(res.root_initialized)).catch(() => {});
   }, []);
 
@@ -117,7 +223,7 @@ export function App() {
       const events = await api.listAgentEvents(
         token,
         id,
-        500,
+        eventLimit,
         sessionId ?? undefined
       );
       if (seq !== loadSeq.current) return;
@@ -130,14 +236,70 @@ export function App() {
           if (activeAgent === id && !activeSessionId) {
             setActiveSessionId(latestSession);
           }
+          return;
         }
       }
       const key = `${id}:${sessionId ?? "latest"}`;
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const oldestSeq = ordered.length ? ordered[0].seq ?? null : null;
       setOutputCache((prev) => ({ ...prev, [key]: ordered }));
       setOutputs(ordered);
+      setEventMeta((prev) => ({
+        ...prev,
+        [key]: {
+          oldestSeq,
+          hasMore: ordered.length >= eventLimit,
+          loading: false,
+        },
+      }));
     } catch {
       // ignore
+    }
+  };
+
+  const loadOlderEvents = async () => {
+    if (!token || !activeAgent) return;
+    const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+    const meta = eventMeta[key];
+    if (!meta || meta.loading || !meta.hasMore || meta.oldestSeq == null) {
+      return;
+    }
+    setEventMeta((prev) => ({
+      ...prev,
+      [key]: { ...meta, loading: true },
+    }));
+    const el = acpConversationRef.current;
+    if (el) {
+      pendingScrollAdjustRef.current = {
+        prevHeight: el.scrollHeight,
+        prevTop: el.scrollTop,
+      };
+    }
+    try {
+      const older = await api.listAgentEvents(
+        token,
+        activeAgent,
+        eventLimit,
+        activeSessionId ?? undefined,
+        meta.oldestSeq
+      );
+      const ordered = [...older].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
+      const hasMore = ordered.length >= eventLimit;
+      setOutputs((prev) => mergeOutputs(prev, ordered));
+      setOutputCache((prev) => {
+        const existing = prev[key] ?? [];
+        return { ...prev, [key]: mergeOutputs(existing, ordered) };
+      });
+      setEventMeta((prev) => ({
+        ...prev,
+        [key]: { oldestSeq: nextOldest, hasMore, loading: false },
+      }));
+    } catch {
+      setEventMeta((prev) => ({
+        ...prev,
+        [key]: { ...meta, loading: false },
+      }));
     }
   };
 
@@ -147,6 +309,17 @@ export function App() {
     const cached = outputCache[key];
     if (cached) {
       setOutputs(cached);
+      if (!eventMeta[key]) {
+        const oldestSeq = cached.length ? cached[0].seq ?? null : null;
+        setEventMeta((prev) => ({
+          ...prev,
+          [key]: {
+            oldestSeq,
+            hasMore: cached.length >= eventLimit,
+            loading: false,
+          },
+        }));
+      }
     } else {
       setOutputs([]);
       loadAgentEvents(activeAgent, activeSessionId);
@@ -162,8 +335,13 @@ export function App() {
   }, [token, auth?.role]);
 
   useEffect(() => {
+    setError((prev) => sanitizeAgentError(prev, activeAgentStatus));
+  }, [activeAgentStatus]);
+
+  useEffect(() => {
     if (!token || !activeAgent) return;
     loadAgentEvents(activeAgent, activeSessionId);
+    if (!shouldOpenAgentSocket(activeAgentStatus)) return;
     const ws = new WebSocket(
       `${location.origin.replace("http", "ws")}/ws/agents/${activeAgent}?token=${token}`
     );
@@ -176,7 +354,11 @@ export function App() {
           if (payload.agent_id && payload.agent_id !== activeAgent) {
             return;
           }
-          if (activeSessionId && payload.session_id !== activeSessionId) {
+          if (
+            activeSessionId &&
+            payload.session_id &&
+            payload.session_id !== activeSessionId
+          ) {
             return;
           }
           const seq = payload.seq ?? Date.now();
@@ -188,19 +370,36 @@ export function App() {
             session_id: payload.session_id,
             seq,
           };
-          setOutputs((prev) =>
-            [...prev, line].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-          );
+          if (payload.stream === "acp") {
+            const status = parseRunStatus(payload.message);
+            if (status) {
+              setAgents((prev) =>
+                prev.map((agent) =>
+                  agent.id === payload.agent_id
+                    ? { ...agent, status: statusToAgentStatus(status) }
+                    : agent
+                )
+              );
+            }
+          }
+          setOutputs((prev) => appendOutputLine(prev, line));
           const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
           setOutputCache((prev) => ({
             ...prev,
-            [key]: [...(prev[key] ?? []), line].sort(
-              (a, b) => (a.seq ?? 0) - (b.seq ?? 0)
-            ),
+            [key]: appendOutputLine(prev[key] ?? [], line),
           }));
         }
       } catch {
-        // ignore
+        if (typeof event.data === "string") {
+          if (isInvalidTokenMessage(event.data)) {
+            clearAuthAndRedirect();
+            return;
+          }
+          if (shouldIgnoreAgentWsError(event.data, activeAgentStatus)) {
+            return;
+          }
+          setError(event.data);
+        }
       }
     };
     ws.onclose = () => {
@@ -208,13 +407,20 @@ export function App() {
         wsRef.current = null;
       }
     };
+    const poll = window.setInterval(() => {
+      const current = wsRef.current;
+      if (!current || current.readyState !== WebSocket.OPEN) {
+        loadAgentEvents(activeAgent, activeSessionId);
+      }
+    }, 2000);
     return () => {
+      window.clearInterval(poll);
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
       ws.close();
     };
-  }, [token, activeAgent, activeSessionId]);
+  }, [token, activeAgent, activeSessionId, activeAgentStatus]);
 
   useEffect(() => {
     const el = outputRef.current;
@@ -361,16 +567,26 @@ export function App() {
         worktree_mode: worktreeMode,
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
-        code_mode: codeMode,
+        code_mode: true,
       });
       setAgents((prev) => [agent, ...prev]);
+      try {
+        const res = await api.startAgent(token, agent.id);
+        setActiveSessionId(res.session_id);
+        setAgentSessions((prev) => ({ ...prev, [agent.id]: res.session_id }));
+        setActiveAgent(agent.id);
+        setOutputs([]);
+        await refreshAgents();
+      } catch {
+        // ignore start failure; keep created agent
+      }
       setAgentName("");
       setAgentWorkdir("");
       setAgentCommand("agenthub-codex-acp");
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
       setWorktreeRef("");
-      setCodeMode(false);
+      setCodeMode(true);
       setShowCreateAgent(false);
     } catch (err) {
       const hint = formatWorktreeError(err);
@@ -454,29 +670,47 @@ export function App() {
 
   const onSendInput = async () => {
     if (!input.trim()) return;
-    const text = input.trim();
-    setInput("");
     if (!token || !activeAgent) return;
-    if (!activeSessionId) {
-      setError("no active session");
-      return;
-    }
-    setOutputs((prev) => [
-      ...prev,
-      {
+    const text = input.trim();
+    let messageId: string | null = null;
+    if (activeSessionId) {
+      messageId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `local-${Date.now()}`;
+      const localSeq = Date.now() * 1_000_000;
+      const line: OutputLine = {
         agent_id: activeAgent,
         session_id: activeSessionId,
         ts: Math.floor(Date.now() / 1000),
+        seq: localSeq,
         stream: "acp",
-        message: JSON.stringify({ type: "user_message", text }),
-      },
-    ]);
+        message: JSON.stringify({
+          type: "user_message",
+          text,
+          chunk: false,
+          message_id: messageId,
+        }),
+      };
+      setOutputs((prev) => mergeOutputs(prev, [line]));
+      const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+      setOutputCache((prev) => ({
+        ...prev,
+        [key]: mergeOutputs(prev[key] ?? [], [line]),
+      }));
+    }
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data: text }));
+      ws.send(JSON.stringify({ type: "input", data: text, message_id: messageId }));
+      setInput("");
       return;
     }
-    setError("websocket not connected");
+    try {
+      await api.sendInput(token, activeAgent, text, messageId ?? undefined);
+      setInput("");
+    } catch (err) {
+      setError(String(err || "websocket not connected"));
+    }
   };
 
   const onRespondPermission = async (
@@ -658,7 +892,7 @@ export function App() {
         )}
       </header>
 
-      {error && <div className="error">{error}</div>}
+      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
       {!auth && (
         <section className="auth">
@@ -691,8 +925,14 @@ export function App() {
       )}
 
       {auth && (
-        <section className="workspace">
-          <div className="workspace-left">
+        <section className={agentsCollapsed ? "workspace collapsed" : "workspace"}>
+          {!agentsCollapsed && (
+            <div
+              className="agents-backdrop"
+              onClick={() => setAgentsCollapsed(true)}
+            />
+          )}
+          <div className={agentsCollapsed ? "workspace-left collapsed" : "workspace-left"}>
             <div className="toolbar">
               <h2>Agents</h2>
               <div className="toolbar-actions">
@@ -704,101 +944,90 @@ export function App() {
             <div className="agent-layout">
               <div className="agent-list">
                 {agents.map((agent) => (
-                  <button
+                  <div
                     key={agent.id}
                     className={
                       activeAgent === agent.id ? "agent-row active" : "agent-row"
                     }
-                  onClick={() => {
-                    setActiveAgent(agent.id);
-                    setActiveSessionId(agentSessions[agent.id] ?? null);
-                  }}
-                >
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setActiveAgent(agent.id);
+                      setActiveSessionId(agentSessions[agent.id] ?? null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setActiveAgent(agent.id);
+                        setActiveSessionId(agentSessions[agent.id] ?? null);
+                      }
+                    }}
+                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}`}
+                  >
                     <div className="agent-row-head">
                       <span className="agent-name">{agent.name}</span>
-                      <span className={`agent-status ${agent.status}`}>
-                        {agent.status}
-                      </span>
-                    </div>
-                    <div className="agent-row-meta">{agent.command}</div>
-                  </button>
-                ))}
-              </div>
-              <div className="agent-detail">
-                {activeAgentRecord ? (
-                  <>
-                    <div className="agent-detail-head">
-                      <h3>{activeAgentRecord.name}</h3>
-                      <span
-                        className={`agent-status ${activeAgentRecord.status}`}
-                      >
-                        {activeAgentRecord.status}
-                      </span>
-                    </div>
-                    <div className="agent-detail-meta">
-                      <div>
-                        <span className="label">ID</span>
-                        <span className="value">{activeAgentRecord.id}</span>
-                      </div>
-                      <div>
-                        <span className="label">Command</span>
-                        <span className="value">
-                          {activeAgentRecord.command}
+                      <div className="agent-row-actions">
+                        <span className={`agent-status ${agent.status}`}>
+                          {agent.status}
                         </span>
-                      </div>
-                      <div>
-                        <span className="label">Workdir</span>
-                        <span className="value">
-                          {activeAgentRecord.workdir}
-                        </span>
-                      </div>
-                    </div>
-                    {auth.role === "root" && (
-                      <label className="checkbox-row compact">
-                        <input
-                          type="checkbox"
-                          checked={activeAgentRecord.code_mode}
-                          onChange={(e) =>
-                            onSetCodeMode(
-                              activeAgentRecord.id,
-                              e.target.checked
-                            )
+                        <button
+                          className="icon-button small"
+                          disabled={agent.status === "running"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (agent.status !== "running") {
+                              onStartAgent(agent.id);
+                            }
+                          }}
+                          title={
+                            agent.status === "running"
+                              ? "Already running"
+                              : "Start"
                           }
-                        />
-                        <span>Code mode</span>
-                      </label>
-                    )}
-                    <div className="actions">
-                      {activeAgentRecord.status !== "running" && (
-                        <button
-                          onClick={() => onStartAgent(activeAgentRecord.id)}
                         >
-                          Start
+                          ▶
                         </button>
-                      )}
-                      {activeAgentRecord.status === "running" && (
+                        {agent.status === "running" && (
+                          <button
+                            className="icon-button small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onStopAgent(agent.id);
+                            }}
+                            title="Stop"
+                          >
+                            ⏹
+                          </button>
+                        )}
                         <button
-                          onClick={() => onStopAgent(activeAgentRecord.id)}
+                          className="icon-button small danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteAgent(agent.id);
+                          }}
+                          title="Delete"
                         >
-                          Stop
+                          🗑
                         </button>
-                      )}
-                      <button
-                        onClick={() => onDeleteAgent(activeAgentRecord.id)}
-                      >
-                        Delete
-                      </button>
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="empty">Select an agent to view details.</div>
-                )}
+                    <div className="agent-row-meta">{agent.workdir}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
           <div className="workspace-right">
             <div className="output-header">
-              <h2>Output</h2>
+              <div className="output-title">
+                <button
+                  className="icon-button small"
+                  onClick={() => setAgentsCollapsed((prev) => !prev)}
+                  title={agentsCollapsed ? "Show agents" : "Hide agents"}
+                >
+                  {agentsCollapsed ? "›" : "‹"}
+                </button>
+                <h2>Output</h2>
+              </div>
               {activeAgentRecord && (
                 <span className="output-subtitle">
                   {activeAgentRecord.name}
@@ -875,20 +1104,61 @@ export function App() {
                       </div>
                     </div>
                     {acpTab === "conversation" && (
-                      <div className="acp-conversation">
-                        {acpView.messages.map((msg, idx) => (
-                          <div
-                            key={idx}
-                            className={`acp-bubble ${msg.kind}`}
-                          >
-                            <div
-                              className="acp-text"
-                              dangerouslySetInnerHTML={{
-                                __html: renderMarkdown(msg.text),
-                              }}
-                            />
-                          </div>
-                        ))}
+                      <div
+                        className="acp-conversation"
+                        ref={acpConversationRef}
+                        onScroll={() => {
+                          const el = acpConversationRef.current;
+                          if (!el) return;
+                          const distance =
+                            el.scrollHeight - el.scrollTop - el.clientHeight;
+                          const stick = distance < 120;
+                          acpStickToBottomRef.current = stick;
+                          setConversationStickToBottom(stick);
+                          if (el.scrollTop < 80) {
+                            loadOlderEvents();
+                          }
+                        }}
+                      >
+                        {conversationWindow.items.map((msg, idx) => {
+                          const key = `${conversationWindow.offset + idx}-${msg.kind}`;
+                          if (msg.kind === "agent_thinking") {
+                            return (
+                              <div key={key} className="acp-bubble agent_thinking">
+                                <details className="acp-thought-fold" open={msg.live}>
+                                  <summary>
+                                    {msg.live ? "Thinking (live)" : "Thinking (collapsed)"}
+                                  </summary>
+                                  <div className="acp-text">
+                                    <pre>{msg.text}</pre>
+                                  </div>
+                                </details>
+                              </div>
+                            );
+                          }
+                          if (msg.kind === "agent_message") {
+                            return (
+                              <div key={key} className="acp-bubble agent_message">
+                                <div
+                                  className="acp-text"
+                                  dangerouslySetInnerHTML={{
+                                    __html: renderMarkdown(msg.text),
+                                  }}
+                                />
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={key} className="acp-bubble user_message">
+                              <div
+                                className="acp-text"
+                                dangerouslySetInnerHTML={{
+                                  __html: renderMarkdown(msg.text),
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                     {acpTab === "tools" && (
@@ -919,14 +1189,18 @@ export function App() {
                     )}
                     {acpTab === "plan" && (
                       <div className="acp-plan">
-                        {acpView.plan.entries.map((entry, idx) => (
-                          <div key={idx} className="acp-plan-item">
-                            <div className="title">{entry.content}</div>
-                            {entry.status && (
-                              <div className="meta">{entry.status}</div>
-                            )}
-                          </div>
-                        ))}
+                        {acpView.plan ? (
+                          acpView.plan.entries.map((entry, idx) => (
+                            <div key={idx} className="acp-plan-item">
+                              <div className="title">{entry.content}</div>
+                              {entry.status && (
+                                <div className="meta">{entry.status}</div>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="empty">No plan available.</div>
+                        )}
                       </div>
                     )}
                     {acpTab === "commands" && (
@@ -999,9 +1273,32 @@ export function App() {
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="empty">Select an agent to view output.</div>
-            )}
+            ) : null}
+            <div className="input docked">
+              <textarea
+                placeholder="Send input (Enter to send, Shift+Enter for newline)"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onCompositionStart={() => {
+                  isComposingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  isComposingRef.current = false;
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !isComposingRef.current
+                  ) {
+                    e.preventDefault();
+                    onSendInput();
+                  }
+                }}
+                rows={2}
+              />
+              <button onClick={onSendInput}>Send</button>
+            </div>
           </div>
         </section>
       )}
@@ -1066,14 +1363,6 @@ export function App() {
                 >
                   <option value="agenthub-codex-acp">agenthub-codex-acp</option>
                 </select>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={codeMode}
-                    onChange={(e) => setCodeMode(e.target.checked)}
-                  />
-                  <span>Code mode</span>
-                </label>
               </div>
               {worktreeError && (
                 <div className="worktree-error">
@@ -1100,23 +1389,6 @@ export function App() {
         </div>
       )}
 
-      {auth && (
-        <div className="input docked">
-          <textarea
-            placeholder="Send input (Enter to send, Shift+Enter for newline)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSendInput();
-              }
-            }}
-            rows={2}
-          />
-          <button onClick={onSendInput}>Send</button>
-        </div>
-      )}
       {auth && activeAgent && acpPermissions.length > 0 && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -1235,7 +1507,9 @@ function AdminPage(props: AdminProps) {
         </div>
       </header>
 
-      {props.error && <div className="error">{props.error}</div>}
+      {props.error && (
+        <ErrorBanner message={props.error} onClose={() => props.setError(null)} />
+      )}
 
       <section className="admin">
         <div className="toolbar">
@@ -1447,7 +1721,7 @@ function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void }) {
       <section className="auth">
         <h2>Join Device</h2>
         {tokenError && <div className="error">{tokenError}</div>}
-        {error && <div className="error">{error}</div>}
+        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
         <input placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
         <input
           placeholder="Username"
@@ -1763,7 +2037,8 @@ function escapeHtml(input: string): string {
 }
 
 function renderMarkdown(input: string): string {
-  const blocks = input.split("```");
+  const stripped = input.replace(/cite[^]+/g, "").replace(/[]/g, "");
+  const blocks = stripped.split("```");
   let out = "";
   blocks.forEach((part, idx) => {
     if (idx % 2 === 1) {
@@ -1783,4 +2058,25 @@ function renderMarkdown(input: string): string {
     out += safe;
   });
   return out;
+}
+
+function parseRunStatus(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
+    if (parsed?.type === "run_status" && typeof parsed.status === "string") {
+      return parsed.status;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function statusToAgentStatus(status: string): AgentRecord["status"] {
+  if (status === "running") return "running";
+  if (status === "failed") return "failed";
+  if (status === "completed" || status === "cancelled") return "stopped";
+  return "stopped";
 }

@@ -1,10 +1,10 @@
 [package]
 name = "agenthub-codex-acp"
-version = "0.9.0"
+version = "0.1.0"
 edition = "2024"
-authors = ["Zed <hi@zed.dev>"]
+authors = ["AgentHub <dev@agenthub.local>"]
 license = "Apache-2.0"
-description = "An ACP-compatible coding agent powered by Codex"
+description = "AgentHub ACP adapter for validating ACP pipelines"
 repository = "https://github.com/hawkingrei/agenthub"
 homepage = "https://github.com/hawkingrei/agenthub"
 
@@ -24,10 +24,11 @@ clap = "4"
 codex-apply-patch = { git = "https://github.com/zed-industries/codex", branch = "acp" }
 codex-arg0 = { git = "https://github.com/zed-industries/codex", branch = "acp" }
 codex-common = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["cli"] }
-codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["test-support"] }
+codex-login = { git = "https://github.com/zed-industries/codex", branch = "acp" }
 codex-mcp-server = { git = "https://github.com/zed-industries/codex", branch = "acp" }
 codex-protocol = { git = "https://github.com/zed-industries/codex", branch = "acp" }
-codex-login = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+heck = "0.5.0"
 itertools = "0.14.0"
 mcp-types = { git = "https://github.com/zed-industries/codex", branch = "acp" }
 regex-lite = "0.1"
@@ -38,12 +39,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-heck = "0.5.0"
 unicode-segmentation = "1.11.0"
 uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
-codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["test-support"] }
 
 [lints.rust]
 let-underscore = "warn"

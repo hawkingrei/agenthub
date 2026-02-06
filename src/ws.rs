@@ -14,6 +14,7 @@ use crate::state::AppState;
 struct WsClientMessage {
     r#type: String,
     data: Option<String>,
+    message_id: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -78,7 +79,10 @@ async fn handle_socket(state: AppState, agent_id: String, token: String, socket:
                 if let Ok(parsed) = serde_json::from_str::<WsClientMessage>(&text) {
                     if parsed.r#type == "input" {
                         if let Some(data) = parsed.data {
-                            let _ = inbound_state.agents.send_input(&inbound_agent, &data).await;
+                            let _ = inbound_state
+                                .agents
+                                .send_input(&inbound_agent, &data, parsed.message_id.as_deref())
+                                .await;
                         }
                     }
                 }
