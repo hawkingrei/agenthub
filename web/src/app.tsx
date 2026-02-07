@@ -24,6 +24,7 @@ import {
   windowConversation,
 } from "./conversation";
 import { isNearBottom } from "./scroll";
+import { renderMarkdown } from "./markdown";
 
 type AuthState = {
   token: string;
@@ -2183,39 +2184,6 @@ function createAnsiRenderer(): (input: string) => string {
     }
     return out;
   };
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function renderMarkdown(input: string): string {
-  const stripped = input.replace(/cite[^]+/g, "").replace(/[]/g, "");
-  const blocks = stripped.split("```");
-  let out = "";
-  blocks.forEach((part, idx) => {
-    if (idx % 2 === 1) {
-      const safe = escapeHtml(part.replace(/^\n/, "").replace(/\n$/, ""));
-      out += `<pre><code>${safe}</code></pre>`;
-      return;
-    }
-    let safe = escapeHtml(part);
-    safe = safe.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      (_m, text, href) =>
-        `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>`
-    );
-    safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    safe = safe.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    out += safe;
-  });
-  return out;
 }
 
 function parseRunStatus(message: string): string | null {
