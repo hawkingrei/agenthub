@@ -387,6 +387,7 @@ export function App() {
     if (!token) return;
     const seq = ++loadSeq.current;
     const key = `${id}:${sessionId ?? "latest"}`;
+    const latestKey = `${id}:latest`;
     setEventMeta((prev) => {
       const current = prev[key];
       if (current?.loading) return prev;
@@ -423,6 +424,7 @@ export function App() {
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
       lastAcpEventTsRef.current = getLastAcpEventTs(ordered);
       let next: AgentEvent[] = [];
+      let combined: AgentEvent[] = [];
       setOutputCache((prev) => {
         const existing = prev[key] ?? [];
         const merged = mergeOutputs(existing, ordered);
@@ -431,11 +433,20 @@ export function App() {
             ? merged.slice(merged.length - maxCachedEvents)
             : merged;
         next = nextSlice;
+        if (key === latestKey) {
+          combined = nextSlice;
+        } else {
+          const latest = prev[latestKey] ?? [];
+          combined = mergeOutputs(nextSlice, latest);
+        }
         if (isSameOutputList(existing, nextSlice)) return prev;
         return { ...prev, [key]: nextSlice };
       });
       const oldestSeq = next.length ? next[0].seq ?? null : null;
-      setOutputs((prev) => (isSameOutputList(prev, next) ? prev : next));
+      const nextOutputs = combined.length > 0 ? combined : next;
+      setOutputs((prev) =>
+        isSameOutputList(prev, nextOutputs) ? prev : nextOutputs
+      );
       setEventMeta((prev) => {
         const nextMeta = {
           oldestSeq,
@@ -514,9 +525,16 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+    const latestKey = `${activeAgent}:latest`;
     const cached = outputCache[key];
     if (cached) {
-      setOutputs(cached);
+      const combined =
+        activeSessionId && key !== latestKey
+          ? mergeOutputs(cached, outputCache[latestKey] ?? [])
+          : cached;
+      setOutputs((prev) =>
+        isSameOutputList(prev, combined) ? prev : combined
+      );
       if (!eventMeta[key]) {
         const oldestSeq = cached.length ? cached[0].seq ?? null : null;
         setEventMeta((prev) => ({
