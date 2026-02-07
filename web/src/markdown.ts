@@ -1,4 +1,4 @@
-function escapeHtml(input: string): string {
+export function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -73,7 +73,7 @@ export function renderMarkdown(input: string): string {
     safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, href) => {
       const safeHref = sanitizeHref(href);
       if (!safeHref) return text;
-      return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     });
     safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
     safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");

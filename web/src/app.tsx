@@ -24,7 +24,7 @@ import {
   windowConversation,
 } from "./conversation";
 import { isNearBottom } from "./scroll";
-import { renderMarkdown } from "./markdown";
+import { escapeHtml, renderMarkdown } from "./markdown";
 
 type AuthState = {
   token: string;

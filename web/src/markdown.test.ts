@@ -19,6 +19,12 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("href=");
   });
 
+  it("keeps query strings without double escaping", () => {
+    const html = renderMarkdown("[x](/path?a=1&b=2)");
+    expect(html).toContain("href=\"/path?a=1&amp;b=2\"");
+    expect(html).not.toContain("&amp;amp;");
+  });
+
   it("allows relative links", () => {
     const html = renderMarkdown("[x](/path)");
     expect(html).toContain("href=\"/path\"");
