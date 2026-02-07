@@ -19,8 +19,12 @@ import {
 import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
 import {
+  applyConversationFreeze,
   buildConversationMessages,
   ConversationItem,
+  deriveConversationFreezeMaxSeq,
+  formatConversationPreview,
+  isToolCallLive,
   windowConversation,
 } from "./conversation";
 import { isNearBottom } from "./scroll";
@@ -39,6 +43,7 @@ type OutputLine = AgentEvent;
 
 export function App() {
   const eventLimit = 200;
+  const maxCachedEvents = 200;
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = localStorage.getItem("agenthub_auth");
     return raw ? (JSON.parse(raw) as AuthState) : null;
@@ -95,35 +100,85 @@ export function App() {
   const outputRef = useRef<HTMLDivElement | null>(null);
   const acpConversationRef = useRef<HTMLDivElement | null>(null);
   const acpStickToBottomRef = useRef(true);
+  const lastAcpEventTsRef = useRef<number | null>(null);
+  const conversationScrollRef = useRef<{
+    top: number;
+    height: number;
+    clientHeight: number;
+    stickToBottom: boolean;
+  } | null>(null);
   const pendingScrollAdjustRef = useRef<{
     prevHeight: number;
     prevTop: number;
   } | null>(null);
   const [eventMeta, setEventMeta] = useState<
-    Record<string, { oldestSeq: number | null; hasMore: boolean; loading: boolean }>
+    Record<
+      string,
+      { oldestSeq: number | null; hasMore: boolean; loading: boolean; loaded: boolean }
+    >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(false);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
-  const [acpTab, setAcpTab] = useState<
-    "conversation" | "tools" | "plan" | "commands" | "debug"
-  >("conversation");
+  const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
+    "conversation"
+  );
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
   const [thinkingTick, setThinkingTick] = useState(0);
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
+  const [conversationFrozen, setConversationFrozen] = useState(false);
+  const [conversationFreezeMaxSeq, setConversationFreezeMaxSeq] = useState<
+    number | null
+  >(null);
+  const [conversationFrozenItems, setConversationFrozenItems] = useState<
+    ConversationItem[]
+  >([]);
+  const [conversationPendingCount, setConversationPendingCount] = useState(0);
+  const conversationAvgHeightRef = useRef(48);
+  const didAutoAlignConversationRef = useRef(false);
   const acpView = useMemo(
     () => buildAcpView(outputs),
     [outputs, thinkingTick]
   );
   const conversationMessages = useMemo<ConversationItem[]>(
-    () => buildConversationMessages(acpView.messages, activeSessionId),
-    [acpView.messages, activeSessionId]
+    () =>
+      buildConversationMessages(
+        acpView.messages,
+        acpView.toolCalls,
+        acpView.plan,
+        activeSessionId
+      ),
+    [acpView.messages, acpView.toolCalls, acpView.plan, activeSessionId]
   );
   const conversationWindow = useMemo(
     () => windowConversation(conversationMessages, conversationStickToBottom, 200),
     [conversationMessages, conversationStickToBottom]
   );
+  const conversationTailKey = useMemo(() => {
+    if (conversationMessages.length === 0) return "empty";
+    const last = conversationMessages[conversationMessages.length - 1];
+    const base = `${last.kind}:${last.seq ?? "na"}`;
+    if (last.kind === "tool_call") {
+      const contentLen = last.content?.length ?? 0;
+      const terminalLen = last.terminal_output?.length ?? 0;
+      const rawInLen = last.raw_input
+        ? JSON.stringify(last.raw_input).length
+        : 0;
+      const rawOutLen = last.raw_output
+        ? JSON.stringify(last.raw_output).length
+        : 0;
+      return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
+    }
+    return `${base}:${last.text?.length ?? 0}`;
+  }, [conversationMessages]);
+  const conversationRenderItems =
+    conversationFrozen && conversationFrozenItems.length > 0
+      ? conversationFrozenItems
+      : conversationWindow.items;
+  const isFrozenView = conversationFrozen && conversationFrozenItems.length > 0;
+  const collapseCutoff = Math.max(0, conversationMessages.length - 50);
+  const shouldAutoCollapse = conversationMessages.length > 50;
   useEffect(() => {
     if (acpTab !== "conversation") return;
     if (!activeAgent) return;
@@ -135,12 +190,56 @@ export function App() {
     loadOlderEvents();
   }, [conversationMessages.length, acpTab, activeAgent, activeSessionId, eventMeta]);
   useEffect(() => {
+    didAutoAlignConversationRef.current = false;
+  }, [activeAgent, activeSessionId]);
+  useEffect(() => {
     if (acpTab !== "conversation") return;
     const el = acpConversationRef.current;
     if (!el) return;
     if (!conversationStickToBottom) return;
     el.scrollTop = el.scrollHeight;
   }, [conversationWindow.items.length, acpTab, conversationStickToBottom]);
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!conversationStickToBottom) return;
+    const el = acpConversationRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [conversationTailKey, acpTab, conversationStickToBottom]);
+  useEffect(() => {
+    const el = acpConversationRef.current;
+    if (!el) return;
+    if (acpTab !== "conversation") {
+      conversationScrollRef.current = {
+        top: el.scrollTop,
+        height: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        stickToBottom: conversationStickToBottom,
+      };
+      return;
+    }
+    const saved = conversationScrollRef.current;
+    if (!saved) return;
+    if (saved.stickToBottom) {
+      jumpToConversationBottom();
+      return;
+    }
+    acpStickToBottomRef.current = false;
+    setConversationStickToBottom(false);
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollTop = Math.min(saved.top, maxTop);
+  }, [acpTab, conversationStickToBottom, conversationTailKey]);
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!conversationStickToBottom) return;
+    const el = acpConversationRef.current;
+    if (!el) return;
+    const count = Math.max(1, conversationMessages.length);
+    const estimate = el.scrollHeight / count;
+    if (Number.isFinite(estimate) && estimate > 0) {
+      conversationAvgHeightRef.current = Math.min(220, Math.max(24, estimate));
+    }
+  }, [conversationMessages.length, acpTab, conversationStickToBottom]);
   useEffect(() => {
     const el = acpConversationRef.current;
     const pending = pendingScrollAdjustRef.current;
@@ -149,6 +248,27 @@ export function App() {
     el.scrollTop = nextHeight - pending.prevHeight + pending.prevTop;
     pendingScrollAdjustRef.current = null;
   }, [acpView.messages.length]);
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!conversationFrozen || conversationFreezeMaxSeq == null) return;
+    const { frozen, pending } = applyConversationFreeze(
+      conversationMessages,
+      conversationFreezeMaxSeq
+    );
+    if (frozen.length !== conversationFrozenItems.length) {
+      setConversationFrozenItems(frozen);
+    }
+    if (pending !== conversationPendingCount) {
+      setConversationPendingCount(pending);
+    }
+  }, [
+    conversationMessages,
+    conversationFrozen,
+    conversationFreezeMaxSeq,
+    acpTab,
+    conversationFrozenItems.length,
+    conversationPendingCount,
+  ]);
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
@@ -156,6 +276,15 @@ export function App() {
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const showAcpRuntime = activeAgentStatus === "running";
   const canControlAcp = Boolean(activeAgent && activeAgentStatus === "running");
+  const showConversationJump =
+    acpTab === "conversation" && !conversationStickToBottom;
+  const showConversationBadge =
+    showConversationJump && conversationPendingCount > 0;
+  const activeEventKey = activeAgent
+    ? `${activeAgent}:${activeSessionId ?? "latest"}`
+    : null;
+  const isOutputLoading =
+    Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
   const mergeOutputs = (existing: OutputLine[], incoming: OutputLine[]) => {
@@ -173,6 +302,36 @@ export function App() {
     }
     return deduped.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   };
+
+  const jumpToConversationBottom = () => {
+    const el = acpConversationRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    acpStickToBottomRef.current = true;
+    didAutoAlignConversationRef.current = true;
+    setConversationStickToBottom(true);
+    setConversationFrozen(false);
+    setConversationFreezeMaxSeq(null);
+    setConversationFrozenItems([]);
+    setConversationPendingCount(0);
+  };
+
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!acpView.hasAcp) return;
+    if (!activeAgent) return;
+    if (activeAgentStatus === "running") return;
+    if (didAutoAlignConversationRef.current) return;
+    if (conversationMessages.length === 0) return;
+    jumpToConversationBottom();
+    didAutoAlignConversationRef.current = true;
+  }, [
+    acpTab,
+    acpView.hasAcp,
+    activeAgent,
+    activeAgentStatus,
+    conversationMessages.length,
+  ]);
   const appendOutputLine = (existing: OutputLine[], line: OutputLine) => {
     if (existing.length === 0) return [line];
     const lineSeq = line.seq ?? 0;
@@ -227,6 +386,20 @@ export function App() {
   const loadAgentEvents = async (id: string, sessionId?: string | null) => {
     if (!token) return;
     const seq = ++loadSeq.current;
+    const key = `${id}:${sessionId ?? "latest"}`;
+    setEventMeta((prev) => {
+      const current = prev[key];
+      if (current?.loading) return prev;
+      return {
+        ...prev,
+        [key]: {
+          oldestSeq: current?.oldestSeq ?? null,
+          hasMore: current?.hasMore ?? false,
+          loading: true,
+          loaded: current?.loaded ?? false,
+        },
+      };
+    });
     try {
       const events = await api.listAgentEvents(
         token,
@@ -247,21 +420,47 @@ export function App() {
           return;
         }
       }
-      const key = `${id}:${sessionId ?? "latest"}`;
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-      const oldestSeq = ordered.length ? ordered[0].seq ?? null : null;
-      setOutputCache((prev) => ({ ...prev, [key]: ordered }));
-      setOutputs(ordered);
-      setEventMeta((prev) => ({
-        ...prev,
-        [key]: {
+      lastAcpEventTsRef.current = getLastAcpEventTs(ordered);
+      const existing = outputCache[key] ?? [];
+      const merged = mergeOutputs(existing, ordered);
+      const next =
+        merged.length > maxCachedEvents
+          ? merged.slice(merged.length - maxCachedEvents)
+          : merged;
+      const oldestSeq = next.length ? next[0].seq ?? null : null;
+      setOutputCache((prev) => {
+        const current = prev[key] ?? [];
+        if (isSameOutputList(current, next)) return prev;
+        return { ...prev, [key]: next };
+      });
+      setOutputs((prev) => (isSameOutputList(prev, next) ? prev : next));
+      setEventMeta((prev) => {
+        const nextMeta = {
           oldestSeq,
           hasMore: ordered.length >= eventLimit,
           loading: false,
-        },
-      }));
+          loaded: true,
+        };
+        const current = prev[key];
+        if (
+          current &&
+          current.oldestSeq === nextMeta.oldestSeq &&
+          current.hasMore === nextMeta.hasMore &&
+          current.loading === nextMeta.loading &&
+          current.loaded === nextMeta.loaded
+        ) {
+          return prev;
+        }
+        return { ...prev, [key]: nextMeta };
+      });
     } catch {
       // ignore
+      setEventMeta((prev) => {
+        const current = prev[key];
+        if (!current) return prev;
+        return { ...prev, [key]: { ...current, loading: false, loaded: true } };
+      });
     }
   };
 
@@ -274,7 +473,7 @@ export function App() {
     }
     setEventMeta((prev) => ({
       ...prev,
-      [key]: { ...meta, loading: true },
+      [key]: { ...meta, loading: true, loaded: true },
     }));
     const el = acpConversationRef.current;
     if (el) {
@@ -301,12 +500,12 @@ export function App() {
       });
       setEventMeta((prev) => ({
         ...prev,
-        [key]: { oldestSeq: nextOldest, hasMore, loading: false },
+        [key]: { oldestSeq: nextOldest, hasMore, loading: false, loaded: true },
       }));
     } catch {
       setEventMeta((prev) => ({
         ...prev,
-        [key]: { ...meta, loading: false },
+        [key]: { ...meta, loading: false, loaded: true },
       }));
     }
   };
@@ -325,6 +524,7 @@ export function App() {
             oldestSeq,
             hasMore: cached.length >= eventLimit,
             loading: false,
+            loaded: true,
           },
         }));
       }
@@ -378,11 +578,12 @@ export function App() {
             session_id: payload.session_id,
             seq,
           };
-          if (payload.stream === "acp") {
-            const status = parseRunStatus(payload.message);
-            if (status) {
-              setAgents((prev) =>
-                prev.map((agent) =>
+        if (payload.stream === "acp") {
+          lastAcpEventTsRef.current = payload.ts;
+          const status = parseRunStatus(payload.message);
+          if (status) {
+            setAgents((prev) =>
+              prev.map((agent) =>
                   agent.id === payload.agent_id
                     ? { ...agent, status: statusToAgentStatus(status) }
                     : agent
@@ -444,7 +645,11 @@ export function App() {
     const load = async () => {
       try {
         const items = await api.listAcpPermissions(token, activeAgent, "pending");
-        if (!cancelled) setAcpPermissions(items);
+        if (!cancelled) {
+          setAcpPermissions((prev) =>
+            isSamePermissionList(prev, items) ? prev : items
+          );
+        }
       } catch {
         if (!cancelled) setAcpPermissions([]);
       }
@@ -459,12 +664,21 @@ export function App() {
 
   useEffect(() => {
     if (!acpView.thinkingStartTs) return;
+    if (activeAgentStatus !== "running") return;
     setThinkingTick(0);
     const timer = window.setInterval(() => {
+      const last = lastAcpEventTsRef.current;
+      if (last != null) {
+        const idleFor = Math.max(0, Date.now() / 1000 - last);
+        if (idleFor > 5) {
+          window.clearInterval(timer);
+          return;
+        }
+      }
       setThinkingTick((prev) => prev + 1);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [acpView.thinkingStartTs]);
+  }, [acpView.thinkingStartTs, activeAgentStatus]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
@@ -472,7 +686,11 @@ export function App() {
     const load = async () => {
       try {
         const items = await api.listAcpPermissions(token, activeAgent);
-        if (!cancelled) setAcpPermissionHistory(items);
+        if (!cancelled) {
+          setAcpPermissionHistory((prev) =>
+            isSamePermissionList(prev, items) ? prev : items
+          );
+        }
       } catch {
         if (!cancelled) setAcpPermissionHistory([]);
       }
@@ -740,6 +958,7 @@ export function App() {
   const onSendInput = async () => {
     if (!input.trim()) return;
     if (!token || !activeAgent) return;
+    jumpToConversationBottom();
     const text = input.trim();
     let messageId: string | null = null;
     if (activeSessionId) {
@@ -952,8 +1171,13 @@ export function App() {
           <div className="session">
             <span>{auth.username}</span>
             {auth.role === "root" && (
-              <a className="icon-button" href="/admin" title="Admin">
-                ⚙
+              <a
+                className="icon-button"
+                href="/admin"
+                title="Admin"
+                aria-label="Admin"
+              >
+                <i className="bi bi-gear" aria-hidden="true" />
               </a>
             )}
             <button onClick={onLogout}>Logout</button>
@@ -1052,7 +1276,7 @@ export function App() {
                           }
                           aria-pressed={agent.code_mode}
                         >
-                          CM
+                          <i className="bi bi-code-slash" aria-hidden="true" />
                         </button>
                         <span className={`agent-status ${agent.status}`}>
                           {agent.status}
@@ -1071,8 +1295,9 @@ export function App() {
                               ? "Already running"
                               : "Start"
                           }
+                          aria-label="Start"
                         >
-                          ▶
+                          <i className="bi bi-play-fill" aria-hidden="true" />
                         </button>
                         {agent.status === "running" && (
                           <button
@@ -1082,8 +1307,9 @@ export function App() {
                               onStopAgent(agent.id);
                             }}
                             title="Stop"
+                            aria-label="Stop"
                           >
-                            ⏹
+                            <i className="bi bi-stop-fill" aria-hidden="true" />
                           </button>
                         )}
                         <button
@@ -1093,8 +1319,9 @@ export function App() {
                             onDeleteAgent(agent.id);
                           }}
                           title="Delete"
+                          aria-label="Delete"
                         >
-                          🗑
+                          <i className="bi bi-trash" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
@@ -1116,8 +1343,14 @@ export function App() {
                   className="icon-button small"
                   onClick={() => setAgentsCollapsed((prev) => !prev)}
                   title={agentsCollapsed ? "Show agents" : "Hide agents"}
+                  aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
                 >
-                  {agentsCollapsed ? "›" : "‹"}
+                  <i
+                    className={
+                      agentsCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"
+                    }
+                    aria-hidden="true"
+                  />
                 </button>
                 <h2>Output</h2>
               </div>
@@ -1130,7 +1363,12 @@ export function App() {
             </div>
             {activeAgent ? (
               <div className="output-body" ref={outputRef}>
-                {acpView.hasAcp ? (
+                {isOutputLoading ? (
+                  <div className="output-loading">
+                    <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
+                    <div className="label">Waiting for output</div>
+                  </div>
+                ) : acpView.hasAcp ? (
                   <div className="acp">
                     <div className="acp-head">
                       <div className="acp-title">
@@ -1168,26 +1406,11 @@ export function App() {
                           onClick={() => setAcpTab("conversation")}
                         >
                           Conversation
-                        </button>
-                        <button
-                          className={acpTab === "tools" ? "tab active" : "tab"}
-                          onClick={() => setAcpTab("tools")}
-                        >
-                          Tool Calls
-                        </button>
-                        <button
-                          className={acpTab === "plan" ? "tab active" : "tab"}
-                          onClick={() => setAcpTab("plan")}
-                        >
-                          Plan
-                        </button>
-                        <button
-                          className={
-                            acpTab === "commands" ? "tab active" : "tab"
-                          }
-                          onClick={() => setAcpTab("commands")}
-                        >
-                          Commands
+                          {showConversationBadge && (
+                            <span className="tab-badge">
+                              +{conversationPendingCount}
+                            </span>
+                          )}
                         </button>
                         <button
                           className={acpTab === "debug" ? "tab active" : "tab"}
@@ -1210,24 +1433,55 @@ export function App() {
                             el.clientHeight
                           );
                           acpStickToBottomRef.current = stick;
-                          setConversationStickToBottom(stick);
+                          if (stick !== conversationStickToBottom) {
+                            if (!stick) {
+                              const maxSeq =
+                                deriveConversationFreezeMaxSeq(conversationMessages);
+                              const frozen = applyConversationFreeze(
+                                conversationMessages,
+                                maxSeq ?? Number.MAX_SAFE_INTEGER
+                              );
+                              setConversationFrozen(true);
+                              setConversationFrozenItems(frozen.frozen);
+                              setConversationFreezeMaxSeq(maxSeq);
+                              setConversationPendingCount(frozen.pending);
+                            } else {
+                              setConversationFrozen(false);
+                              setConversationFreezeMaxSeq(null);
+                              setConversationFrozenItems([]);
+                              setConversationPendingCount(0);
+                            }
+                            setConversationStickToBottom(stick);
+                          }
                           if (el.scrollTop < 80) {
                             loadOlderEvents();
                           }
                         }}
                       >
                         <div className="acp-conversation-inner">
-                          {conversationWindow.items.map((msg, idx) => {
-                            const key = `${conversationWindow.offset + idx}-${msg.kind}`;
+                          {conversationRenderItems.map((msg, idx) => {
+                            const key =
+                              msg.seq != null
+                                ? `${msg.seq}-${msg.kind}`
+                                : `${conversationWindow.offset + idx}-${msg.kind}`;
+                            const globalIndex = isFrozenView
+                              ? idx
+                              : conversationWindow.offset + idx;
+                            const autoCollapse =
+                              shouldAutoCollapse && globalIndex < collapseCutoff;
                             if (msg.kind === "agent_thinking") {
+                              const preview = autoCollapse
+                                ? formatConversationPreview(msg.text, 80)
+                                : "";
+                              const summary = msg.live
+                                ? "Thinking (live)"
+                                : autoCollapse
+                                  ? `Thinking: ${preview}`
+                                  : "Thinking (collapsed)";
                               return (
                                 <div key={key} className="acp-bubble agent_thinking">
                                   <details className="acp-thought-fold" open={msg.live}>
-                                    <summary>
-                                      {msg.live
-                                        ? "Thinking (live)"
-                                        : "Thinking (collapsed)"}
-                                    </summary>
+                                    <summary>{summary}</summary>
                                     <div className="acp-text">
                                       <pre>{msg.text}</pre>
                                     </div>
@@ -1235,7 +1489,89 @@ export function App() {
                                 </div>
                               );
                             }
+                            if (msg.kind === "agent_plan") {
+                              const preview = autoCollapse
+                                ? formatConversationPreview(msg.text, 80)
+                                : "";
+                              const summary = autoCollapse
+                                ? `Plan: ${preview}`
+                                : "Plan (collapsed)";
+                              return (
+                                <div key={key} className="acp-bubble agent_plan">
+                                  <details className="acp-thought-fold">
+                                    <summary>{summary}</summary>
+                                    <div className="acp-text">
+                                      <pre>{msg.text}</pre>
+                                    </div>
+                                  </details>
+                                </div>
+                              );
+                            }
+                            if (msg.kind === "tool_call") {
+                              const isLive = isToolCallLive(msg.status);
+                              return (
+                                <div key={key} className="acp-bubble tool_call">
+                                  <details className="acp-tool-fold" open={isLive}>
+                                    <summary>
+                                      <span className="acp-tool-title">
+                                        Tool Call
+                                        {msg.title ? `: ${msg.title}` : ""}
+                                      </span>
+                                      {msg.status && (
+                                        <span className="acp-tool-status">
+                                          {msg.status}
+                                        </span>
+                                      )}
+                                    </summary>
+                                    {msg.content && (
+                                      <div className="acp-text">
+                                        <pre>{unescapeLineBreaks(msg.content)}</pre>
+                                      </div>
+                                    )}
+                                    {msg.raw_input && (
+                                      <pre className="acp-content">
+                                        {formatToolCallPayload(msg.raw_input)}
+                                      </pre>
+                                    )}
+                                    {msg.raw_output && (
+                                      <pre className="acp-content">
+                                        {formatToolCallPayload(msg.raw_output)}
+                                      </pre>
+                                    )}
+                                    {msg.terminal_output && (
+                                      <pre
+                                        className="acp-content"
+                                        dangerouslySetInnerHTML={{
+                                          __html: ansi(
+                                            unescapeLineBreaks(msg.terminal_output)
+                                          ),
+                                        }}
+                                      />
+                                    )}
+                                  </details>
+                                </div>
+                              );
+                            }
                             if (msg.kind === "agent_message") {
+                              if (autoCollapse) {
+                                const preview = formatConversationPreview(
+                                  msg.text,
+                                  80
+                                );
+                                return (
+                                  <div key={key} className="acp-bubble agent_message">
+                                    <details className="acp-message-fold">
+                                      <summary>{preview}</summary>
+                                      <div
+                                        className="acp-text"
+                                        dangerouslySetInnerHTML={{
+                                          __html: renderMarkdown(msg.text),
+                                        }}
+                                      />
+                                    </details>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div key={key} className="acp-bubble agent_message">
                                   <div
@@ -1244,6 +1580,22 @@ export function App() {
                                       __html: renderMarkdown(msg.text),
                                     }}
                                   />
+                                </div>
+                              );
+                            }
+                            if (autoCollapse) {
+                              const preview = formatConversationPreview(msg.text, 80);
+                              return (
+                                <div key={key} className="acp-bubble user_message">
+                                  <details className="acp-message-fold">
+                                    <summary>{preview}</summary>
+                                    <div
+                                      className="acp-text"
+                                      dangerouslySetInnerHTML={{
+                                        __html: renderMarkdown(msg.text),
+                                      }}
+                                    />
+                                  </details>
                                 </div>
                               );
                             }
@@ -1258,66 +1610,18 @@ export function App() {
                               </div>
                             );
                           })}
+                          {!conversationStickToBottom && conversationPendingCount > 0 && (
+                            <div
+                              className="acp-conversation-spacer"
+                              style={{
+                                height: Math.round(
+                                  conversationPendingCount *
+                                    conversationAvgHeightRef.current
+                                ),
+                              }}
+                            />
+                          )}
                         </div>
-                      </div>
-                    )}
-                    {acpTab === "tools" && (
-                      <div className="acp-tools">
-                        {acpView.toolCalls.map((tool) => (
-                          <div key={tool.id} className="acp-tool">
-                            <div className="head">
-                              <span>{tool.title}</span>
-                              {tool.status && (
-                                <span className={`status ${tool.status}`}>
-                                  {tool.status}
-                                </span>
-                              )}
-                            </div>
-                            {tool.raw_input && (
-                              <pre className="acp-content">
-                                {JSON.stringify(tool.raw_input, null, 2)}
-                              </pre>
-                            )}
-                            {tool.raw_output && (
-                              <pre className="acp-content">
-                                {JSON.stringify(tool.raw_output, null, 2)}
-                              </pre>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {acpTab === "plan" && (
-                      <div className="acp-plan">
-                        {acpView.plan ? (
-                          acpView.plan.entries.map((entry, idx) => (
-                            <div key={idx} className="acp-plan-item">
-                              <div className="title">{entry.content}</div>
-                              {entry.status && (
-                                <div className="meta">{entry.status}</div>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="empty">No plan available.</div>
-                        )}
-                      </div>
-                    )}
-                    {acpTab === "commands" && (
-                      <div className="acp-commands">
-                        {acpView.commands.map((cmd, idx) => (
-                          <div key={idx} className="acp-command">
-                            <div className="title">{cmd.name}</div>
-                            {cmd.description && (
-                              <div className="meta">{cmd.description}</div>
-                            )}
-                            {cmd.input && (
-                              <pre className="acp-content">
-                                {JSON.stringify(cmd.input, null, 2)}
-                              </pre>
-                            )}
-                          </div>
-                        ))}
                       </div>
                     )}
                     {acpTab === "debug" && (
@@ -1424,6 +1728,16 @@ export function App() {
               </div>
             ) : null}
             <div className="input docked">
+              {showConversationJump && (
+                <button
+                  className="jump-bottom"
+                  onClick={jumpToConversationBottom}
+                  title="Jump to bottom"
+                  aria-label="Jump to bottom"
+                >
+                  <i className="bi bi-chevron-down" aria-hidden="true" />
+                </button>
+              )}
               <textarea
                 placeholder="Send input (Enter to send, Shift+Enter for newline)"
                 value={input}
@@ -1662,8 +1976,8 @@ function AdminPage(props: AdminProps) {
       <header>
         <h1>AgentHub Admin</h1>
         <div className="session">
-          <a className="icon-button" href="/" title="Back">
-            Back
+          <a className="icon-button" href="/" title="Back" aria-label="Back">
+            <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
           <span>{props.auth.username}</span>
         </div>
@@ -2208,4 +2522,61 @@ function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
+}
+
+function getLastAcpEventTs(events: OutputLine[]): number | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const evt = events[i];
+    if (evt.stream === "acp") return evt.ts;
+  }
+  return null;
+}
+
+function isSamePermissionList(
+  a: AcpPermissionRecord[],
+  b: AcpPermissionRecord[]
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (left.id !== right.id) return false;
+    if (left.status !== right.status) return false;
+    if (left.selected_option_id !== right.selected_option_id) return false;
+    if ((left.responded_at ?? null) !== (right.responded_at ?? null)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isSameOutputList(a: OutputLine[], b: OutputLine[]): boolean {
+  if (a.length !== b.length) return false;
+  if (a.length === 0) return true;
+  const aFirst = a[0];
+  const bFirst = b[0];
+  const aLast = a[a.length - 1];
+  const bLast = b[b.length - 1];
+  return (
+    (aFirst.seq ?? null) === (bFirst.seq ?? null) &&
+    (aLast.seq ?? null) === (bLast.seq ?? null) &&
+    aLast.message === bLast.message &&
+    aLast.stream === bLast.stream
+  );
+}
+
+function unescapeLineBreaks(text: string): string {
+  return text
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\r/g, "\n");
+}
+
+function formatToolCallPayload(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    return unescapeLineBreaks(value);
+  }
+  return unescapeLineBreaks(JSON.stringify(value, null, 2));
 }

@@ -7,6 +7,8 @@ export type AcpToolCall = {
   raw_input?: unknown;
   raw_output?: unknown;
   terminal_output?: string;
+  session_id?: string | null;
+  seq?: number;
 };
 
 export type AcpMessage = {
@@ -14,6 +16,7 @@ export type AcpMessage = {
   text: string;
   session_id?: string | null;
   message_id?: string | null;
+  seq?: number;
   chunk: boolean;
 };
 
@@ -27,6 +30,11 @@ export type AcpPlanEntry = {
 export type AcpPlan = {
   entries: AcpPlanEntry[];
   meta?: unknown;
+};
+
+export type AcpPlanView = AcpPlan & {
+  session_id?: string | null;
+  seq?: number;
 };
 
 export type AcpCommand = {
@@ -49,6 +57,7 @@ export type AcpRunStatus = {
 
 export type AcpEventLine = {
   ts: number;
+  seq?: number;
   stream: string;
   message: string;
   session_id?: string | null;
@@ -59,7 +68,7 @@ export type AcpView = {
   toolCalls: AcpToolCall[];
   messages: AcpMessage[];
   rawEvents: AcpRawEvent[];
-  plan: AcpPlan | null;
+  plan: AcpPlanView | null;
   commands: AcpCommand[];
   currentMode: string | null;
   runStatus: AcpRunStatus | null;
@@ -71,7 +80,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
   const toolCallMap = new Map<string, AcpToolCall>();
   const messages: AcpMessage[] = [];
   const rawEvents: AcpRawEvent[] = [];
-  let plan: AcpPlan | null = null;
+  let plan: AcpPlanView | null = null;
   let commands: AcpCommand[] = [];
   let currentMode: string | null = null;
   let runStatus: AcpRunStatus | null = null;
@@ -124,12 +133,14 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         last.session_id === (event.session_id ?? null)
       ) {
         last.text = `${last.text}${text}`;
+        last.seq = event.seq ?? last.seq;
       } else {
         messages.push({
           kind: parsed.type,
           text,
           session_id: event.session_id ?? null,
           message_id: messageId,
+          seq: event.seq,
           chunk: is_chunk,
         });
       }
@@ -156,6 +167,8 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         status: parsed.status ? String(parsed.status) : "in_progress",
         content: parsed.content ? formatAcpContent(parsed.content) : undefined,
         raw_input: parsed.raw_input,
+        session_id: event.session_id ?? null,
+        seq: event.seq,
       };
       if (!call.id) continue;
       toolCallMap.set(call.id, call);
@@ -181,6 +194,8 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.raw_input) call.raw_input = parsed.raw_input;
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
       if (parsed.content) call.content = formatAcpContent(parsed.content);
+      if (call.session_id == null) call.session_id = event.session_id ?? null;
+      if (call.seq == null) call.seq = event.seq;
       if (parsed.meta?.terminal_output?.data) {
         call.terminal_output =
           (call.terminal_output ?? "") +
@@ -192,7 +207,11 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         inThinking = false;
         thinkingStartTs = null;
       }
-      plan = parsed.plan as AcpPlan;
+      plan = {
+        ...(parsed.plan as AcpPlan),
+        session_id: event.session_id ?? null,
+        seq: event.seq,
+      };
     }
     if (parsed.type === "available_commands") {
       if (inThinking) {

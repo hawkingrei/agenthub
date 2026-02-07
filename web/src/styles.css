@@ -71,6 +71,10 @@ h1 {
   background: #fff;
 }
 
+.icon-button .bi {
+  font-size: 16px;
+}
+
 .icon-button:hover {
   border-color: #222;
 }
@@ -85,6 +89,10 @@ h1 {
   height: 28px;
   font-size: 12px;
   padding: 0;
+}
+
+.icon-button.small .bi {
+  font-size: 14px;
 }
 
 .icon-button.code-active {
@@ -229,10 +237,35 @@ button {
   padding: 10px;
   box-shadow: var(--shadow);
   margin-top: auto;
+  position: relative;
 }
 
 .input button {
   height: 44px;
+}
+
+.jump-bottom {
+  position: absolute;
+  right: 12px;
+  top: -36px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  color: #222;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.jump-bottom .bi {
+  font-size: 16px;
+}
+
+.jump-bottom:hover {
+  border-color: #222;
 }
 
 .actions {
@@ -446,6 +479,28 @@ button {
 .output-subtitle {
   font-size: 13px;
   color: #7a7a7a;
+}
+
+.output-loading {
+  flex: 1;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.output-loading .spinner {
+  font-size: 20px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 
@@ -771,6 +826,22 @@ button {
   color: #fff;
 }
 
+.acp-tabs .tab .tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #111;
+  color: #fff;
+}
+
+.acp-conversation-spacer {
+  flex: 0 0 auto;
+}
+
 .acp-details summary {
   cursor: pointer;
   font-size: 12px;
@@ -856,9 +927,16 @@ button {
 }
 
 .acp-bubble.agent_thought,
-.acp-bubble.agent_thinking {
+.acp-bubble.agent_thinking,
+.acp-bubble.agent_plan {
   background: #fff8e6;
   border-color: #f0d9a5;
+  width: 100%;
+}
+
+.acp-bubble.tool_call {
+  background: #e9f7ea;
+  border-color: #cdebd1;
   width: 100%;
 }
 
@@ -870,6 +948,48 @@ button {
   cursor: pointer;
   font-size: 12px;
   color: var(--muted);
+}
+
+.acp-message-fold summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acp-tool-fold summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #295d52;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acp-tool-fold pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.acp-tool-fold summary .acp-tool-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-tool-fold summary .acp-tool-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #dff2e2;
+  color: #295d52;
 }
 
 .acp-bubble code {
@@ -1081,6 +1201,13 @@ button {
     height: 38px;
     font-size: 12px;
     padding: 6px 10px;
+  }
+
+  .jump-bottom {
+    width: 30px;
+    height: 30px;
+    top: -34px;
+    padding: 0;
   }
 }
 
