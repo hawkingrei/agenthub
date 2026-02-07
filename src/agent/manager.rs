@@ -7,7 +7,7 @@ use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use uuid::Uuid;
 
 use super::{
