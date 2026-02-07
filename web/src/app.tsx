@@ -1655,6 +1655,9 @@ function AdminPage(props: AdminProps) {
       <header>
         <h1>AgentHub Admin</h1>
         <div className="session">
+          <a className="icon-button" href="/" title="Back">
+            Back
+          </a>
           <span>{props.auth.username}</span>
         </div>
       </header>
