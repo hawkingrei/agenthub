@@ -27,6 +27,11 @@ import {
   isToolCallLive,
   windowConversation,
 } from "./conversation";
+import {
+  getAdaptivePollInterval,
+  getMaxEventCursor,
+  updateLastEventCursor,
+} from "./event_polling";
 import { isNearBottom } from "./scroll";
 import { escapeHtml, renderMarkdown } from "./markdown";
 
@@ -2597,40 +2602,6 @@ function getLastAcpEventTs(events: OutputLine[]): number | null {
     if (evt.stream === "acp") return evt.ts;
   }
   return null;
-}
-
-function getEventCursor(event: OutputLine): number {
-  return event.seq ?? event.ts;
-}
-
-function getMaxEventCursor(events: OutputLine[]): number | null {
-  let max: number | null = null;
-  for (const evt of events) {
-    const cursor = getEventCursor(evt);
-    if (max == null || cursor > max) {
-      max = cursor;
-    }
-  }
-  return max;
-}
-
-function updateLastEventCursor(
-  ref: React.MutableRefObject<Record<string, number>>,
-  key: string,
-  event: OutputLine
-): void {
-  const cursor = getEventCursor(event);
-  const prev = ref.current[key];
-  if (prev == null || cursor > prev) {
-    ref.current[key] = cursor;
-  }
-}
-
-function getAdaptivePollInterval(idleCount: number): number {
-  const base = 2000;
-  const max = 10000;
-  if (idleCount <= 0) return base;
-  return Math.min(max, base * (1 + idleCount));
 }
 
 function isSamePermissionList(
