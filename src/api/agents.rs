@@ -47,6 +47,27 @@ pub struct SendInputRequest {
     pub message_id: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct ClearSessionRequest {
+    pub provider: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetAcpModeRequest {
+    pub mode_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetAcpModelRequest {
+    pub model_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetAcpConfigRequest {
+    pub config_id: String,
+    pub value: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PermissionListQuery {
     pub status: Option<String>,
@@ -68,6 +89,11 @@ pub fn router(state: AppState) -> Router {
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
+        .route("/:id/acp/session/clear", post(clear_acp_session))
+        .route("/:id/acp/mode", post(set_acp_mode))
+        .route("/:id/acp/model", post(set_acp_model))
+        .route("/:id/acp/config", post(set_acp_config))
+        .route("/:id/acp/cancel", post(cancel_acp))
         .route("/:id/permissions", get(list_permissions))
         .route(
             "/:id/permissions/:permission_id/respond",
@@ -194,6 +220,70 @@ async fn set_code_mode(
         .agents
         .set_code_mode(&agent_id, payload.code_mode)
         .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn clear_acp_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<ClearSessionRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let provider = payload.provider.as_deref().unwrap_or("codex");
+    state
+        .agents
+        .clear_persistent_session(&agent_id, provider)
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn set_acp_mode(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetAcpModeRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state.agents.set_acp_mode(&agent_id, &payload.mode_id).await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn set_acp_model(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetAcpModelRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .agents
+        .set_acp_model(&agent_id, &payload.model_id)
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn set_acp_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetAcpConfigRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .agents
+        .set_acp_config(&agent_id, &payload.config_id, &payload.value)
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn cancel_acp(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state.agents.cancel_acp(&agent_id).await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 

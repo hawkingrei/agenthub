@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol::{
-    Agent, Client, ClientCapabilities, ClientSideConnection, ContentBlock, Implementation,
-    InitializeRequest, NewSessionRequest, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionNotification, SessionUpdate, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
+    Implementation, InitializeRequest, LoadSessionRequest, NewSessionRequest, PromptRequest,
+    ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
+    SetSessionModeRequest, SetSessionModelRequest, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
 use serde_json::{Map, Value};
@@ -156,8 +157,48 @@ fn pick_allow_option(args: &RequestPermissionRequest) -> RequestPermissionOutcom
     }
 }
 
+#[derive(Debug)]
+enum AcpCommand {
+    Prompt(String),
+    SetMode(String),
+    SetModel(String),
+    SetConfig { config_id: String, value: String },
+    Cancel,
+}
+
+#[derive(Clone)]
 pub struct AcpHandle {
-    pub prompt_tx: mpsc::Sender<String>,
+    pub session_id: String,
+    tx: mpsc::Sender<AcpCommand>,
+}
+
+impl AcpHandle {
+    pub async fn prompt(&self, input: String) -> anyhow::Result<()> {
+        self.send(AcpCommand::Prompt(input)).await
+    }
+
+    pub async fn set_mode(&self, mode_id: String) -> anyhow::Result<()> {
+        self.send(AcpCommand::SetMode(mode_id)).await
+    }
+
+    pub async fn set_model(&self, model_id: String) -> anyhow::Result<()> {
+        self.send(AcpCommand::SetModel(model_id)).await
+    }
+
+    pub async fn set_config(&self, config_id: String, value: String) -> anyhow::Result<()> {
+        self.send(AcpCommand::SetConfig { config_id, value }).await
+    }
+
+    pub async fn cancel(&self) -> anyhow::Result<()> {
+        self.send(AcpCommand::Cancel).await
+    }
+
+    async fn send(&self, cmd: AcpCommand) -> anyhow::Result<()> {
+        self.tx
+            .send(cmd)
+            .await
+            .map_err(|_| anyhow::anyhow!("acp command channel closed"))
+    }
 }
 
 pub async fn spawn_acp_session(
@@ -165,15 +206,16 @@ pub async fn spawn_acp_session(
     output_tx: broadcast::Sender<AgentOutput>,
     permissions: Arc<AcpPermissionService>,
     agent_id: String,
-    session_id: String,
+    agent_session_id: String,
+    resume_session_id: Option<String>,
     workdir: String,
     stdout: ChildStdout,
     stdin: ChildStdin,
 ) -> anyhow::Result<AcpHandle> {
-    let (prompt_tx, mut prompt_rx) = mpsc::channel::<String>(64);
-    let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(64);
+    let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
-    let sink = AcpEventSink::new(db, output_tx, agent_id, session_id);
+    let sink = AcpEventSink::new(db, output_tx, agent_id, agent_session_id);
 
     std::thread::spawn(move || {
         let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -213,33 +255,83 @@ pub async fn spawn_acp_session(
             }
 
             let cwd = PathBuf::from(&workdir);
-            let session = match conn.new_session(NewSessionRequest::new(cwd)).await {
-                Ok(session) => session,
-                Err(err) => {
-                    let _ = ready_tx.send(Err(format!("acp new_session failed: {err}")));
-                    return;
+            let mut session_id = None;
+
+            if let Some(resume_id) = resume_session_id.clone() {
+                let request = LoadSessionRequest::new(resume_id.clone(), cwd.clone());
+                match conn.load_session(request).await {
+                    Ok(_) => {
+                        sink.emit_system(format!("acp session resumed: {resume_id}")).await;
+                        session_id = Some(resume_id);
+                    }
+                    Err(err) => {
+                        sink.emit_system(format!("acp load_session failed: {err}")).await;
+                    }
                 }
-            };
+            }
 
-            let session_id = session.session_id.clone();
-            let _ = ready_tx.send(Ok(()));
+            if session_id.is_none() {
+                let session = match conn.new_session(NewSessionRequest::new(cwd)).await {
+                    Ok(session) => session,
+                    Err(err) => {
+                        let _ = ready_tx.send(Err(format!("acp new_session failed: {err}")));
+                        return;
+                    }
+                };
+                session_id = Some(session.session_id.clone());
+            }
 
-            while let Some(prompt) = prompt_rx.recv().await {
-                let request = PromptRequest::new(
-                    session_id.clone(),
-                    vec![ContentBlock::Text(agent_client_protocol::TextContent::new(
-                        prompt,
-                    ))],
-                );
-                if let Err(err) = conn.prompt(request).await {
-                    sink.emit_system(format!("acp prompt error: {err}")).await;
+            let session_id = session_id.unwrap_or_else(|| "unknown".to_string());
+            let _ = ready_tx.send(Ok(session_id.clone()));
+
+            while let Some(cmd) = cmd_rx.recv().await {
+                match cmd {
+                    AcpCommand::Prompt(prompt) => {
+                        let request = PromptRequest::new(
+                            session_id.clone(),
+                            vec![ContentBlock::Text(
+                                agent_client_protocol::TextContent::new(prompt),
+                            )],
+                        );
+                        if let Err(err) = conn.prompt(request).await {
+                            sink.emit_system(format!("acp prompt error: {err}")).await;
+                        }
+                    }
+                    AcpCommand::SetMode(mode_id) => {
+                        let request = SetSessionModeRequest::new(session_id.clone(), mode_id);
+                        if let Err(err) = conn.set_session_mode(request).await {
+                            sink.emit_system(format!("acp set_mode error: {err}")).await;
+                        }
+                    }
+                    AcpCommand::SetModel(model_id) => {
+                        let request = SetSessionModelRequest::new(session_id.clone(), model_id);
+                        if let Err(err) = conn.set_session_model(request).await {
+                            sink.emit_system(format!("acp set_model error: {err}")).await;
+                        }
+                    }
+                    AcpCommand::SetConfig { config_id, value } => {
+                        let request =
+                            SetSessionConfigOptionRequest::new(session_id.clone(), config_id, value);
+                        if let Err(err) = conn.set_session_config_option(request).await {
+                            sink.emit_system(format!("acp set_config error: {err}")).await;
+                        }
+                    }
+                    AcpCommand::Cancel => {
+                        let request = CancelNotification::new(session_id.clone());
+                        if let Err(err) = conn.cancel(request).await {
+                            sink.emit_system(format!("acp cancel error: {err}")).await;
+                        }
+                    }
                 }
             }
         }));
     });
 
     match ready_rx.await {
-        Ok(Ok(())) => Ok(AcpHandle { prompt_tx }),
+        Ok(Ok(session_id)) => Ok(AcpHandle {
+            session_id,
+            tx: cmd_tx,
+        }),
         Ok(Err(err)) => Err(anyhow::anyhow!(err)),
         Err(_) => Err(anyhow::anyhow!("acp session init cancelled")),
     }

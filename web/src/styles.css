@@ -460,6 +460,20 @@ button {
   gap: 10px;
 }
 
+.acp-controls {
+  border: 1px solid #d9e1ee;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.acp-control-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

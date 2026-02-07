@@ -13,7 +13,7 @@ use uuid::Uuid;
 use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
-use crate::acp::{AcpPermissionService, spawn_acp_session};
+use crate::acp::{AcpHandle, AcpPermissionService, spawn_acp_session};
 use crate::auth::AuthService;
 use crate::push::PushService;
 
@@ -28,16 +28,19 @@ pub struct AgentManager {
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
+const ACP_PROVIDER_CODEX: &str = "codex";
+
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
+    acp_session_id: Option<String>,
 }
 
 pub enum AgentInput {
     Stdin(Arc<Mutex<Option<ChildStdin>>>),
-    Acp(mpsc::Sender<String>),
+    Acp(AcpHandle),
 }
 
 impl AgentManager {
@@ -293,6 +296,67 @@ impl AgentManager {
         Ok(events)
     }
 
+    async fn get_persistent_session(
+        &self,
+        agent_id: &str,
+        provider: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let row = sqlx::query(
+            r#"
+            SELECT session_id
+            FROM agent_persistent_sessions
+            WHERE agent_id = ?1 AND provider = ?2
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.map(|row| row.get::<String, _>("session_id")))
+    }
+
+    async fn set_persistent_session(
+        &self,
+        agent_id: &str,
+        provider: &str,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agent_persistent_sessions (agent_id, provider, session_id, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(agent_id, provider)
+            DO UPDATE SET session_id = excluded.session_id, updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .bind(session_id)
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn clear_persistent_session(
+        &self,
+        agent_id: &str,
+        provider: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM agent_persistent_sessions
+            WHERE agent_id = ?1 AND provider = ?2
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
@@ -411,7 +475,9 @@ impl AgentManager {
             return Err(err);
         }
 
-        let input = if is_acp {
+        let (input, acp_session_id) = if is_acp {
+            let resume_session_id =
+                self.get_persistent_session(&agent.id, ACP_PROVIDER_CODEX).await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -442,6 +508,7 @@ impl AgentManager {
                 self.permissions.clone(),
                 agent.id.clone(),
                 session_id.clone(),
+                resume_session_id,
                 workdir.clone(),
                 stdout,
                 stdin,
@@ -459,9 +526,15 @@ impl AgentManager {
                     return Err(err);
                 }
             };
-            AgentInput::Acp(handle.prompt_tx)
+            if let Err(err) = self
+                .set_persistent_session(&agent.id, ACP_PROVIDER_CODEX, &handle.session_id)
+                .await
+            {
+                tracing::error!("persist acp session failed: {}", err);
+            }
+            (AgentInput::Acp(handle.clone()), Some(handle.session_id.clone()))
         } else {
-            AgentInput::Stdin(stdin.clone())
+            (AgentInput::Stdin(stdin.clone()), None)
         };
 
         let handle = AgentHandle {
@@ -469,6 +542,7 @@ impl AgentManager {
             output_tx: output_tx.clone(),
             input,
             session_id: session_id.clone(),
+            acp_session_id,
         };
 
         {
@@ -631,61 +705,73 @@ impl AgentManager {
         input: &str,
         message_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        let guard = self.inner.read().await;
-        let handle = guard
-            .get(agent_id)
-            .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+        let (stdin, acp, output_tx, session_id) = {
+            let guard = self.inner.read().await;
+            let handle = guard
+                .get(agent_id)
+                .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+            match &handle.input {
+                AgentInput::Stdin(stdin) => (Some(stdin.clone()), None, None, None),
+                AgentInput::Acp(acp) => (
+                    None,
+                    Some(acp.clone()),
+                    Some(handle.output_tx.clone()),
+                    Some(handle.session_id.clone()),
+                ),
+            }
+        };
 
-        match &handle.input {
-            AgentInput::Stdin(stdin) => {
-                let mut stdin_guard = stdin.lock().await;
-                if let Some(stdin) = stdin_guard.as_mut() {
-                    stdin.write_all(format!("{}\n", input).as_bytes()).await?;
-                    stdin.flush().await?;
-                    Ok(())
-                } else {
-                    Err(anyhow::anyhow!("agent stdin closed"))
-                }
+        if let Some(stdin) = stdin {
+            let mut stdin_guard = stdin.lock().await;
+            if let Some(stdin) = stdin_guard.as_mut() {
+                stdin.write_all(format!("{}\n", input).as_bytes()).await?;
+                stdin.flush().await?;
+                return Ok(());
             }
-            AgentInput::Acp(sender) => {
-                let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-                let message_id = message_id
-                    .map(|id| id.to_string())
-                    .unwrap_or_else(|| seq.to_string());
-                let message = serde_json::json!({
-                    "type": "user_message",
-                    "text": input,
-                    "chunk": false,
-                    "message_id": message_id
-                })
-                .to_string();
-                let output = AgentOutput {
-                    agent_id: agent_id.to_string(),
-                    session_id: handle.session_id.clone(),
-                    seq,
-                    ts: Utc::now().timestamp(),
-                    stream: OutputStream::Acp,
-                    message: message.clone(),
-                };
-                let _ = handle.output_tx.send(output);
-                let _ = sqlx::query(
-                    r#"
-                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(&handle.session_id)
-                .bind(seq)
-                .bind(Utc::now().timestamp())
-                .bind(stream_to_str(&OutputStream::Acp))
-                .bind(message)
-                .execute(&self.db)
-                .await;
-                sender.send(input.to_string()).await?;
-                Ok(())
-            }
+            return Err(anyhow::anyhow!("agent stdin closed"));
         }
+
+        let acp = acp.ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+        let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
+        let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
+
+        let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let message_id = message_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| seq.to_string());
+        let message = serde_json::json!({
+            "type": "user_message",
+            "text": input,
+            "chunk": false,
+            "message_id": message_id
+        })
+        .to_string();
+        let output = AgentOutput {
+            agent_id: agent_id.to_string(),
+            session_id: session_id.clone(),
+            seq,
+            ts: Utc::now().timestamp(),
+            stream: OutputStream::Acp,
+            message: message.clone(),
+        };
+        let _ = output_tx.send(output);
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(&session_id)
+        .bind(seq)
+        .bind(Utc::now().timestamp())
+        .bind(stream_to_str(&OutputStream::Acp))
+        .bind(message)
+        .execute(&self.db)
+        .await;
+
+        acp.prompt(input.to_string()).await?;
+        Ok(())
     }
 
     async fn update_agent_status(&self, agent_id: &str, status: AgentStatus) -> anyhow::Result<()> {
@@ -703,6 +789,42 @@ impl AgentManager {
         .execute(&self.db)
         .await?;
         Ok(())
+    }
+
+    pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
+        let acp = self.get_acp_handle(agent_id).await?;
+        acp.set_mode(mode_id.to_string()).await
+    }
+
+    pub async fn set_acp_model(&self, agent_id: &str, model_id: &str) -> anyhow::Result<()> {
+        let acp = self.get_acp_handle(agent_id).await?;
+        acp.set_model(model_id.to_string()).await
+    }
+
+    pub async fn set_acp_config(
+        &self,
+        agent_id: &str,
+        config_id: &str,
+        value: &str,
+    ) -> anyhow::Result<()> {
+        let acp = self.get_acp_handle(agent_id).await?;
+        acp.set_config(config_id.to_string(), value.to_string()).await
+    }
+
+    pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
+        let acp = self.get_acp_handle(agent_id).await?;
+        acp.cancel().await
+    }
+
+    async fn get_acp_handle(&self, agent_id: &str) -> anyhow::Result<AcpHandle> {
+        let guard = self.inner.read().await;
+        let handle = guard
+            .get(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+        match &handle.input {
+            AgentInput::Acp(acp) => Ok(acp.clone()),
+            _ => Err(anyhow::anyhow!("agent is not acp")),
+        }
     }
 
     async fn emit_run_status(
@@ -1079,6 +1201,10 @@ impl AgentManager {
             .execute(&self.db)
             .await;
         let _ = sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
+            .bind(agent_id)
+            .execute(&self.db)
+            .await;
+        let _ = sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
             .bind(agent_id)
             .execute(&self.db)
             .await;

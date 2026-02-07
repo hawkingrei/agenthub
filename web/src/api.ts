@@ -262,6 +262,35 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ code_mode }),
     }),
+  clearAcpSession: (token: string, id: string, provider = "codex") =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/acp/session/clear`, token, {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    }),
+  setAcpMode: (token: string, id: string, mode_id: string) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/acp/mode`, token, {
+      method: "POST",
+      body: JSON.stringify({ mode_id }),
+    }),
+  setAcpModel: (token: string, id: string, model_id: string) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/acp/model`, token, {
+      method: "POST",
+      body: JSON.stringify({ model_id }),
+    }),
+  setAcpConfig: (
+    token: string,
+    id: string,
+    config_id: string,
+    value: string
+  ) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/acp/config`, token, {
+      method: "POST",
+      body: JSON.stringify({ config_id, value }),
+    }),
+  cancelAcp: (token: string, id: string) =>
+    apiFetch<{ status: string }>(`/api/agents/${id}/acp/cancel`, token, {
+      method: "POST",
+    }),
   startAgent: (token: string, id: string) =>
     apiFetch<{ session_id: string }>(`/api/agents/${id}/start`, token, {
       method: "POST",

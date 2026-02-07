@@ -60,6 +60,10 @@ export function App() {
   const [worktreeRepo, setWorktreeRepo] = useState("");
   const [worktreeRef, setWorktreeRef] = useState("");
   const [codeMode, setCodeMode] = useState(true);
+  const [acpModeId, setAcpModeId] = useState("");
+  const [acpModelId, setAcpModelId] = useState("");
+  const [acpConfigId, setAcpConfigId] = useState("");
+  const [acpConfigValue, setAcpConfigValue] = useState("");
   const [safePathInput, setSafePathInput] = useState("");
   const [joinQr, setJoinQr] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
@@ -149,6 +153,7 @@ export function App() {
   );
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const showAcpRuntime = activeAgentStatus === "running";
+  const canControlAcp = Boolean(activeAgent && activeAgentStatus === "running");
 
   const token = auth?.token ?? null;
   const mergeOutputs = (existing: OutputLine[], incoming: OutputLine[]) => {
@@ -662,6 +667,72 @@ export function App() {
       );
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const onAcpSetMode = async () => {
+    if (!token || !activeAgent) return;
+    const modeId = acpModeId.trim();
+    if (!modeId) {
+      setError("mode id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpMode(token, activeAgent, modeId);
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    }
+  };
+
+  const onAcpSetModel = async () => {
+    if (!token || !activeAgent) return;
+    const modelId = acpModelId.trim();
+    if (!modelId) {
+      setError("model id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpModel(token, activeAgent, modelId);
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    }
+  };
+
+  const onAcpSetConfig = async () => {
+    if (!token || !activeAgent) return;
+    const configId = acpConfigId.trim();
+    const configValue = acpConfigValue.trim();
+    if (!configId || !configValue) {
+      setError("config id and value are required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpConfig(token, activeAgent, configId, configValue);
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    }
+  };
+
+  const onAcpCancel = async () => {
+    if (!token || !activeAgent) return;
+    setError(null);
+    try {
+      await api.cancelAcp(token, activeAgent);
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    }
+  };
+
+  const onAcpClearSession = async () => {
+    if (!token || !activeAgent) return;
+    setError(null);
+    try {
+      await api.clearAcpSession(token, activeAgent, "codex");
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -1244,6 +1315,55 @@ export function App() {
                     )}
                     {acpTab === "debug" && (
                       <div className="acp-debug">
+                        <div className="acp-controls">
+                          <h4>Session Controls</h4>
+                          <div className="acp-control-meta">
+                            Current mode: {acpView.currentMode ?? "unknown"}
+                          </div>
+                          <div className="form-row">
+                            <input
+                              placeholder="Mode ID"
+                              value={acpModeId}
+                              onChange={(e) => setAcpModeId(e.target.value)}
+                            />
+                            <button onClick={onAcpSetMode} disabled={!canControlAcp}>
+                              Set Mode
+                            </button>
+                          </div>
+                          <div className="form-row">
+                            <input
+                              placeholder="Model ID"
+                              value={acpModelId}
+                              onChange={(e) => setAcpModelId(e.target.value)}
+                            />
+                            <button onClick={onAcpSetModel} disabled={!canControlAcp}>
+                              Set Model
+                            </button>
+                          </div>
+                          <div className="form-row">
+                            <input
+                              placeholder="Config ID"
+                              value={acpConfigId}
+                              onChange={(e) => setAcpConfigId(e.target.value)}
+                            />
+                            <input
+                              placeholder="Config Value ID"
+                              value={acpConfigValue}
+                              onChange={(e) => setAcpConfigValue(e.target.value)}
+                            />
+                            <button onClick={onAcpSetConfig} disabled={!canControlAcp}>
+                              Set Config
+                            </button>
+                          </div>
+                          <div className="form-row">
+                            <button onClick={onAcpCancel} disabled={!canControlAcp}>
+                              Cancel Run
+                            </button>
+                            <button onClick={onAcpClearSession}>
+                              Clear Session
+                            </button>
+                          </div>
+                        </div>
                         <div className="acp-permissions">
                           <h4>Permissions</h4>
                           {acpPermissionHistory.length === 0 && (
