@@ -10,6 +10,10 @@ describe("isNearBottom", () => {
     expect(isNearBottom(1000, 600, 100)).toBe(false);
   });
 
+  it("returns true when at the bottom", () => {
+    expect(isNearBottom(1000, 900, 100)).toBe(true);
+  });
+
   it("treats equality as not near", () => {
     expect(isNearBottom(1000, 780, 100, 120)).toBe(false);
   });
