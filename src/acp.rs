@@ -278,7 +278,7 @@ pub async fn spawn_acp_session(
                         return;
                     }
                 };
-                session_id = Some(session.session_id.clone());
+                session_id = Some(session.session_id.to_string());
             }
 
             let session_id = session_id.unwrap_or_else(|| "unknown".to_string());
