@@ -7,7 +7,7 @@ use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use uuid::Uuid;
 
 use super::{
@@ -35,7 +35,6 @@ pub struct AgentHandle {
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
-    acp_session_id: Option<String>,
 }
 
 pub enum AgentInput {
@@ -475,7 +474,7 @@ impl AgentManager {
             return Err(err);
         }
 
-        let (input, acp_session_id) = if is_acp {
+        let input = if is_acp {
             let resume_session_id =
                 self.get_persistent_session(&agent.id, ACP_PROVIDER_CODEX).await?;
             let stdout = match stdout.take() {
@@ -532,9 +531,9 @@ impl AgentManager {
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            (AgentInput::Acp(handle.clone()), Some(handle.session_id.clone()))
+            AgentInput::Acp(handle.clone())
         } else {
-            (AgentInput::Stdin(stdin.clone()), None)
+            AgentInput::Stdin(stdin.clone())
         };
 
         let handle = AgentHandle {
@@ -542,7 +541,6 @@ impl AgentManager {
             output_tx: output_tx.clone(),
             input,
             session_id: session_id.clone(),
-            acp_session_id,
         };
 
         {
