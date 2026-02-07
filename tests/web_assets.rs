@@ -18,8 +18,12 @@ fn styles_keep_acp_conversation_scoped() {
         "acp container should be flex and height constrained"
     );
     assert!(
-        css.contains(".acp-conversation {\n  overflow: auto;\n  min-height: 0;\n  height: 100%;\n  max-height: 100%;\n  flex: 1 1 auto;\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n}"),
-        "acp conversation should be scrollable and flex column"
+        css.contains(".acp-conversation {\n  overflow: auto;\n  min-height: 0;\n  height: 100%;\n  max-height: 100%;\n  flex: 1 1 auto;\n  display: block;\n}"),
+        "acp conversation should be scrollable container"
+    );
+    assert!(
+        css.contains(".acp-conversation-inner {\n  min-height: 100%;\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n}"),
+        "acp conversation inner should bottom-align short content"
     );
     assert!(
         css.contains(".acp-plan {\n  overflow: auto;\n  min-height: 0;\n  max-height: 100%;\n}"),
