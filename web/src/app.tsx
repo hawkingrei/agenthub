@@ -1655,6 +1655,7 @@ function AdminPage(props: AdminProps) {
       <header>
         <h1>AgentHub Admin</h1>
         <div className="session">
+          <button onClick={() => (location.href = "/")}>Back</button>
           <span>{props.auth.username}</span>
         </div>
       </header>
