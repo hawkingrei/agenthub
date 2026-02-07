@@ -23,6 +23,7 @@ import {
   ConversationItem,
   windowConversation,
 } from "./conversation";
+import { isNearBottom } from "./scroll";
 
 type AuthState = {
   token: string;
@@ -431,8 +432,7 @@ export function App() {
   useEffect(() => {
     const el = outputRef.current;
     if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distance < 120) {
+    if (isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)) {
       el.scrollTop = el.scrollHeight;
     }
   }, [outputs, acpView.hasAcp]);
@@ -1203,9 +1203,11 @@ export function App() {
                         onScroll={() => {
                           const el = acpConversationRef.current;
                           if (!el) return;
-                          const distance =
-                            el.scrollHeight - el.scrollTop - el.clientHeight;
-                          const stick = distance < 120;
+                          const stick = isNearBottom(
+                            el.scrollHeight,
+                            el.scrollTop,
+                            el.clientHeight
+                          );
                           acpStickToBottomRef.current = stick;
                           setConversationStickToBottom(stick);
                           if (el.scrollTop < 80) {
@@ -1213,25 +1215,39 @@ export function App() {
                           }
                         }}
                       >
-                        {conversationWindow.items.map((msg, idx) => {
-                          const key = `${conversationWindow.offset + idx}-${msg.kind}`;
-                          if (msg.kind === "agent_thinking") {
+                        <div className="acp-conversation-inner">
+                          {conversationWindow.items.map((msg, idx) => {
+                            const key = `${conversationWindow.offset + idx}-${msg.kind}`;
+                            if (msg.kind === "agent_thinking") {
+                              return (
+                                <div key={key} className="acp-bubble agent_thinking">
+                                  <details className="acp-thought-fold" open={msg.live}>
+                                    <summary>
+                                      {msg.live
+                                        ? "Thinking (live)"
+                                        : "Thinking (collapsed)"}
+                                    </summary>
+                                    <div className="acp-text">
+                                      <pre>{msg.text}</pre>
+                                    </div>
+                                  </details>
+                                </div>
+                              );
+                            }
+                            if (msg.kind === "agent_message") {
+                              return (
+                                <div key={key} className="acp-bubble agent_message">
+                                  <div
+                                    className="acp-text"
+                                    dangerouslySetInnerHTML={{
+                                      __html: renderMarkdown(msg.text),
+                                    }}
+                                  />
+                                </div>
+                              );
+                            }
                             return (
-                              <div key={key} className="acp-bubble agent_thinking">
-                                <details className="acp-thought-fold" open={msg.live}>
-                                  <summary>
-                                    {msg.live ? "Thinking (live)" : "Thinking (collapsed)"}
-                                  </summary>
-                                  <div className="acp-text">
-                                    <pre>{msg.text}</pre>
-                                  </div>
-                                </details>
-                              </div>
-                            );
-                          }
-                          if (msg.kind === "agent_message") {
-                            return (
-                              <div key={key} className="acp-bubble agent_message">
+                              <div key={key} className="acp-bubble user_message">
                                 <div
                                   className="acp-text"
                                   dangerouslySetInnerHTML={{
@@ -1240,18 +1256,8 @@ export function App() {
                                 />
                               </div>
                             );
-                          }
-                          return (
-                            <div key={key} className="acp-bubble user_message">
-                              <div
-                                className="acp-text"
-                                dangerouslySetInnerHTML={{
-                                  __html: renderMarkdown(msg.text),
-                                }}
-                              />
-                            </div>
-                          );
-                        })}
+                          })}
+                        </div>
                       </div>
                     )}
                     {acpTab === "tools" && (
