@@ -137,6 +137,11 @@ export function App() {
   const [conversationPendingCount, setConversationPendingCount] = useState(0);
   const conversationAvgHeightRef = useRef(48);
   const didAutoAlignConversationRef = useRef(false);
+  const lastEventCursorRef = useRef<Record<string, number>>({});
+  const eventPollRef = useRef<{ timer: number | null; idleCount: number }>({
+    timer: null,
+    idleCount: 0,
+  });
   const acpView = useMemo(
     () => buildAcpView(outputs),
     [outputs, thinkingTick]
@@ -383,8 +388,11 @@ export function App() {
     api.authStatus().then((res) => setRootInitialized(res.root_initialized)).catch(() => {});
   }, []);
 
-  const loadAgentEvents = async (id: string, sessionId?: string | null) => {
-    if (!token) return;
+  const loadAgentEvents = async (
+    id: string,
+    sessionId?: string | null
+  ): Promise<boolean> => {
+    if (!token) return false;
     const seq = ++loadSeq.current;
     const key = `${id}:${sessionId ?? "latest"}`;
     const latestKey = `${id}:latest`;
@@ -408,7 +416,7 @@ export function App() {
         eventLimit,
         sessionId ?? undefined
       );
-      if (seq !== loadSeq.current) return;
+      if (seq !== loadSeq.current) return false;
       if (!sessionId) {
         const latestSession = [...events]
           .reverse()
@@ -418,7 +426,7 @@ export function App() {
           if (activeAgent === id && !activeSessionId) {
             setActiveSessionId(latestSession);
           }
-          return;
+          return true;
         }
       }
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
@@ -447,6 +455,13 @@ export function App() {
       setOutputs((prev) =>
         isSameOutputList(prev, nextOutputs) ? prev : nextOutputs
       );
+      let hasNew = false;
+      const maxCursor = getMaxEventCursor(ordered);
+      if (maxCursor != null) {
+        const prevCursor = lastEventCursorRef.current[key];
+        lastEventCursorRef.current[key] = maxCursor;
+        hasNew = prevCursor == null ? true : maxCursor > prevCursor;
+      }
       setEventMeta((prev) => {
         const nextMeta = {
           oldestSeq,
@@ -466,6 +481,7 @@ export function App() {
         }
         return { ...prev, [key]: nextMeta };
       });
+      return hasNew;
     } catch {
       // ignore
       setEventMeta((prev) => {
@@ -473,6 +489,7 @@ export function App() {
         if (!current) return prev;
         return { ...prev, [key]: { ...current, loading: false, loaded: true } };
       });
+      return false;
     }
   };
 
@@ -597,12 +614,14 @@ export function App() {
             session_id: payload.session_id,
             seq,
           };
-        if (payload.stream === "acp") {
-          lastAcpEventTsRef.current = payload.ts;
-          const status = parseRunStatus(payload.message);
-          if (status) {
-            setAgents((prev) =>
-              prev.map((agent) =>
+          const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
+          updateLastEventCursor(lastEventCursorRef, key, line);
+          if (payload.stream === "acp") {
+            lastAcpEventTsRef.current = payload.ts;
+            const status = parseRunStatus(payload.message);
+            if (status) {
+              setAgents((prev) =>
+                prev.map((agent) =>
                   agent.id === payload.agent_id
                     ? { ...agent, status: statusToAgentStatus(status) }
                     : agent
@@ -611,12 +630,10 @@ export function App() {
             }
           }
           setOutputs((prev) => appendOutputLine(prev, line));
-          const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
           setOutputCache((prev) => ({
             ...prev,
             [key]: appendOutputLine(prev[key] ?? [], line),
           }));
-        }
       } catch {
         if (typeof event.data === "string") {
           if (isInvalidTokenMessage(event.data)) {
@@ -635,14 +652,34 @@ export function App() {
         wsRef.current = null;
       }
     };
-    const poll = window.setInterval(() => {
-      const current = wsRef.current;
-      if (!current || current.readyState !== WebSocket.OPEN) {
-        loadAgentEvents(activeAgent, activeSessionId);
+    const schedulePoll = (delay: number) => {
+      if (eventPollRef.current.timer) {
+        window.clearTimeout(eventPollRef.current.timer);
       }
-    }, 2000);
+      eventPollRef.current.timer = window.setTimeout(async () => {
+        const current = wsRef.current;
+        let hasNew = false;
+        if (!current || current.readyState !== WebSocket.OPEN) {
+          hasNew =
+            (await loadAgentEvents(activeAgent, activeSessionId)) === true;
+        } else {
+          eventPollRef.current.idleCount = 0;
+        }
+        if (hasNew) {
+          eventPollRef.current.idleCount = 0;
+        } else if (!current || current.readyState !== WebSocket.OPEN) {
+          eventPollRef.current.idleCount += 1;
+        }
+        schedulePoll(getAdaptivePollInterval(eventPollRef.current.idleCount));
+      }, delay);
+    };
+    schedulePoll(getAdaptivePollInterval(0));
     return () => {
-      window.clearInterval(poll);
+      if (eventPollRef.current.timer) {
+        window.clearTimeout(eventPollRef.current.timer);
+        eventPollRef.current.timer = null;
+      }
+      eventPollRef.current.idleCount = 0;
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
@@ -2560,6 +2597,40 @@ function getLastAcpEventTs(events: OutputLine[]): number | null {
     if (evt.stream === "acp") return evt.ts;
   }
   return null;
+}
+
+function getEventCursor(event: OutputLine): number {
+  return event.seq ?? event.ts;
+}
+
+function getMaxEventCursor(events: OutputLine[]): number | null {
+  let max: number | null = null;
+  for (const evt of events) {
+    const cursor = getEventCursor(evt);
+    if (max == null || cursor > max) {
+      max = cursor;
+    }
+  }
+  return max;
+}
+
+function updateLastEventCursor(
+  ref: React.MutableRefObject<Record<string, number>>,
+  key: string,
+  event: OutputLine
+): void {
+  const cursor = getEventCursor(event);
+  const prev = ref.current[key];
+  if (prev == null || cursor > prev) {
+    ref.current[key] = cursor;
+  }
+}
+
+function getAdaptivePollInterval(idleCount: number): number {
+  const base = 2000;
+  const max = 10000;
+  if (idleCount <= 0) return base;
+  return Math.min(max, base * (1 + idleCount));
 }
 
 function isSamePermissionList(
