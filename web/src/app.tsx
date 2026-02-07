@@ -422,18 +422,19 @@ export function App() {
       }
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
       lastAcpEventTsRef.current = getLastAcpEventTs(ordered);
-      const existing = outputCache[key] ?? [];
-      const merged = mergeOutputs(existing, ordered);
-      const next =
-        merged.length > maxCachedEvents
-          ? merged.slice(merged.length - maxCachedEvents)
-          : merged;
-      const oldestSeq = next.length ? next[0].seq ?? null : null;
+      let next: AgentEvent[] = [];
       setOutputCache((prev) => {
-        const current = prev[key] ?? [];
-        if (isSameOutputList(current, next)) return prev;
-        return { ...prev, [key]: next };
+        const existing = prev[key] ?? [];
+        const merged = mergeOutputs(existing, ordered);
+        const nextSlice =
+          merged.length > maxCachedEvents
+            ? merged.slice(merged.length - maxCachedEvents)
+            : merged;
+        next = nextSlice;
+        if (isSameOutputList(existing, nextSlice)) return prev;
+        return { ...prev, [key]: nextSlice };
       });
+      const oldestSeq = next.length ? next[0].seq ?? null : null;
       setOutputs((prev) => (isSameOutputList(prev, next) ? prev : next));
       setEventMeta((prev) => {
         const nextMeta = {
@@ -1270,6 +1271,11 @@ export function App() {
                             onSetCodeMode(agent.id, !agent.code_mode);
                           }}
                           title={
+                            agent.code_mode
+                              ? "Disable code mode"
+                              : "Enable code mode"
+                          }
+                          aria-label={
                             agent.code_mode
                               ? "Disable code mode"
                               : "Enable code mode"
