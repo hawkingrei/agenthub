@@ -23,6 +23,8 @@ import {
   ConversationItem,
   windowConversation,
 } from "./conversation";
+import { isNearBottom } from "./scroll";
+import { escapeHtml, renderMarkdown } from "./markdown";
 
 type AuthState = {
   token: string;
@@ -431,8 +433,7 @@ export function App() {
   useEffect(() => {
     const el = outputRef.current;
     if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distance < 120) {
+    if (isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)) {
       el.scrollTop = el.scrollHeight;
     }
   }, [outputs, acpView.hasAcp]);
@@ -1203,9 +1204,11 @@ export function App() {
                         onScroll={() => {
                           const el = acpConversationRef.current;
                           if (!el) return;
-                          const distance =
-                            el.scrollHeight - el.scrollTop - el.clientHeight;
-                          const stick = distance < 120;
+                          const stick = isNearBottom(
+                            el.scrollHeight,
+                            el.scrollTop,
+                            el.clientHeight
+                          );
                           acpStickToBottomRef.current = stick;
                           setConversationStickToBottom(stick);
                           if (el.scrollTop < 80) {
@@ -1213,25 +1216,39 @@ export function App() {
                           }
                         }}
                       >
-                        {conversationWindow.items.map((msg, idx) => {
-                          const key = `${conversationWindow.offset + idx}-${msg.kind}`;
-                          if (msg.kind === "agent_thinking") {
+                        <div className="acp-conversation-inner">
+                          {conversationWindow.items.map((msg, idx) => {
+                            const key = `${conversationWindow.offset + idx}-${msg.kind}`;
+                            if (msg.kind === "agent_thinking") {
+                              return (
+                                <div key={key} className="acp-bubble agent_thinking">
+                                  <details className="acp-thought-fold" open={msg.live}>
+                                    <summary>
+                                      {msg.live
+                                        ? "Thinking (live)"
+                                        : "Thinking (collapsed)"}
+                                    </summary>
+                                    <div className="acp-text">
+                                      <pre>{msg.text}</pre>
+                                    </div>
+                                  </details>
+                                </div>
+                              );
+                            }
+                            if (msg.kind === "agent_message") {
+                              return (
+                                <div key={key} className="acp-bubble agent_message">
+                                  <div
+                                    className="acp-text"
+                                    dangerouslySetInnerHTML={{
+                                      __html: renderMarkdown(msg.text),
+                                    }}
+                                  />
+                                </div>
+                              );
+                            }
                             return (
-                              <div key={key} className="acp-bubble agent_thinking">
-                                <details className="acp-thought-fold" open={msg.live}>
-                                  <summary>
-                                    {msg.live ? "Thinking (live)" : "Thinking (collapsed)"}
-                                  </summary>
-                                  <div className="acp-text">
-                                    <pre>{msg.text}</pre>
-                                  </div>
-                                </details>
-                              </div>
-                            );
-                          }
-                          if (msg.kind === "agent_message") {
-                            return (
-                              <div key={key} className="acp-bubble agent_message">
+                              <div key={key} className="acp-bubble user_message">
                                 <div
                                   className="acp-text"
                                   dangerouslySetInnerHTML={{
@@ -1240,18 +1257,8 @@ export function App() {
                                 />
                               </div>
                             );
-                          }
-                          return (
-                            <div key={key} className="acp-bubble user_message">
-                              <div
-                                className="acp-text"
-                                dangerouslySetInnerHTML={{
-                                  __html: renderMarkdown(msg.text),
-                                }}
-                              />
-                            </div>
-                          );
-                        })}
+                          })}
+                        </div>
                       </div>
                     )}
                     {acpTab === "tools" && (
@@ -1655,6 +1662,9 @@ function AdminPage(props: AdminProps) {
       <header>
         <h1>AgentHub Admin</h1>
         <div className="session">
+          <a className="icon-button" href="/" title="Back">
+            Back
+          </a>
           <span>{props.auth.username}</span>
         </div>
       </header>
@@ -2177,39 +2187,6 @@ function createAnsiRenderer(): (input: string) => string {
     }
     return out;
   };
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function renderMarkdown(input: string): string {
-  const stripped = input.replace(/cite[^]+/g, "").replace(/[]/g, "");
-  const blocks = stripped.split("```");
-  let out = "";
-  blocks.forEach((part, idx) => {
-    if (idx % 2 === 1) {
-      const safe = escapeHtml(part.replace(/^\n/, "").replace(/\n$/, ""));
-      out += `<pre><code>${safe}</code></pre>`;
-      return;
-    }
-    let safe = escapeHtml(part);
-    safe = safe.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      (_m, text, href) =>
-        `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>`
-    );
-    safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    safe = safe.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    out += safe;
-  });
-  return out;
 }
 
 function parseRunStatus(message: string): string | null {
