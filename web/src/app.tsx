@@ -1515,9 +1515,15 @@ export function App() {
                             }
                             if (msg.kind === "tool_call") {
                               const isLive = isToolCallLive(msg.status);
+                              const toolKey = msg.status
+                                ? `${key}-${msg.status}`
+                                : key;
                               return (
-                                <div key={key} className="acp-bubble tool_call">
-                                  <details className="acp-tool-fold" open={isLive}>
+                                <div key={toolKey} className="acp-bubble tool_call">
+                                  <details
+                                    className="acp-tool-fold"
+                                    {...(isLive ? { open: true } : {})}
+                                  >
                                     <summary>
                                       <span className="acp-tool-title">
                                         Tool Call
