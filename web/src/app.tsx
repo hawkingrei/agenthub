@@ -148,6 +148,7 @@ export function App() {
     [agents, activeAgent]
   );
   const activeAgentStatus = activeAgentRecord?.status ?? null;
+  const showAcpRuntime = activeAgentStatus === "running";
 
   const token = auth?.token ?? null;
   const mergeOutputs = (existing: OutputLine[], incoming: OutputLine[]) => {
@@ -577,8 +578,9 @@ export function App() {
         setActiveAgent(agent.id);
         setOutputs([]);
         await refreshAgents();
-      } catch {
-        // ignore start failure; keep created agent
+      } catch (err) {
+        const msg = parseApiErrorMessage(err) ?? String(err);
+        setError(`Start failed: ${msg}`);
       }
       setAgentName("");
       setAgentWorkdir("");
@@ -592,9 +594,8 @@ export function App() {
       const hint = formatWorktreeError(err);
       if (hint) {
         setWorktreeError(hint);
-      } else {
-        setError(String(err));
       }
+      setError(hint ?? parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -611,11 +612,7 @@ export function App() {
       await refreshAgents();
     } catch (err) {
       const hint = formatWorktreeError(err);
-      if (hint) {
-        setWorktreeError(hint);
-      } else {
-        setError(String(err));
-      }
+      setError(hint ?? parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -1071,14 +1068,14 @@ export function App() {
                             {activeSessionId.slice(0, 8)}
                           </span>
                         )}
-                        {acpView.runStatus?.status && (
+                        {showAcpRuntime && acpView.runStatus?.status && (
                           <span
                             className={`acp-run ${acpView.runStatus.status}`}
                           >
                             {acpView.runStatus.status}
                           </span>
                         )}
-                        {acpView.thinkingStartTs && (
+                        {showAcpRuntime && acpView.thinkingStartTs && (
                           <span className="acp-thinking">
                             thinking{" "}
                             {Math.max(
