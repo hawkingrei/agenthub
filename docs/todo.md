@@ -7,6 +7,7 @@
 - [ ] Verify ACP conversation scrolling and auto-collapse behavior after hook extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify Output error boundary fallback and empty state rendering (see `docs/features/2026-02-08-output-error-boundary.md`).
 - [ ] Verify localStorage output cache restores output history after reload (see `docs/features/2026-02-08-output-localstorage.md`).
+- [ ] Verify output cache stays consistent under SSE + polling after ref sync update (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Review new unit tests and expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).

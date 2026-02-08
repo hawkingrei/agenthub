@@ -110,6 +110,8 @@ export function App() {
   const [acpOutputCache, setAcpOutputCache] = useState<
     Record<string, OutputLine[]>
   >(initialCachesRef.current.acpOutputCache);
+  const outputCacheRef = useRef(outputCache);
+  const acpOutputCacheRef = useRef(acpOutputCache);
   const loadSeq = useRef(0);
   const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -160,6 +162,42 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    outputCacheRef.current = outputCache;
+  }, [outputCache]);
+  useEffect(() => {
+    acpOutputCacheRef.current = acpOutputCache;
+  }, [acpOutputCache]);
+  const updateOutputCacheEntry = useCallback(
+    (key: string, ordered: OutputLine[]) => {
+      const existing = outputCacheRef.current[key] ?? [];
+      const merged = mergeOutputs(existing, ordered);
+      const nextSlice =
+        merged.length > maxCachedEvents
+          ? merged.slice(merged.length - maxCachedEvents)
+          : merged;
+      if (!isSameOutputList(existing, nextSlice)) {
+        const nextCache = { ...outputCacheRef.current, [key]: nextSlice };
+        outputCacheRef.current = nextCache;
+        setOutputCache(nextCache);
+      }
+      return nextSlice;
+    },
+    [maxCachedEvents]
+  );
+  const updateAcpOutputCacheEntry = useCallback(
+    (key: string, ordered: OutputLine[]) => {
+      const existing = acpOutputCacheRef.current[key] ?? [];
+      const nextSlice = buildAcpCacheSlice(existing, ordered, maxCachedEvents);
+      if (!isSameOutputList(existing, nextSlice)) {
+        const nextCache = { ...acpOutputCacheRef.current, [key]: nextSlice };
+        acpOutputCacheRef.current = nextCache;
+        setAcpOutputCache(nextCache);
+      }
+      return nextSlice;
+    },
+    [maxCachedEvents]
+  );
   const acpView = useMemo(
     () => buildAcpView(acpOutputs),
     [acpOutputs, thinkingTick]
@@ -217,7 +255,6 @@ export function App() {
     if (!token) return false;
     const seq = ++loadSeq.current;
     const key = `${id}:${sessionId ?? "latest"}`;
-    const latestKey = `${id}:latest`;
     setEventMeta((prev) => {
       const current = prev[key];
       if (current?.loading) return prev;
@@ -254,53 +291,9 @@ export function App() {
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       lastAcpEventTsRef.current = getLastAcpEventTs(acpOrdered);
-      let next: AgentEvent[] = [];
-      let combined: AgentEvent[] = [];
-      let acpNext: AgentEvent[] = [];
-      let acpCombined: AgentEvent[] = [];
-      setOutputCache((prev) => {
-        const existing = prev[key] ?? [];
-        const merged = mergeOutputs(existing, ordered);
-        const nextSlice =
-          merged.length > maxCachedEvents
-            ? merged.slice(merged.length - maxCachedEvents)
-            : merged;
-        next = nextSlice;
-        if (key === latestKey) {
-          combined = nextSlice;
-        } else {
-          const latest = prev[latestKey] ?? [];
-          combined = mergeOutputs(nextSlice, latest);
-        }
-        if (isSameOutputList(existing, nextSlice)) return prev;
-        return { ...prev, [key]: nextSlice };
-      });
-      setAcpOutputCache((prev) => {
-        const existing = prev[key] ?? [];
-        const nextSlice = buildAcpCacheSlice(
-          existing,
-          ordered,
-          maxCachedEvents
-        );
-        acpNext = nextSlice;
-        if (key === latestKey) {
-          acpCombined = nextSlice;
-        } else {
-          const latest = prev[latestKey] ?? [];
-          acpCombined = mergeOutputs(nextSlice, latest);
-        }
-        if (isSameOutputList(existing, nextSlice)) return prev;
-        return { ...prev, [key]: nextSlice };
-      });
-      const oldestSeq = next.length ? next[0].seq ?? null : null;
-      const nextOutputs = combined.length > 0 ? combined : next;
-      const nextAcpOutputs = acpCombined.length > 0 ? acpCombined : acpNext;
-      setOutputs((prev) =>
-        isSameOutputList(prev, nextOutputs) ? prev : nextOutputs
-      );
-      setAcpOutputs((prev) =>
-        isSameOutputList(prev, nextAcpOutputs) ? prev : nextAcpOutputs
-      );
+      const nextSlice = updateOutputCacheEntry(key, ordered);
+      updateAcpOutputCacheEntry(key, ordered);
+      const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
       let hasNew = false;
       const maxCursor = getMaxEventCursor(ordered);
       if (maxCursor != null) {
@@ -364,24 +357,8 @@ export function App() {
       const hasMore = ordered.length >= eventLimit;
       setOutputs((prev) => mergeOutputs(prev, ordered));
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
-      setOutputCache((prev) => {
-        const existing = prev[key] ?? [];
-        const merged = mergeOutputs(existing, ordered);
-        const trimmed =
-          maxCachedEvents > 0
-            ? merged.slice(Math.max(0, merged.length - maxCachedEvents))
-            : merged;
-        return { ...prev, [key]: trimmed };
-      });
-      setAcpOutputCache((prev) => {
-        const existing = prev[key] ?? [];
-        const merged = mergeOutputs(existing, acpOrdered);
-        const trimmed =
-          maxCachedEvents > 0
-            ? merged.slice(Math.max(0, merged.length - maxCachedEvents))
-            : merged;
-        return { ...prev, [key]: trimmed };
-      });
+      updateOutputCacheEntry(key, ordered);
+      updateAcpOutputCacheEntry(key, ordered);
       setEventMeta((prev) => ({
         ...prev,
         [key]: { oldestSeq: nextOldest, hasMore, loading: false, loaded: true },
@@ -574,18 +551,12 @@ export function App() {
                 );
               }
             }
-            setOutputs((prev) => appendOutputLine(prev, line));
-            setOutputCache((prev) => ({
-              ...prev,
-              [key]: appendOutputLine(prev[key] ?? [], line),
-            }));
-            if (line.stream === "acp") {
-              setAcpOutputs((prev) => appendOutputLine(prev, line));
-              setAcpOutputCache((prev) => ({
-                ...prev,
-                [key]: appendOutputLine(prev[key] ?? [], line),
-              }));
-            }
+          setOutputs((prev) => appendOutputLine(prev, line));
+          updateOutputCacheEntry(key, [line]);
+          if (line.stream === "acp") {
+            setAcpOutputs((prev) => appendOutputLine(prev, line));
+            updateAcpOutputCacheEntry(key, [line]);
+          }
           }
         } catch {
           if (typeof event.data === "string") {
@@ -1022,15 +993,9 @@ export function App() {
       };
       setOutputs((prev) => mergeOutputs(prev, [line]));
       const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
-      setOutputCache((prev) => ({
-        ...prev,
-        [key]: mergeOutputs(prev[key] ?? [], [line]),
-      }));
+      updateOutputCacheEntry(key, [line]);
       setAcpOutputs((prev) => mergeOutputs(prev, [line]));
-      setAcpOutputCache((prev) => ({
-        ...prev,
-        [key]: mergeOutputs(prev[key] ?? [], [line]),
-      }));
+      updateAcpOutputCacheEntry(key, [line]);
     }
     try {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
