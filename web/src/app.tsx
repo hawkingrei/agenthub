@@ -20,6 +20,7 @@ import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
 import {
   getAdaptivePollInterval,
+  EventCursor,
   getMaxEventCursor,
   isCursorNewer,
   updateLastEventCursor,
@@ -143,9 +144,7 @@ export function App() {
     AcpPermissionRecord[]
   >([]);
   const [, setThinkingTick] = useState(0);
-  const lastEventCursorRef = useRef<
-    Record<string, { value: number; hasSeq: boolean }>
-  >({});
+  const lastEventCursorRef = useRef<Record<string, EventCursor>>({});
   const eventPollRef = useRef<{
     timer: number | null;
     idleCount: number;
