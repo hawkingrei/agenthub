@@ -73,6 +73,17 @@ export function buildAcpCacheSlice(
   return merged.slice(merged.length - maxCachedEvents);
 }
 
+export function buildOutputCacheSlice(
+  existing: OutputLine[],
+  ordered: OutputLine[],
+  maxCachedEvents: number
+): OutputLine[] {
+  const merged = mergeOutputs(existing, ordered);
+  if (maxCachedEvents <= 0) return merged;
+  if (merged.length <= maxCachedEvents) return merged;
+  return merged.slice(merged.length - maxCachedEvents);
+}
+
 export type CachedOutputSelection = {
   outputs: OutputLine[] | null;
   acpOutputs: OutputLine[] | null;

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildAcpCacheSlice, selectCachedOutputs } from "./output_cache";
+import {
+  buildAcpCacheSlice,
+  buildOutputCacheSlice,
+  selectCachedOutputs,
+} from "./output_cache";
 import { AgentEvent } from "./api";
 
 const makeEvent = (seq: number, stream: AgentEvent["stream"]): AgentEvent => ({
@@ -21,6 +25,29 @@ describe("buildAcpCacheSlice", () => {
     const next = buildAcpCacheSlice(existing, ordered, 3);
     expect(next.map((evt) => evt.seq)).toEqual([1, 2, 50]);
     expect(next.every((evt) => evt.stream === "acp")).toBe(true);
+  });
+});
+
+describe("buildOutputCacheSlice", () => {
+  it("merges and trims to maxCachedEvents", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const ordered = [makeEvent(3, "stdout"), makeEvent(4, "stdout")];
+    const next = buildOutputCacheSlice(existing, ordered, 3);
+    expect(next.map((evt) => evt.seq)).toEqual([2, 3, 4]);
+  });
+
+  it("returns full merge when maxCachedEvents is non-positive", () => {
+    const existing = [makeEvent(1, "stdout")];
+    const ordered = [makeEvent(2, "stdout")];
+    const next = buildOutputCacheSlice(existing, ordered, 0);
+    expect(next.map((evt) => evt.seq)).toEqual([1, 2]);
+  });
+
+  it("deduplicates by seq when merging", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const ordered = [makeEvent(2, "stdout"), makeEvent(3, "stdout")];
+    const next = buildOutputCacheSlice(existing, ordered, 10);
+    expect(next.map((evt) => evt.seq)).toEqual([1, 2, 3]);
   });
 });
 

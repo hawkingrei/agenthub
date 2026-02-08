@@ -28,6 +28,7 @@ import {
 import {
   appendOutputLine,
   buildAcpCacheSlice,
+  buildOutputCacheSlice,
   isSameOutputList,
   mergeOutputs,
   OutputLine,
@@ -171,11 +172,11 @@ export function App() {
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = outputCacheRef.current[key] ?? [];
-      const merged = mergeOutputs(existing, ordered);
-      const nextSlice =
-        merged.length > maxCachedEvents
-          ? merged.slice(merged.length - maxCachedEvents)
-          : merged;
+      const nextSlice = buildOutputCacheSlice(
+        existing,
+        ordered,
+        maxCachedEvents
+      );
       if (!isSameOutputList(existing, nextSlice)) {
         const nextCache = { ...outputCacheRef.current, [key]: nextSlice };
         outputCacheRef.current = nextCache;
