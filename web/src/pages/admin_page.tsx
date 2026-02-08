@@ -174,7 +174,12 @@ export function AdminPage(props: AdminProps) {
           {tab === "join" && (
             <div className="card join-card">
               <h3>Join Device</h3>
-              {props.joinQr && <img src={props.joinQr} alt="join qr" />}
+              {props.joinQr && (
+                <img
+                  src={props.joinQr}
+                  alt="Join device QR code (encodes token and PIN)"
+                />
+              )}
               {props.joinToken && <p>Token: {props.joinToken}</p>}
               {props.joinPin && <p>PIN: {props.joinPin}</p>}
             </div>
