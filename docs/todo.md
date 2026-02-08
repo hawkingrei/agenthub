@@ -22,6 +22,7 @@
 - [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
+- [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).
 - [ ] Review raw HTML handling in markdown-it renderer and add sanitization if ACP output becomes untrusted (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).

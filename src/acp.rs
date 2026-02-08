@@ -4,13 +4,14 @@ use std::sync::Arc;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    Implementation, InitializeRequest, LoadSessionRequest, NewSessionRequest, PromptRequest,
-    ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionModeRequest, SetSessionModelRequest, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, NewSessionRequest,
+    PromptRequest, ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, ToolCall,
+    ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
@@ -352,15 +353,9 @@ pub async fn spawn_acp_session(
 
 fn update_to_event(update: SessionUpdate) -> Option<Value> {
     match &update {
-        SessionUpdate::UserMessageChunk(chunk) => {
-            Some(json_message("user_message", &chunk.content))
-        }
-        SessionUpdate::AgentMessageChunk(chunk) => {
-            Some(json_message("agent_message", &chunk.content))
-        }
-        SessionUpdate::AgentThoughtChunk(chunk) => {
-            Some(json_message("agent_thought", &chunk.content))
-        }
+        SessionUpdate::UserMessageChunk(chunk) => Some(json_message("user_message", chunk)),
+        SessionUpdate::AgentMessageChunk(chunk) => Some(json_message("agent_message", chunk)),
+        SessionUpdate::AgentThoughtChunk(chunk) => Some(json_message("agent_thought", chunk)),
         SessionUpdate::ToolCall(tool_call) => Some(json_tool_call(tool_call)),
         SessionUpdate::ToolCallUpdate(update) => Some(json_tool_call_update(update)),
         SessionUpdate::Plan(plan) => Some(serde_json::json!({
@@ -383,13 +378,31 @@ fn update_to_event(update: SessionUpdate) -> Option<Value> {
     }
 }
 
-fn json_message(kind: &str, content: &ContentBlock) -> Value {
-    let text = content_to_text(content);
-    serde_json::json!({
-        "type": kind,
-        "text": text,
-        "chunk": true
-    })
+fn json_message(kind: &str, chunk: &ContentChunk) -> Value {
+    let text = content_to_text(&chunk.content);
+    let mut obj = Map::new();
+    obj.insert("type".to_string(), Value::String(kind.to_string()));
+    obj.insert("text".to_string(), Value::String(text));
+    obj.insert("chunk".to_string(), Value::Bool(true));
+    if let Some(meta) = &chunk.meta {
+        if let Some(Value::String(message_id)) = meta.get("message_id") {
+            obj.insert(
+                "message_id".to_string(),
+                Value::String(message_id.clone()),
+            );
+        }
+        if let Some(Value::Number(chunk_index)) = meta.get("chunk_index") {
+            obj.insert("chunk_index".to_string(), Value::Number(chunk_index.clone()));
+        } else if let Some(Value::String(chunk_index)) = meta.get("chunk_index") {
+            if let Ok(value) = chunk_index.parse::<u64>() {
+                obj.insert(
+                    "chunk_index".to_string(),
+                    Value::Number(Number::from(value)),
+                );
+            }
+        }
+    }
+    Value::Object(obj)
 }
 
 fn content_to_text(content: &ContentBlock) -> String {
