@@ -357,6 +357,12 @@ impl AgentManager {
     }
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        {
+            let guard = self.inner.read().await;
+            if guard.contains_key(agent_id) {
+                return Err(anyhow::anyhow!("agent already running"));
+            }
+        }
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
         let workdir = expand_tilde(&agent.workdir);
@@ -615,8 +621,11 @@ impl AgentManager {
     }
 
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
-        let mut guard = self.inner.write().await;
-        if let Some(handle) = guard.get_mut(agent_id) {
+        let handle = {
+            let mut guard = self.inner.write().await;
+            guard.remove(agent_id)
+        };
+        if let Some(handle) = handle {
             let session_id = handle.session_id.clone();
             let now = Utc::now().timestamp();
             let _ = sqlx::query(
@@ -951,6 +960,8 @@ impl AgentManager {
                     .flatten();
                     let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
                     if ended_at.is_some() {
+                        let mut guard = inner.write().await;
+                        guard.remove(&agent_id_clone);
                         return;
                     }
 
@@ -1020,6 +1031,8 @@ impl AgentManager {
                     .await;
 
                     let _ = push.notify_agent_completed(&agent_id, &session_id).await;
+                    let mut guard = inner.write().await;
+                    guard.remove(&agent_id_clone);
                 }
             }
         });
@@ -1370,7 +1383,6 @@ fn is_path_allowed(target: &str, allowed: &str) -> bool {
     }
     target.chars().nth(allowed.len()) == Some('/')
 }
-
 
 #[cfg(test)]
 mod tests {

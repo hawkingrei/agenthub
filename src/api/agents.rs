@@ -193,7 +193,7 @@ async fn list_events(
     Query(query): Query<ListEventsQuery>,
 ) -> Result<Json<Vec<crate::agent::AgentEvent>>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let limit = query.limit.unwrap_or(500);
+    let limit = query.limit.unwrap_or(500).clamp(1, 1000);
     let before_seq = query.before_seq;
     let events = if let Some(session_id) = query.session_id.as_deref() {
         state

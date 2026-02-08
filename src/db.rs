@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use sqlx::{
     SqlitePool,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
 pub async fn init_db() -> anyhow::Result<SqlitePool> {
@@ -192,6 +194,14 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     )
     .execute(&pool)
     .await;
+    let _ = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_seq
+        ON agent_events(agent_id, session_id, seq);
+        "#,
+    )
+    .execute(&pool)
+    .await;
 
     sqlx::query(
         r#"
@@ -255,7 +265,10 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     ensure_sqlite_path(db_path)?;
     let options = SqliteConnectOptions::new()
         .filename(db_path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)

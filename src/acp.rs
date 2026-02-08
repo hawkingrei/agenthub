@@ -586,6 +586,8 @@ impl AcpPermissionService {
         .bind(request_id)
         .execute(&self.db)
         .await?;
+        let mut pending = self.pending.lock().await;
+        pending.remove(request_id);
         Ok(())
     }
 
