@@ -308,9 +308,9 @@ export function App() {
         }
       }
       const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
-      updateOutputCacheEntry(key, ordered);
+      const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
-      const oldestEvent = ordered.length ? ordered[0] : null;
+      const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
         typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
       let hasNew = false;
