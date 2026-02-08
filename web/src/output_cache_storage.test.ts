@@ -25,7 +25,7 @@ class MemoryStorage {
 }
 
 const makeLine = (
-  seq: number,
+  seq: string,
   ts: number,
   stream: OutputLine["stream"] = "stdout",
   sessionId = "session-1"
@@ -57,28 +57,28 @@ describe("output cache storage", () => {
   it("trims events per session", () => {
     const outputCache = {
       "agent-1:session-1": [
-        makeLine(1, 10),
-        makeLine(2, 20),
-        makeLine(3, 30),
+        makeLine("1", 10),
+        makeLine("2", 20),
+        makeLine("3", 30),
       ],
     };
     const acpOutputCache = {
-      "agent-1:session-1": [makeLine(1, 11, "acp")],
+      "agent-1:session-1": [makeLine("1", 11, "acp")],
     };
     saveOutputCaches(outputCache, acpOutputCache, 2, 5);
 
     const loaded = loadOutputCaches(2, 5);
     expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.seq)).toEqual([
-      2,
-      3,
+      "2",
+      "3",
     ]);
     expect(loaded.acpOutputCache["agent-1:session-1"].length).toBe(1);
   });
 
   it("limits sessions by recency", () => {
     const outputCache = {
-      "agent-1:session-1": [makeLine(1, 10, "stdout", "session-1")],
-      "agent-1:session-2": [makeLine(1, 100, "stdout", "session-2")],
+      "agent-1:session-1": [makeLine("1", 10, "stdout", "session-1")],
+      "agent-1:session-2": [makeLine("1", 100, "stdout", "session-2")],
     };
     saveOutputCaches(outputCache, {}, 10, 1);
 
@@ -104,7 +104,7 @@ describe("output cache storage", () => {
         updatedAt: Date.now(),
         outputCache: {
           "agent-1:session-1": [
-            { stream: "stdout", ts: 1, message: "missing ids", seq: 1 },
+            { stream: "stdout", ts: 1, message: "missing ids", seq: "1" },
             {
               agent_id: "agent-1",
               session_id: "session-1",
@@ -115,12 +115,12 @@ describe("output cache storage", () => {
             {
               agent_id: "agent-1",
               session_id: "session-1",
-              seq: 3,
+              seq: "3",
               stream: "bad",
               ts: 3,
               message: "bad stream",
             },
-            makeLine(4, 4),
+            makeLine("4", 4),
           ],
         },
         acpOutputCache: {},
@@ -129,7 +129,7 @@ describe("output cache storage", () => {
 
     const loaded = loadOutputCaches(10, 5);
     expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.seq)).toEqual([
-      4,
+      "4",
     ]);
   });
 });

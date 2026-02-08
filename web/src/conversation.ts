@@ -5,7 +5,7 @@ export type ConversationItem =
       kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
       text: string;
       live?: boolean;
-      seq?: number;
+      seq?: string;
     }
   | {
       kind: "tool_call";
@@ -15,7 +15,7 @@ export type ConversationItem =
       raw_input?: unknown;
       raw_output?: unknown;
       terminal_output?: string;
-      seq?: number;
+      seq?: string;
     };
 
 export type ConversationWindow = {
@@ -62,7 +62,7 @@ export function buildConversationMessages(
   const planText = includePlan && plan ? formatPlanEntries(plan.entries) : "";
   const entries: Array<{
     kind: "message" | "tool_call" | "plan";
-    seq: number | null;
+    seq: string | null;
     order: number;
     message?: AcpMessage;
     toolCall?: AcpToolCall;
@@ -100,12 +100,12 @@ export function buildConversationMessages(
     if (a.seq == null && b.seq == null) return a.order - b.order;
     if (a.seq == null) return 1;
     if (b.seq == null) return -1;
-    if (a.seq !== b.seq) return a.seq - b.seq;
+    if (a.seq !== b.seq) return a.seq < b.seq ? -1 : 1;
     return a.order - b.order;
   });
   const items: ConversationItem[] = [];
   let pendingThought: string | null = null;
-  let pendingThoughtSeq: number | null = null;
+  let pendingThoughtSeq: string | null = null;
   for (const entry of entries) {
     if (entry.kind === "message") {
       const msg = entry.message;
@@ -204,24 +204,24 @@ export function windowConversation(
 
 export function deriveConversationFreezeMaxSeq(
   items: ConversationItem[]
-): number | null {
-  let maxSeq: number | null = null;
+): string | null {
+  let maxSeq: string | null = null;
   for (const item of items) {
-    if (typeof item.seq !== "number") continue;
-    maxSeq = maxSeq === null ? item.seq : Math.max(maxSeq, item.seq);
+    if (typeof item.seq !== "string") continue;
+    maxSeq = maxSeq === null ? item.seq : maxSeq < item.seq ? item.seq : maxSeq;
   }
   return maxSeq;
 }
 
 export function applyConversationFreeze(
   items: ConversationItem[],
-  maxSeq: number
+  maxSeq: string | null
 ): { frozen: ConversationItem[]; pending: number } {
   const frozen: ConversationItem[] = [];
   let pending = 0;
   for (const item of items) {
     const seq = item.seq;
-    if (typeof seq !== "number" || seq <= maxSeq) {
+    if (maxSeq == null || typeof seq !== "string" || seq <= maxSeq) {
       frozen.push(item);
       continue;
     }

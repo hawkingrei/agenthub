@@ -18,7 +18,7 @@ WebSocket was used for bidirectional streaming, but the frontend only requires s
 - Encode agent IDs and tokens when building the SSE URL.
 - Send heartbeat events as `data: heartbeat` and ignore them on the client.
 - Keep polling as a fallback when SSE is not open.
-- Generate `seq` values with a monotonic microsecond clock to preserve ordering while staying JS-safe.
+- Emit UUIDv7 `seq` values so ordering is safe in JS and consistent across APIs.
 - Set `Cache-Control: no-cache`, `Connection: keep-alive`, and `X-Accel-Buffering: no`.
 
 ## Validation

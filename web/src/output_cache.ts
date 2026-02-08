@@ -2,6 +2,21 @@ import { AgentEvent } from "./api";
 
 export type OutputLine = AgentEvent;
 
+const compareOutputLines = (a: OutputLine, b: OutputLine): number => {
+  const aSeq = a.seq;
+  const bSeq = b.seq;
+  if (aSeq != null && bSeq != null) {
+    if (aSeq === bSeq) return 0;
+    return aSeq < bSeq ? -1 : 1;
+  }
+  if (aSeq != null) return 1;
+  if (bSeq != null) return -1;
+  if (a.ts !== b.ts) return a.ts - b.ts;
+  if (a.stream !== b.stream) return a.stream < b.stream ? -1 : 1;
+  if (a.message !== b.message) return a.message < b.message ? -1 : 1;
+  return 0;
+};
+
 export function mergeOutputs(
   existing: OutputLine[],
   incoming: OutputLine[]
@@ -18,7 +33,7 @@ export function mergeOutputs(
     seen.add(key);
     deduped.push(line);
   }
-  return deduped.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  return deduped.sort(compareOutputLines);
 }
 
 export function appendOutputLine(
@@ -26,9 +41,8 @@ export function appendOutputLine(
   line: OutputLine
 ): OutputLine[] {
   if (existing.length === 0) return [line];
-  const lineSeq = line.seq ?? 0;
-  const lastSeq = existing[existing.length - 1].seq ?? 0;
-  if (lineSeq >= lastSeq) {
+  const last = existing[existing.length - 1];
+  if (compareOutputLines(last, line) <= 0) {
     return [...existing, line];
   }
   const next = existing.slice();
@@ -36,8 +50,7 @@ export function appendOutputLine(
   let hi = next.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    const midSeq = next[mid].seq ?? 0;
-    if (midSeq <= lineSeq) {
+    if (compareOutputLines(next[mid], line) <= 0) {
       lo = mid + 1;
     } else {
       hi = mid;

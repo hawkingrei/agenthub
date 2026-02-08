@@ -102,7 +102,7 @@ describe("OutputBody", () => {
       outputs: [
         {
           ts: 1,
-          seq: 1,
+          seq: "1",
           stream: "stdout",
           message: "hello",
           agent_id: "agent-1",

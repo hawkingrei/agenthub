@@ -75,7 +75,10 @@ function sanitizeEvents(list: unknown, maxEvents: number): OutputLine[] {
   if (!Array.isArray(list)) return [];
   const filtered = list.filter(isOutputLine) as OutputLine[];
   if (filtered.length === 0) return [];
-  const sorted = [...filtered].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.seq === b.seq) return 0;
+    return a.seq < b.seq ? -1 : 1;
+  });
   if (sorted.length <= maxEvents) return sorted;
   return sorted.slice(sorted.length - maxEvents);
 }
@@ -103,7 +106,7 @@ function isOutputLine(value: unknown): value is OutputLine {
   if (typeof candidate.session_id !== "string" || !candidate.session_id) {
     return false;
   }
-  if (typeof candidate.seq !== "number" || !Number.isFinite(candidate.seq)) {
+  if (typeof candidate.seq !== "string" || !candidate.seq) {
     return false;
   }
   if (typeof candidate.message !== "string") return false;

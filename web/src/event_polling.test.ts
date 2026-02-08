@@ -24,11 +24,11 @@ describe("event cursor helpers", () => {
   it("uses seq when present and falls back to ts", () => {
     const max = getMaxEventCursor([
       { ts: 10 },
-      { ts: 20, seq: 1 },
-      { ts: 30, seq: 5 },
+      { ts: 20, seq: "0001" },
+      { ts: 30, seq: "0005" },
       { ts: 40 },
     ]);
-    expect(max?.value).toBe(5);
+    expect(max?.value).toBe("0005");
     expect(max?.hasSeq).toBe(true);
   });
 
@@ -37,12 +37,14 @@ describe("event cursor helpers", () => {
   });
 
   it("updates cursor only when the new value is larger", () => {
-    const ref = { current: {} as Record<string, { value: number; hasSeq: boolean }> };
-    updateLastEventCursor(ref, "a", { ts: 10, seq: 5 });
-    expect(ref.current.a?.value).toBe(5);
-    updateLastEventCursor(ref, "a", { ts: 20, seq: 4 });
-    expect(ref.current.a?.value).toBe(5);
-    updateLastEventCursor(ref, "a", { ts: 30, seq: 7 });
-    expect(ref.current.a?.value).toBe(7);
+    const ref = {
+      current: {} as Record<string, { value: number | string; hasSeq: boolean }>,
+    };
+    updateLastEventCursor(ref, "a", { ts: 10, seq: "0005" });
+    expect(ref.current.a?.value).toBe("0005");
+    updateLastEventCursor(ref, "a", { ts: 20, seq: "0004" });
+    expect(ref.current.a?.value).toBe("0005");
+    updateLastEventCursor(ref, "a", { ts: 30, seq: "0007" });
+    expect(ref.current.a?.value).toBe("0007");
   });
 });

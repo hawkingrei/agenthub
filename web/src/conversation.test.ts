@@ -12,7 +12,7 @@ function msg(
   kind: AcpMessage["kind"],
   text: string,
   session_id: string | null,
-  seq?: number
+  seq?: string
 ): AcpMessage {
   return {
     kind,
@@ -28,7 +28,7 @@ function toolCall(
   id: string,
   title: string,
   session_id: string | null,
-  seq: number
+  seq: string
 ): AcpToolCall {
   return {
     id,
@@ -116,11 +116,11 @@ describe("buildConversationMessages", () => {
 
   it("merges tool calls into the conversation flow", () => {
     const messages: AcpMessage[] = [
-      msg("user_message", "u1", "s1", 1),
-      msg("agent_thought", "t1", "s1", 2),
-      msg("agent_message", "m1", "s1", 4),
+      msg("user_message", "u1", "s1", "1"),
+      msg("agent_thought", "t1", "s1", "2"),
+      msg("agent_message", "m1", "s1", "4"),
     ];
-    const calls = [toolCall("c1", "Tool A", "s1", 3)];
+    const calls = [toolCall("c1", "Tool A", "s1", "3")];
     const items = buildConversationMessages(messages, calls, null, "s1");
     expect(items).toHaveLength(4);
     expect(items[0].kind).toBe("user_message");
@@ -130,10 +130,10 @@ describe("buildConversationMessages", () => {
   });
 
   it("filters tool calls by session id", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
     const calls = [
-      toolCall("c1", "Tool A", "s2", 2),
-      toolCall("c2", "Tool B", null, 3),
+      toolCall("c1", "Tool A", "s2", "2"),
+      toolCall("c2", "Tool B", null, "3"),
     ];
     const items = buildConversationMessages(messages, calls, null, "s1");
     expect(items).toHaveLength(2);
@@ -141,11 +141,11 @@ describe("buildConversationMessages", () => {
   });
 
   it("renders plan entries as a conversation item", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
     const plan = {
       entries: [{ content: "Do X", status: "todo" }],
       session_id: "s1",
-      seq: 2,
+      seq: "2",
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(2);
@@ -155,13 +155,13 @@ describe("buildConversationMessages", () => {
 
   it("places plan based on sequence ordering", () => {
     const messages: AcpMessage[] = [
-      msg("user_message", "u1", "s1", 1),
-      msg("agent_message", "m1", "s1", 3),
+      msg("user_message", "u1", "s1", "1"),
+      msg("agent_message", "m1", "s1", "3"),
     ];
     const plan = {
       entries: [{ content: "Plan first" }],
       session_id: "s1",
-      seq: 2,
+      seq: "2",
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items.map((item) => item.kind)).toEqual([
@@ -172,11 +172,11 @@ describe("buildConversationMessages", () => {
   });
 
   it("filters plan entries by session id", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
     const plan = {
       entries: [{ content: "Do X" }],
       session_id: "s2",
-      seq: 2,
+      seq: "2",
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(1);
@@ -187,20 +187,20 @@ describe("buildConversationMessages", () => {
 describe("conversation freeze helpers", () => {
   it("derives max seq from items", () => {
     const items = [
-      { kind: "user_message", text: "a", seq: 1 },
-      { kind: "agent_message", text: "b", seq: 3 },
-      { kind: "agent_thinking", text: "c", seq: 2 },
+      { kind: "user_message", text: "a", seq: "1" },
+      { kind: "agent_message", text: "b", seq: "3" },
+      { kind: "agent_thinking", text: "c", seq: "2" },
     ];
-    expect(deriveConversationFreezeMaxSeq(items)).toBe(3);
+    expect(deriveConversationFreezeMaxSeq(items)).toBe("3");
   });
 
   it("filters items beyond max seq and counts pending", () => {
     const items = [
-      { kind: "user_message", text: "a", seq: 1 },
-      { kind: "agent_message", text: "b", seq: 2 },
-      { kind: "agent_message", text: "c", seq: 4 },
+      { kind: "user_message", text: "a", seq: "1" },
+      { kind: "agent_message", text: "b", seq: "2" },
+      { kind: "agent_message", text: "c", seq: "4" },
     ];
-    const result = applyConversationFreeze(items, 2);
+    const result = applyConversationFreeze(items, "2");
     expect(result.frozen).toHaveLength(2);
     expect(result.pending).toBe(1);
   });

@@ -17,7 +17,7 @@ import {
 import { isNearBottom } from "../scroll";
 
 type EventMeta = {
-  oldestSeq: number | null;
+  oldestSeq: string | null;
   hasMore: boolean;
   loading: boolean;
   loaded: boolean;
@@ -75,7 +75,7 @@ export function useAcpConversation({
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const [conversationFrozen, setConversationFrozen] = useState(false);
   const [conversationFreezeMaxSeq, setConversationFreezeMaxSeq] = useState<
-    number | null
+    string | null
   >(null);
   const [conversationFrozenItems, setConversationFrozenItems] = useState<
     ConversationItem[]
@@ -160,10 +160,7 @@ export function useAcpConversation({
     if (stick !== conversationStickToBottom) {
       if (!stick) {
         const maxSeq = deriveConversationFreezeMaxSeq(conversationMessages);
-        const frozen = applyConversationFreeze(
-          conversationMessages,
-          maxSeq ?? Number.MAX_SAFE_INTEGER
-        );
+        const frozen = applyConversationFreeze(conversationMessages, maxSeq);
         setConversationFrozen(true);
         setConversationFrozenItems(frozen.frozen);
         setConversationFreezeMaxSeq(maxSeq);
@@ -267,7 +264,7 @@ export function useAcpConversation({
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
-    if (!conversationFrozen || conversationFreezeMaxSeq == null) return;
+    if (!conversationFrozen) return;
     const { frozen, pending } = applyConversationFreeze(
       conversationMessages,
       conversationFreezeMaxSeq

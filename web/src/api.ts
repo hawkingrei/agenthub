@@ -32,7 +32,7 @@ export type AgentRecord = {
 export type AgentEvent = {
   agent_id: string;
   session_id: string;
-  seq: number;
+  seq: string;
   ts: number;
   stream: "stdout" | "stderr" | "system" | "acp";
   message: string;
@@ -247,7 +247,7 @@ export const api = {
     id: string,
     limit = 500,
     sessionId?: string,
-    beforeSeq?: number | null
+    beforeSeq?: string | null
   ) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (sessionId) params.set("session_id", sessionId);

@@ -33,7 +33,7 @@ pub struct StartAgentResponse {
 pub struct ListEventsQuery {
     pub limit: Option<i64>,
     pub session_id: Option<String>,
-    pub before_seq: Option<i64>,
+    pub before_seq: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]

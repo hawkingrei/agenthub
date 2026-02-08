@@ -1,14 +1,14 @@
 export type EventCursorSource = {
   ts: number;
-  seq?: number;
+  seq?: string;
 };
 
-export type EventCursor = { value: number; hasSeq: boolean };
+export type EventCursor = { value: number | string; hasSeq: boolean };
 
 export type CursorRef = { current: Record<string, EventCursor> };
 
 export function getEventCursor(event: EventCursorSource): EventCursor {
-  if (event.seq != null) {
+  if (typeof event.seq === "string") {
     return { value: event.seq, hasSeq: true };
   }
   return { value: event.ts, hasSeq: false };
@@ -28,8 +28,14 @@ export function getMaxEventCursor(
       max = cursor;
       continue;
     }
-    if (cursor.hasSeq === max.hasSeq && cursor.value > max.value) {
-      max = cursor;
+    if (cursor.hasSeq === max.hasSeq) {
+      if (cursor.hasSeq) {
+        if (String(cursor.value) > String(max.value)) {
+          max = cursor;
+        }
+      } else if (Number(cursor.value) > Number(max.value)) {
+        max = cursor;
+      }
     }
   }
   return max;
@@ -45,7 +51,10 @@ export function updateLastEventCursor(
   if (
     prev == null ||
     (cursor.hasSeq && !prev.hasSeq) ||
-    (cursor.hasSeq === prev.hasSeq && cursor.value > prev.value)
+    (cursor.hasSeq === prev.hasSeq &&
+      (cursor.hasSeq
+        ? String(cursor.value) > String(prev.value)
+        : Number(cursor.value) > Number(prev.value)))
   ) {
     ref.current[key] = cursor;
   }
@@ -54,7 +63,10 @@ export function updateLastEventCursor(
 export function isCursorNewer(prev: EventCursor, next: EventCursor): boolean {
   if (next.hasSeq && !prev.hasSeq) return true;
   if (next.hasSeq !== prev.hasSeq) return false;
-  return next.value > prev.value;
+  if (next.hasSeq) {
+    return String(next.value) > String(prev.value);
+  }
+  return Number(next.value) > Number(prev.value);
 }
 
 export function getAdaptivePollInterval(idleCount: number): number {

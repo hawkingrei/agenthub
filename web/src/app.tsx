@@ -33,6 +33,7 @@ import {
   OutputLine,
   selectCachedOutputs,
 } from "./output_cache";
+import { uuidV7 } from "./uuid";
 import { isNearBottom } from "./scroll";
 import { escapeHtml } from "./markdown";
 import { AgentsPanel } from "./components/agents_panel";
@@ -126,7 +127,7 @@ export function App() {
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
-      { oldestSeq: number | null; hasMore: boolean; loading: boolean; loaded: boolean }
+      { oldestSeq: string | null; hasMore: boolean; loading: boolean; loaded: boolean }
     >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(false);
@@ -141,7 +142,6 @@ export function App() {
   const lastEventCursorRef = useRef<
     Record<string, { value: number; hasSeq: boolean }>
   >({});
-  const fallbackSeqRef = useRef<number>(0);
   const eventPollRef = useRef<{
     timer: number | null;
     idleCount: number;
@@ -293,8 +293,7 @@ export function App() {
           return true;
         }
       }
-      const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+      const ordered = [...events].sort((a, b) => compareSeq(a.seq, b.seq));
       const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
       const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
@@ -362,7 +361,7 @@ export function App() {
         activeSessionId ?? undefined,
         meta.oldestSeq
       );
-      const ordered = [...older].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const ordered = [...older].sort((a, b) => compareSeq(a.seq, b.seq));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
       const hasMore = ordered.length >= eventLimit;
@@ -534,14 +533,10 @@ export function App() {
       }, delay);
     };
     const nextFallbackSeq = (payloadSeq: unknown) => {
-      if (typeof payloadSeq === "number") {
-        fallbackSeqRef.current = Math.max(fallbackSeqRef.current, payloadSeq);
+      if (typeof payloadSeq === "string" && payloadSeq) {
         return payloadSeq;
       }
-      const now = Date.now() * 1000;
-      const next = Math.max(now, fallbackSeqRef.current + 1);
-      fallbackSeqRef.current = next;
-      return next;
+      return uuidV7();
     };
     const openSource = () => {
       if (cancelled) return;
@@ -1037,7 +1032,7 @@ export function App() {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `local-${Date.now()}`;
-      const localSeq = Date.now() * 1_000_000;
+      const localSeq = uuidV7();
       const line: OutputLine = {
         agent_id: activeAgent,
         session_id: activeSessionId,
@@ -1559,6 +1554,14 @@ function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
+}
+
+function compareSeq(a?: string | null, b?: string | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
 }
 
 function isSamePermissionList(

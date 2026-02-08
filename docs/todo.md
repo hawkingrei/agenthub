@@ -22,4 +22,5 @@
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
-- [ ] Verify JS-safe sequence values preserve ordering in the browser (see `docs/features/2026-02-08-sse-streaming.md`).
+- [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
+- [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).

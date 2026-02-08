@@ -8,7 +8,7 @@ export type AcpToolCall = {
   raw_output?: unknown;
   terminal_output?: string;
   session_id?: string | null;
-  seq?: number;
+  seq?: string;
 };
 
 export type AcpMessage = {
@@ -16,7 +16,7 @@ export type AcpMessage = {
   text: string;
   session_id?: string | null;
   message_id?: string | null;
-  seq?: number;
+  seq?: string;
   chunk: boolean;
 };
 
@@ -34,7 +34,7 @@ export type AcpPlan = {
 
 export type AcpPlanView = AcpPlan & {
   session_id?: string | null;
-  seq?: number;
+  seq?: string;
 };
 
 export type AcpCommand = {
@@ -57,7 +57,7 @@ export type AcpRunStatus = {
 
 export type AcpEventLine = {
   ts: number;
-  seq?: number;
+  seq?: string;
   stream: string;
   message: string;
   session_id?: string | null;
@@ -195,7 +195,10 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
       if (parsed.content) call.content = formatAcpContent(parsed.content);
       if (call.session_id == null) call.session_id = event.session_id ?? null;
-      if (event.seq != null && (call.seq == null || event.seq > call.seq)) {
+      if (
+        event.seq != null &&
+        (call.seq == null || String(event.seq) > String(call.seq))
+      ) {
         call.seq = event.seq;
       }
       if (parsed.meta?.terminal_output?.data) {
