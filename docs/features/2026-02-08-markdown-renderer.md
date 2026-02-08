@@ -12,6 +12,7 @@ ACP conversation messages were rendered with a regex-based formatter. With strea
 - Add syntax highlighting for fenced code blocks via `highlight.js`.
 - Extend markdown rendering tests for links and line breaks.
 - Tune ACP markdown typography toward a prose-style layout (rhythm, headings, lists, code, and tables), including restoring list markers.
+- Move `@types/markdown-it` to `devDependencies` to keep runtime deps lean.
 
 ## Key Decisions
 
