@@ -9,6 +9,7 @@ export type AcpToolCall = {
   terminal_output?: string;
   session_id?: string | null;
   seq?: string;
+  ts?: number;
 };
 
 export type AcpMessage = {
@@ -18,6 +19,7 @@ export type AcpMessage = {
   message_id?: string | null;
   seq?: string;
   chunk: boolean;
+  ts?: number;
 };
 
 export type AcpPlanEntry = {
@@ -35,6 +37,7 @@ export type AcpPlan = {
 export type AcpPlanView = AcpPlan & {
   session_id?: string | null;
   seq?: string;
+  ts?: number;
 };
 
 export type AcpCommand = {
@@ -142,6 +145,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
           message_id: messageId,
           seq: event.seq,
           chunk: is_chunk,
+          ts: event.ts,
         });
       }
       if (parsed.type === "agent_thought") {
@@ -169,6 +173,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         raw_input: parsed.raw_input,
         session_id: event.session_id ?? null,
         seq: event.seq,
+        ts: event.ts,
       };
       if (!call.id) continue;
       toolCallMap.set(call.id, call);
@@ -195,11 +200,13 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
       if (parsed.content) call.content = formatAcpContent(parsed.content);
       if (call.session_id == null) call.session_id = event.session_id ?? null;
+      if (call.ts == null) call.ts = event.ts;
       if (
         event.seq != null &&
         (call.seq == null || String(event.seq) > String(call.seq))
       ) {
         call.seq = event.seq;
+        call.ts = event.ts;
       }
       if (parsed.meta?.terminal_output?.data) {
         call.terminal_output =
@@ -216,6 +223,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         ...(parsed.plan as AcpPlan),
         session_id: event.session_id ?? null,
         seq: event.seq,
+        ts: event.ts,
       };
     }
     if (parsed.type === "available_commands") {

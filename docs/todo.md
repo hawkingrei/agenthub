@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify agent list actions, input dock behavior, and permission modal rendering after component extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
@@ -25,4 +26,5 @@
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
+- [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).

@@ -25,6 +25,7 @@ import {
   isCursorNewer,
   updateLastEventCursor,
 } from "./event_polling";
+import { compareEventOrder } from "./seq_order";
 import {
   appendOutputLine,
   buildAcpCacheSlice,
@@ -302,7 +303,7 @@ export function App() {
           return true;
         }
       }
-      const ordered = [...events].sort((a, b) => compareSeq(a.seq, b.seq));
+      const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
       const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
       const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
@@ -370,7 +371,7 @@ export function App() {
         activeSessionId ?? undefined,
         meta.oldestSeq
       );
-      const ordered = [...older].sort((a, b) => compareSeq(a.seq, b.seq));
+      const ordered = [...older].sort((a, b) => compareEventOrder(a, b));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
       const hasMore = ordered.length >= eventLimit;
@@ -1055,25 +1056,6 @@ export function App() {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `local-${Date.now()}`;
-      const localSeq = uuidV7();
-      const line: OutputLine = {
-        agent_id: activeAgent,
-        session_id: activeSessionId,
-        ts: Math.floor(Date.now() / 1000),
-        seq: localSeq,
-        stream: "acp",
-        message: JSON.stringify({
-          type: "user_message",
-          text,
-          chunk: false,
-          message_id: messageId,
-        }),
-      };
-      setOutputs((prev) => mergeOutputs(prev, [line]));
-      const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
-      updateOutputCacheEntry(key, [line]);
-      setAcpOutputs((prev) => mergeOutputs(prev, [line]));
-      updateAcpOutputCacheEntry(key, [line]);
     }
     try {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
@@ -1577,14 +1559,6 @@ function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
-}
-
-function compareSeq(a?: string | null, b?: string | null): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return -1;
-  if (b == null) return 1;
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
 }
 
 function isSamePermissionList(

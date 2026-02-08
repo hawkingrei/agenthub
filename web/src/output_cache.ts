@@ -1,17 +1,11 @@
 import { AgentEvent } from "./api";
+import { compareEventOrder } from "./seq_order";
 
 export type OutputLine = AgentEvent;
 
 const compareOutputLines = (a: OutputLine, b: OutputLine): number => {
-  const aSeq = a.seq;
-  const bSeq = b.seq;
-  if (aSeq != null && bSeq != null) {
-    if (aSeq === bSeq) return 0;
-    return aSeq < bSeq ? -1 : 1;
-  }
-  if (aSeq != null) return 1;
-  if (bSeq != null) return -1;
-  if (a.ts !== b.ts) return a.ts - b.ts;
+  const base = compareEventOrder(a, b);
+  if (base !== 0) return base;
   if (a.stream !== b.stream) return a.stream < b.stream ? -1 : 1;
   if (a.message !== b.message) return a.message < b.message ? -1 : 1;
   return 0;

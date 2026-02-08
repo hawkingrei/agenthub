@@ -1,4 +1,5 @@
 import { AcpMessage, AcpPlanView, AcpToolCall } from "./acp";
+import { compareEventOrder } from "./seq_order";
 
 export type ConversationItem =
   | {
@@ -63,6 +64,7 @@ export function buildConversationMessages(
   const entries: Array<{
     kind: "message" | "tool_call" | "plan";
     seq: string | null;
+    ts: number | null;
     order: number;
     message?: AcpMessage;
     toolCall?: AcpToolCall;
@@ -73,6 +75,7 @@ export function buildConversationMessages(
     entries.push({
       kind: "message",
       seq: msg.seq ?? null,
+      ts: msg.ts ?? null,
       order,
       message: msg,
     });
@@ -82,6 +85,7 @@ export function buildConversationMessages(
     entries.push({
       kind: "tool_call",
       seq: call.seq ?? null,
+      ts: call.ts ?? null,
       order,
       toolCall: call,
     });
@@ -91,16 +95,18 @@ export function buildConversationMessages(
     entries.push({
       kind: "plan",
       seq: plan.seq ?? null,
+      ts: plan.ts ?? null,
       order,
       plan,
     });
     order += 1;
   }
   entries.sort((a, b) => {
-    if (a.seq == null && b.seq == null) return a.order - b.order;
-    if (a.seq == null) return 1;
-    if (b.seq == null) return -1;
-    if (a.seq !== b.seq) return a.seq < b.seq ? -1 : 1;
+    const base = compareEventOrder(
+      { seq: a.seq ?? null, ts: a.ts ?? null },
+      { seq: b.seq ?? null, ts: b.ts ?? null }
+    );
+    if (base !== 0) return base;
     return a.order - b.order;
   });
   const items: ConversationItem[] = [];
