@@ -100,7 +100,14 @@ agenthub/
 - 统一配置文件加载与校验
 - A2A 多智能体并行与排序：全局有序事件流（建议 DB 自增序列或单点发号器）
 
-## 11. 变更记录
+## 11. Documentation And Context Notes
+
+- Every change must be documented.
+- Add a TODO entry in `docs/todo.md` for follow-up or verification items.
+- Add a feature note under `docs/features/` describing background, scope, key decisions, and validation.
+- Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
+
+## 12. 变更记录
 
 ### 2026-02-05
 

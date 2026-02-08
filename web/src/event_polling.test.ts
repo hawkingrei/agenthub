@@ -28,7 +28,8 @@ describe("event cursor helpers", () => {
       { ts: 30, seq: 5 },
       { ts: 40 },
     ]);
-    expect(max).toBe(5);
+    expect(max?.value).toBe(5);
+    expect(max?.hasSeq).toBe(true);
   });
 
   it("returns null when given an empty list", () => {
@@ -36,12 +37,12 @@ describe("event cursor helpers", () => {
   });
 
   it("updates cursor only when the new value is larger", () => {
-    const ref = { current: {} as Record<string, number> };
+    const ref = { current: {} as Record<string, { value: number; hasSeq: boolean }> };
     updateLastEventCursor(ref, "a", { ts: 10, seq: 5 });
-    expect(ref.current.a).toBe(5);
+    expect(ref.current.a?.value).toBe(5);
     updateLastEventCursor(ref, "a", { ts: 20, seq: 4 });
-    expect(ref.current.a).toBe(5);
+    expect(ref.current.a?.value).toBe(5);
     updateLastEventCursor(ref, "a", { ts: 30, seq: 7 });
-    expect(ref.current.a).toBe(7);
+    expect(ref.current.a?.value).toBe(7);
   });
 });

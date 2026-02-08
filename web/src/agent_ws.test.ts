@@ -1,33 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_NOT_RUNNING_ERROR,
+  isAgentActiveStatus,
   sanitizeAgentError,
   shouldIgnoreAgentWsError,
   shouldOpenAgentSocket,
 } from "./agent_ws";
 
-describe("agent ws helpers", () => {
-  it("opens sockets only when running", () => {
+describe("agent status helpers", () => {
+  it("treats running and idle as active", () => {
+    expect(isAgentActiveStatus("running")).toBe(true);
+    expect(isAgentActiveStatus("idle")).toBe(true);
+    expect(isAgentActiveStatus("stopped")).toBe(false);
+    expect(isAgentActiveStatus(null)).toBe(false);
+  });
+
+  it("opens sockets only for active statuses", () => {
     expect(shouldOpenAgentSocket("running")).toBe(true);
-    expect(shouldOpenAgentSocket("stopped")).toBe(false);
-    expect(shouldOpenAgentSocket(null)).toBe(false);
+    expect(shouldOpenAgentSocket("idle")).toBe(true);
+    expect(shouldOpenAgentSocket("failed")).toBe(false);
   });
 
-  it("ignores not-running errors when agent is not running", () => {
-    expect(shouldIgnoreAgentWsError(AGENT_NOT_RUNNING_ERROR, "stopped")).toBe(
-      true
-    );
-    expect(shouldIgnoreAgentWsError(AGENT_NOT_RUNNING_ERROR, "running")).toBe(
-      false
-    );
-    expect(shouldIgnoreAgentWsError("other error", "stopped")).toBe(false);
-  });
-
-  it("clears stale not-running errors on non-running status", () => {
-    expect(sanitizeAgentError(AGENT_NOT_RUNNING_ERROR, "stopped")).toBe(null);
-    expect(sanitizeAgentError(AGENT_NOT_RUNNING_ERROR, "running")).toBe(
+  it("suppresses not-running errors when inactive", () => {
+    expect(sanitizeAgentError(AGENT_NOT_RUNNING_ERROR, "stopped")).toBeNull();
+    expect(sanitizeAgentError(AGENT_NOT_RUNNING_ERROR, null)).toBeNull();
+    expect(sanitizeAgentError(AGENT_NOT_RUNNING_ERROR, "idle")).toBe(
       AGENT_NOT_RUNNING_ERROR
     );
-    expect(sanitizeAgentError("other error", "stopped")).toBe("other error");
+  });
+
+  it("ignores not-running errors when inactive", () => {
+    expect(shouldIgnoreAgentWsError(AGENT_NOT_RUNNING_ERROR, "failed")).toBe(true);
+    expect(shouldIgnoreAgentWsError(AGENT_NOT_RUNNING_ERROR, "idle")).toBe(false);
   });
 });

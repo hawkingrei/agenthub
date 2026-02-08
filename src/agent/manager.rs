@@ -475,8 +475,9 @@ impl AgentManager {
         }
 
         let input = if is_acp {
-            let resume_session_id =
-                self.get_persistent_session(&agent.id, ACP_PROVIDER_CODEX).await?;
+            let resume_session_id = self
+                .get_persistent_session(&agent.id, ACP_PROVIDER_CODEX)
+                .await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -806,7 +807,8 @@ impl AgentManager {
         value: &str,
     ) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
-        acp.set_config(config_id.to_string(), value.to_string()).await
+        acp.set_config(config_id.to_string(), value.to_string())
+            .await
     }
 
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {

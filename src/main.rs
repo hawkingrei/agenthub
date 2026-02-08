@@ -13,9 +13,9 @@ mod auth;
 mod config;
 mod db;
 mod push;
+mod sse;
 mod state;
 mod web;
-mod ws;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     let mut app = Router::new()
         .route("/health", get(api::health))
         .nest("/api", api_router)
-        .nest("/ws", ws::router(state.clone()))
+        .nest("/sse", sse::router(state.clone()))
         .layer(trace);
     if let Some(dir) = web_dir {
         tracing::info!("serving web from dir: {}", dir);

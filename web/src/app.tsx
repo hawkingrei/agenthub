@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
   api,
@@ -15,40 +15,51 @@ import {
   shouldIgnoreAgentWsError,
   shouldOpenAgentSocket,
   sanitizeAgentError,
+  isAgentActiveStatus,
 } from "./agent_ws";
 import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
 import {
-  applyConversationFreeze,
-  buildConversationMessages,
-  ConversationItem,
-  deriveConversationFreezeMaxSeq,
-  formatConversationPreview,
-  isToolCallLive,
-  windowConversation,
-} from "./conversation";
-import {
   getAdaptivePollInterval,
   getMaxEventCursor,
+  isCursorNewer,
   updateLastEventCursor,
 } from "./event_polling";
+import {
+  appendOutputLine,
+  buildAcpCacheSlice,
+  isSameOutputList,
+  mergeOutputs,
+  OutputLine,
+  selectCachedOutputs,
+} from "./output_cache";
 import { isNearBottom } from "./scroll";
-import { escapeHtml, renderMarkdown } from "./markdown";
-
-type AuthState = {
-  token: string;
-  userId: string;
-  username: string;
-  role: string;
-};
-
-type OutputLine = AgentEvent;
-
-
+import { escapeHtml } from "./markdown";
+import { AgentsPanel } from "./components/agents_panel";
+import { CreateAgentModal } from "./components/create_agent_modal";
+import { InputDock } from "./components/input_dock";
+import { OutputHeader } from "./components/output_header";
+import { OutputBody } from "./components/output_body";
+import { OutputErrorBoundary } from "./components/output_error_boundary";
+import { PermissionModal } from "./components/permission_modal";
+import { useAcpConversation } from "./hooks/use_acp_conversation";
+import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
+import { AdminPage } from "./pages/admin_page";
+import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
+import { JoinPage } from "./pages/join_page";
+import { ensurePushSubscription } from "./push";
+import {
+  loginCredentialToJson,
+  publicKeyCredentialCreationOptionsFromJson,
+  publicKeyCredentialRequestOptionsFromJson,
+  registerCredentialToJson,
+} from "./webauthn";
+import { AuthState } from "./types";
 
 export function App() {
   const eventLimit = 200;
-  const maxCachedEvents = 200;
+  const maxCachedEvents = 800;
+  const maxCachedSessions = 40;
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = localStorage.getItem("agenthub_auth");
     return raw ? (JSON.parse(raw) as AuthState) : null;
@@ -85,13 +96,20 @@ export function App() {
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<OutputLine[]>([]);
+  const [acpOutputs, setAcpOutputs] = useState<OutputLine[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [agentSessions, setAgentSessions] = useState<Record<string, string>>(
     {}
   );
+  const initialCachesRef = useRef(
+    loadOutputCaches(maxCachedEvents, maxCachedSessions)
+  );
   const [outputCache, setOutputCache] = useState<
     Record<string, OutputLine[]>
-  >({});
+  >(initialCachesRef.current.outputCache);
+  const [acpOutputCache, setAcpOutputCache] = useState<
+    Record<string, OutputLine[]>
+  >(initialCachesRef.current.acpOutputCache);
   const loadSeq = useRef(0);
   const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -101,21 +119,9 @@ export function App() {
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
-  const wsRef = useRef<WebSocket | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
-  const acpConversationRef = useRef<HTMLDivElement | null>(null);
-  const acpStickToBottomRef = useRef(true);
   const lastAcpEventTsRef = useRef<number | null>(null);
-  const conversationScrollRef = useRef<{
-    top: number;
-    height: number;
-    clientHeight: number;
-    stickToBottom: boolean;
-  } | null>(null);
-  const pendingScrollAdjustRef = useRef<{
-    prevHeight: number;
-    prevTop: number;
-  } | null>(null);
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
@@ -131,165 +137,42 @@ export function App() {
     AcpPermissionRecord[]
   >([]);
   const [thinkingTick, setThinkingTick] = useState(0);
-  const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
-  const [conversationFrozen, setConversationFrozen] = useState(false);
-  const [conversationFreezeMaxSeq, setConversationFreezeMaxSeq] = useState<
-    number | null
-  >(null);
-  const [conversationFrozenItems, setConversationFrozenItems] = useState<
-    ConversationItem[]
-  >([]);
-  const [conversationPendingCount, setConversationPendingCount] = useState(0);
-  const conversationAvgHeightRef = useRef(48);
-  const didAutoAlignConversationRef = useRef(false);
-  const lastEventCursorRef = useRef<Record<string, number>>({});
-  const eventPollRef = useRef<{ timer: number | null; idleCount: number }>({
+  const lastEventCursorRef = useRef<
+    Record<string, { value: number; hasSeq: boolean }>
+  >({});
+  const eventPollRef = useRef<{
+    timer: number | null;
+    idleCount: number;
+    boostUntil: number | null;
+  }>({
     timer: null,
     idleCount: 0,
+    boostUntil: null,
   });
+  const schedulePollRef = useRef<((delay: number) => void) | null>(null);
+  const permissionPollRef = useRef<{
+    timer: number | null;
+  }>({
+    timer: null,
+  });
+  const schedulePermissionPollRef = useRef<((delay: number) => void) | null>(
+    null
+  );
+  const outputPersistTimerRef = useRef<number | null>(null);
   const acpView = useMemo(
-    () => buildAcpView(outputs),
-    [outputs, thinkingTick]
+    () => buildAcpView(acpOutputs),
+    [acpOutputs, thinkingTick]
   );
-  const conversationMessages = useMemo<ConversationItem[]>(
-    () =>
-      buildConversationMessages(
-        acpView.messages,
-        acpView.toolCalls,
-        acpView.plan,
-        activeSessionId
-      ),
-    [acpView.messages, acpView.toolCalls, acpView.plan, activeSessionId]
-  );
-  const conversationWindow = useMemo(
-    () => windowConversation(conversationMessages, conversationStickToBottom, 200),
-    [conversationMessages, conversationStickToBottom]
-  );
-  const conversationTailKey = useMemo(() => {
-    if (conversationMessages.length === 0) return "empty";
-    const last = conversationMessages[conversationMessages.length - 1];
-    const base = `${last.kind}:${last.seq ?? "na"}`;
-    if (last.kind === "tool_call") {
-      const contentLen = last.content?.length ?? 0;
-      const terminalLen = last.terminal_output?.length ?? 0;
-      const rawInLen = last.raw_input
-        ? JSON.stringify(last.raw_input).length
-        : 0;
-      const rawOutLen = last.raw_output
-        ? JSON.stringify(last.raw_output).length
-        : 0;
-      return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
-    }
-    return `${base}:${last.text?.length ?? 0}`;
-  }, [conversationMessages]);
-  const conversationRenderItems =
-    conversationFrozen && conversationFrozenItems.length > 0
-      ? conversationFrozenItems
-      : conversationWindow.items;
-  const isFrozenView = conversationFrozen && conversationFrozenItems.length > 0;
-  const collapseCutoff = Math.max(0, conversationMessages.length - 50);
-  const shouldAutoCollapse = conversationMessages.length > 50;
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!activeAgent) return;
-    const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
-    const meta = eventMeta[key];
-    if (!meta || meta.loading || !meta.hasMore) return;
-    const minMessages = 12;
-    if (conversationMessages.length >= minMessages) return;
-    loadOlderEvents();
-  }, [conversationMessages.length, acpTab, activeAgent, activeSessionId, eventMeta]);
-  useEffect(() => {
-    didAutoAlignConversationRef.current = false;
-  }, [activeAgent, activeSessionId]);
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    const el = acpConversationRef.current;
-    if (!el) return;
-    if (!conversationStickToBottom) return;
-    el.scrollTop = el.scrollHeight;
-  }, [conversationWindow.items.length, acpTab, conversationStickToBottom]);
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!conversationStickToBottom) return;
-    const el = acpConversationRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [conversationTailKey, acpTab, conversationStickToBottom]);
-  useEffect(() => {
-    const el = acpConversationRef.current;
-    if (!el) return;
-    if (acpTab !== "conversation") {
-      conversationScrollRef.current = {
-        top: el.scrollTop,
-        height: el.scrollHeight,
-        clientHeight: el.clientHeight,
-        stickToBottom: conversationStickToBottom,
-      };
-      return;
-    }
-    const saved = conversationScrollRef.current;
-    if (!saved) return;
-    if (saved.stickToBottom) {
-      jumpToConversationBottom();
-      return;
-    }
-    acpStickToBottomRef.current = false;
-    setConversationStickToBottom(false);
-    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollTop = Math.min(saved.top, maxTop);
-  }, [acpTab, conversationStickToBottom, conversationTailKey]);
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!conversationStickToBottom) return;
-    const el = acpConversationRef.current;
-    if (!el) return;
-    const count = Math.max(1, conversationMessages.length);
-    const estimate = el.scrollHeight / count;
-    if (Number.isFinite(estimate) && estimate > 0) {
-      conversationAvgHeightRef.current = Math.min(220, Math.max(24, estimate));
-    }
-  }, [conversationMessages.length, acpTab, conversationStickToBottom]);
-  useEffect(() => {
-    const el = acpConversationRef.current;
-    const pending = pendingScrollAdjustRef.current;
-    if (!el || !pending) return;
-    const nextHeight = el.scrollHeight;
-    el.scrollTop = nextHeight - pending.prevHeight + pending.prevTop;
-    pendingScrollAdjustRef.current = null;
-  }, [acpView.messages.length]);
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!conversationFrozen || conversationFreezeMaxSeq == null) return;
-    const { frozen, pending } = applyConversationFreeze(
-      conversationMessages,
-      conversationFreezeMaxSeq
-    );
-    if (frozen.length !== conversationFrozenItems.length) {
-      setConversationFrozenItems(frozen);
-    }
-    if (pending !== conversationPendingCount) {
-      setConversationPendingCount(pending);
-    }
-  }, [
-    conversationMessages,
-    conversationFrozen,
-    conversationFreezeMaxSeq,
-    acpTab,
-    conversationFrozenItems.length,
-    conversationPendingCount,
-  ]);
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
   );
   const activeAgentStatus = activeAgentRecord?.status ?? null;
-  const showAcpRuntime = activeAgentStatus === "running";
-  const canControlAcp = Boolean(activeAgent && activeAgentStatus === "running");
-  const showConversationJump =
-    acpTab === "conversation" && !conversationStickToBottom;
-  const showConversationBadge =
-    showConversationJump && conversationPendingCount > 0;
+  const isAgentActive = isAgentActiveStatus(activeAgentStatus);
+  const showAcpRuntime = isAgentActive;
+  const thinkingStartTs =
+    activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
+  const canControlAcp = Boolean(activeAgent && isAgentActive);
   const activeEventKey = activeAgent
     ? `${activeAgent}:${activeSessionId ?? "latest"}`
     : null;
@@ -297,73 +180,6 @@ export function App() {
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
-  const mergeOutputs = (existing: OutputLine[], incoming: OutputLine[]) => {
-    const merged = [...existing, ...incoming];
-    const seen = new Set<string>();
-    const deduped: OutputLine[] = [];
-    for (const line of merged) {
-      const key =
-        line.seq != null
-          ? String(line.seq)
-          : `${line.ts}-${line.stream}-${line.message}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      deduped.push(line);
-    }
-    return deduped.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-  };
-
-  const jumpToConversationBottom = () => {
-    const el = acpConversationRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    acpStickToBottomRef.current = true;
-    didAutoAlignConversationRef.current = true;
-    setConversationStickToBottom(true);
-    setConversationFrozen(false);
-    setConversationFreezeMaxSeq(null);
-    setConversationFrozenItems([]);
-    setConversationPendingCount(0);
-  };
-
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!acpView.hasAcp) return;
-    if (!activeAgent) return;
-    if (activeAgentStatus === "running") return;
-    if (didAutoAlignConversationRef.current) return;
-    if (conversationMessages.length === 0) return;
-    jumpToConversationBottom();
-    didAutoAlignConversationRef.current = true;
-  }, [
-    acpTab,
-    acpView.hasAcp,
-    activeAgent,
-    activeAgentStatus,
-    conversationMessages.length,
-  ]);
-  const appendOutputLine = (existing: OutputLine[], line: OutputLine) => {
-    if (existing.length === 0) return [line];
-    const lineSeq = line.seq ?? 0;
-    const lastSeq = existing[existing.length - 1].seq ?? 0;
-    if (lineSeq >= lastSeq) {
-      return [...existing, line];
-    }
-    const next = existing.slice();
-    let lo = 0;
-    let hi = next.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      const midSeq = next[mid].seq ?? 0;
-      if (midSeq <= lineSeq) {
-        lo = mid + 1;
-      } else {
-        hi = mid;
-      }
-    }
-    next.splice(lo, 0, line);
-    return next;
-  };
   const refreshAgents = async () => {
     if (!token) return;
     try {
@@ -381,7 +197,7 @@ export function App() {
 
   useEffect(() => {
     if (activeAgent || agents.length === 0) return;
-    const running = agents.find((agent) => agent.status === "running");
+    const running = agents.find((agent) => isAgentActiveStatus(agent.status));
     const next = running ?? agents[0];
     if (next) {
       setActiveAgent(next.id);
@@ -435,9 +251,12 @@ export function App() {
         }
       }
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-      lastAcpEventTsRef.current = getLastAcpEventTs(ordered);
+      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+      lastAcpEventTsRef.current = getLastAcpEventTs(acpOrdered);
       let next: AgentEvent[] = [];
       let combined: AgentEvent[] = [];
+      let acpNext: AgentEvent[] = [];
+      let acpCombined: AgentEvent[] = [];
       setOutputCache((prev) => {
         const existing = prev[key] ?? [];
         const merged = mergeOutputs(existing, ordered);
@@ -455,17 +274,38 @@ export function App() {
         if (isSameOutputList(existing, nextSlice)) return prev;
         return { ...prev, [key]: nextSlice };
       });
+      setAcpOutputCache((prev) => {
+        const existing = prev[key] ?? [];
+        const nextSlice = buildAcpCacheSlice(
+          existing,
+          ordered,
+          maxCachedEvents
+        );
+        acpNext = nextSlice;
+        if (key === latestKey) {
+          acpCombined = nextSlice;
+        } else {
+          const latest = prev[latestKey] ?? [];
+          acpCombined = mergeOutputs(nextSlice, latest);
+        }
+        if (isSameOutputList(existing, nextSlice)) return prev;
+        return { ...prev, [key]: nextSlice };
+      });
       const oldestSeq = next.length ? next[0].seq ?? null : null;
       const nextOutputs = combined.length > 0 ? combined : next;
+      const nextAcpOutputs = acpCombined.length > 0 ? acpCombined : acpNext;
       setOutputs((prev) =>
         isSameOutputList(prev, nextOutputs) ? prev : nextOutputs
+      );
+      setAcpOutputs((prev) =>
+        isSameOutputList(prev, nextAcpOutputs) ? prev : nextAcpOutputs
       );
       let hasNew = false;
       const maxCursor = getMaxEventCursor(ordered);
       if (maxCursor != null) {
         const prevCursor = lastEventCursorRef.current[key];
         lastEventCursorRef.current[key] = maxCursor;
-        hasNew = prevCursor == null ? true : maxCursor > prevCursor;
+        hasNew = prevCursor == null ? true : isCursorNewer(prevCursor, maxCursor);
       }
       setEventMeta((prev) => {
         const nextMeta = {
@@ -498,7 +338,7 @@ export function App() {
     }
   };
 
-  const loadOlderEvents = async () => {
+  const loadOlderEvents = useCallback(async () => {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const meta = eventMeta[key];
@@ -509,13 +349,6 @@ export function App() {
       ...prev,
       [key]: { ...meta, loading: true, loaded: true },
     }));
-    const el = acpConversationRef.current;
-    if (el) {
-      pendingScrollAdjustRef.current = {
-        prevHeight: el.scrollHeight,
-        prevTop: el.scrollTop,
-      };
-    }
     try {
       const older = await api.listAgentEvents(
         token,
@@ -525,12 +358,18 @@ export function App() {
         meta.oldestSeq
       );
       const ordered = [...older].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
       const hasMore = ordered.length >= eventLimit;
       setOutputs((prev) => mergeOutputs(prev, ordered));
+      setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
       setOutputCache((prev) => {
         const existing = prev[key] ?? [];
         return { ...prev, [key]: mergeOutputs(existing, ordered) };
+      });
+      setAcpOutputCache((prev) => {
+        const existing = prev[key] ?? [];
+        return { ...prev, [key]: mergeOutputs(existing, acpOrdered) };
       });
       setEventMeta((prev) => ({
         ...prev,
@@ -542,36 +381,91 @@ export function App() {
         [key]: { ...meta, loading: false, loaded: true },
       }));
     }
-  };
+  }, [token, activeAgent, activeSessionId, eventMeta, eventLimit]);
+
+  const acpConversation = useAcpConversation({
+    acpView,
+    activeAgent,
+    activeSessionId,
+    acpTab,
+    eventMeta,
+    isAgentActive,
+    onLoadOlder: loadOlderEvents,
+  });
+  useEffect(() => {
+    if (outputPersistTimerRef.current) {
+      window.clearTimeout(outputPersistTimerRef.current);
+    }
+    outputPersistTimerRef.current = window.setTimeout(() => {
+      saveOutputCaches(
+        outputCache,
+        acpOutputCache,
+        maxCachedEvents,
+        maxCachedSessions
+      );
+    }, 500);
+    return () => {
+      if (outputPersistTimerRef.current) {
+        window.clearTimeout(outputPersistTimerRef.current);
+        outputPersistTimerRef.current = null;
+      }
+    };
+  }, [outputCache, acpOutputCache, maxCachedEvents, maxCachedSessions]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const latestKey = `${activeAgent}:latest`;
-    const cached = outputCache[key];
-    if (cached) {
-      const combined =
-        activeSessionId && key !== latestKey
-          ? mergeOutputs(cached, outputCache[latestKey] ?? [])
-          : cached;
-      setOutputs((prev) =>
-        isSameOutputList(prev, combined) ? prev : combined
-      );
-      if (!eventMeta[key]) {
-        const oldestSeq = cached.length ? cached[0].seq ?? null : null;
-        setEventMeta((prev) => ({
-          ...prev,
-          [key]: {
-            oldestSeq,
-            hasMore: cached.length >= eventLimit,
-            loading: false,
-            loaded: true,
-          },
-        }));
-      }
-    } else {
+    const selection = selectCachedOutputs(
+      outputCache,
+      acpOutputCache,
+      key,
+      latestKey
+    );
+    if (selection.source === "none") {
       setOutputs([]);
+      setAcpOutputs([]);
       loadAgentEvents(activeAgent, activeSessionId);
+      return;
+    }
+    const baseOutputs = selection.outputs ?? [];
+    const baseAcpOutputs = selection.acpOutputs ?? [];
+    const combinedOutputs =
+      selection.source === "session" &&
+      activeSessionId &&
+      key !== latestKey &&
+      baseOutputs.length > 0
+        ? mergeOutputs(baseOutputs, outputCache[latestKey] ?? [])
+        : baseOutputs;
+    const combinedAcpOutputs =
+      selection.source === "session" &&
+      activeSessionId &&
+      key !== latestKey &&
+      baseAcpOutputs.length > 0
+        ? mergeOutputs(baseAcpOutputs, acpOutputCache[latestKey] ?? [])
+        : baseAcpOutputs;
+    setOutputs((prev) =>
+      isSameOutputList(prev, combinedOutputs) ? prev : combinedOutputs
+    );
+    setAcpOutputs((prev) =>
+      isSameOutputList(prev, combinedAcpOutputs) ? prev : combinedAcpOutputs
+    );
+    if (!eventMeta[key]) {
+      const oldestSeq = combinedOutputs.length
+        ? combinedOutputs[0].seq ?? null
+        : combinedAcpOutputs.length
+          ? combinedAcpOutputs[0].seq ?? null
+          : null;
+      setEventMeta((prev) => ({
+        ...prev,
+        [key]: {
+          oldestSeq,
+          hasMore:
+            combinedOutputs.length + combinedAcpOutputs.length >= eventLimit,
+          loading: false,
+          loaded: true,
+        },
+      }));
     }
   }, [token, activeAgent, activeSessionId]);
 
@@ -591,11 +485,12 @@ export function App() {
     if (!token || !activeAgent) return;
     loadAgentEvents(activeAgent, activeSessionId);
     if (!shouldOpenAgentSocket(activeAgentStatus)) return;
-    const ws = new WebSocket(
-      `${location.origin.replace("http", "ws")}/ws/agents/${activeAgent}?token=${token}`
+    const source = new EventSource(
+      `${location.origin}/sse/agents/${activeAgent}?token=${token}`
     );
-    wsRef.current = ws;
-    ws.onmessage = (event) => {
+    sseRef.current = source;
+    source.onmessage = (event) => {
+      if (event.data === "heartbeat") return;
       try {
         const parsed = JSON.parse(event.data);
         if (parsed.type === "output" || parsed.type === "acp") {
@@ -639,6 +534,14 @@ export function App() {
             ...prev,
             [key]: appendOutputLine(prev[key] ?? [], line),
           }));
+          if (line.stream === "acp") {
+            setAcpOutputs((prev) => appendOutputLine(prev, line));
+            setAcpOutputCache((prev) => ({
+              ...prev,
+              [key]: appendOutputLine(prev[key] ?? [], line),
+            }));
+          }
+        }
       } catch {
         if (typeof event.data === "string") {
           if (isInvalidTokenMessage(event.data)) {
@@ -652,19 +555,26 @@ export function App() {
         }
       }
     };
-    ws.onclose = () => {
-      if (wsRef.current === ws) {
-        wsRef.current = null;
+    source.onerror = () => {
+      if (sseRef.current === source) {
+        sseRef.current = null;
       }
+      source.close();
     };
     const schedulePoll = (delay: number) => {
       if (eventPollRef.current.timer) {
         window.clearTimeout(eventPollRef.current.timer);
       }
+      const now = Date.now();
+      const boostUntil = eventPollRef.current.boostUntil;
+      const boostActive = boostUntil != null && boostUntil > now;
+      const nextDelay = boostActive ? 1000 : delay;
       eventPollRef.current.timer = window.setTimeout(async () => {
-        const current = wsRef.current;
+        const current = sseRef.current;
+        const isOpen =
+          current != null && current.readyState === EventSource.OPEN;
         let hasNew = false;
-        if (!current || current.readyState !== WebSocket.OPEN) {
+        if (!isOpen) {
           hasNew =
             (await loadAgentEvents(activeAgent, activeSessionId)) === true;
         } else {
@@ -672,12 +582,13 @@ export function App() {
         }
         if (hasNew) {
           eventPollRef.current.idleCount = 0;
-        } else if (!current || current.readyState !== WebSocket.OPEN) {
+        } else if (!isOpen) {
           eventPollRef.current.idleCount += 1;
         }
         schedulePoll(getAdaptivePollInterval(eventPollRef.current.idleCount));
-      }, delay);
+      }, nextDelay);
     };
+    schedulePollRef.current = schedulePoll;
     schedulePoll(getAdaptivePollInterval(0));
     return () => {
       if (eventPollRef.current.timer) {
@@ -685,10 +596,12 @@ export function App() {
         eventPollRef.current.timer = null;
       }
       eventPollRef.current.idleCount = 0;
-      if (wsRef.current === ws) {
-        wsRef.current = null;
+      eventPollRef.current.boostUntil = null;
+      schedulePollRef.current = null;
+      if (sseRef.current === source) {
+        sseRef.current = null;
       }
-      ws.close();
+      source.close();
     };
   }, [token, activeAgent, activeSessionId, activeAgentStatus]);
 
@@ -703,7 +616,7 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
-    const load = async () => {
+    const pollOnce = async (): Promise<number> => {
       try {
         const items = await api.listAcpPermissions(token, activeAgent, "pending");
         if (!cancelled) {
@@ -711,35 +624,43 @@ export function App() {
             isSamePermissionList(prev, items) ? prev : items
           );
         }
+        return items.length;
       } catch {
         if (!cancelled) setAcpPermissions([]);
+        return 0;
       }
     };
-    load();
-    const timer = window.setInterval(load, 3000);
+    const schedule = (delay: number) => {
+      if (permissionPollRef.current.timer) {
+        window.clearTimeout(permissionPollRef.current.timer);
+      }
+      permissionPollRef.current.timer = window.setTimeout(async () => {
+        const pendingCount = await pollOnce();
+        const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
+        schedule(nextDelay);
+      }, delay);
+    };
+    schedulePermissionPollRef.current = schedule;
+    schedule(0);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (permissionPollRef.current.timer) {
+        window.clearTimeout(permissionPollRef.current.timer);
+        permissionPollRef.current.timer = null;
+      }
+      schedulePermissionPollRef.current = null;
     };
   }, [token, activeAgent, activeSessionId]);
 
   useEffect(() => {
-    if (!acpView.thinkingStartTs) return;
+    if (!thinkingStartTs) return;
     if (activeAgentStatus !== "running") return;
     setThinkingTick(0);
     const timer = window.setInterval(() => {
-      const last = lastAcpEventTsRef.current;
-      if (last != null) {
-        const idleFor = Math.max(0, Date.now() / 1000 - last);
-        if (idleFor > 5) {
-          window.clearInterval(timer);
-          return;
-        }
-      }
       setThinkingTick((prev) => prev + 1);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [acpView.thinkingStartTs, activeAgentStatus]);
+  }, [thinkingStartTs, activeAgentStatus]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
@@ -821,6 +742,7 @@ export function App() {
     setAgents([]);
     setActiveAgent(null);
     setOutputs([]);
+    setAcpOutputs([]);
     setSafePaths([]);
     setDevices([]);
     setAcpPermissions([]);
@@ -861,7 +783,6 @@ export function App() {
         setActiveSessionId(res.session_id);
         setAgentSessions((prev) => ({ ...prev, [agent.id]: res.session_id }));
         setActiveAgent(agent.id);
-        setOutputs([]);
         await refreshAgents();
       } catch (err) {
         const msg = parseApiErrorMessage(err) ?? String(err);
@@ -893,7 +814,6 @@ export function App() {
       setActiveSessionId(res.session_id);
       setAgentSessions((prev) => ({ ...prev, [id]: res.session_id }));
       setActiveAgent(id);
-      setOutputs([]);
       await refreshAgents();
     } catch (err) {
       const hint = formatWorktreeError(err);
@@ -929,6 +849,7 @@ export function App() {
         setActiveAgent(null);
         setActiveSessionId(null);
         setOutputs([]);
+        setAcpOutputs([]);
       }
     } catch (err) {
       setError(String(err));
@@ -1019,7 +940,9 @@ export function App() {
   const onSendInput = async () => {
     if (!input.trim()) return;
     if (!token || !activeAgent) return;
-    jumpToConversationBottom();
+    eventPollRef.current.boostUntil = Date.now() + 10_000;
+    schedulePollRef.current?.(1000);
+    acpConversation.jumpToConversationBottom();
     const text = input.trim();
     let messageId: string | null = null;
     if (activeSessionId) {
@@ -1047,12 +970,11 @@ export function App() {
         ...prev,
         [key]: mergeOutputs(prev[key] ?? [], [line]),
       }));
-    }
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data: text, message_id: messageId }));
-      setInput("");
-      return;
+      setAcpOutputs((prev) => mergeOutputs(prev, [line]));
+      setAcpOutputCache((prev) => ({
+        ...prev,
+        [key]: mergeOutputs(prev[key] ?? [], [line]),
+      }));
     }
     try {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
@@ -1069,6 +991,7 @@ export function App() {
   ) => {
     if (!token) return;
     setPermissionBusy(permissionId);
+    schedulePermissionPollRef.current?.(1000);
     try {
       await api.respondAcpPermission(token, agentId, permissionId, {
         option_id: optionId ?? null,
@@ -1280,1162 +1203,121 @@ export function App() {
 
       {auth && (
         <section className={agentsCollapsed ? "workspace collapsed" : "workspace"}>
-          {!agentsCollapsed && (
-            <div
-              className="agents-backdrop"
-              onClick={() => setAgentsCollapsed(true)}
-            />
-          )}
-          <div className={agentsCollapsed ? "workspace-left collapsed" : "workspace-left"}>
-            <div className="toolbar">
-              <h2>Agents</h2>
-              <div className="toolbar-actions">
-                <button onClick={() => setShowCreateAgent(true)}>
-                  Create Agent
-                </button>
-              </div>
-            </div>
-            <div className="agent-layout">
-              <div className="agent-list">
-                {agents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className={
-                      activeAgent === agent.id ? "agent-row active" : "agent-row"
-                    }
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      setActiveAgent(agent.id);
-                      setActiveSessionId(agentSessions[agent.id] ?? null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        setActiveAgent(agent.id);
-                        setActiveSessionId(agentSessions[agent.id] ?? null);
-                      }
-                    }}
-                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
-                  >
-                    <div className="agent-row-head">
-                      <span className="agent-name">{agent.name}</span>
-                      <div className="agent-row-actions">
-                        <button
-                          className={
-                            agent.code_mode
-                              ? "icon-button small code-active"
-                              : "icon-button small"
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSetCodeMode(agent.id, !agent.code_mode);
-                          }}
-                          title={
-                            agent.code_mode
-                              ? "Disable code mode"
-                              : "Enable code mode"
-                          }
-                          aria-label={
-                            agent.code_mode
-                              ? "Disable code mode"
-                              : "Enable code mode"
-                          }
-                          aria-pressed={agent.code_mode}
-                        >
-                          <i className="bi bi-code-slash" aria-hidden="true" />
-                        </button>
-                        <span className={`agent-status ${agent.status}`}>
-                          {agent.status}
-                        </span>
-                        <button
-                          className="icon-button small"
-                          disabled={agent.status === "running"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (agent.status !== "running") {
-                              onStartAgent(agent.id);
-                            }
-                          }}
-                          title={
-                            agent.status === "running"
-                              ? "Already running"
-                              : "Start"
-                          }
-                          aria-label="Start"
-                        >
-                          <i className="bi bi-play-fill" aria-hidden="true" />
-                        </button>
-                        {agent.status === "running" && (
-                          <button
-                            className="icon-button small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onStopAgent(agent.id);
-                            }}
-                            title="Stop"
-                            aria-label="Stop"
-                          >
-                            <i className="bi bi-stop-fill" aria-hidden="true" />
-                          </button>
-                        )}
-                        <button
-                          className="icon-button small danger"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteAgent(agent.id);
-                          }}
-                          title="Delete"
-                          aria-label="Delete"
-                        >
-                          <i className="bi bi-trash" aria-hidden="true" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="agent-row-meta">
-                      <span>{agent.workdir}</span>
-                      <span className="agent-code-mode">
-                        Code mode: {agent.code_mode ? "on" : "off"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <AgentsPanel
+            agents={agents}
+            activeAgent={activeAgent}
+            agentsCollapsed={agentsCollapsed}
+            onCollapse={() => setAgentsCollapsed(true)}
+            onCreateAgent={() => setShowCreateAgent(true)}
+            onSelectAgent={(id) => {
+              setActiveAgent(id);
+              setActiveSessionId(agentSessions[id] ?? null);
+            }}
+            onToggleCodeMode={onSetCodeMode}
+            onStartAgent={onStartAgent}
+            onStopAgent={onStopAgent}
+            onDeleteAgent={onDeleteAgent}
+          />
           <div className="workspace-right">
-            <div className="output-header">
-              <div className="output-title">
-                <button
-                  className="icon-button small"
-                  onClick={() => setAgentsCollapsed((prev) => !prev)}
-                  title={agentsCollapsed ? "Show agents" : "Hide agents"}
-                  aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
-                >
-                  <i
-                    className={
-                      agentsCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"
-                    }
-                    aria-hidden="true"
-                  />
-                </button>
-                <h2>Output</h2>
-              </div>
-              {activeAgentRecord && (
-                <span className="output-subtitle">
-                  {activeAgentRecord.name} · Code mode:{" "}
-                  {activeAgentRecord.code_mode ? "on" : "off"}
-                </span>
-              )}
-            </div>
+            <OutputHeader
+              activeAgent={activeAgentRecord}
+              agentsCollapsed={agentsCollapsed}
+              onToggleAgents={() => setAgentsCollapsed((prev) => !prev)}
+            />
             {activeAgent ? (
-              <div className="output-body" ref={outputRef}>
-                {isOutputLoading ? (
-                  <div className="output-loading">
-                    <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-                    <div className="label">Waiting for output</div>
-                  </div>
-                ) : acpView.hasAcp ? (
-                  <div className="acp">
-                    <div className="acp-head">
-                      <div className="acp-title">
-                        ACP
-                        {activeSessionId && (
-                          <span className="acp-session">
-                            {activeSessionId.slice(0, 8)}
-                          </span>
-                        )}
-                        {showAcpRuntime && acpView.runStatus?.status && (
-                          <span
-                            className={`acp-run ${acpView.runStatus.status}`}
-                          >
-                            {acpView.runStatus.status}
-                          </span>
-                        )}
-                        {showAcpRuntime && acpView.thinkingStartTs && (
-                          <span className="acp-thinking">
-                            thinking{" "}
-                            {Math.max(
-                              0,
-                              Math.floor(
-                                Date.now() / 1000 - acpView.thinkingStartTs
-                              )
-                            )}
-                            s
-                          </span>
-                        )}
-                      </div>
-                      <div className="acp-tabs">
-                        <button
-                          className={
-                            acpTab === "conversation" ? "tab active" : "tab"
-                          }
-                          onClick={() => setAcpTab("conversation")}
-                        >
-                          Conversation
-                          {showConversationBadge && (
-                            <span className="tab-badge">
-                              +{conversationPendingCount}
-                            </span>
-                          )}
-                        </button>
-                        <button
-                          className={acpTab === "debug" ? "tab active" : "tab"}
-                          onClick={() => setAcpTab("debug")}
-                        >
-                          Debug
-                        </button>
-                      </div>
-                    </div>
-                    {acpTab === "conversation" && (
-                      <div
-                        className="acp-conversation"
-                        ref={acpConversationRef}
-                        onScroll={() => {
-                          const el = acpConversationRef.current;
-                          if (!el) return;
-                          const stick = isNearBottom(
-                            el.scrollHeight,
-                            el.scrollTop,
-                            el.clientHeight
-                          );
-                          acpStickToBottomRef.current = stick;
-                          if (stick !== conversationStickToBottom) {
-                            if (!stick) {
-                              const maxSeq =
-                                deriveConversationFreezeMaxSeq(conversationMessages);
-                              const frozen = applyConversationFreeze(
-                                conversationMessages,
-                                maxSeq ?? Number.MAX_SAFE_INTEGER
-                              );
-                              setConversationFrozen(true);
-                              setConversationFrozenItems(frozen.frozen);
-                              setConversationFreezeMaxSeq(maxSeq);
-                              setConversationPendingCount(frozen.pending);
-                            } else {
-                              setConversationFrozen(false);
-                              setConversationFreezeMaxSeq(null);
-                              setConversationFrozenItems([]);
-                              setConversationPendingCount(0);
-                            }
-                            setConversationStickToBottom(stick);
-                          }
-                          if (el.scrollTop < 80) {
-                            loadOlderEvents();
-                          }
-                        }}
-                      >
-                        <div className="acp-conversation-inner">
-                          {conversationRenderItems.map((msg, idx) => {
-                            const key =
-                              msg.seq != null
-                                ? `${msg.seq}-${msg.kind}`
-                                : `${conversationWindow.offset + idx}-${msg.kind}`;
-                            const globalIndex = isFrozenView
-                              ? idx
-                              : conversationWindow.offset + idx;
-                            const autoCollapse =
-                              shouldAutoCollapse && globalIndex < collapseCutoff;
-                            if (msg.kind === "agent_thinking") {
-                              const preview = autoCollapse
-                                ? formatConversationPreview(msg.text, 80)
-                                : "";
-                              const summary = msg.live
-                                ? "Thinking (live)"
-                                : autoCollapse
-                                  ? `Thinking: ${preview}`
-                                  : "Thinking (collapsed)";
-                              return (
-                                <div key={key} className="acp-bubble agent_thinking">
-                                  <details className="acp-thought-fold" open={msg.live}>
-                                    <summary>{summary}</summary>
-                                    <div className="acp-text">
-                                      <pre>{msg.text}</pre>
-                                    </div>
-                                  </details>
-                                </div>
-                              );
-                            }
-                            if (msg.kind === "agent_plan") {
-                              const preview = autoCollapse
-                                ? formatConversationPreview(msg.text, 80)
-                                : "";
-                              const summary = autoCollapse
-                                ? `Plan: ${preview}`
-                                : "Plan (collapsed)";
-                              return (
-                                <div key={key} className="acp-bubble agent_plan">
-                                  <details className="acp-thought-fold">
-                                    <summary>{summary}</summary>
-                                    <div className="acp-text">
-                                      <pre>{msg.text}</pre>
-                                    </div>
-                                  </details>
-                                </div>
-                              );
-                            }
-                            if (msg.kind === "tool_call") {
-                              const isLive = isToolCallLive(msg.status);
-                              const toolKey = msg.status
-                                ? `${key}-${msg.status}`
-                                : key;
-                              return (
-                                <div key={toolKey} className="acp-bubble tool_call">
-                                  <details
-                                    className="acp-tool-fold"
-                                    {...(isLive ? { open: true } : {})}
-                                  >
-                                    <summary>
-                                      <span className="acp-tool-title">
-                                        Tool Call
-                                        {msg.title ? `: ${msg.title}` : ""}
-                                      </span>
-                                      {msg.status && (
-                                        <span className="acp-tool-status">
-                                          {msg.status}
-                                        </span>
-                                      )}
-                                    </summary>
-                                    {msg.content && (
-                                      <div className="acp-text">
-                                        <pre>{unescapeLineBreaks(msg.content)}</pre>
-                                      </div>
-                                    )}
-                                    {msg.raw_input && (
-                                      <pre className="acp-content">
-                                        {formatToolCallPayload(msg.raw_input)}
-                                      </pre>
-                                    )}
-                                    {msg.raw_output && (
-                                      <pre className="acp-content">
-                                        {formatToolCallPayload(msg.raw_output)}
-                                      </pre>
-                                    )}
-                                    {msg.terminal_output && (
-                                      <pre
-                                        className="acp-content"
-                                        dangerouslySetInnerHTML={{
-                                          __html: ansi(
-                                            unescapeLineBreaks(msg.terminal_output)
-                                          ),
-                                        }}
-                                      />
-                                    )}
-                                  </details>
-                                </div>
-                              );
-                            }
-                            if (msg.kind === "agent_message") {
-                              if (autoCollapse) {
-                                const preview = formatConversationPreview(
-                                  msg.text,
-                                  80
-                                );
-                                return (
-                                  <div key={key} className="acp-bubble agent_message">
-                                    <details className="acp-message-fold">
-                                      <summary>{preview}</summary>
-                                      <div
-                                        className="acp-text"
-                                        dangerouslySetInnerHTML={{
-                                          __html: renderMarkdown(msg.text),
-                                        }}
-                                      />
-                                    </details>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div key={key} className="acp-bubble agent_message">
-                                  <div
-                                    className="acp-text"
-                                    dangerouslySetInnerHTML={{
-                                      __html: renderMarkdown(msg.text),
-                                    }}
-                                  />
-                                </div>
-                              );
-                            }
-                            if (autoCollapse) {
-                              const preview = formatConversationPreview(msg.text, 80);
-                              return (
-                                <div key={key} className="acp-bubble user_message">
-                                  <details className="acp-message-fold">
-                                    <summary>{preview}</summary>
-                                    <div
-                                      className="acp-text"
-                                      dangerouslySetInnerHTML={{
-                                        __html: renderMarkdown(msg.text),
-                                      }}
-                                    />
-                                  </details>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div key={key} className="acp-bubble user_message">
-                                <div
-                                  className="acp-text"
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderMarkdown(msg.text),
-                                  }}
-                                />
-                              </div>
-                            );
-                          })}
-                          {!conversationStickToBottom && conversationPendingCount > 0 && (
-                            <div
-                              className="acp-conversation-spacer"
-                              style={{
-                                height: Math.round(
-                                  conversationPendingCount *
-                                    conversationAvgHeightRef.current
-                                ),
-                              }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {acpTab === "debug" && (
-                      <div className="acp-debug">
-                        <div className="acp-controls">
-                          <h4>Session Controls</h4>
-                          <div className="acp-control-meta">
-                            Current mode: {acpView.currentMode ?? "unknown"}
-                          </div>
-                          <div className="form-row">
-                            <input
-                              placeholder="Mode ID"
-                              value={acpModeId}
-                              onChange={(e) => setAcpModeId(e.target.value)}
-                            />
-                            <button onClick={onAcpSetMode} disabled={!canControlAcp}>
-                              Set Mode
-                            </button>
-                          </div>
-                          <div className="form-row">
-                            <input
-                              placeholder="Model ID"
-                              value={acpModelId}
-                              onChange={(e) => setAcpModelId(e.target.value)}
-                            />
-                            <button onClick={onAcpSetModel} disabled={!canControlAcp}>
-                              Set Model
-                            </button>
-                          </div>
-                          <div className="form-row">
-                            <input
-                              placeholder="Config ID"
-                              value={acpConfigId}
-                              onChange={(e) => setAcpConfigId(e.target.value)}
-                            />
-                            <input
-                              placeholder="Config Value ID"
-                              value={acpConfigValue}
-                              onChange={(e) => setAcpConfigValue(e.target.value)}
-                            />
-                            <button onClick={onAcpSetConfig} disabled={!canControlAcp}>
-                              Set Config
-                            </button>
-                          </div>
-                          <div className="form-row">
-                            <button onClick={onAcpCancel} disabled={!canControlAcp}>
-                              Cancel Run
-                            </button>
-                            <button onClick={onAcpClearSession}>
-                              Clear Session
-                            </button>
-                          </div>
-                        </div>
-                        <div className="acp-permissions">
-                          <h4>Permissions</h4>
-                          {acpPermissionHistory.length === 0 && (
-                            <div className="empty">No permissions yet.</div>
-                          )}
-                          {acpPermissionHistory.map((perm) => (
-                            <div key={perm.id} className="acp-permission">
-                              <div className="head">
-                                <div className="title">{perm.permission}</div>
-                                <div className="meta">{perm.status}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="acp-raw-wrapper">
-                          <h4>Raw Events</h4>
-                          <ul className="acp-raw">
-                            {acpView.rawEvents.map((evt, idx) => (
-                              <li key={`${evt.ts}-${idx}`}>
-                                <div className="meta">
-                                  <span>
-                                    {new Date(
-                                      evt.ts * 1000
-                                    ).toLocaleTimeString()}
-                                  </span>
-                                  <span className="mono">{evt.type}</span>
-                                </div>
-                                <pre className="acp-content">
-                                  {JSON.stringify(evt.payload, null, 2)}
-                                </pre>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="terminal">
-                    {outputs.map((line, idx) => (
-                      <div
-                        key={idx}
-                        className={`line ${line.stream}`}
-                        dangerouslySetInnerHTML={{
-                          __html: ansi(line.message),
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <OutputErrorBoundary>
+                <OutputBody
+                  outputRef={outputRef}
+                  isOutputLoading={isOutputLoading}
+                  outputs={outputs}
+                  ansi={ansi}
+                  acpPanelProps={{
+                    acpView,
+                    activeSessionId,
+                    showAcpRuntime,
+                    thinkingStartTs,
+                    acpTab,
+                    onSelectTab: (next) => setAcpTab(next),
+                    showConversationBadge: acpConversation.showConversationBadge,
+                    conversation: {
+                      items: acpConversation.conversationRenderItems,
+                      windowOffset: acpConversation.conversationWindowOffset,
+                      isFrozenView: acpConversation.isFrozenView,
+                      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
+                      collapseCutoff: acpConversation.collapseCutoff,
+                      stickToBottom: acpConversation.conversationStickToBottom,
+                      pendingCount: acpConversation.conversationPendingCount,
+                      avgHeight: acpConversation.conversationAvgHeight,
+                      onScroll: acpConversation.handleConversationScroll,
+                      containerRef: acpConversation.acpConversationRef,
+                      ansi,
+                    },
+                    debug: {
+                      currentMode: acpView.currentMode,
+                      rawEvents: acpView.rawEvents,
+                      acpPermissionHistory,
+                      acpModeId,
+                      acpModelId,
+                      acpConfigId,
+                      acpConfigValue,
+                      onAcpModeIdChange: setAcpModeId,
+                      onAcpModelIdChange: setAcpModelId,
+                      onAcpConfigIdChange: setAcpConfigId,
+                      onAcpConfigValueChange: setAcpConfigValue,
+                      canControlAcp,
+                      onAcpSetMode,
+                      onAcpSetModel,
+                      onAcpSetConfig,
+                      onAcpCancel,
+                      onAcpClearSession,
+                    },
+                  }}
+                />
+              </OutputErrorBoundary>
             ) : null}
-            <div className="input docked">
-              {showConversationJump && (
-                <button
-                  className="jump-bottom"
-                  onClick={jumpToConversationBottom}
-                  title="Jump to bottom"
-                  aria-label="Jump to bottom"
-                >
-                  <i className="bi bi-chevron-down" aria-hidden="true" />
-                </button>
-              )}
-              <textarea
-                placeholder="Send input (Enter to send, Shift+Enter for newline)"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onCompositionStart={() => {
-                  isComposingRef.current = true;
-                }}
-                onCompositionEnd={() => {
-                  isComposingRef.current = false;
-                }}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !isComposingRef.current
-                  ) {
-                    e.preventDefault();
-                    onSendInput();
-                  }
-                }}
-                rows={2}
-              />
-              <button onClick={onSendInput}>Send</button>
-            </div>
+            <InputDock
+              input={input}
+              onInputChange={setInput}
+              onSendInput={onSendInput}
+              onJumpToBottom={acpConversation.jumpToConversationBottom}
+              showConversationJump={acpConversation.showConversationJump}
+              isComposingRef={isComposingRef}
+            />
           </div>
         </section>
       )}
 
       {auth && showCreateAgent && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <div className="modal-head">
-              <h3>Create Agent</h3>
-              <button
-                className="ghost"
-                onClick={() => setShowCreateAgent(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-grid">
-                <input
-                  placeholder="Agent name"
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                />
-                <input
-                  placeholder="Workdir"
-                  value={agentWorkdir}
-                  onChange={(e) => setAgentWorkdir(e.target.value)}
-                />
-                <select
-                  value={worktreeMode}
-                  onChange={(e) =>
-                    setWorktreeMode(
-                      e.target.value as
-                        | "use_existing"
-                        | "create_worktree"
-                        | "reuse_worktree"
-                    )
-                  }
-                >
-                  <option value="use_existing">Use existing workdir</option>
-                  <option value="create_worktree">Create git worktree</option>
-                  <option value="reuse_worktree">Reuse git worktree</option>
-                </select>
-                {(worktreeMode === "create_worktree" ||
-                  worktreeMode === "reuse_worktree") && (
-                  <input
-                    placeholder="Worktree repo path"
-                    value={worktreeRepo}
-                    onChange={(e) => setWorktreeRepo(e.target.value)}
-                  />
-                )}
-                {worktreeMode === "create_worktree" && (
-                  <input
-                    placeholder="Worktree ref (branch or commit)"
-                    value={worktreeRef}
-                    onChange={(e) => setWorktreeRef(e.target.value)}
-                  />
-                )}
-                <select
-                  value={agentCommand}
-                  onChange={(e) => setAgentCommand(e.target.value)}
-                >
-                  <option value="agenthub-codex-acp">agenthub-codex-acp</option>
-                </select>
-              </div>
-              <div className="checkbox-row">
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={codeMode}
-                    onChange={(e) => setCodeMode(e.target.checked)}
-                  />
-                  <span>Code mode</span>
-                </label>
-              </div>
-              {worktreeError && (
-                <div className="worktree-error">
-                  <h4>Worktree Setup Failed</h4>
-                  <p>{worktreeError}</p>
-                  <ul>
-                    <li>Check Safe Paths for the workdir and repo path.</li>
-                    <li>Ensure the workdir is empty when creating a worktree.</li>
-                    <li>Verify the git repo exists and the ref is valid.</li>
-                  </ul>
-                </div>
-              )}
-            </div>
-            <div className="modal-actions">
-              <button onClick={onCreateAgent}>Create Agent</button>
-              <button
-                className="ghost"
-                onClick={() => setShowCreateAgent(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateAgentModal
+          agentName={agentName}
+          setAgentName={setAgentName}
+          agentWorkdir={agentWorkdir}
+          setAgentWorkdir={setAgentWorkdir}
+          agentCommand={agentCommand}
+          setAgentCommand={setAgentCommand}
+          worktreeMode={worktreeMode}
+          setWorktreeMode={setWorktreeMode}
+          worktreeRepo={worktreeRepo}
+          setWorktreeRepo={setWorktreeRepo}
+          worktreeRef={worktreeRef}
+          setWorktreeRef={setWorktreeRef}
+          codeMode={codeMode}
+          setCodeMode={setCodeMode}
+          worktreeError={worktreeError}
+          onCreateAgent={onCreateAgent}
+          onClose={() => setShowCreateAgent(false)}
+        />
       )}
 
       {auth && activeAgent && acpPermissions.length > 0 && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <div className="modal-head">
-              <h3>Permission Requests</h3>
-              <span className="badge">{acpPermissions.length}</span>
-            </div>
-            <div className="modal-body">
-              {acpPermissions.map((perm) => {
-                const toolCall = perm.tool_call as {
-                  title?: string;
-                  tool_call_id?: string;
-                } | null;
-                const title =
-                  toolCall?.title ??
-                  perm.tool_call_id ??
-                  "Permission Request";
-                return (
-                  <div key={perm.id} className="acp-permission">
-                    <div className="head">
-                      <div className="title">{title}</div>
-                      <div className="meta">{perm.status}</div>
-                    </div>
-                    <div className="options">
-                      {perm.options.map((opt) => (
-                        <button
-                          key={opt.option_id}
-                          disabled={permissionBusy === perm.id}
-                          onClick={() =>
-                            onRespondPermission(
-                              perm.agent_id,
-                              perm.id,
-                              opt.option_id
-                            )
-                          }
-                        >
-                          {opt.name}
-                        </button>
-                      ))}
-                      <button
-                        disabled={permissionBusy === perm.id}
-                        onClick={() =>
-                          onRespondPermission(perm.agent_id, perm.id)
-                        }
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <PermissionModal
+          permissions={acpPermissions}
+          permissionBusy={permissionBusy}
+          onRespond={onRespondPermission}
+        />
       )}
     </div>
   );
-}
-
-function AuthRequired() {
-  return (
-    <div className="app">
-      <section className="auth">
-        <h2>Login Required</h2>
-        <p>Please login to continue.</p>
-      </section>
-    </div>
-  );
-}
-
-function ForbiddenPage() {
-  return (
-    <div className="app">
-      <section className="auth">
-        <h2>Forbidden</h2>
-        <p>You do not have access to this page.</p>
-      </section>
-    </div>
-  );
-}
-
-type AdminProps = {
-  auth: AuthState;
-  error: string | null;
-  setError: (value: string | null) => void;
-  safePaths: SafePath[];
-  selectedSafePaths: Set<string>;
-  onToggleSafePath: (path: string) => void;
-  onToggleAllSafePaths: () => void;
-  onDeleteSelectedSafePaths: () => void;
-  devices: DeviceRecord[];
-  audits: AuditRecord[];
-  vapidInfo: VapidInfo | null;
-  onRotateVapid: () => void;
-  onAddSafePath: () => void;
-  onDeleteSafePath: (path: string) => void;
-  onRevokeDevice: (id: string) => void;
-  onCreateJoin: () => void;
-  joinQr: string | null;
-  joinToken: string | null;
-  joinPin: string | null;
-  safePathInput: string;
-  setSafePathInput: (value: string) => void;
-};
-
-function AdminPage(props: AdminProps) {
-  const [tab, setTab] = useState<"safe" | "devices" | "audits" | "join" | "vapid">(
-    "safe"
-  );
-  return (
-    <div className="app">
-      <header>
-        <h1>AgentHub Admin</h1>
-        <div className="session">
-          <a className="icon-button" href="/" title="Back" aria-label="Back">
-            <i className="bi bi-arrow-left" aria-hidden="true" />
-          </a>
-          <span>{props.auth.username}</span>
-        </div>
-      </header>
-
-      {props.error && (
-        <ErrorBanner message={props.error} onClose={() => props.setError(null)} />
-      )}
-
-      <section className="admin">
-        <div className="toolbar">
-          <h2>Admin</h2>
-          <button onClick={props.onCreateJoin}>Create Join QR</button>
-        </div>
-        <div className="tab-bar">
-          <button
-            className={tab === "safe" ? "tab active" : "tab"}
-            onClick={() => setTab("safe")}
-          >
-            Safe Paths
-          </button>
-          <button
-            className={tab === "devices" ? "tab active" : "tab"}
-            onClick={() => setTab("devices")}
-          >
-            Devices
-          </button>
-          <button
-            className={tab === "audits" ? "tab active" : "tab"}
-            onClick={() => setTab("audits")}
-          >
-            Login Audits
-          </button>
-          <button
-            className={tab === "join" ? "tab active" : "tab"}
-            onClick={() => setTab("join")}
-          >
-            Join Device
-          </button>
-          <button
-            className={tab === "vapid" ? "tab active" : "tab"}
-            onClick={() => setTab("vapid")}
-          >
-            VAPID Keys
-          </button>
-        </div>
-
-        <div className="admin-panel">
-          {tab === "safe" && (
-            <div className="card">
-              <h3>Safe Paths</h3>
-              <div className="form-row">
-                <input
-                  placeholder="Add safe path"
-                  value={props.safePathInput}
-                  onChange={(e) => props.setSafePathInput(e.target.value)}
-                />
-                <button onClick={props.onAddSafePath}>Add Path</button>
-              </div>
-              <div className="form-row">
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={
-                      props.safePaths.length > 0 &&
-                      props.safePaths.every((p) =>
-                        props.selectedSafePaths.has(p.path)
-                      )
-                    }
-                    onChange={props.onToggleAllSafePaths}
-                  />
-                  Select All
-                </label>
-                <button onClick={props.onDeleteSelectedSafePaths}>
-                  Delete Selected
-                </button>
-              </div>
-              <ul>
-                {props.safePaths.map((p) => (
-                  <li key={p.path}>
-                    <label className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={props.selectedSafePaths.has(p.path)}
-                        onChange={() => props.onToggleSafePath(p.path)}
-                      />
-                    </label>
-                    <span>{p.path}</span>
-                    <button onClick={() => props.onDeleteSafePath(p.path)}>
-                      Delete
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {tab === "devices" && (
-            <div className="card">
-              <h3>Devices</h3>
-              <ul>
-                {props.devices.map((d) => (
-                  <li key={d.id}>
-                    <span>
-                      {d.name} - {d.status}
-                    </span>
-                    {d.status === "active" && (
-                      <button onClick={() => props.onRevokeDevice(d.id)}>
-                        Revoke
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {tab === "audits" && (
-            <div className="card">
-              <h3>Login Audits</h3>
-              <ul>
-                {props.audits.map((a) => (
-                  <li key={a.id}>
-                    <span>
-                      {new Date(a.ts * 1000).toLocaleString()} - {a.event}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {tab === "join" && (
-            <div className="card join-card">
-              <h3>Join Device</h3>
-              {props.joinQr && <img src={props.joinQr} alt="join qr" />}
-              {props.joinToken && <p>Token: {props.joinToken}</p>}
-              {props.joinPin && <p>PIN: {props.joinPin}</p>}
-            </div>
-          )}
-          {tab === "vapid" && (
-            <div className="card">
-              <h3>VAPID Keys</h3>
-              {props.vapidInfo ? (
-                <div className="kv-list">
-                  <div className="kv-row">
-                    <span className="label">Subject</span>
-                    <span className="value">{props.vapidInfo.subject}</span>
-                  </div>
-                  <div className="kv-row">
-                    <span className="label">Public Key</span>
-                    <span className="value mono">{props.vapidInfo.public_key}</span>
-                  </div>
-                  <div className="kv-row">
-                    <span className="label">Keys Path</span>
-                    <span className="value mono">{props.vapidInfo.keys_path}</span>
-                  </div>
-                </div>
-              ) : (
-                <p>VAPID keys not loaded.</p>
-              )}
-              {/* TODO: add copy button and rotate confirmation. */}
-              <div className="form-row">
-                <button onClick={props.onRotateVapid}>Rotate Keys</button>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void }) {
-  const token = new URLSearchParams(location.search).get("token") || "";
-  const [tokenError] = useState(token ? null : "missing join token");
-  const [pin, setPin] = useState("");
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [deviceName, setDeviceName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const onJoin = async () => {
-    setError(null);
-    try {
-      const start = await api.joinStart({
-        token,
-        pin,
-        username,
-        display_name: displayName,
-        password,
-        device_name: deviceName || "Device",
-      });
-      const options = publicKeyCredentialCreationOptionsFromJson(start.options);
-      const cred = await navigator.credentials.create({ publicKey: options });
-      if (!cred) throw new Error("registration cancelled");
-      const payload = registerCredentialToJson(cred as PublicKeyCredential);
-      const finish = await api.joinFinish(start.challenge_id, payload);
-      const next = {
-        token: finish.token,
-        userId: finish.user_id,
-        username,
-        role: "device",
-      };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
-      await ensurePushSubscription(finish.token);
-      onComplete(next);
-      location.href = "/";
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  return (
-    <div className="app">
-      <section className="auth">
-        <h2>Join Device</h2>
-        {tokenError && <div className="error">{tokenError}</div>}
-        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-        <input placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
-        <input
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          placeholder="Display Name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <input
-          placeholder="Device Name"
-          value={deviceName}
-          onChange={(e) => setDeviceName(e.target.value)}
-        />
-        <button onClick={onJoin}>Join</button>
-      </section>
-    </div>
-  );
-}
-
-async function ensurePushSubscription(token: string) {
-  if (!("serviceWorker" in navigator)) return;
-  if (!("PushManager" in window)) return;
-  let registration: ServiceWorkerRegistration;
-  try {
-    registration = await navigator.serviceWorker.register("/sw.js");
-    registration = await navigator.serviceWorker.ready;
-  } catch {
-    return;
-  }
-  if (!registration.pushManager) return;
-  let sub = await registration.pushManager.getSubscription();
-  if (!sub) {
-    let vapid: { public_key: string };
-    try {
-      vapid = await api.getVapidPublicKey();
-    } catch {
-      return;
-    }
-    const key = urlBase64ToUint8Array(vapid.public_key);
-    try {
-      sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key,
-      });
-    } catch {
-      return;
-    }
-  }
-  try {
-    await api.subscribePush(token, sub.toJSON());
-  } catch {
-    return;
-  }
-}
-
-
-function publicKeyCredentialCreationOptionsFromJson(options: unknown) {
-  const maybe = options as { publicKey?: PublicKeyCredentialCreationOptions };
-  const o = (maybe.publicKey ?? options) as PublicKeyCredentialCreationOptions;
-  const challenge = toArrayBuffer(o.challenge, "challenge");
-  const user = o.user as PublicKeyCredentialUserEntity;
-  const userId = toArrayBuffer(user.id, "user.id");
-  const exclude = (o.excludeCredentials ?? []).map((c) => ({
-    ...c,
-    id: toArrayBuffer(c.id, "excludeCredentials.id"),
-  }));
-  return {
-    ...o,
-    challenge,
-    user: { ...user, id: userId },
-    excludeCredentials: exclude,
-  } as PublicKeyCredentialCreationOptions;
-}
-
-function publicKeyCredentialRequestOptionsFromJson(options: unknown) {
-  const maybe = options as { publicKey?: PublicKeyCredentialRequestOptions };
-  const o = (maybe.publicKey ?? options) as PublicKeyCredentialRequestOptions;
-  const challenge = toArrayBuffer(o.challenge, "challenge");
-  const allow = (o.allowCredentials ?? []).map((c) => ({
-    ...c,
-    id: toArrayBuffer(c.id, "allowCredentials.id"),
-  }));
-  return {
-    ...o,
-    challenge,
-    allowCredentials: allow,
-  } as PublicKeyCredentialRequestOptions;
-}
-
-function registerCredentialToJson(cred: PublicKeyCredential) {
-  const response = cred.response as AuthenticatorAttestationResponse;
-  return {
-    id: cred.id,
-    rawId: bufferToBase64Url(cred.rawId),
-    type: cred.type,
-    response: {
-      clientDataJSON: bufferToBase64Url(response.clientDataJSON),
-      attestationObject: bufferToBase64Url(response.attestationObject),
-      transports: response.getTransports?.() ?? [],
-    },
-  };
-}
-
-function loginCredentialToJson(cred: PublicKeyCredential) {
-  const response = cred.response as AuthenticatorAssertionResponse;
-  return {
-    id: cred.id,
-    rawId: bufferToBase64Url(cred.rawId),
-    type: cred.type,
-    response: {
-      clientDataJSON: bufferToBase64Url(response.clientDataJSON),
-      authenticatorData: bufferToBase64Url(response.authenticatorData),
-      signature: bufferToBase64Url(response.signature),
-      userHandle: response.userHandle
-        ? bufferToBase64Url(response.userHandle)
-        : null,
-    },
-  };
-}
-
-function bufferToBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function base64UrlToBuffer(value: string): ArrayBuffer {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-function urlBase64ToUint8Array(value: string): Uint8Array {
-  return new Uint8Array(base64UrlToBuffer(value));
-}
-
-function toArrayBuffer(input: unknown, label: string): ArrayBuffer {
-  if (!input) {
-    throw new Error(`missing ${label}`);
-  }
-  if (typeof input === "string") {
-    return base64UrlToBuffer(input);
-  }
-  if (input instanceof ArrayBuffer) {
-    return input;
-  }
-  if (input instanceof Uint8Array) {
-    return input.buffer;
-  }
-  if (Array.isArray(input)) {
-    return new Uint8Array(input).buffer;
-  }
-  throw new Error(`unsupported ${label} type`);
 }
 
 function formatWorktreeError(err: unknown): string | null {
@@ -2591,6 +1473,7 @@ function parseRunStatus(message: string): string | null {
 
 function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "running") return "running";
+  if (status === "idle") return "idle";
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
@@ -2620,35 +1503,4 @@ function isSamePermissionList(
     }
   }
   return true;
-}
-
-function isSameOutputList(a: OutputLine[], b: OutputLine[]): boolean {
-  if (a.length !== b.length) return false;
-  if (a.length === 0) return true;
-  const aFirst = a[0];
-  const bFirst = b[0];
-  const aLast = a[a.length - 1];
-  const bLast = b[b.length - 1];
-  return (
-    (aFirst.seq ?? null) === (bFirst.seq ?? null) &&
-    (aLast.seq ?? null) === (bLast.seq ?? null) &&
-    aLast.message === bLast.message &&
-    aLast.stream === bLast.stream
-  );
-}
-
-function unescapeLineBreaks(text: string): string {
-  return text
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\\t/g, "\t")
-    .replace(/\\r/g, "\n");
-}
-
-function formatToolCallPayload(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") {
-    return unescapeLineBreaks(value);
-  }
-  return unescapeLineBreaks(JSON.stringify(value, null, 2));
 }
