@@ -10,6 +10,7 @@ The frontend currently lacks a lint step. Adding ESLint provides consistent code
 - Expose `npm run lint` in the web package.
 - Provide `make lint` as the repo entry point.
 - Run lint in CI for the web job.
+- Resolve lint findings in hooks and regex handling.
 
 ## Key Decisions
 

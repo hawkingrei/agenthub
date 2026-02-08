@@ -138,7 +138,7 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
-  const [thinkingTick, setThinkingTick] = useState(0);
+  const [, setThinkingTick] = useState(0);
   const lastEventCursorRef = useRef<
     Record<string, { value: number; hasSeq: boolean }>
   >({});
@@ -198,10 +198,7 @@ export function App() {
     },
     [maxCachedEvents]
   );
-  const acpView = useMemo(
-    () => buildAcpView(acpOutputs),
-    [acpOutputs, thinkingTick]
-  );
+  const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
@@ -219,7 +216,7 @@ export function App() {
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
-  const refreshAgents = async () => {
+  const refreshAgents = useCallback(async () => {
     if (!token) return;
     try {
       const items = await api.listAgents(token);
@@ -227,12 +224,12 @@ export function App() {
     } catch (err) {
       setError(formatWorktreeError(err) ?? String(err));
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
     refreshAgents();
-  }, [token]);
+  }, [token, refreshAgents]);
 
   useEffect(() => {
     if (activeAgent || agents.length === 0) return;
@@ -248,7 +245,7 @@ export function App() {
     api.authStatus().then((res) => setRootInitialized(res.root_initialized)).catch(() => {});
   }, []);
 
-  const loadAgentEvents = async (
+  const loadAgentEvents = useCallback(async (
     id: string,
     sessionId?: string | null
   ): Promise<boolean> => {
@@ -330,7 +327,14 @@ export function App() {
       });
       return false;
     }
-  };
+  }, [
+    token,
+    activeAgent,
+    activeSessionId,
+    eventLimit,
+    updateOutputCacheEntry,
+    updateAcpOutputCacheEntry,
+  ]);
 
   const loadOlderEvents = useCallback(async () => {
     if (!token || !activeAgent) return;
@@ -369,7 +373,15 @@ export function App() {
         [key]: { ...meta, loading: false, loaded: true },
       }));
     }
-  }, [token, activeAgent, activeSessionId, eventMeta, eventLimit]);
+  }, [
+    token,
+    activeAgent,
+    activeSessionId,
+    eventMeta,
+    eventLimit,
+    updateOutputCacheEntry,
+    updateAcpOutputCacheEntry,
+  ]);
 
   const acpConversation = useAcpConversation({
     acpView,
@@ -455,7 +467,16 @@ export function App() {
         },
       }));
     }
-  }, [token, activeAgent, activeSessionId]);
+  }, [
+    token,
+    activeAgent,
+    activeSessionId,
+    outputCache,
+    acpOutputCache,
+    eventMeta,
+    eventLimit,
+    loadAgentEvents,
+  ]);
 
   useEffect(() => {
     if (!token || auth?.role !== "root") return;
@@ -472,6 +493,7 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const pollState = eventPollRef.current;
     loadAgentEvents(activeAgent, activeSessionId);
     if (!shouldOpenAgentSocket(activeAgentStatus)) return;
     let reconnectTimer: number | null = null;
@@ -584,14 +606,14 @@ export function App() {
     openSource();
     const schedulePoll = (delay: number) => {
       if (cancelled) return;
-      if (eventPollRef.current.timer) {
-        window.clearTimeout(eventPollRef.current.timer);
+      if (pollState.timer) {
+        window.clearTimeout(pollState.timer);
       }
       const now = Date.now();
-      const boostUntil = eventPollRef.current.boostUntil;
+      const boostUntil = pollState.boostUntil;
       const boostActive = boostUntil != null && boostUntil > now;
       const nextDelay = boostActive ? 1000 : delay;
-      eventPollRef.current.timer = window.setTimeout(async () => {
+      pollState.timer = window.setTimeout(async () => {
         if (cancelled) return;
         const current = sseRef.current;
         const isOpen =
@@ -601,15 +623,15 @@ export function App() {
           hasNew =
             (await loadAgentEvents(activeAgent, activeSessionId)) === true;
         } else {
-          eventPollRef.current.idleCount = 0;
+          pollState.idleCount = 0;
         }
         if (hasNew) {
-          eventPollRef.current.idleCount = 0;
+          pollState.idleCount = 0;
         } else if (!isOpen) {
-          eventPollRef.current.idleCount += 1;
+          pollState.idleCount += 1;
         }
         if (!cancelled) {
-          schedulePoll(getAdaptivePollInterval(eventPollRef.current.idleCount));
+          schedulePoll(getAdaptivePollInterval(pollState.idleCount));
         }
       }, nextDelay);
     };
@@ -618,19 +640,27 @@ export function App() {
     return () => {
       cancelled = true;
       clearReconnectTimer();
-      if (eventPollRef.current.timer) {
-        window.clearTimeout(eventPollRef.current.timer);
-        eventPollRef.current.timer = null;
+      if (pollState.timer) {
+        window.clearTimeout(pollState.timer);
+        pollState.timer = null;
       }
-      eventPollRef.current.idleCount = 0;
-      eventPollRef.current.boostUntil = null;
+      pollState.idleCount = 0;
+      pollState.boostUntil = null;
       schedulePollRef.current = null;
       if (sseRef.current) {
         sseRef.current.close();
         sseRef.current = null;
       }
     };
-  }, [token, activeAgent, activeSessionId, activeAgentStatus]);
+  }, [
+    token,
+    activeAgent,
+    activeSessionId,
+    activeAgentStatus,
+    loadAgentEvents,
+    updateOutputCacheEntry,
+    updateAcpOutputCacheEntry,
+  ]);
 
   useEffect(() => {
     const el = outputRef.current;
@@ -643,6 +673,7 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const pollState = permissionPollRef.current;
     const pollOnce = async (): Promise<number> => {
       try {
         const items = await api.listAcpPermissions(token, activeAgent, "pending");
@@ -658,10 +689,10 @@ export function App() {
       }
     };
     const schedule = (delay: number) => {
-      if (permissionPollRef.current.timer) {
-        window.clearTimeout(permissionPollRef.current.timer);
+      if (pollState.timer) {
+        window.clearTimeout(pollState.timer);
       }
-      permissionPollRef.current.timer = window.setTimeout(async () => {
+      pollState.timer = window.setTimeout(async () => {
         const pendingCount = await pollOnce();
         const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
         schedule(nextDelay);
@@ -671,9 +702,9 @@ export function App() {
     schedule(0);
     return () => {
       cancelled = true;
-      if (permissionPollRef.current.timer) {
-        window.clearTimeout(permissionPollRef.current.timer);
-        permissionPollRef.current.timer = null;
+      if (pollState.timer) {
+        window.clearTimeout(pollState.timer);
+        pollState.timer = null;
       }
       schedulePermissionPollRef.current = null;
     };

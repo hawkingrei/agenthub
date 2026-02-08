@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { AcpView } from "../acp";
 import {
   applyConversationFreeze,
@@ -113,7 +120,7 @@ export function useAcpConversation({
   const collapseCutoff = Math.max(0, conversationMessages.length - 50);
   const shouldAutoCollapse = conversationMessages.length > 50;
 
-  const shouldLoadOlder = () => {
+  const shouldLoadOlder = useCallback(() => {
     if (!activeAgent) return false;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const meta = eventMeta[key];
@@ -121,7 +128,7 @@ export function useAcpConversation({
       return false;
     }
     return true;
-  };
+  }, [activeAgent, activeSessionId, eventMeta]);
 
   const prepareForLoadOlder = () => {
     const el = acpConversationRef.current;
@@ -190,6 +197,7 @@ export function useAcpConversation({
     activeSessionId,
     eventMeta,
     onLoadOlder,
+    shouldLoadOlder,
   ]);
 
   useEffect(() => {
