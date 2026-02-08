@@ -12,6 +12,7 @@
 - [ ] Verify session-specific output views do not merge unrelated `latest` cache entries (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify `:latest` event meta loading flags reset after resolving the latest session (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify output cache slice helper behavior and tests (see `docs/features/2026-02-08-output-cache-slice.md`).
+- [ ] Verify conversation history retains loaded older messages when cache slices refresh under long output (see `docs/features/2026-02-08-conversation-history-retention.md`).
 - [ ] Verify frontend lint passes locally and in CI (see `docs/features/2026-02-08-frontend-lint.md`).
 - [ ] Review new unit tests and expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).

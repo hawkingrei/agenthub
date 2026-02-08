@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
+  mergeOutputsPreserveHistory,
   selectCachedOutputs,
 } from "./output_cache";
 import { AgentEvent } from "./api";
@@ -97,5 +98,32 @@ describe("selectCachedOutputs", () => {
     expect(selection.source).toBe("none");
     expect(selection.outputs).toBeNull();
     expect(selection.acpOutputs).toBeNull();
+  });
+});
+
+describe("mergeOutputsPreserveHistory", () => {
+  it("keeps older outputs when cache is truncated for the same key", () => {
+    const previous = [
+      makeEvent("1", "stdout"),
+      makeEvent("2", "stdout"),
+      makeEvent("3", "stdout"),
+      makeEvent("4", "stdout"),
+    ];
+    const cached = [makeEvent("3", "stdout"), makeEvent("4", "stdout")];
+    const merged = mergeOutputsPreserveHistory(previous, cached, true);
+    expect(merged.map((evt) => evt.seq)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("replaces outputs when the key changes", () => {
+    const previous = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
+    const cached = [makeEvent("3", "stdout")];
+    const merged = mergeOutputsPreserveHistory(previous, cached, false);
+    expect(merged.map((evt) => evt.seq)).toEqual(["3"]);
+  });
+
+  it("keeps existing outputs when cache is empty for the same key", () => {
+    const previous = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
+    const merged = mergeOutputsPreserveHistory(previous, [], true);
+    expect(merged.map((evt) => evt.seq)).toEqual(["1", "2"]);
   });
 });

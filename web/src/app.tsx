@@ -29,6 +29,7 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   isSameOutputList,
+  mergeOutputsPreserveHistory,
   mergeOutputs,
   OutputLine,
   selectCachedOutputs,
@@ -111,8 +112,11 @@ export function App() {
   const [acpOutputCache, setAcpOutputCache] = useState<
     Record<string, OutputLine[]>
   >(initialCachesRef.current.acpOutputCache);
+  const outputsRef = useRef(outputs);
+  const acpOutputsRef = useRef(acpOutputs);
   const outputCacheRef = useRef(outputCache);
   const acpOutputCacheRef = useRef(acpOutputCache);
+  const outputsKeyRef = useRef<string | null>(null);
   const loadSeq = useRef(0);
   const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -161,6 +165,12 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    outputsRef.current = outputs;
+  }, [outputs]);
+  useEffect(() => {
+    acpOutputsRef.current = acpOutputs;
+  }, [acpOutputs]);
   useEffect(() => {
     outputCacheRef.current = outputCache;
   }, [outputCache]);
@@ -422,6 +432,7 @@ export function App() {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const latestKey = `${activeAgent}:latest`;
+    const previousKey = outputsKeyRef.current;
     const selection = selectCachedOutputs(
       outputCache,
       acpOutputCache,
@@ -431,6 +442,7 @@ export function App() {
     if (selection.source === "none") {
       setOutputs([]);
       setAcpOutputs([]);
+      outputsKeyRef.current = key;
       loadAgentEvents(activeAgent, activeSessionId);
       return;
     }
@@ -462,24 +474,36 @@ export function App() {
       baseAcpOutputs.length > 0
         ? mergeOutputs(baseAcpOutputs, latestAcpOutputs)
         : baseAcpOutputs;
-    setOutputs((prev) =>
-      isSameOutputList(prev, combinedOutputs) ? prev : combinedOutputs
+    const shouldPreserveHistory = previousKey === key;
+    const nextOutputs = mergeOutputsPreserveHistory(
+      outputsRef.current,
+      combinedOutputs,
+      shouldPreserveHistory
     );
-    setAcpOutputs((prev) =>
-      isSameOutputList(prev, combinedAcpOutputs) ? prev : combinedAcpOutputs
+    const nextAcpOutputs = mergeOutputsPreserveHistory(
+      acpOutputsRef.current,
+      combinedAcpOutputs,
+      shouldPreserveHistory
     );
+    if (!isSameOutputList(outputsRef.current, nextOutputs)) {
+      setOutputs(nextOutputs);
+    }
+    if (!isSameOutputList(acpOutputsRef.current, nextAcpOutputs)) {
+      setAcpOutputs(nextAcpOutputs);
+    }
+    outputsKeyRef.current = key;
     if (!eventMeta[key]) {
-      const oldestSeq = combinedOutputs.length
-        ? combinedOutputs[0].seq ?? null
-        : combinedAcpOutputs.length
-          ? combinedAcpOutputs[0].seq ?? null
+      const oldestSeq = nextOutputs.length
+        ? nextOutputs[0].seq ?? null
+        : nextAcpOutputs.length
+          ? nextAcpOutputs[0].seq ?? null
           : null;
       setEventMeta((prev) => ({
         ...prev,
         [key]: {
           oldestSeq,
           hasMore:
-            combinedOutputs.length + combinedAcpOutputs.length >= eventLimit,
+            nextOutputs.length + nextAcpOutputs.length >= eventLimit,
           loading: false,
           loaded: true,
         },

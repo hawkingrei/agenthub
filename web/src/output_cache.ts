@@ -75,6 +75,17 @@ export function isSameOutputList(a: OutputLine[], b: OutputLine[]): boolean {
   );
 }
 
+export function mergeOutputsPreserveHistory(
+  existing: OutputLine[],
+  cached: OutputLine[],
+  sameKey: boolean
+): OutputLine[] {
+  if (!sameKey) return cached;
+  if (existing.length === 0) return cached;
+  if (cached.length === 0) return existing;
+  return mergeOutputs(existing, cached);
+}
+
 export function buildAcpCacheSlice(
   existing: OutputLine[],
   ordered: OutputLine[],
