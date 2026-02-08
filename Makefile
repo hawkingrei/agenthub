@@ -1,4 +1,4 @@
-.PHONY: build-web run run-web build test
+.PHONY: build-web run run-web build test lint lint-web
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
@@ -16,6 +16,11 @@ run: build-web
 test:
 	cargo test
 	cd web && npm test
+
+lint-web:
+	cd web && npm run lint
+
+lint: lint-web
 
 
 reset:
