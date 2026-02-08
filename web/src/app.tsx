@@ -123,7 +123,6 @@ export function App() {
   const [input, setInput] = useState("");
   const sseRef = useRef<EventSource | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
-  const lastAcpEventTsRef = useRef<number | null>(null);
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
@@ -282,12 +281,20 @@ export function App() {
           if (activeAgent === id && !activeSessionId) {
             setActiveSessionId(latestSession);
           }
+          setEventMeta((prev) => ({
+            ...prev,
+            [key]: {
+              oldestSeq: null,
+              hasMore: false,
+              loading: false,
+              loaded: true,
+            },
+          }));
           return true;
         }
       }
       const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
-      lastAcpEventTsRef.current = getLastAcpEventTs(acpOrdered);
       const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
       const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
@@ -430,19 +437,31 @@ export function App() {
     }
     const baseOutputs = selection.outputs ?? [];
     const baseAcpOutputs = selection.acpOutputs ?? [];
+    const latestOutputs =
+      activeSessionId && key !== latestKey
+        ? (outputCache[latestKey] ?? []).filter(
+            (evt) => evt.session_id === activeSessionId
+          )
+        : [];
+    const latestAcpOutputs =
+      activeSessionId && key !== latestKey
+        ? (acpOutputCache[latestKey] ?? []).filter(
+            (evt) => evt.session_id === activeSessionId
+          )
+        : [];
     const combinedOutputs =
       selection.source === "session" &&
       activeSessionId &&
       key !== latestKey &&
       baseOutputs.length > 0
-        ? mergeOutputs(baseOutputs, outputCache[latestKey] ?? [])
+        ? mergeOutputs(baseOutputs, latestOutputs)
         : baseOutputs;
     const combinedAcpOutputs =
       selection.source === "session" &&
       activeSessionId &&
       key !== latestKey &&
       baseAcpOutputs.length > 0
-        ? mergeOutputs(baseAcpOutputs, acpOutputCache[latestKey] ?? [])
+        ? mergeOutputs(baseAcpOutputs, latestAcpOutputs)
         : baseAcpOutputs;
     setOutputs((prev) =>
       isSameOutputList(prev, combinedOutputs) ? prev : combinedOutputs
@@ -527,7 +546,9 @@ export function App() {
     const openSource = () => {
       if (cancelled) return;
       const source = new EventSource(
-        `${location.origin}/sse/agents/${activeAgent}?token=${token}`
+        `${location.origin}/sse/agents/${encodeURIComponent(
+          activeAgent
+        )}?token=${encodeURIComponent(token)}`
       );
       sseRef.current = source;
       source.onopen = () => {
@@ -565,7 +586,6 @@ export function App() {
             const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
             updateLastEventCursor(lastEventCursorRef, key, line);
             if (payload.stream === "acp") {
-              lastAcpEventTsRef.current = payload.ts;
               const status = parseRunStatus(payload.message);
               if (status) {
                 setAgents((prev) =>
@@ -1539,14 +1559,6 @@ function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
-}
-
-function getLastAcpEventTs(events: OutputLine[]): number | null {
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    const evt = events[i];
-    if (evt.stream === "acp") return evt.ts;
-  }
-  return null;
 }
 
 function isSamePermissionList(

@@ -4,7 +4,7 @@ use axum::response::sse::Event;
 use axum::{
     Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderName, HeaderValue, StatusCode, header},
     response::{IntoResponse, Sse},
     routing::get,
 };
@@ -39,7 +39,15 @@ async fn sse_agent(
     };
 
     let stream = output_stream(output_rx);
-    Sse::new(stream).into_response()
+    let mut response = Sse::new(stream).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    headers.insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+    headers.insert(
+        HeaderName::from_static("x-accel-buffering"),
+        HeaderValue::from_static("no"),
+    );
+    response
 }
 
 fn output_stream(

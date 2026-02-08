@@ -13,6 +13,7 @@ mod auth;
 mod config;
 mod db;
 mod push;
+mod seq;
 mod sse;
 mod state;
 mod web;

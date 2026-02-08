@@ -10,6 +10,8 @@
 - Route all cache writes through shared update helpers.
 - Keep `loadAgentEvents` focused on cache/meta updates; outputs are derived from cache effects.
 - Validate cached output records strictly to avoid partially-shaped entries from localStorage.
+- Filter merged `latest` cache entries by session to avoid cross-session output leaks.
+- Clear `:latest` loading flags when the latest session is resolved.
 
 ## Key Decisions
 

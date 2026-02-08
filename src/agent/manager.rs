@@ -16,6 +16,7 @@ use super::{
 use crate::acp::{AcpHandle, AcpPermissionService, spawn_acp_session};
 use crate::auth::AuthService;
 use crate::push::PushService;
+use crate::seq::next_seq;
 
 #[derive(Clone)]
 pub struct AgentManager {
@@ -655,7 +656,7 @@ impl AgentManager {
         message: &str,
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
-        let seq = now_nanos();
+        let seq = next_seq();
         let _ = sqlx::query(
             r#"
             INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
@@ -734,7 +735,7 @@ impl AgentManager {
         let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
         let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
 
-        let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let seq = next_seq();
         let message_id = message_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| seq.to_string());
@@ -840,7 +841,7 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
-        let seq = now_nanos();
+        let seq = next_seq();
         let output = AgentOutput {
             agent_id: agent_id.clone(),
             session_id: session_id.clone(),
@@ -886,7 +887,7 @@ impl AgentManager {
                 } else {
                     stream.clone()
                 };
-                let seq = now_nanos();
+                let seq = next_seq();
                 let output = AgentOutput {
                     agent_id: agent_id.clone(),
                     session_id: session_id.clone(),
@@ -980,7 +981,7 @@ impl AgentManager {
                     .execute(&db)
                     .await;
 
-                    let seq = now_nanos();
+                    let seq = next_seq();
                     let output = AgentOutput {
                         agent_id: agent_id_clone.clone(),
                         session_id: session_id.clone(),
@@ -1371,9 +1372,6 @@ fn is_path_allowed(target: &str, allowed: &str) -> bool {
     target.chars().nth(allowed.len()) == Some('/')
 }
 
-fn now_nanos() -> i64 {
-    Utc::now().timestamp_nanos_opt().unwrap_or(0)
-}
 
 #[cfg(test)]
 mod tests {

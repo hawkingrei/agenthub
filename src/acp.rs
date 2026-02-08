@@ -17,6 +17,7 @@ use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::agent::{AgentOutput, OutputStream};
+use crate::seq::next_seq;
 
 #[derive(Clone)]
 pub struct AcpEventSink {
@@ -51,7 +52,7 @@ impl AcpEventSink {
     }
 
     async fn emit_raw(&self, stream: OutputStream, message: String) {
-        let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let seq = next_seq();
         let output = AgentOutput {
             agent_id: self.agent_id.clone(),
             session_id: self.session_id.clone(),

@@ -10,6 +10,7 @@ We want installable PWA support with an offline shell and a unified service work
 - Introduce a Workbox-based service worker with precache, navigation routing, and push handlers.
 - Add PWA manifest and icons.
 - Register the service worker at app startup.
+- Disable auto-injected registration to avoid double registration.
 - Use the `vite-plugin-pwa` v1 series to stay compatible with Vite 7.
 
 ## Key Decisions
@@ -17,6 +18,7 @@ We want installable PWA support with an offline shell and a unified service work
 - Use `injectManifest` to keep custom push handlers while enabling precache.
 - Keep API and SSE requests out of the navigation cache path.
 - Use a minimal icon set (192/512) for installability.
+- Use explicit `registerSW()` in `main.tsx` as the single registration path.
 
 ## Validation
 
