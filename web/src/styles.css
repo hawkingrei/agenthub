@@ -946,6 +946,12 @@ select:focus-visible {
   border: 1px solid #e2e6ea;
 }
 
+.acp-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .acp-tabs .tab {
   border: none;
   background: transparent;
@@ -955,15 +961,20 @@ select:focus-visible {
   color: #495057;
 }
 
-.acp-tabs .tab.acp-interrupt {
+.acp-interrupt-button {
+  border: 1px solid #f0c3c3;
   background: #ffe9e9;
   color: #8b1f1f;
   font-weight: 600;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
-.acp-tabs .tab.acp-interrupt:disabled {
+.acp-interrupt-button:disabled {
   background: #f1f3f5;
   color: #9aa0a6;
+  border-color: #e2e6ea;
   cursor: not-allowed;
 }
 

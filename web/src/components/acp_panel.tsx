@@ -52,30 +52,32 @@ export function AcpPanel({
             </span>
           )}
         </div>
-        <div className="acp-tabs">
+        <div className="acp-actions">
           <button
-            className="tab acp-interrupt"
+            className="acp-interrupt-button"
             onClick={onAcpCancel}
             disabled={!canInterrupt}
             title="Interrupt current run"
           >
             Interrupt
           </button>
-          <button
-            className={acpTab === "conversation" ? "tab active" : "tab"}
-            onClick={() => onSelectTab("conversation")}
-          >
-            Conversation
-            {showConversationBadge && (
-              <span className="tab-badge">+{conversation.pendingCount}</span>
-            )}
-          </button>
-          <button
-            className={acpTab === "debug" ? "tab active" : "tab"}
-            onClick={() => onSelectTab("debug")}
-          >
-            Debug
-          </button>
+          <div className="acp-tabs">
+            <button
+              className={acpTab === "conversation" ? "tab active" : "tab"}
+              onClick={() => onSelectTab("conversation")}
+            >
+              Conversation
+              {showConversationBadge && (
+                <span className="tab-badge">+{conversation.pendingCount}</span>
+              )}
+            </button>
+            <button
+              className={acpTab === "debug" ? "tab active" : "tab"}
+              onClick={() => onSelectTab("debug")}
+            >
+              Debug
+            </button>
+          </div>
         </div>
       </div>
       {acpTab === "conversation" && <AcpConversation {...conversation} />}
