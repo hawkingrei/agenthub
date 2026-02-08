@@ -3,7 +3,7 @@ export function escapeHtml(input: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
@@ -39,6 +39,7 @@ function sanitizeHref(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   const decoded = decodeHtmlEntities(trimmed);
+  // eslint-disable-next-line no-control-regex
   const normalized = decoded.replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
   if (
     normalized.startsWith("http://") ||

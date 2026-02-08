@@ -9,7 +9,7 @@
 - [ ] Verify localStorage output cache restores output history after reload (see `docs/features/2026-02-08-output-localstorage.md`).
 - [ ] Verify output cache stays consistent under SSE + polling after ref sync update (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify output cache slice helper behavior and tests (see `docs/features/2026-02-08-output-cache-slice.md`).
-- [ ] Verify frontend lint passes via `make lint` (see `docs/features/2026-02-08-frontend-lint.md`).
+- [ ] Verify frontend lint passes locally and in CI (see `docs/features/2026-02-08-frontend-lint.md`).
 - [ ] Review new unit tests and expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).

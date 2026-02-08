@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import QRCode from "qrcode";
 import {
   api,
-  AgentEvent,
   AgentRecord,
   AuditRecord,
   AcpPermissionRecord,
@@ -1426,6 +1425,7 @@ function createAnsiRenderer(): (input: string) => string {
 
   return (input: string) => {
     const esc = "\u001b[";
+    // eslint-disable-next-line no-control-regex
     const regex = /\u001b\[[0-9;]*m/g;
     let lastIndex = 0;
     let fg: string | null = null;

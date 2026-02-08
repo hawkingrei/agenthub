@@ -266,13 +266,16 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
   };
 }
 
-function parseAcpEvent(line: string): any | null {
+function parseAcpEvent(line: string): Record<string, unknown> | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("{")) return null;
   try {
     const parsed = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (typeof parsed.type === "string") return parsed;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const payload = parsed as Record<string, unknown>;
+    if (typeof payload.type === "string") return payload;
     return null;
   } catch {
     return null;

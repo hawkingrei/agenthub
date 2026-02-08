@@ -9,6 +9,7 @@ The frontend currently lacks a lint step. Adding ESLint provides consistent code
 - Add ESLint configuration for TypeScript + React.
 - Expose `npm run lint` in the web package.
 - Provide `make lint` as the repo entry point.
+- Run lint in CI for the web job.
 
 ## Key Decisions
 
