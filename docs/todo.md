@@ -27,4 +27,5 @@
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
 - [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
+- [ ] Verify conversation messages remain fully visible without auto-collapse (see `docs/features/2026-02-08-conversation-message-display.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).
