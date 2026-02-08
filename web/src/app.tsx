@@ -1368,14 +1368,16 @@ export function App() {
                 />
               </OutputErrorBoundary>
             ) : null}
-            <InputDock
-              input={input}
-              onInputChange={setInput}
-              onSendInput={onSendInput}
-              onJumpToBottom={acpConversation.jumpToConversationBottom}
-              showConversationJump={acpConversation.showConversationJump}
-              isComposingRef={isComposingRef}
-            />
+            {!(acpTab === "debug" && acpView.hasAcp) && (
+              <InputDock
+                input={input}
+                onInputChange={setInput}
+                onSendInput={onSendInput}
+                onJumpToBottom={acpConversation.jumpToConversationBottom}
+                showConversationJump={acpConversation.showConversationJump}
+                isComposingRef={isComposingRef}
+              />
+            )}
           </div>
         </section>
       )}
