@@ -9,6 +9,7 @@
 - Introduce ref-synced snapshots for output and ACP caches.
 - Route all cache writes through shared update helpers.
 - Keep `loadAgentEvents` focused on cache/meta updates; outputs are derived from cache effects.
+- Validate cached output records strictly to avoid partially-shaped entries from localStorage.
 
 ## Key Decisions
 

@@ -8,6 +8,7 @@
 - [ ] Verify Output error boundary fallback and empty state rendering (see `docs/features/2026-02-08-output-error-boundary.md`).
 - [ ] Verify localStorage output cache restores output history after reload (see `docs/features/2026-02-08-output-localstorage.md`).
 - [ ] Verify output cache stays consistent under SSE + polling after ref sync update (see `docs/features/2026-02-08-output-cache-consistency.md`).
+- [ ] Verify cached output validation drops incomplete records from localStorage (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify output cache slice helper behavior and tests (see `docs/features/2026-02-08-output-cache-slice.md`).
 - [ ] Verify frontend lint passes locally and in CI (see `docs/features/2026-02-08-frontend-lint.md`).
 - [ ] Review new unit tests and expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
@@ -16,3 +17,4 @@
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify PWA install prompt, offline shell behavior, and Vite 7-compatible plugin version (see `docs/features/2026-02-08-pwa-support.md`).
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
+- [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).

@@ -532,6 +532,10 @@ export function App() {
       sseRef.current = source;
       source.onopen = () => {
         reconnectAttempt = 0;
+        if (pollState.timer) {
+          window.clearTimeout(pollState.timer);
+          pollState.timer = null;
+        }
       };
       source.onmessage = (event) => {
         if (event.data === "heartbeat") return;
@@ -573,12 +577,12 @@ export function App() {
                 );
               }
             }
-          setOutputs((prev) => appendOutputLine(prev, line));
-          updateOutputCacheEntry(key, [line]);
-          if (line.stream === "acp") {
-            setAcpOutputs((prev) => appendOutputLine(prev, line));
-            updateAcpOutputCacheEntry(key, [line]);
-          }
+            setOutputs((prev) => appendOutputLine(prev, line));
+            updateOutputCacheEntry(key, [line]);
+            if (line.stream === "acp") {
+              setAcpOutputs((prev) => appendOutputLine(prev, line));
+              updateAcpOutputCacheEntry(key, [line]);
+            }
           }
         } catch {
           if (typeof event.data === "string") {
@@ -600,6 +604,7 @@ export function App() {
         }
         source.close();
         sseRef.current = null;
+        schedulePoll(getAdaptivePollInterval(pollState.idleCount));
         scheduleReconnect();
       };
     };
@@ -608,6 +613,10 @@ export function App() {
       if (cancelled) return;
       if (pollState.timer) {
         window.clearTimeout(pollState.timer);
+      }
+      if (sseRef.current?.readyState === EventSource.OPEN) {
+        pollState.timer = null;
+        return;
       }
       const now = Date.now();
       const boostUntil = pollState.boostUntil;

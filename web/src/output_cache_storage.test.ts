@@ -94,4 +94,42 @@ describe("output cache storage", () => {
     expect(loaded.outputCache).toEqual({});
     expect(loaded.acpOutputCache).toEqual({});
   });
+
+  it("drops partially-shaped cached events", () => {
+    const storage = (globalThis as { localStorage?: MemoryStorage }).localStorage;
+    storage?.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        updatedAt: Date.now(),
+        outputCache: {
+          "agent-1:session-1": [
+            { stream: "stdout", ts: 1, message: "missing ids", seq: 1 },
+            {
+              agent_id: "agent-1",
+              session_id: "session-1",
+              stream: "stdout",
+              ts: 2,
+              message: "missing seq",
+            },
+            {
+              agent_id: "agent-1",
+              session_id: "session-1",
+              seq: 3,
+              stream: "bad",
+              ts: 3,
+              message: "bad stream",
+            },
+            makeLine(4, 4),
+          ],
+        },
+        acpOutputCache: {},
+      })
+    );
+
+    const loaded = loadOutputCaches(10, 5);
+    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.seq)).toEqual([
+      4,
+    ]);
+  });
 });

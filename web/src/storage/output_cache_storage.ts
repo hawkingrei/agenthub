@@ -99,8 +99,22 @@ function getLastTs(events: OutputLine[]): number {
 function isOutputLine(value: unknown): value is OutputLine {
   if (!value || typeof value !== "object") return false;
   const candidate = value as OutputLine;
+  if (typeof candidate.agent_id !== "string" || !candidate.agent_id) return false;
+  if (typeof candidate.session_id !== "string" || !candidate.session_id) {
+    return false;
+  }
+  if (typeof candidate.seq !== "number" || !Number.isFinite(candidate.seq)) {
+    return false;
+  }
   if (typeof candidate.message !== "string") return false;
-  if (typeof candidate.stream !== "string") return false;
+  if (
+    candidate.stream !== "stdout" &&
+    candidate.stream !== "stderr" &&
+    candidate.stream !== "system" &&
+    candidate.stream !== "acp"
+  ) {
+    return false;
+  }
   if (typeof candidate.ts !== "number") return false;
   return true;
 }
