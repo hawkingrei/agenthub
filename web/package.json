@@ -11,7 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/markdown-it": "^14.1.2",
     "bootstrap-icons": "^1.11.3",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
     "qrcode": "^1.5.3",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

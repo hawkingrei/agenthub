@@ -16,8 +16,13 @@
 - [ ] Verify output cache slice helper behavior and tests (see `docs/features/2026-02-08-output-cache-slice.md`).
 - [x] Verify conversation history retains loaded older messages when cache slices refresh under long output (see `docs/features/2026-02-08-conversation-history-retention.md`).
 - [ ] Verify frontend lint passes locally and in CI (see `docs/features/2026-02-08-frontend-lint.md`).
+- [ ] Verify Vite build output and chunk warning limit after dependency updates (see `docs/features/2026-02-08-build-chunk-warning-limit.md`).
 - [ ] Review new unit tests for event cursor ordering and conversation freeze logic, expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
+- [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
+- [ ] Review raw HTML handling in markdown-it renderer and add sanitization if ACP output becomes untrusted (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify PWA install prompt, offline shell behavior, and Vite 7-compatible plugin version (see `docs/features/2026-02-08-pwa-support.md`).
