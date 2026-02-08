@@ -1,20 +1,20 @@
-# 评审回合补充修正
+# Review Follow-up Fixes
 
-## 背景
+## Background
 
-代码评审中指出两类问题：Markdown 渲染安全测试覆盖不足，以及 Agents 列表的键盘可用性不完整。
+Review feedback flagged two areas: missing markdown sanitization coverage and incomplete keyboard behavior in the Agents list.
 
-## 范围
+## Scope
 
-- 补充 `renderMarkdown` 的测试用例，覆盖编码 `javascript:`、相对链接、锚点和查询字符串场景。
-- Agents 列表的可聚焦行同时支持 Enter/Space 触发选择，符合按钮交互预期。
+- Add `renderMarkdown` tests for encoded `javascript:` schemes, relative links, hash links, and query strings.
+- Allow Enter/Space to activate focusable agent rows to match button-like behavior.
 
-## 关键决策
+## Key Decisions
 
-- 保持现有渲染逻辑不变，仅补充测试来防止回归。
-- 键盘交互采用最小变更，避免替换结构导致更大的样式影响。
+- Keep rendering logic unchanged; extend tests to prevent regressions.
+- Use minimal keyboard handling changes to avoid larger layout or style impact.
 
-## 验证
+## Validation
 
 ```bash
 cd web
