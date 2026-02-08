@@ -11,4 +11,4 @@
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify PWA install prompt, offline shell behavior, and Vite 7-compatible plugin version (see `docs/features/2026-02-08-pwa-support.md`).
-- [ ] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
+- [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
