@@ -58,7 +58,6 @@ import {
   registerCredentialToJson,
 } from "./webauthn";
 import { AuthState } from "./types";
-import { registerSW } from "virtual:pwa-register";
 
 export function App() {
   const eventLimit = 200;
@@ -105,10 +104,6 @@ export function App() {
   const [agentSessions, setAgentSessions] = useState<Record<string, string>>(
     {}
   );
-  const updateSwRef = useRef<((reload?: boolean) => Promise<void>) | null>(null);
-  const swRefreshTimerRef = useRef<number | null>(null);
-  const swUpdateIntervalRef = useRef<number | null>(null);
-  const [swToastVisible, setSwToastVisible] = useState(false);
   const initialCachesRef = useRef(
     loadOutputCaches(maxCachedEvents, maxCachedSessions)
   );
@@ -174,60 +169,6 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
-  const triggerSwRefresh = useCallback(() => {
-    if (swRefreshTimerRef.current != null) return;
-    setSwToastVisible(true);
-    swRefreshTimerRef.current = window.setTimeout(async () => {
-      const updateSW = updateSwRef.current;
-      if (!updateSW) {
-        window.location.reload();
-        return;
-      }
-      try {
-        await updateSW(true);
-      } catch {
-        window.location.reload();
-      }
-    }, 2000);
-  }, []);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (updateSwRef.current) return;
-    const updateSW = registerSW({
-      immediate: true,
-      onNeedRefresh: triggerSwRefresh,
-      onRegisteredSW: (_swUrl, registration) => {
-        if (!registration) return;
-        registration.update().catch(() => {});
-        if (swUpdateIntervalRef.current == null) {
-          swUpdateIntervalRef.current = window.setInterval(() => {
-            registration.update().catch(() => {});
-          }, 60_000);
-        }
-        registration.addEventListener("updatefound", () => {
-          const newWorker = registration.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener("statechange", () => {
-            if (
-              newWorker.state === "installed" &&
-              navigator.serviceWorker.controller
-            ) {
-              triggerSwRefresh();
-            }
-          });
-        });
-      },
-    });
-    updateSwRef.current = updateSW;
-    return () => {
-      if (swRefreshTimerRef.current != null) {
-        window.clearTimeout(swRefreshTimerRef.current);
-      }
-      if (swUpdateIntervalRef.current != null) {
-        window.clearInterval(swUpdateIntervalRef.current);
-      }
-    };
-  }, [triggerSwRefresh]);
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -1320,13 +1261,6 @@ export function App() {
       </header>
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-      {swToastVisible && (
-        <div className="sw-toast" role="status" aria-live="polite">
-          <div className="sw-toast-content">
-            <span>New version available. Refreshing...</span>
-          </div>
-        </div>
-      )}
 
       {!auth && (
         <section className="auth">
