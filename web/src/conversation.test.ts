@@ -153,6 +153,24 @@ describe("buildConversationMessages", () => {
     expect(items[1].text).toContain("Do X");
   });
 
+  it("places plan based on sequence ordering", () => {
+    const messages: AcpMessage[] = [
+      msg("user_message", "u1", "s1", 1),
+      msg("agent_message", "m1", "s1", 3),
+    ];
+    const plan = {
+      entries: [{ content: "Plan first" }],
+      session_id: "s1",
+      seq: 2,
+    };
+    const items = buildConversationMessages(messages, [], plan, "s1");
+    expect(items.map((item) => item.kind)).toEqual([
+      "user_message",
+      "agent_plan",
+      "agent_message",
+    ]);
+  });
+
   it("filters plan entries by session id", () => {
     const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const plan = {
@@ -213,5 +231,10 @@ describe("formatConversationPreview", () => {
   it("truncates long text", () => {
     const text = "a".repeat(90);
     expect(formatConversationPreview(text, 80)).toBe(`${"a".repeat(80)}…`);
+  });
+
+  it("returns empty string when limit is non-positive", () => {
+    expect(formatConversationPreview("hello", 0)).toBe("");
+    expect(formatConversationPreview("hello", -5)).toBe("");
   });
 });

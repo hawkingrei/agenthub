@@ -97,7 +97,7 @@ function toArrayBuffer(input: unknown, label: string): ArrayBuffer {
     return input;
   }
   if (input instanceof Uint8Array) {
-    return input.buffer;
+    return input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
   }
   if (Array.isArray(input)) {
     return new Uint8Array(input).buffer;

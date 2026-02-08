@@ -37,10 +37,7 @@ export function AcpConversation({
     <div className="acp-conversation" ref={containerRef} onScroll={onScroll}>
       <div className="acp-conversation-inner">
         {items.map((msg, idx) => {
-          const key =
-            msg.seq != null
-              ? `${msg.seq}-${msg.kind}`
-              : `${windowOffset + idx}-${msg.kind}`;
+          const key = `${windowOffset + idx}-${msg.kind}`;
           const globalIndex = isFrozenView ? idx : windowOffset + idx;
           const autoCollapse = shouldAutoCollapse && globalIndex < collapseCutoff;
           if (msg.kind === "agent_thinking") {
@@ -83,9 +80,8 @@ export function AcpConversation({
           }
           if (msg.kind === "tool_call") {
             const isLive = isToolCallLive(msg.status);
-            const toolKey = msg.status ? `${key}-${msg.status}` : key;
             return (
-              <div key={toolKey} className="acp-bubble tool_call">
+              <div key={key} className="acp-bubble tool_call">
                 <details
                   className="acp-tool-fold"
                   {...(isLive ? { open: true } : {})}

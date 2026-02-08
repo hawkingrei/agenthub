@@ -140,6 +140,7 @@ export function App() {
   const lastEventCursorRef = useRef<
     Record<string, { value: number; hasSeq: boolean }>
   >({});
+  const fallbackSeqRef = useRef<number>(0);
   const eventPollRef = useRef<{
     timer: number | null;
     idleCount: number;
@@ -365,11 +366,21 @@ export function App() {
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
       setOutputCache((prev) => {
         const existing = prev[key] ?? [];
-        return { ...prev, [key]: mergeOutputs(existing, ordered) };
+        const merged = mergeOutputs(existing, ordered);
+        const trimmed =
+          maxCachedEvents > 0
+            ? merged.slice(Math.max(0, merged.length - maxCachedEvents))
+            : merged;
+        return { ...prev, [key]: trimmed };
       });
       setAcpOutputCache((prev) => {
         const existing = prev[key] ?? [];
-        return { ...prev, [key]: mergeOutputs(existing, acpOrdered) };
+        const merged = mergeOutputs(existing, acpOrdered);
+        const trimmed =
+          maxCachedEvents > 0
+            ? merged.slice(Math.max(0, merged.length - maxCachedEvents))
+            : merged;
+        return { ...prev, [key]: trimmed };
       });
       setEventMeta((prev) => ({
         ...prev,
@@ -483,12 +494,23 @@ export function App() {
 
   useEffect(() => {
     if (!token || !activeAgent) return;
+    let cancelled = false;
     loadAgentEvents(activeAgent, activeSessionId);
     if (!shouldOpenAgentSocket(activeAgentStatus)) return;
     const source = new EventSource(
       `${location.origin}/sse/agents/${activeAgent}?token=${token}`
     );
     sseRef.current = source;
+    const nextFallbackSeq = (payloadSeq: unknown) => {
+      if (typeof payloadSeq === "number") {
+        fallbackSeqRef.current = Math.max(fallbackSeqRef.current, payloadSeq);
+        return payloadSeq;
+      }
+      const now = Date.now() * 1000;
+      const next = Math.max(now, fallbackSeqRef.current + 1);
+      fallbackSeqRef.current = next;
+      return next;
+    };
     source.onmessage = (event) => {
       if (event.data === "heartbeat") return;
       try {
@@ -505,7 +527,7 @@ export function App() {
           ) {
             return;
           }
-          const seq = payload.seq ?? Date.now();
+          const seq = nextFallbackSeq(payload.seq);
           const line: OutputLine = {
             ts: payload.ts,
             stream: payload.stream,
@@ -556,12 +578,14 @@ export function App() {
       }
     };
     source.onerror = () => {
-      if (sseRef.current === source) {
-        sseRef.current = null;
+      if (source.readyState === EventSource.CLOSED) {
+        if (sseRef.current === source) {
+          sseRef.current = null;
+        }
       }
-      source.close();
     };
     const schedulePoll = (delay: number) => {
+      if (cancelled) return;
       if (eventPollRef.current.timer) {
         window.clearTimeout(eventPollRef.current.timer);
       }
@@ -570,6 +594,7 @@ export function App() {
       const boostActive = boostUntil != null && boostUntil > now;
       const nextDelay = boostActive ? 1000 : delay;
       eventPollRef.current.timer = window.setTimeout(async () => {
+        if (cancelled) return;
         const current = sseRef.current;
         const isOpen =
           current != null && current.readyState === EventSource.OPEN;
@@ -585,12 +610,15 @@ export function App() {
         } else if (!isOpen) {
           eventPollRef.current.idleCount += 1;
         }
-        schedulePoll(getAdaptivePollInterval(eventPollRef.current.idleCount));
+        if (!cancelled) {
+          schedulePoll(getAdaptivePollInterval(eventPollRef.current.idleCount));
+        }
       }, nextDelay);
     };
     schedulePollRef.current = schedulePoll;
     schedulePoll(getAdaptivePollInterval(0));
     return () => {
+      cancelled = true;
       if (eventPollRef.current.timer) {
         window.clearTimeout(eventPollRef.current.timer);
         eventPollRef.current.timer = null;
@@ -601,7 +629,6 @@ export function App() {
       if (sseRef.current === source) {
         sseRef.current = null;
       }
-      source.close();
     };
   }, [token, activeAgent, activeSessionId, activeAgentStatus]);
 

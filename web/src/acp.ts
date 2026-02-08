@@ -195,7 +195,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
       if (parsed.content) call.content = formatAcpContent(parsed.content);
       if (call.session_id == null) call.session_id = event.session_id ?? null;
-      if (call.seq == null) call.seq = event.seq;
+      if (event.seq != null && (call.seq == null || event.seq > call.seq)) {
+        call.seq = event.seq;
+      }
       if (parsed.meta?.terminal_output?.data) {
         call.terminal_output =
           (call.terminal_output ?? "") +

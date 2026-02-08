@@ -9,15 +9,21 @@ type TerminalOutputProps = {
 export function TerminalOutput({ outputs, ansi }: TerminalOutputProps) {
   return (
     <div className="terminal">
-      {outputs.map((line, idx) => (
+      {outputs.map((line) => {
+        const key =
+          line.seq != null
+            ? `seq-${line.seq}`
+            : `${line.ts}-${line.stream}-${line.message}`;
+        return (
         <div
-          key={idx}
+          key={key}
           className={`line ${line.stream}`}
           dangerouslySetInnerHTML={{
             __html: ansi(line.message),
           }}
         />
-      ))}
+        );
+      })}
     </div>
   );
 }

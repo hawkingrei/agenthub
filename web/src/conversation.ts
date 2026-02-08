@@ -33,6 +33,7 @@ export function isToolCallLive(status?: string): boolean {
 export function formatConversationPreview(text: string, limit: number): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
+  if (limit <= 0) return "";
   if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit)}…`;
 }
@@ -58,21 +59,14 @@ export function buildConversationMessages(
     (!activeSessionId ||
       plan.session_id == null ||
       plan.session_id === activeSessionId);
-  const planSeq =
-    plan?.seq ??
-    [...filteredMessages, ...filteredToolCalls]
-      .map((item) => item.seq)
-      .reduce<number | null>(
-        (acc, seq) =>
-          typeof seq === "number" ? Math.max(acc ?? seq, seq) : acc,
-        null
-      );
+  const planText = includePlan && plan ? formatPlanEntries(plan.entries) : "";
   const entries: Array<{
-    kind: "message" | "tool_call";
+    kind: "message" | "tool_call" | "plan";
     seq: number | null;
     order: number;
     message?: AcpMessage;
     toolCall?: AcpToolCall;
+    plan?: AcpPlanView;
   }> = [];
   let order = 0;
   for (const msg of filteredMessages) {
@@ -90,6 +84,15 @@ export function buildConversationMessages(
       seq: call.seq ?? null,
       order,
       toolCall: call,
+    });
+    order += 1;
+  }
+  if (includePlan && plan && planText) {
+    entries.push({
+      kind: "plan",
+      seq: plan.seq ?? null,
+      order,
+      plan,
     });
     order += 1;
   }
@@ -129,6 +132,25 @@ export function buildConversationMessages(
       items.push({ kind: "user_message", text: msg.text, seq: msg.seq });
       continue;
     }
+    if (entry.kind === "plan") {
+      if (pendingThought) {
+        items.push({
+          kind: "agent_thinking",
+          text: pendingThought,
+          live: false,
+          seq: pendingThoughtSeq ?? entry.seq ?? undefined,
+        });
+        pendingThought = null;
+        pendingThoughtSeq = null;
+      }
+      items.push({
+        kind: "agent_plan",
+        text: planText,
+        live: false,
+        seq: entry.seq ?? undefined,
+      });
+      continue;
+    }
     const call = entry.toolCall;
     if (!call) continue;
     if (pendingThought) {
@@ -159,17 +181,6 @@ export function buildConversationMessages(
       live: true,
       seq: pendingThoughtSeq ?? undefined,
     });
-  }
-  if (includePlan) {
-    const planText = formatPlanEntries(plan.entries);
-    if (planText) {
-      items.push({
-        kind: "agent_plan",
-        text: planText,
-        live: false,
-        seq: planSeq ?? undefined,
-      });
-    }
   }
   return items;
 }
