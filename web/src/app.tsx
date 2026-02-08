@@ -497,10 +497,24 @@ export function App() {
     let cancelled = false;
     loadAgentEvents(activeAgent, activeSessionId);
     if (!shouldOpenAgentSocket(activeAgentStatus)) return;
-    const source = new EventSource(
-      `${location.origin}/sse/agents/${activeAgent}?token=${token}`
-    );
-    sseRef.current = source;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+    const clearReconnectTimer = () => {
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      clearReconnectTimer();
+      const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+      reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
+      reconnectTimer = window.setTimeout(() => {
+        if (cancelled) return;
+        openSource();
+      }, delay);
+    };
     const nextFallbackSeq = (payloadSeq: unknown) => {
       if (typeof payloadSeq === "number") {
         fallbackSeqRef.current = Math.max(fallbackSeqRef.current, payloadSeq);
@@ -511,79 +525,92 @@ export function App() {
       fallbackSeqRef.current = next;
       return next;
     };
-    source.onmessage = (event) => {
-      if (event.data === "heartbeat") return;
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.type === "output" || parsed.type === "acp") {
-          const payload = parsed.payload;
-          if (payload.agent_id && payload.agent_id !== activeAgent) {
-            return;
-          }
-          if (
-            activeSessionId &&
-            payload.session_id &&
-            payload.session_id !== activeSessionId
-          ) {
-            return;
-          }
-          const seq = nextFallbackSeq(payload.seq);
-          const line: OutputLine = {
-            ts: payload.ts,
-            stream: payload.stream,
-            message: payload.message,
-            agent_id: payload.agent_id,
-            session_id: payload.session_id,
-            seq,
-          };
-          const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
-          updateLastEventCursor(lastEventCursorRef, key, line);
-          if (payload.stream === "acp") {
-            lastAcpEventTsRef.current = payload.ts;
-            const status = parseRunStatus(payload.message);
-            if (status) {
-              setAgents((prev) =>
-                prev.map((agent) =>
-                  agent.id === payload.agent_id
-                    ? { ...agent, status: statusToAgentStatus(status) }
-                    : agent
-                )
-              );
+    const openSource = () => {
+      if (cancelled) return;
+      const source = new EventSource(
+        `${location.origin}/sse/agents/${activeAgent}?token=${token}`
+      );
+      sseRef.current = source;
+      source.onopen = () => {
+        reconnectAttempt = 0;
+      };
+      source.onmessage = (event) => {
+        if (event.data === "heartbeat") return;
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === "output" || parsed.type === "acp") {
+            const payload = parsed.payload;
+            if (payload.agent_id && payload.agent_id !== activeAgent) {
+              return;
             }
-          }
-          setOutputs((prev) => appendOutputLine(prev, line));
-          setOutputCache((prev) => ({
-            ...prev,
-            [key]: appendOutputLine(prev[key] ?? [], line),
-          }));
-          if (line.stream === "acp") {
-            setAcpOutputs((prev) => appendOutputLine(prev, line));
-            setAcpOutputCache((prev) => ({
+            if (
+              activeSessionId &&
+              payload.session_id &&
+              payload.session_id !== activeSessionId
+            ) {
+              return;
+            }
+            const seq = nextFallbackSeq(payload.seq);
+            const line: OutputLine = {
+              ts: payload.ts,
+              stream: payload.stream,
+              message: payload.message,
+              agent_id: payload.agent_id,
+              session_id: payload.session_id,
+              seq,
+            };
+            const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
+            updateLastEventCursor(lastEventCursorRef, key, line);
+            if (payload.stream === "acp") {
+              lastAcpEventTsRef.current = payload.ts;
+              const status = parseRunStatus(payload.message);
+              if (status) {
+                setAgents((prev) =>
+                  prev.map((agent) =>
+                    agent.id === payload.agent_id
+                      ? { ...agent, status: statusToAgentStatus(status) }
+                      : agent
+                  )
+                );
+              }
+            }
+            setOutputs((prev) => appendOutputLine(prev, line));
+            setOutputCache((prev) => ({
               ...prev,
               [key]: appendOutputLine(prev[key] ?? [], line),
             }));
+            if (line.stream === "acp") {
+              setAcpOutputs((prev) => appendOutputLine(prev, line));
+              setAcpOutputCache((prev) => ({
+                ...prev,
+                [key]: appendOutputLine(prev[key] ?? [], line),
+              }));
+            }
+          }
+        } catch {
+          if (typeof event.data === "string") {
+            if (isInvalidTokenMessage(event.data)) {
+              clearAuthAndRedirect();
+              return;
+            }
+            if (shouldIgnoreAgentWsError(event.data, activeAgentStatus)) {
+              return;
+            }
+            setError(event.data);
           }
         }
-      } catch {
-        if (typeof event.data === "string") {
-          if (isInvalidTokenMessage(event.data)) {
-            clearAuthAndRedirect();
-            return;
-          }
-          if (shouldIgnoreAgentWsError(event.data, activeAgentStatus)) {
-            return;
-          }
-          setError(event.data);
+      };
+      source.onerror = () => {
+        if (sseRef.current !== source) {
+          source.close();
+          return;
         }
-      }
+        source.close();
+        sseRef.current = null;
+        scheduleReconnect();
+      };
     };
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) {
-        if (sseRef.current === source) {
-          sseRef.current = null;
-        }
-      }
-    };
+    openSource();
     const schedulePoll = (delay: number) => {
       if (cancelled) return;
       if (eventPollRef.current.timer) {
@@ -619,6 +646,7 @@ export function App() {
     schedulePoll(getAdaptivePollInterval(0));
     return () => {
       cancelled = true;
+      clearReconnectTimer();
       if (eventPollRef.current.timer) {
         window.clearTimeout(eventPollRef.current.timer);
         eventPollRef.current.timer = null;
@@ -626,7 +654,8 @@ export function App() {
       eventPollRef.current.idleCount = 0;
       eventPollRef.current.boostUntil = null;
       schedulePollRef.current = null;
-      if (sseRef.current === source) {
+      if (sseRef.current) {
+        sseRef.current.close();
         sseRef.current = null;
       }
     };
