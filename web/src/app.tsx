@@ -1330,6 +1330,8 @@ export function App() {
                     acpTab,
                     onSelectTab: (next) => setAcpTab(next),
                     showConversationBadge: acpConversation.showConversationBadge,
+                    canControlAcp,
+                    onAcpCancel,
                     conversation: {
                       items: acpConversation.conversationRenderItems,
                       windowOffset: acpConversation.conversationWindowOffset,

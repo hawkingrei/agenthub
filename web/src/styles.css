@@ -935,6 +935,18 @@ select:focus-visible {
   color: #495057;
 }
 
+.acp-tabs .tab.acp-interrupt {
+  background: #ffe9e9;
+  color: #8b1f1f;
+  font-weight: 600;
+}
+
+.acp-tabs .tab.acp-interrupt:disabled {
+  background: #f1f3f5;
+  color: #9aa0a6;
+  cursor: not-allowed;
+}
+
 .acp-tabs .tab.active {
   background: #111;
   color: #fff;
@@ -988,6 +1000,22 @@ select:focus-visible {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.acp-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.acp-raw-wrapper {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding-right: 6px;
 }
 
 .acp-commands li,
