@@ -53,7 +53,8 @@ export function AgentsPanel({
                 tabIndex={0}
                 onClick={() => onSelectAgent(agent.id)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+                    e.preventDefault();
                     onSelectAgent(agent.id);
                   }
                 }}
