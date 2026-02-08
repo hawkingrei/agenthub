@@ -17,6 +17,7 @@ use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::agent::{AgentOutput, OutputStream};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AcpEventSink {
@@ -51,11 +52,11 @@ impl AcpEventSink {
     }
 
     async fn emit_raw(&self, stream: OutputStream, message: String) {
-        let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let seq = Uuid::now_v7().to_string();
         let output = AgentOutput {
             agent_id: self.agent_id.clone(),
             session_id: self.session_id.clone(),
-            seq,
+            seq: seq.clone(),
             ts: Utc::now().timestamp(),
             stream: stream.clone(),
             message: message.clone(),
@@ -261,11 +262,13 @@ pub async fn spawn_acp_session(
                 let request = LoadSessionRequest::new(resume_id.clone(), cwd.clone());
                 match conn.load_session(request).await {
                     Ok(_) => {
-                        sink.emit_system(format!("acp session resumed: {resume_id}")).await;
+                        sink.emit_system(format!("acp session resumed: {resume_id}"))
+                            .await;
                         session_id = Some(resume_id);
                     }
                     Err(err) => {
-                        sink.emit_system(format!("acp load_session failed: {err}")).await;
+                        sink.emit_system(format!("acp load_session failed: {err}"))
+                            .await;
                     }
                 }
             }
@@ -289,9 +292,9 @@ pub async fn spawn_acp_session(
                     AcpCommand::Prompt(prompt) => {
                         let request = PromptRequest::new(
                             session_id.clone(),
-                            vec![ContentBlock::Text(
-                                agent_client_protocol::TextContent::new(prompt),
-                            )],
+                            vec![ContentBlock::Text(agent_client_protocol::TextContent::new(
+                                prompt,
+                            ))],
                         );
                         if let Err(err) = conn.prompt(request).await {
                             sink.emit_system(format!("acp prompt error: {err}")).await;
@@ -306,14 +309,19 @@ pub async fn spawn_acp_session(
                     AcpCommand::SetModel(model_id) => {
                         let request = SetSessionModelRequest::new(session_id.clone(), model_id);
                         if let Err(err) = conn.set_session_model(request).await {
-                            sink.emit_system(format!("acp set_model error: {err}")).await;
+                            sink.emit_system(format!("acp set_model error: {err}"))
+                                .await;
                         }
                     }
                     AcpCommand::SetConfig { config_id, value } => {
-                        let request =
-                            SetSessionConfigOptionRequest::new(session_id.clone(), config_id, value);
+                        let request = SetSessionConfigOptionRequest::new(
+                            session_id.clone(),
+                            config_id,
+                            value,
+                        );
                         if let Err(err) = conn.set_session_config_option(request).await {
-                            sink.emit_system(format!("acp set_config error: {err}")).await;
+                            sink.emit_system(format!("acp set_config error: {err}"))
+                                .await;
                         }
                     }
                     AcpCommand::Cancel => {

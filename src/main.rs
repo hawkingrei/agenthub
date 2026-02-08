@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use axum::{Router, routing::get};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::compression::CompressionLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
@@ -13,9 +14,9 @@ mod auth;
 mod config;
 mod db;
 mod push;
+mod sse;
 mod state;
 mod web;
-mod ws;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -61,12 +62,14 @@ async fn main() -> anyhow::Result<()> {
         .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
         .on_response(DefaultOnResponse::new().level(Level::INFO))
         .on_failure(DefaultOnFailure::new().level(Level::ERROR));
+    let compression = CompressionLayer::new().gzip(true);
 
     let mut app = Router::new()
         .route("/health", get(api::health))
         .nest("/api", api_router)
-        .nest("/ws", ws::router(state.clone()))
-        .layer(trace);
+        .nest("/sse", sse::router(state.clone()))
+        .layer(trace)
+        .layer(compression);
     if let Some(dir) = web_dir {
         tracing::info!("serving web from dir: {}", dir);
         let web_service = ServeDir::new(&dir)

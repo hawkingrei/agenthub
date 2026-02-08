@@ -46,7 +46,7 @@ pub enum AgentStatus {
 pub struct AgentOutput {
     pub agent_id: String,
     pub session_id: String,
-    pub seq: i64,
+    pub seq: String,
     pub ts: i64,
     pub stream: OutputStream,
     pub message: String,
@@ -56,7 +56,7 @@ pub struct AgentOutput {
 pub struct AgentEvent {
     pub agent_id: String,
     pub session_id: String,
-    pub seq: i64,
+    pub seq: String,
     pub ts: i64,
     pub stream: OutputStream,
     pub message: String,

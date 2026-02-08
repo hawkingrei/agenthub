@@ -2,31 +2,34 @@ import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "./markdown";
 
 describe("renderMarkdown", () => {
-  it("renders safe links", () => {
-    const html = renderMarkdown("[link](https://example.com)");
-    expect(html).toContain("href=\"https://example.com\"");
-    expect(html).toContain(">link</a>");
+  it("removes unsafe javascript links", () => {
+    const html = renderMarkdown("[click](javascript:alert(1))");
+    expect(html).toContain("click");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("<a ");
   });
 
-  it("drops javascript links", () => {
-    const html = renderMarkdown("[x](javascript:alert(1))");
-    expect(html).not.toContain("href=");
-    expect(html).toContain("x");
+  it("keeps safe http links", () => {
+    const html = renderMarkdown("[site](https://example.com)");
+    expect(html).toContain('href="https://example.com"');
   });
 
-  it("drops encoded javascript links", () => {
-    const html = renderMarkdown("[x](jav&#97;script:alert(1))");
-    expect(html).not.toContain("href=");
+  it("blocks encoded javascript schemes", () => {
+    const html = renderMarkdown("[click](java&#x73;cript:alert(1))");
+    expect(html).toContain("click");
+    expect(html).not.toContain("<a ");
   });
 
-  it("keeps query strings without double escaping", () => {
-    const html = renderMarkdown("[x](/path?a=1&b=2)");
-    expect(html).toContain("href=\"/path?a=1&amp;b=2\"");
+  it("keeps relative and hash links", () => {
+    const relative = renderMarkdown("[rel](../docs/readme.md)");
+    expect(relative).toContain('href="../docs/readme.md"');
+    const hash = renderMarkdown("[section](#intro)");
+    expect(hash).toContain('href="#intro"');
+  });
+
+  it("does not double-escape query strings", () => {
+    const html = renderMarkdown("[search](/docs?q=one&two=3)");
+    expect(html).toContain('href="/docs?q=one&amp;two=3"');
     expect(html).not.toContain("&amp;amp;");
-  });
-
-  it("allows relative links", () => {
-    const html = renderMarkdown("[x](/path)");
-    expect(html).toContain("href=\"/path\"");
   });
 });

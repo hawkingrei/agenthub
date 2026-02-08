@@ -172,7 +172,7 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
-            seq INTEGER NOT NULL DEFAULT 0,
+            seq TEXT NOT NULL,
             ts INTEGER NOT NULL,
             stream TEXT NOT NULL,
             message TEXT NOT NULL,
@@ -183,25 +183,6 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     )
     .execute(&pool)
     .await?;
-
-    let _ = sqlx::query(
-        r#"
-        ALTER TABLE agent_events
-        ADD COLUMN seq INTEGER NOT NULL DEFAULT 0
-        "#,
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        r#"
-        UPDATE agent_events
-        SET seq = id
-        WHERE seq = 0
-        "#,
-    )
-    .execute(&pool)
-    .await;
 
     let _ = sqlx::query(
         r#"

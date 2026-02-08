@@ -190,7 +190,7 @@ impl AgentManager {
         &self,
         agent_id: &str,
         limit: i64,
-        before_seq: Option<i64>,
+        before_seq: Option<String>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
         let rows = if let Some(before_seq) = before_seq {
             sqlx::query(
@@ -244,7 +244,7 @@ impl AgentManager {
         agent_id: &str,
         session_id: &str,
         limit: i64,
-        before_seq: Option<i64>,
+        before_seq: Option<String>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
         let rows = if let Some(before_seq) = before_seq {
             sqlx::query(
@@ -475,8 +475,9 @@ impl AgentManager {
         }
 
         let input = if is_acp {
-            let resume_session_id =
-                self.get_persistent_session(&agent.id, ACP_PROVIDER_CODEX).await?;
+            let resume_session_id = self
+                .get_persistent_session(&agent.id, ACP_PROVIDER_CODEX)
+                .await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -654,7 +655,7 @@ impl AgentManager {
         message: &str,
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
-        let seq = now_nanos();
+        let seq = Uuid::now_v7().to_string();
         let _ = sqlx::query(
             r#"
             INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
@@ -733,7 +734,7 @@ impl AgentManager {
         let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
         let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
 
-        let seq = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let seq = Uuid::now_v7().to_string();
         let message_id = message_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| seq.to_string());
@@ -747,7 +748,7 @@ impl AgentManager {
         let output = AgentOutput {
             agent_id: agent_id.to_string(),
             session_id: session_id.clone(),
-            seq,
+            seq: seq.clone(),
             ts: Utc::now().timestamp(),
             stream: OutputStream::Acp,
             message: message.clone(),
@@ -806,7 +807,8 @@ impl AgentManager {
         value: &str,
     ) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
-        acp.set_config(config_id.to_string(), value.to_string()).await
+        acp.set_config(config_id.to_string(), value.to_string())
+            .await
     }
 
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
@@ -838,11 +840,11 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
-        let seq = now_nanos();
+        let seq = Uuid::now_v7().to_string();
         let output = AgentOutput {
             agent_id: agent_id.clone(),
             session_id: session_id.clone(),
-            seq,
+            seq: seq.clone(),
             ts: Utc::now().timestamp(),
             stream: OutputStream::Acp,
             message: message.clone(),
@@ -884,11 +886,11 @@ impl AgentManager {
                 } else {
                     stream.clone()
                 };
-                let seq = now_nanos();
+                let seq = Uuid::now_v7().to_string();
                 let output = AgentOutput {
                     agent_id: agent_id.clone(),
                     session_id: session_id.clone(),
-                    seq,
+                    seq: seq.clone(),
                     ts: Utc::now().timestamp(),
                     stream: stream.clone(),
                     message: line.clone(),
@@ -978,11 +980,11 @@ impl AgentManager {
                     .execute(&db)
                     .await;
 
-                    let seq = now_nanos();
+                    let seq = Uuid::now_v7().to_string();
                     let output = AgentOutput {
                         agent_id: agent_id_clone.clone(),
                         session_id: session_id.clone(),
-                        seq,
+                        seq: seq.clone(),
                         ts: Utc::now().timestamp(),
                         stream: OutputStream::Acp,
                         message: serde_json::json!({
@@ -1369,9 +1371,6 @@ fn is_path_allowed(target: &str, allowed: &str) -> bool {
     target.chars().nth(allowed.len()) == Some('/')
 }
 
-fn now_nanos() -> i64 {
-    Utc::now().timestamp_nanos_opt().unwrap_or(0)
-}
 
 #[cfg(test)]
 mod tests {

@@ -26,16 +26,16 @@ fn styles_keep_acp_conversation_scoped() {
         "acp conversation inner should bottom-align short content"
     );
     assert!(
-        css.contains(".acp-plan {\n  overflow: auto;\n  min-height: 0;\n  max-height: 100%;\n}"),
-        "acp plan should be scrollable"
-    );
-    assert!(
         css.contains(".acp-thought-fold pre {\n  margin: 0;\n  white-space: pre-wrap;\n}"),
         "acp thought pre should preserve formatting"
     );
     assert!(
         css.contains(".acp-bubble.agent_thinking"),
         "acp thinking bubble should be styled"
+    );
+    assert!(
+        css.contains(".acp-bubble.agent_plan"),
+        "acp plan bubble should be styled"
     );
     assert!(
         css.contains(".output-body {\n  max-height: none;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  padding-right: 6px;\n  min-height: 0;\n  flex: 1;\n}"),
@@ -54,7 +54,7 @@ fn styles_keep_acp_conversation_scoped() {
         "app should be fixed height with overflow auto"
     );
     assert!(
-        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n}"),
+        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n}"),
         "input docked should stick to bottom"
     );
 }

@@ -33,7 +33,7 @@ pub struct StartAgentResponse {
 pub struct ListEventsQuery {
     pub limit: Option<i64>,
     pub session_id: Option<String>,
-    pub before_seq: Option<i64>,
+    pub before_seq: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -245,7 +245,10 @@ async fn set_acp_mode(
     Json(payload): Json<SetAcpModeRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    state.agents.set_acp_mode(&agent_id, &payload.mode_id).await?;
+    state
+        .agents
+        .set_acp_mode(&agent_id, &payload.mode_id)
+        .await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
