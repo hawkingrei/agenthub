@@ -186,38 +186,56 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
-    let _ = sqlx::query(
+    if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
         ON agent_events(agent_id, seq);
         "#,
     )
     .execute(&pool)
-    .await;
-    let _ = sqlx::query(
+    .await
+    {
+        tracing::warn!("db init: failed to create idx_agent_events_agent_seq: {}", err);
+    }
+    if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_seq
         ON agent_events(agent_id, session_id, seq);
         "#,
     )
     .execute(&pool)
-    .await;
-    let _ = sqlx::query(
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_events_agent_session_seq: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_id
         ON agent_events(agent_id, id);
         "#,
     )
     .execute(&pool)
-    .await;
-    let _ = sqlx::query(
+    .await
+    {
+        tracing::warn!("db init: failed to create idx_agent_events_agent_id: {}", err);
+    }
+    if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_id
         ON agent_events(agent_id, session_id, id);
         "#,
     )
     .execute(&pool)
-    .await;
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_events_agent_session_id: {}",
+            err
+        );
+    }
 
     sqlx::query(
         r#"
@@ -255,9 +273,18 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
-    let _ = sqlx::query("ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER")
+    if let Err(err) = sqlx::query("ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER")
         .execute(&pool)
-        .await;
+        .await
+    {
+        let message = err.to_string();
+        if !message.contains("duplicate column name") {
+            tracing::warn!(
+                "db init: failed to add auth_sessions.revoked_at column: {}",
+                message
+            );
+        }
+    }
     let _ = sqlx::query("ALTER TABLE devices ADD COLUMN last_login_at INTEGER")
         .execute(&pool)
         .await;

@@ -34,6 +34,7 @@
 - [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
+- [ ] Verify db init warns on index creation failures and unexpected ALTER errors (see `docs/features/2026-02-08-db-init-index-logging.md`).
 - [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
 - [ ] Verify conversation messages remain fully visible without auto-collapse (see `docs/features/2026-02-08-conversation-message-display.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).
