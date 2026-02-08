@@ -29,6 +29,7 @@
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify PWA install prompt, offline shell behavior, and Vite 7-compatible plugin version (see `docs/features/2026-02-08-pwa-support.md`).
 - [ ] Verify service worker registers only once with manual registration enabled (see `docs/features/2026-02-08-pwa-support.md`).
+- [ ] Verify PWA update toast appears and auto-refreshes on new service worker (see `docs/features/2026-02-08-pwa-update-toast.md`).
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).

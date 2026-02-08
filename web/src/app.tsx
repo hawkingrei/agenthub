@@ -58,6 +58,7 @@ import {
   registerCredentialToJson,
 } from "./webauthn";
 import { AuthState } from "./types";
+import { registerSW } from "virtual:pwa-register";
 
 export function App() {
   const eventLimit = 200;
@@ -104,6 +105,9 @@ export function App() {
   const [agentSessions, setAgentSessions] = useState<Record<string, string>>(
     {}
   );
+  const updateSwRef = useRef<((reload?: boolean) => Promise<void>) | null>(null);
+  const swRefreshTimerRef = useRef<number | null>(null);
+  const [swToastVisible, setSwToastVisible] = useState(false);
   const initialCachesRef = useRef(
     loadOutputCaches(maxCachedEvents, maxCachedSessions)
   );
@@ -169,6 +173,30 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (updateSwRef.current) return;
+    const updateSW = registerSW({
+      immediate: true,
+      onNeedRefresh: () => {
+        if (swRefreshTimerRef.current != null) return;
+        setSwToastVisible(true);
+        swRefreshTimerRef.current = window.setTimeout(async () => {
+          try {
+            await updateSW(true);
+          } catch {
+            window.location.reload();
+          }
+        }, 2000);
+      },
+    });
+    updateSwRef.current = updateSW;
+    return () => {
+      if (swRefreshTimerRef.current != null) {
+        window.clearTimeout(swRefreshTimerRef.current);
+      }
+    };
+  }, []);
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -1261,6 +1289,13 @@ export function App() {
       </header>
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+      {swToastVisible && (
+        <div className="sw-toast" role="status" aria-live="polite">
+          <div className="sw-toast-content">
+            <span>New version available. Refreshing...</span>
+          </div>
+        </div>
+      )}
 
       {!auth && (
         <section className="auth">
