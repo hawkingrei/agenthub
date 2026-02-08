@@ -8,6 +8,7 @@
 - [ ] Verify ACP conversation scrolling and auto-collapse behavior after hook extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify Output error boundary fallback and empty state rendering (see `docs/features/2026-02-08-output-error-boundary.md`).
 - [ ] Verify localStorage output cache restores output history after reload (see `docs/features/2026-02-08-output-localstorage.md`).
+- [ ] Verify cache key bump invalidates older payloads cleanly after schema changes (see `docs/features/2026-02-08-output-localstorage.md`).
 - [ ] Verify output cache stays consistent under SSE + polling after ref sync update (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify cached output validation drops incomplete records from localStorage (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify session-specific output views do not merge unrelated `latest` cache entries (see `docs/features/2026-02-08-output-cache-consistency.md`).

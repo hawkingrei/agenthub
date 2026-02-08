@@ -199,9 +199,13 @@ export function buildConversationMessages(
         text: pendingThought,
         live: false,
         seq: pendingThoughtSeq ?? call.seq,
+        event_id: pendingThoughtEventId ?? call.event_id,
+        ts: pendingThoughtTs ?? call.ts,
       });
       pendingThought = null;
       pendingThoughtSeq = null;
+      pendingThoughtEventId = null;
+      pendingThoughtTs = null;
     }
     items.push({
       kind: "tool_call",

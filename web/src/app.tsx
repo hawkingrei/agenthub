@@ -594,17 +594,13 @@ export function App() {
           const parsed = JSON.parse(event.data);
           if (parsed.type === "output" || parsed.type === "acp") {
             const payload = parsed.payload;
-            if (payload.agent_id && payload.agent_id !== activeAgent) {
+            if (!isValidOutputPayload(payload)) {
               return;
             }
-            if (
-              activeSessionId &&
-              payload.session_id &&
-              payload.session_id !== activeSessionId
-            ) {
+            if (payload.agent_id !== activeAgent) {
               return;
             }
-            if (typeof payload.event_id !== "number") {
+            if (activeSessionId && payload.session_id !== activeSessionId) {
               return;
             }
             const line: OutputLine = {
@@ -1565,6 +1561,44 @@ function parseRunStatus(message: string): string | null {
     return null;
   }
   return null;
+}
+
+function isValidOutputPayload(
+  payload: unknown
+): payload is {
+  event_id: number;
+  agent_id: string;
+  session_id: string;
+  seq: string;
+  ts: number;
+  stream: OutputLine["stream"];
+  message: string;
+} {
+  if (!payload || typeof payload !== "object") return false;
+  const candidate = payload as {
+    event_id?: unknown;
+    agent_id?: unknown;
+    session_id?: unknown;
+    seq?: unknown;
+    ts?: unknown;
+    stream?: unknown;
+    message?: unknown;
+  };
+  if (typeof candidate.event_id !== "number") return false;
+  if (typeof candidate.agent_id !== "string" || !candidate.agent_id) return false;
+  if (typeof candidate.session_id !== "string" || !candidate.session_id) return false;
+  if (typeof candidate.seq !== "string" || !candidate.seq) return false;
+  if (typeof candidate.ts !== "number") return false;
+  if (typeof candidate.message !== "string") return false;
+  if (
+    candidate.stream !== "stdout" &&
+    candidate.stream !== "stderr" &&
+    candidate.stream !== "system" &&
+    candidate.stream !== "acp"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function statusToAgentStatus(status: string): AgentRecord["status"] {

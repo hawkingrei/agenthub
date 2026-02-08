@@ -1,7 +1,7 @@
 import { OutputLine } from "../output_cache";
 import { compareEventOrder } from "../seq_order";
 
-const STORAGE_KEY = "agenthub_output_cache_v1";
+const STORAGE_KEY = "agenthub_output_cache_v2";
 
 type StoredOutputCache = {
   v: number;
@@ -106,6 +106,9 @@ function isOutputLine(value: unknown): value is OutputLine {
   }
   const hasId = typeof candidate.event_id === "number";
   if (!hasId) {
+    return false;
+  }
+  if (typeof candidate.seq !== "string" || !candidate.seq) {
     return false;
   }
   if (typeof candidate.message !== "string") return false;

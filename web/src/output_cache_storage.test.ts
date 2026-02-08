@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import { OutputLine } from "./output_cache";
 
-const STORAGE_KEY = "agenthub_output_cache_v1";
+const STORAGE_KEY = "agenthub_output_cache_v2";
 
 class MemoryStorage {
   private store = new Map<string, string>();
