@@ -202,6 +202,22 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     )
     .execute(&pool)
     .await;
+    let _ = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_id
+        ON agent_events(agent_id, id);
+        "#,
+    )
+    .execute(&pool)
+    .await;
+    let _ = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_id
+        ON agent_events(agent_id, session_id, id);
+        "#,
+    )
+    .execute(&pool)
+    .await;
 
     sqlx::query(
         r#"

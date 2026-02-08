@@ -1,3 +1,5 @@
+import { compareEventOrder } from "./seq_order";
+
 export type AcpToolCall = {
   id: string;
   title: string;
@@ -9,6 +11,7 @@ export type AcpToolCall = {
   terminal_output?: string;
   session_id?: string | null;
   seq?: string;
+  event_id?: number;
   ts?: number;
 };
 
@@ -18,6 +21,7 @@ export type AcpMessage = {
   session_id?: string | null;
   message_id?: string | null;
   seq?: string;
+  event_id?: number;
   chunk: boolean;
   ts?: number;
 };
@@ -37,6 +41,7 @@ export type AcpPlan = {
 export type AcpPlanView = AcpPlan & {
   session_id?: string | null;
   seq?: string;
+  event_id?: number;
   ts?: number;
 };
 
@@ -61,6 +66,7 @@ export type AcpRunStatus = {
 export type AcpEventLine = {
   ts: number;
   seq?: string;
+  event_id?: number;
   stream: string;
   message: string;
   session_id?: string | null;
@@ -129,14 +135,23 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       ) {
         continue;
       }
-      if (
+      const shouldMergeChunk =
         is_chunk &&
         last &&
+        last.chunk &&
         last.kind === parsed.type &&
-        last.session_id === (event.session_id ?? null)
-      ) {
+        last.session_id === (event.session_id ?? null) &&
+        (messageId == null ||
+          last.message_id == null ||
+          last.message_id === messageId);
+      if (shouldMergeChunk) {
         last.text = `${last.text}${text}`;
         last.seq = event.seq ?? last.seq;
+        last.event_id = event.event_id ?? last.event_id;
+        last.ts = event.ts ?? last.ts;
+        if (messageId && last.message_id == null) {
+          last.message_id = messageId;
+        }
       } else {
         messages.push({
           kind: parsed.type,
@@ -144,6 +159,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
           session_id: event.session_id ?? null,
           message_id: messageId,
           seq: event.seq,
+          event_id: event.event_id,
           chunk: is_chunk,
           ts: event.ts,
         });
@@ -173,6 +189,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         raw_input: parsed.raw_input,
         session_id: event.session_id ?? null,
         seq: event.seq,
+        event_id: event.event_id,
         ts: event.ts,
       };
       if (!call.id) continue;
@@ -201,11 +218,13 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.content) call.content = formatAcpContent(parsed.content);
       if (call.session_id == null) call.session_id = event.session_id ?? null;
       if (call.ts == null) call.ts = event.ts;
-      if (
-        event.seq != null &&
-        (call.seq == null || String(event.seq) > String(call.seq))
-      ) {
+      const updated = compareEventOrder(
+        { event_id: event.event_id ?? null, ts: event.ts },
+        { event_id: call.event_id ?? null, ts: call.ts }
+      );
+      if (updated > 0) {
         call.seq = event.seq;
+        call.event_id = event.event_id;
         call.ts = event.ts;
       }
       if (parsed.meta?.terminal_output?.data) {
@@ -223,6 +242,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         ...(parsed.plan as AcpPlan),
         session_id: event.session_id ?? null,
         seq: event.seq,
+        event_id: event.event_id,
         ts: event.ts,
       };
     }

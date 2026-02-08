@@ -1,18 +1,31 @@
 export type EventCursorSource = {
   ts: number;
-  seq?: string;
+  event_id?: number;
 };
 
-export type EventCursor = { value: number | string; hasSeq: boolean };
+export type EventCursor = {
+  value: number;
+  kind: "event_id" | "ts";
+};
 
 export type CursorRef = { current: Record<string, EventCursor> };
 
 export function getEventCursor(event: EventCursorSource): EventCursor {
-  if (typeof event.seq === "string") {
-    return { value: event.seq, hasSeq: true };
+  if (typeof event.event_id === "number") {
+    return { value: event.event_id, kind: "event_id" };
   }
-  return { value: event.ts, hasSeq: false };
+  return { value: event.ts, kind: "ts" };
 }
+
+const cursorPriority = (kind: EventCursor["kind"]): number => {
+  if (kind === "event_id") return 1;
+  return 0;
+};
+
+const isCursorValueGreater = (left: EventCursor, right: EventCursor): boolean => {
+  if (left.kind !== right.kind) return false;
+  return left.value > right.value;
+};
 
 export function getMaxEventCursor(
   events: EventCursorSource[]
@@ -24,18 +37,14 @@ export function getMaxEventCursor(
       max = cursor;
       continue;
     }
-    if (cursor.hasSeq && !max.hasSeq) {
+    const cursorRank = cursorPriority(cursor.kind);
+    const maxRank = cursorPriority(max.kind);
+    if (cursorRank > maxRank) {
       max = cursor;
       continue;
     }
-    if (cursor.hasSeq === max.hasSeq) {
-      if (cursor.hasSeq) {
-        if (String(cursor.value) > String(max.value)) {
-          max = cursor;
-        }
-      } else if (Number(cursor.value) > Number(max.value)) {
-        max = cursor;
-      }
+    if (cursorRank === maxRank && isCursorValueGreater(cursor, max)) {
+      max = cursor;
     }
   }
   return max;
@@ -50,23 +59,19 @@ export function updateLastEventCursor(
   const prev = ref.current[key];
   if (
     prev == null ||
-    (cursor.hasSeq && !prev.hasSeq) ||
-    (cursor.hasSeq === prev.hasSeq &&
-      (cursor.hasSeq
-        ? String(cursor.value) > String(prev.value)
-        : Number(cursor.value) > Number(prev.value)))
+    cursorPriority(cursor.kind) > cursorPriority(prev.kind) ||
+    (cursor.kind === prev.kind && isCursorValueGreater(cursor, prev))
   ) {
     ref.current[key] = cursor;
   }
 }
 
 export function isCursorNewer(prev: EventCursor, next: EventCursor): boolean {
-  if (next.hasSeq && !prev.hasSeq) return true;
-  if (next.hasSeq !== prev.hasSeq) return false;
-  if (next.hasSeq) {
-    return String(next.value) > String(prev.value);
-  }
-  return Number(next.value) > Number(prev.value);
+  const prevRank = cursorPriority(prev.kind);
+  const nextRank = cursorPriority(next.kind);
+  if (nextRank > prevRank) return true;
+  if (nextRank < prevRank) return false;
+  return isCursorValueGreater(next, prev);
 }
 
 export function getAdaptivePollInterval(idleCount: number): number {

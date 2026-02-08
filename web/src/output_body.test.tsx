@@ -101,6 +101,7 @@ describe("OutputBody", () => {
       isOutputLoading: false,
       outputs: [
         {
+          event_id: 1,
           ts: 1,
           seq: "1",
           stream: "stdout",

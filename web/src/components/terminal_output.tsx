@@ -10,10 +10,7 @@ export function TerminalOutput({ outputs, ansi }: TerminalOutputProps) {
   return (
     <div className="terminal">
       {outputs.map((line) => {
-        const key =
-          line.seq != null
-            ? `seq-${line.seq}`
-            : `${line.ts}-${line.stream}-${line.message}`;
+        const key = `id-${line.event_id}`;
         return (
         <div
           key={key}

@@ -1,5 +1,5 @@
 import { AcpMessage, AcpPlanView, AcpToolCall } from "./acp";
-import { compareEventOrder } from "./seq_order";
+import { compareEventOrder, type SeqComparable } from "./seq_order";
 
 export type ConversationItem =
   | {
@@ -7,6 +7,8 @@ export type ConversationItem =
       text: string;
       live?: boolean;
       seq?: string;
+      event_id?: number;
+      ts?: number;
     }
   | {
       kind: "tool_call";
@@ -17,6 +19,8 @@ export type ConversationItem =
       raw_output?: unknown;
       terminal_output?: string;
       seq?: string;
+      event_id?: number;
+      ts?: number;
     };
 
 export type ConversationWindow = {
@@ -63,6 +67,7 @@ export function buildConversationMessages(
   const planText = includePlan && plan ? formatPlanEntries(plan.entries) : "";
   const entries: Array<{
     kind: "message" | "tool_call" | "plan";
+    event_id: number | null;
     seq: string | null;
     ts: number | null;
     order: number;
@@ -74,6 +79,7 @@ export function buildConversationMessages(
   for (const msg of filteredMessages) {
     entries.push({
       kind: "message",
+      event_id: msg.event_id ?? null,
       seq: msg.seq ?? null,
       ts: msg.ts ?? null,
       order,
@@ -84,6 +90,7 @@ export function buildConversationMessages(
   for (const call of filteredToolCalls) {
     entries.push({
       kind: "tool_call",
+      event_id: call.event_id ?? null,
       seq: call.seq ?? null,
       ts: call.ts ?? null,
       order,
@@ -94,6 +101,7 @@ export function buildConversationMessages(
   if (includePlan && plan && planText) {
     entries.push({
       kind: "plan",
+      event_id: plan.event_id ?? null,
       seq: plan.seq ?? null,
       ts: plan.ts ?? null,
       order,
@@ -101,10 +109,10 @@ export function buildConversationMessages(
     });
     order += 1;
   }
-  entries.sort((a, b) => {
+    entries.sort((a, b) => {
     const base = compareEventOrder(
-      { seq: a.seq ?? null, ts: a.ts ?? null },
-      { seq: b.seq ?? null, ts: b.ts ?? null }
+      { event_id: a.event_id ?? null, ts: a.ts ?? null },
+      { event_id: b.event_id ?? null, ts: b.ts ?? null }
     );
     if (base !== 0) return base;
     return a.order - b.order;
@@ -112,6 +120,8 @@ export function buildConversationMessages(
   const items: ConversationItem[] = [];
   let pendingThought: string | null = null;
   let pendingThoughtSeq: string | null = null;
+  let pendingThoughtEventId: number | null = null;
+  let pendingThoughtTs: number | null = null;
   for (const entry of entries) {
     if (entry.kind === "message") {
       const msg = entry.message;
@@ -119,6 +129,8 @@ export function buildConversationMessages(
       if (msg.kind === "agent_thought") {
         pendingThought = pendingThought ? `${pendingThought}\n${msg.text}` : msg.text;
         pendingThoughtSeq = msg.seq ?? pendingThoughtSeq;
+        pendingThoughtEventId = msg.event_id ?? pendingThoughtEventId;
+        pendingThoughtTs = msg.ts ?? pendingThoughtTs;
         continue;
       }
       if (pendingThought) {
@@ -127,15 +139,31 @@ export function buildConversationMessages(
           text: pendingThought,
           live: false,
           seq: pendingThoughtSeq ?? msg.seq,
+          event_id: pendingThoughtEventId ?? entry.event_id ?? undefined,
+          ts: pendingThoughtTs ?? entry.ts ?? undefined,
         });
         pendingThought = null;
         pendingThoughtSeq = null;
+        pendingThoughtEventId = null;
+        pendingThoughtTs = null;
       }
       if (msg.kind === "agent_message") {
-        items.push({ kind: "agent_message", text: msg.text, seq: msg.seq });
+        items.push({
+          kind: "agent_message",
+          text: msg.text,
+          seq: msg.seq,
+          event_id: msg.event_id,
+          ts: msg.ts,
+        });
         continue;
       }
-      items.push({ kind: "user_message", text: msg.text, seq: msg.seq });
+      items.push({
+        kind: "user_message",
+        text: msg.text,
+        seq: msg.seq,
+        event_id: msg.event_id,
+        ts: msg.ts,
+      });
       continue;
     }
     if (entry.kind === "plan") {
@@ -145,15 +173,21 @@ export function buildConversationMessages(
           text: pendingThought,
           live: false,
           seq: pendingThoughtSeq ?? entry.seq ?? undefined,
+          event_id: pendingThoughtEventId ?? entry.event_id ?? undefined,
+          ts: pendingThoughtTs ?? entry.ts ?? undefined,
         });
         pendingThought = null;
         pendingThoughtSeq = null;
+        pendingThoughtEventId = null;
+        pendingThoughtTs = null;
       }
       items.push({
         kind: "agent_plan",
         text: planText,
         live: false,
         seq: entry.seq ?? undefined,
+        event_id: entry.event_id ?? undefined,
+        ts: entry.ts ?? undefined,
       });
       continue;
     }
@@ -178,16 +212,20 @@ export function buildConversationMessages(
       raw_output: call.raw_output,
       terminal_output: call.terminal_output,
       seq: call.seq,
+      event_id: call.event_id,
+      ts: call.ts,
     });
   }
-  if (pendingThought) {
-    items.push({
-      kind: "agent_thinking",
-      text: pendingThought,
-      live: true,
-      seq: pendingThoughtSeq ?? undefined,
-    });
-  }
+    if (pendingThought) {
+      items.push({
+        kind: "agent_thinking",
+        text: pendingThought,
+        live: true,
+        seq: pendingThoughtSeq ?? undefined,
+        event_id: pendingThoughtEventId ?? undefined,
+        ts: pendingThoughtTs ?? undefined,
+      });
+    }
   return items;
 }
 
@@ -208,26 +246,38 @@ export function windowConversation(
   };
 }
 
-export function deriveConversationFreezeMaxSeq(
+export function deriveConversationFreezeCursor(
   items: ConversationItem[]
-): string | null {
-  let maxSeq: string | null = null;
+): SeqComparable | null {
+  let maxCursor: SeqComparable | null = null;
   for (const item of items) {
-    if (typeof item.seq !== "string") continue;
-    maxSeq = maxSeq === null ? item.seq : maxSeq < item.seq ? item.seq : maxSeq;
+    const cursor: SeqComparable = {
+      event_id: item.event_id ?? null,
+      ts: item.ts ?? null,
+    };
+    if (maxCursor == null) {
+      maxCursor = cursor;
+      continue;
+    }
+    if (compareEventOrder(cursor, maxCursor) > 0) {
+      maxCursor = cursor;
+    }
   }
-  return maxSeq;
+  return maxCursor;
 }
 
 export function applyConversationFreeze(
   items: ConversationItem[],
-  maxSeq: string | null
+  maxCursor: SeqComparable | null
 ): { frozen: ConversationItem[]; pending: number } {
   const frozen: ConversationItem[] = [];
   let pending = 0;
   for (const item of items) {
-    const seq = item.seq;
-    if (maxSeq == null || typeof seq !== "string" || seq <= maxSeq) {
+    const cursor: SeqComparable = {
+      event_id: item.event_id ?? null,
+      ts: item.ts ?? null,
+    };
+    if (maxCursor == null || compareEventOrder(cursor, maxCursor) <= 0) {
       frozen.push(item);
       continue;
     }

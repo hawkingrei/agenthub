@@ -53,17 +53,8 @@ impl AcpEventSink {
 
     async fn emit_raw(&self, stream: OutputStream, message: String) {
         let seq = Uuid::now_v7().to_string();
-        let output = AgentOutput {
-            agent_id: self.agent_id.clone(),
-            session_id: self.session_id.clone(),
-            seq: seq.clone(),
-            ts: Utc::now().timestamp(),
-            stream: stream.clone(),
-            message: message.clone(),
-        };
-        let _ = self.output_tx.send(output);
-
-        let _ = sqlx::query(
+        let ts = Utc::now().timestamp();
+        let result = sqlx::query(
             r#"
             INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -71,12 +62,26 @@ impl AcpEventSink {
         )
         .bind(&self.agent_id)
         .bind(&self.session_id)
-        .bind(seq)
-        .bind(Utc::now().timestamp())
+        .bind(&seq)
+        .bind(ts)
         .bind(stream_to_str(&stream))
-        .bind(message)
+        .bind(message.clone())
         .execute(&self.db)
         .await;
+        let Ok(result) = result else {
+            tracing::error!("acp emit_raw: failed to persist event");
+            return;
+        };
+        let output = AgentOutput {
+            event_id: result.last_insert_rowid(),
+            agent_id: self.agent_id.clone(),
+            session_id: self.session_id.clone(),
+            seq: seq.clone(),
+            ts,
+            stream: stream.clone(),
+            message: message.clone(),
+        };
+        let _ = self.output_tx.send(output);
     }
 
     async fn emit_update(&self, update: SessionUpdate) {

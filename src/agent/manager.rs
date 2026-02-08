@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -25,6 +25,7 @@ pub struct AgentManager {
     proxy_env: Vec<(String, String)>,
     codex_acp_binary: String,
     permissions: Arc<AcpPermissionService>,
+    starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
@@ -58,6 +59,7 @@ impl AgentManager {
             proxy_env,
             codex_acp_binary,
             permissions,
+            starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -190,30 +192,30 @@ impl AgentManager {
         &self,
         agent_id: &str,
         limit: i64,
-        before_seq: Option<String>,
+        before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
-        let rows = if let Some(before_seq) = before_seq {
+        let rows = if let Some(before_id) = before_id {
             sqlx::query(
                 r#"
-                SELECT agent_id, session_id, seq, ts, stream, message
+                SELECT id, agent_id, session_id, seq, ts, stream, message
                 FROM agent_events
-                WHERE agent_id = ?1 AND seq < ?2
-                ORDER BY seq DESC
+                WHERE agent_id = ?1 AND id < ?2
+                ORDER BY id DESC
                 LIMIT ?3
                 "#,
             )
             .bind(agent_id)
-            .bind(before_seq)
+            .bind(before_id)
             .bind(limit)
             .fetch_all(&self.db)
             .await?
         } else {
             sqlx::query(
                 r#"
-                SELECT agent_id, session_id, seq, ts, stream, message
+                SELECT id, agent_id, session_id, seq, ts, stream, message
                 FROM agent_events
                 WHERE agent_id = ?1
-                ORDER BY seq DESC
+                ORDER BY id DESC
                 LIMIT ?2
                 "#,
             )
@@ -227,6 +229,7 @@ impl AgentManager {
         for row in rows {
             let stream_str: String = row.get("stream");
             events.push(AgentEvent {
+                event_id: row.get("id"),
                 agent_id: row.get("agent_id"),
                 session_id: row.get("session_id"),
                 seq: row.get("seq"),
@@ -244,31 +247,31 @@ impl AgentManager {
         agent_id: &str,
         session_id: &str,
         limit: i64,
-        before_seq: Option<String>,
+        before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
-        let rows = if let Some(before_seq) = before_seq {
+        let rows = if let Some(before_id) = before_id {
             sqlx::query(
                 r#"
-                SELECT agent_id, session_id, seq, ts, stream, message
+                SELECT id, agent_id, session_id, seq, ts, stream, message
                 FROM agent_events
-                WHERE agent_id = ?1 AND session_id = ?2 AND seq < ?3
-                ORDER BY seq DESC
+                WHERE agent_id = ?1 AND session_id = ?2 AND id < ?3
+                ORDER BY id DESC
                 LIMIT ?4
                 "#,
             )
             .bind(agent_id)
             .bind(session_id)
-            .bind(before_seq)
+            .bind(before_id)
             .bind(limit)
             .fetch_all(&self.db)
             .await?
         } else {
             sqlx::query(
                 r#"
-                SELECT agent_id, session_id, seq, ts, stream, message
+                SELECT id, agent_id, session_id, seq, ts, stream, message
                 FROM agent_events
                 WHERE agent_id = ?1 AND session_id = ?2
-                ORDER BY seq DESC
+                ORDER BY id DESC
                 LIMIT ?3
                 "#,
             )
@@ -283,6 +286,7 @@ impl AgentManager {
         for row in rows {
             let stream_str: String = row.get("stream");
             events.push(AgentEvent {
+                event_id: row.get("id"),
                 agent_id: row.get("agent_id"),
                 session_id: row.get("session_id"),
                 seq: row.get("seq"),
@@ -356,13 +360,34 @@ impl AgentManager {
         Ok(())
     }
 
-    pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+    async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
         {
             let guard = self.inner.read().await;
             if guard.contains_key(agent_id) {
                 return Err(anyhow::anyhow!("agent already running"));
             }
         }
+        let mut starting = self.starting.lock().await;
+        if starting.contains(agent_id) {
+            return Err(anyhow::anyhow!("agent already running"));
+        }
+        starting.insert(agent_id.to_string());
+        Ok(())
+    }
+
+    async fn release_agent_start(&self, agent_id: &str) {
+        let mut starting = self.starting.lock().await;
+        starting.remove(agent_id);
+    }
+
+    pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        self.reserve_agent_start(agent_id).await?;
+        let result = self.start_agent_inner(agent_id).await;
+        self.release_agent_start(agent_id).await;
+        result
+    }
+
+    async fn start_agent_inner(&self, agent_id: &str) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
         let workdir = expand_tilde(&agent.workdir);
@@ -754,16 +779,8 @@ impl AgentManager {
             "message_id": message_id
         })
         .to_string();
-        let output = AgentOutput {
-            agent_id: agent_id.to_string(),
-            session_id: session_id.clone(),
-            seq: seq.clone(),
-            ts: Utc::now().timestamp(),
-            stream: OutputStream::Acp,
-            message: message.clone(),
-        };
-        let _ = output_tx.send(output);
-        let _ = sqlx::query(
+        let ts = Utc::now().timestamp();
+        let result = sqlx::query(
             r#"
             INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -771,12 +788,22 @@ impl AgentManager {
         )
         .bind(agent_id)
         .bind(&session_id)
-        .bind(seq)
-        .bind(Utc::now().timestamp())
+        .bind(&seq)
+        .bind(ts)
         .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message)
+        .bind(message.clone())
         .execute(&self.db)
-        .await;
+        .await?;
+        let output = AgentOutput {
+            event_id: result.last_insert_rowid(),
+            agent_id: agent_id.to_string(),
+            session_id: session_id.clone(),
+            seq: seq.clone(),
+            ts,
+            stream: OutputStream::Acp,
+            message: message.clone(),
+        };
+        let _ = output_tx.send(output);
 
         acp.prompt(input.to_string()).await?;
         Ok(())
@@ -850,16 +877,8 @@ impl AgentManager {
         })
         .to_string();
         let seq = Uuid::now_v7().to_string();
-        let output = AgentOutput {
-            agent_id: agent_id.clone(),
-            session_id: session_id.clone(),
-            seq: seq.clone(),
-            ts: Utc::now().timestamp(),
-            stream: OutputStream::Acp,
-            message: message.clone(),
-        };
-        let _ = output_tx.send(output);
-        let _ = sqlx::query(
+        let ts = Utc::now().timestamp();
+        let result = sqlx::query(
             r#"
             INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -867,12 +886,26 @@ impl AgentManager {
         )
         .bind(&agent_id)
         .bind(&session_id)
-        .bind(seq)
-        .bind(Utc::now().timestamp())
+        .bind(&seq)
+        .bind(ts)
         .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message)
+        .bind(message.clone())
         .execute(&self.db)
         .await;
+        let Ok(result) = result else {
+            tracing::error!("emit_run_status: failed to persist event");
+            return;
+        };
+        let output = AgentOutput {
+            event_id: result.last_insert_rowid(),
+            agent_id: agent_id.clone(),
+            session_id: session_id.clone(),
+            seq: seq.clone(),
+            ts,
+            stream: OutputStream::Acp,
+            message: message.clone(),
+        };
+        let _ = output_tx.send(output);
     }
 
     async fn spawn_output_reader<R>(
@@ -896,19 +929,9 @@ impl AgentManager {
                     stream.clone()
                 };
                 let seq = Uuid::now_v7().to_string();
-                let output = AgentOutput {
-                    agent_id: agent_id.clone(),
-                    session_id: session_id.clone(),
-                    seq: seq.clone(),
-                    ts: Utc::now().timestamp(),
-                    stream: stream.clone(),
-                    message: line.clone(),
-                };
-                let stream_name = stream_to_str(&output.stream);
-
-                let _ = output_tx.send(output);
-
-                let _ = sqlx::query(
+                let ts = Utc::now().timestamp();
+                let stream_name = stream_to_str(&stream);
+                let result = sqlx::query(
                     r#"
                     INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -916,12 +939,26 @@ impl AgentManager {
                 )
                 .bind(&agent_id)
                 .bind(&session_id)
-                .bind(seq)
-                .bind(Utc::now().timestamp())
+                .bind(&seq)
+                .bind(ts)
                 .bind(stream_name)
                 .bind(&line)
                 .execute(&db)
                 .await;
+                let Ok(result) = result else {
+                    tracing::error!("spawn_output_reader: failed to persist event");
+                    continue;
+                };
+                let output = AgentOutput {
+                    event_id: result.last_insert_rowid(),
+                    agent_id: agent_id.clone(),
+                    session_id: session_id.clone(),
+                    seq: seq.clone(),
+                    ts,
+                    stream: stream.clone(),
+                    message: line.clone(),
+                };
+                let _ = output_tx.send(output);
             }
         });
     }
@@ -992,23 +1029,14 @@ impl AgentManager {
                     .await;
 
                     let seq = Uuid::now_v7().to_string();
-                    let output = AgentOutput {
-                        agent_id: agent_id_clone.clone(),
-                        session_id: session_id.clone(),
-                        seq: seq.clone(),
-                        ts: Utc::now().timestamp(),
-                        stream: OutputStream::Acp,
-                        message: serde_json::json!({
-                            "type": "run_status",
-                            "status": state,
-                            "session_id": session_id.clone(),
-                        })
-                        .to_string(),
-                    };
-                    if let Some(handle) = inner.read().await.get(&agent_id_clone) {
-                        let _ = handle.output_tx.send(output);
-                    }
-                    let _ = sqlx::query(
+                    let ts = Utc::now().timestamp();
+                    let message = serde_json::json!({
+                        "type": "run_status",
+                        "status": state,
+                        "session_id": session_id.clone(),
+                    })
+                    .to_string();
+                    let result = sqlx::query(
                         r#"
                         INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -1016,19 +1044,30 @@ impl AgentManager {
                     )
                     .bind(&agent_id_clone)
                     .bind(&session_id)
-                    .bind(seq)
-                    .bind(Utc::now().timestamp())
+                    .bind(&seq)
+                    .bind(ts)
                     .bind(stream_to_str(&OutputStream::Acp))
-                    .bind(
-                        serde_json::json!({
-                            "type": "run_status",
-                            "status": state,
-                            "session_id": session_id.clone(),
-                        })
-                        .to_string(),
-                    )
+                    .bind(message.clone())
                     .execute(&db)
                     .await;
+                    let Ok(result) = result else {
+                        tracing::error!("spawn_exit_watcher: failed to persist event");
+                        let mut guard = inner.write().await;
+                        guard.remove(&agent_id_clone);
+                        return;
+                    };
+                    let output = AgentOutput {
+                        event_id: result.last_insert_rowid(),
+                        agent_id: agent_id_clone.clone(),
+                        session_id: session_id.clone(),
+                        seq: seq.clone(),
+                        ts,
+                        stream: OutputStream::Acp,
+                        message,
+                    };
+                    if let Some(handle) = inner.read().await.get(&agent_id_clone) {
+                        let _ = handle.output_tx.send(output);
+                    }
 
                     let _ = push.notify_agent_completed(&agent_id, &session_id).await;
                     let mut guard = inner.write().await;

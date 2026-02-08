@@ -15,6 +15,7 @@ Agent sessions produce high-frequency event writes and rely on in-memory handles
 ## Key Decisions
 
 - Treat each `agent_id` as a single-instance runtime: concurrent starts are rejected.
+- Track in-flight starts to prevent race conditions before the runtime handle is registered.
 - Use WAL + busy timeout to reduce write contention without changing the data model.
 - Add a composite `(agent_id, session_id, seq)` index to keep pagination queries stable.
 

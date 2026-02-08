@@ -1,49 +1,29 @@
 export type SeqComparable = {
-  seq?: string | null;
+  event_id?: number | null;
   ts?: number | null;
 };
 
-const UUID_V7_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const isNumericSeq = (value: string): boolean => /^[0-9]+$/.test(value);
-
-const isUuidV7 = (value: string): boolean => UUID_V7_PATTERN.test(value);
-
-const compareNumericStrings = (left: string, right: string): number => {
-  if (left.length !== right.length) {
-    return left.length < right.length ? -1 : 1;
-  }
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
+const compareEventId = (
+  left?: number | null,
+  right?: number | null
+): number | null => {
+  const leftVal = typeof left === "number" ? left : null;
+  const rightVal = typeof right === "number" ? right : null;
+  if (leftVal == null && rightVal == null) return null;
+  if (leftVal == null) return -1;
+  if (rightVal == null) return 1;
+  if (leftVal === rightVal) return 0;
+  return leftVal < rightVal ? -1 : 1;
 };
 
-export function compareSeqValue(
-  left?: string | null,
-  right?: string | null
-): number | null {
-  if (!left || !right) return null;
-  const leftNumeric = isNumericSeq(left);
-  const rightNumeric = isNumericSeq(right);
-  if (leftNumeric && rightNumeric) {
-    return compareNumericStrings(left, right);
-  }
-  const leftUuid = isUuidV7(left);
-  const rightUuid = isUuidV7(right);
-  if (leftUuid && rightUuid) {
-    if (left === right) return 0;
-    return left < right ? -1 : 1;
-  }
-  return null;
-}
-
 export function compareEventOrder(left: SeqComparable, right: SeqComparable): number {
-  const seqOrder = compareSeqValue(left.seq ?? null, right.seq ?? null);
-  if (seqOrder != null && seqOrder !== 0) return seqOrder;
+  const eventOrder = compareEventId(left.event_id ?? null, right.event_id ?? null);
+  if (eventOrder != null) return eventOrder;
   const leftTs = left.ts ?? null;
   const rightTs = right.ts ?? null;
-  if (leftTs != null && rightTs != null && leftTs !== rightTs) {
-    return leftTs < rightTs ? -1 : 1;
-  }
-  return 0;
+  if (leftTs == null && rightTs == null) return 0;
+  if (leftTs == null) return -1;
+  if (rightTs == null) return 1;
+  if (leftTs === rightTs) return 0;
+  return leftTs < rightTs ? -1 : 1;
 }

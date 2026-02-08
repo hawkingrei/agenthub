@@ -33,7 +33,7 @@ pub struct StartAgentResponse {
 pub struct ListEventsQuery {
     pub limit: Option<i64>,
     pub session_id: Option<String>,
-    pub before_seq: Option<String>,
+    pub before_id: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -194,16 +194,16 @@ async fn list_events(
 ) -> Result<Json<Vec<crate::agent::AgentEvent>>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let limit = query.limit.unwrap_or(500).clamp(1, 1000);
-    let before_seq = query.before_seq;
+    let before_id = query.before_id;
     let events = if let Some(session_id) = query.session_id.as_deref() {
         state
             .agents
-            .list_events_for_session(&agent_id, session_id, limit, before_seq)
+            .list_events_for_session(&agent_id, session_id, limit, before_id)
             .await?
     } else {
         state
             .agents
-            .list_events(&agent_id, limit, before_seq)
+            .list_events(&agent_id, limit, before_id)
             .await?
     };
     Ok(Json(events))

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConversationFreeze,
   buildConversationMessages,
-  deriveConversationFreezeMaxSeq,
+  deriveConversationFreezeCursor,
   formatConversationPreview,
   isToolCallLive,
 } from "./conversation";
@@ -12,14 +12,15 @@ function msg(
   kind: AcpMessage["kind"],
   text: string,
   session_id: string | null,
-  seq?: string
+  event_id?: number
 ): AcpMessage {
   return {
     kind,
     text,
     session_id,
     message_id: null,
-    seq,
+    event_id,
+    seq: event_id != null ? String(event_id) : undefined,
     chunk: false,
   };
 }
@@ -28,13 +29,14 @@ function toolCall(
   id: string,
   title: string,
   session_id: string | null,
-  seq: string
+  event_id: number
 ): AcpToolCall {
   return {
     id,
     title,
     session_id,
-    seq,
+    event_id,
+    seq: String(event_id),
   };
 }
 
@@ -116,11 +118,11 @@ describe("buildConversationMessages", () => {
 
   it("merges tool calls into the conversation flow", () => {
     const messages: AcpMessage[] = [
-      msg("user_message", "u1", "s1", "1"),
-      msg("agent_thought", "t1", "s1", "2"),
-      msg("agent_message", "m1", "s1", "4"),
+      msg("user_message", "u1", "s1", 1),
+      msg("agent_thought", "t1", "s1", 2),
+      msg("agent_message", "m1", "s1", 4),
     ];
-    const calls = [toolCall("c1", "Tool A", "s1", "3")];
+    const calls = [toolCall("c1", "Tool A", "s1", 3)];
     const items = buildConversationMessages(messages, calls, null, "s1");
     expect(items).toHaveLength(4);
     expect(items[0].kind).toBe("user_message");
@@ -130,10 +132,10 @@ describe("buildConversationMessages", () => {
   });
 
   it("filters tool calls by session id", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const calls = [
-      toolCall("c1", "Tool A", "s2", "2"),
-      toolCall("c2", "Tool B", null, "3"),
+      toolCall("c1", "Tool A", "s2", 2),
+      toolCall("c2", "Tool B", null, 3),
     ];
     const items = buildConversationMessages(messages, calls, null, "s1");
     expect(items).toHaveLength(2);
@@ -141,11 +143,12 @@ describe("buildConversationMessages", () => {
   });
 
   it("renders plan entries as a conversation item", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const plan = {
       entries: [{ content: "Do X", status: "todo" }],
       session_id: "s1",
-      seq: "2",
+      event_id: 2,
+      ts: 2,
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(2);
@@ -155,13 +158,14 @@ describe("buildConversationMessages", () => {
 
   it("places plan based on sequence ordering", () => {
     const messages: AcpMessage[] = [
-      msg("user_message", "u1", "s1", "1"),
-      msg("agent_message", "m1", "s1", "3"),
+      msg("user_message", "u1", "s1", 1),
+      msg("agent_message", "m1", "s1", 3),
     ];
     const plan = {
       entries: [{ content: "Plan first" }],
       session_id: "s1",
-      seq: "2",
+      event_id: 2,
+      ts: 2,
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items.map((item) => item.kind)).toEqual([
@@ -172,11 +176,12 @@ describe("buildConversationMessages", () => {
   });
 
   it("filters plan entries by session id", () => {
-    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", "1")];
+    const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const plan = {
       entries: [{ content: "Do X" }],
       session_id: "s2",
-      seq: "2",
+      event_id: 2,
+      ts: 2,
     };
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(1);
@@ -185,22 +190,45 @@ describe("buildConversationMessages", () => {
 });
 
 describe("conversation freeze helpers", () => {
-  it("derives max seq from items", () => {
+  it("derives max cursor from items", () => {
     const items = [
-      { kind: "user_message", text: "a", seq: "1" },
-      { kind: "agent_message", text: "b", seq: "3" },
-      { kind: "agent_thinking", text: "c", seq: "2" },
+      { kind: "user_message", text: "a", event_id: 1, ts: 1 },
+      { kind: "agent_message", text: "b", event_id: 3, ts: 3 },
+      { kind: "agent_thinking", text: "c", event_id: 2, ts: 2 },
     ];
-    expect(deriveConversationFreezeMaxSeq(items)).toBe("3");
+    const cursor = deriveConversationFreezeCursor(items);
+    expect(cursor?.event_id).toBe(3);
+  });
+
+  it("prefers event_id over ts when deriving cursor", () => {
+    const items = [
+      { kind: "user_message", text: "a", event_id: 2, ts: 10 },
+      { kind: "agent_message", text: "b", ts: 999 },
+    ];
+    const cursor = deriveConversationFreezeCursor(items);
+    expect(cursor?.event_id).toBe(2);
+  });
+
+  it("falls back to ts when event_id is missing", () => {
+    const items = [
+      { kind: "user_message", text: "a", ts: 10 },
+      { kind: "agent_message", text: "b", ts: 30 },
+    ];
+    const cursor = deriveConversationFreezeCursor(items);
+    expect(cursor?.event_id ?? null).toBeNull();
+    expect(cursor?.ts).toBe(30);
   });
 
   it("filters items beyond max seq and counts pending", () => {
     const items = [
-      { kind: "user_message", text: "a", seq: "1" },
-      { kind: "agent_message", text: "b", seq: "2" },
-      { kind: "agent_message", text: "c", seq: "4" },
+      { kind: "user_message", text: "a", event_id: 1, ts: 1 },
+      { kind: "agent_message", text: "b", event_id: 2, ts: 2 },
+      { kind: "agent_message", text: "c", event_id: 4, ts: 4 },
     ];
-    const result = applyConversationFreeze(items, "2");
+    const result = applyConversationFreeze(items, {
+      event_id: 2,
+      ts: 2,
+    });
     expect(result.frozen).toHaveLength(2);
     expect(result.pending).toBe(1);
   });

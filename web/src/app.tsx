@@ -36,7 +36,6 @@ import {
   OutputLine,
   selectCachedOutputs,
 } from "./output_cache";
-import { uuidV7 } from "./uuid";
 import { isNearBottom } from "./scroll";
 import { escapeHtml } from "./markdown";
 import { AgentsPanel } from "./components/agents_panel";
@@ -133,7 +132,12 @@ export function App() {
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
-      { oldestSeq: string | null; hasMore: boolean; loading: boolean; loaded: boolean }
+      {
+        oldestId: number | null;
+        hasMore: boolean;
+        loading: boolean;
+        loaded: boolean;
+      }
     >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(false);
@@ -267,7 +271,7 @@ export function App() {
       return {
         ...prev,
         [key]: {
-          oldestSeq: current?.oldestSeq ?? null,
+          oldestId: current?.oldestId ?? null,
           hasMore: current?.hasMore ?? false,
           loading: true,
           loaded: current?.loaded ?? false,
@@ -294,7 +298,7 @@ export function App() {
           setEventMeta((prev) => ({
             ...prev,
             [key]: {
-              oldestSeq: null,
+              oldestId: null,
               hasMore: false,
               loading: false,
               loaded: true,
@@ -306,7 +310,9 @@ export function App() {
       const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
       const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
-      const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
+      const oldestEvent = ordered.length ? ordered[0] : null;
+      const oldestId =
+        typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
       let hasNew = false;
       const maxCursor = getMaxEventCursor(ordered);
       if (maxCursor != null) {
@@ -316,7 +322,7 @@ export function App() {
       }
       setEventMeta((prev) => {
         const nextMeta = {
-          oldestSeq,
+          oldestId,
           hasMore: ordered.length >= eventLimit,
           loading: false,
           loaded: true,
@@ -324,7 +330,7 @@ export function App() {
         const current = prev[key];
         if (
           current &&
-          current.oldestSeq === nextMeta.oldestSeq &&
+          current.oldestId === nextMeta.oldestId &&
           current.hasMore === nextMeta.hasMore &&
           current.loading === nextMeta.loading &&
           current.loaded === nextMeta.loaded
@@ -356,7 +362,7 @@ export function App() {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const meta = eventMeta[key];
-    if (!meta || meta.loading || !meta.hasMore || meta.oldestSeq == null) {
+    if (!meta || meta.loading || !meta.hasMore || meta.oldestId == null) {
       return;
     }
     setEventMeta((prev) => ({
@@ -369,11 +375,15 @@ export function App() {
         activeAgent,
         eventLimit,
         activeSessionId ?? undefined,
-        meta.oldestSeq
+        meta.oldestId
       );
       const ordered = [...older].sort((a, b) => compareEventOrder(a, b));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
-      const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
+      const nextOldestEvent = ordered.length ? ordered[0] : null;
+      const nextOldestId =
+        typeof nextOldestEvent?.event_id === "number"
+          ? nextOldestEvent.event_id
+          : meta.oldestId;
       const hasMore = ordered.length >= eventLimit;
       setOutputs((prev) => mergeOutputs(prev, ordered));
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
@@ -381,7 +391,12 @@ export function App() {
       updateAcpOutputCacheEntry(key, ordered);
       setEventMeta((prev) => ({
         ...prev,
-        [key]: { oldestSeq: nextOldest, hasMore, loading: false, loaded: true },
+        [key]: {
+          oldestId: nextOldestId ?? null,
+          hasMore,
+          loading: false,
+          loaded: true,
+        },
       }));
     } catch {
       setEventMeta((prev) => ({
@@ -493,15 +508,17 @@ export function App() {
     }
     outputsKeyRef.current = key;
     if (!eventMeta[key]) {
-      const oldestSeq = nextOutputs.length
-        ? nextOutputs[0].seq ?? null
+      const oldestEvent = nextOutputs.length
+        ? nextOutputs[0]
         : nextAcpOutputs.length
-          ? nextAcpOutputs[0].seq ?? null
+          ? nextAcpOutputs[0]
           : null;
+      const oldestId =
+        typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
       setEventMeta((prev) => ({
         ...prev,
         [key]: {
-          oldestSeq,
+          oldestId,
           hasMore:
             nextOutputs.length + nextAcpOutputs.length >= eventLimit,
           loading: false,
@@ -556,12 +573,6 @@ export function App() {
         openSource();
       }, delay);
     };
-    const nextFallbackSeq = (payloadSeq: unknown) => {
-      if (typeof payloadSeq === "string" && payloadSeq) {
-        return payloadSeq;
-      }
-      return uuidV7();
-    };
     const openSource = () => {
       if (cancelled) return;
       const source = new EventSource(
@@ -593,14 +604,17 @@ export function App() {
             ) {
               return;
             }
-            const seq = nextFallbackSeq(payload.seq);
+            if (typeof payload.event_id !== "number") {
+              return;
+            }
             const line: OutputLine = {
+              event_id: payload.event_id,
               ts: payload.ts,
               stream: payload.stream,
               message: payload.message,
               agent_id: payload.agent_id,
               session_id: payload.session_id,
-              seq,
+              seq: payload.seq,
             };
             const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
             updateLastEventCursor(lastEventCursorRef, key, line);

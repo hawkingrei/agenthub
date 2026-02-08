@@ -19,10 +19,7 @@ export function mergeOutputs(
   const seen = new Set<string>();
   const deduped: OutputLine[] = [];
   for (const line of merged) {
-    const key =
-      line.seq != null
-        ? String(line.seq)
-        : `${line.ts}-${line.stream}-${line.message}`;
+    const key = `id-${line.event_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(line);
@@ -62,8 +59,8 @@ export function isSameOutputList(a: OutputLine[], b: OutputLine[]): boolean {
   const aLast = a[a.length - 1];
   const bLast = b[b.length - 1];
   return (
-    (aFirst.seq ?? null) === (bFirst.seq ?? null) &&
-    (aLast.seq ?? null) === (bLast.seq ?? null) &&
+    (aFirst.event_id ?? null) === (bFirst.event_id ?? null) &&
+    (aLast.event_id ?? null) === (bLast.event_id ?? null) &&
     aLast.message === bLast.message &&
     aLast.stream === bLast.stream
   );

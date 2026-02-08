@@ -8,6 +8,7 @@ Recent refactors introduced new storage and agent status helpers without direct 
 
 - Add unit tests for output cache storage load/save behavior.
 - Add unit tests for agent status helper functions.
+- Add unit tests for event cursor ordering and conversation freeze behavior.
 
 ## Key Decisions
 
