@@ -36,5 +36,6 @@
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
 - [ ] Verify db init warns on index creation failures and unexpected ALTER errors (see `docs/features/2026-02-08-db-init-index-logging.md`).
 - [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
+- [ ] Decide whether to serialize `event_id` as a string in the web API once IDs approach JS safe integer limits (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
 - [ ] Verify conversation messages remain fully visible without auto-collapse (see `docs/features/2026-02-08-conversation-message-display.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).
