@@ -193,12 +193,18 @@ fn detect_env_overrides() -> Vec<String> {
 }
 
 fn expand_tilde(path: &str) -> String {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        return std::path::Path::new(&home)
-            .join(stripped)
-            .to_string_lossy()
-            .to_string();
+    if path == "~" {
+        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            std::path::Path::new(&home)
+                .join(stripped)
+                .to_string_lossy()
+                .to_string()
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
     }
-    path.to_string()
 }

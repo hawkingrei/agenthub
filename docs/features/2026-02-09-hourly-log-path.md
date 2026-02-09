@@ -6,7 +6,8 @@ status: implemented
 
 ## Summary
 
-Add `log_path` configuration to write all logs to hourly-rotated files.
+Add `log_path` configuration to write all logs to hourly-rotated files. The
+path can point to a directory or a file prefix.
 
 ## Background
 
@@ -17,7 +18,10 @@ for log files while keeping the default stdout behavior for simple setups.
 ## Decision
 
 - Introduce a top-level `log_path` configuration key.
-- If set, log output goes to `log_path/agenthub.log.YYYY-MM-DD-HH`.
+- If set to a directory, log output goes to `log_path/agenthub.log.YYYY-MM-DD-HH`.
+- If set to a file path (for example `/var/log/agenthub.log`), the parent
+  directory is used and the file name becomes the log prefix
+  (`agenthub.log.YYYY-MM-DD-HH`).
 - If unset, logs continue to go to stdout.
 - Logs are written without ANSI color codes.
 
