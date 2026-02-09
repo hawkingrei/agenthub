@@ -892,6 +892,11 @@ select:focus-visible {
   color: #1c6bb8;
 }
 
+.acp-run.in_progress {
+  background: #e7f5ff;
+  color: #1c6bb8;
+}
+
 .acp-run.completed {
   background: #def3e3;
   color: #246b38;
