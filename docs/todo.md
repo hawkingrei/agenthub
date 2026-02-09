@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Refresh codex git dependencies and `Cargo.lock` after ACP protocol sync (see `docs/features/2026-02-09-codex-acp-protocol-sync.md`).
 - [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
