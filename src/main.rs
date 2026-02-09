@@ -38,12 +38,22 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("config rp_id: {}", config.rp_id());
     tracing::info!("config rp_origin: {}", config.rp_origin());
     tracing::info!("config rp_name: {}", config.rp_name());
+    let configured_web_dir = config
+        .web_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let web_dir = config.effective_web_dir();
+    if !cfg!(debug_assertions) && config.web_dir.is_some() {
+        tracing::info!("config web_dir ignored in release build");
+    }
     tracing::info!(
         "config web_dir: {}",
-        config
-            .web_dir
-            .clone()
-            .unwrap_or_else(|| "embedded".to_string())
+        configured_web_dir.unwrap_or("<unset>")
+    );
+    tracing::info!(
+        "effective web_dir: {}",
+        web_dir.as_deref().unwrap_or("embedded")
     );
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
@@ -55,8 +65,6 @@ async fn main() -> anyhow::Result<()> {
     let state = state::AppState::init(config.clone()).await?;
 
     let api_router = api::router(state.clone());
-
-    let web_dir = config.web_dir.clone();
 
     let trace = TraceLayer::new_for_http()
         .make_span_with(DefaultMakeSpan::new().level(Level::INFO))

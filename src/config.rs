@@ -73,6 +73,19 @@ pub fn config_path() -> std::path::PathBuf {
 }
 
 impl AppConfig {
+    pub fn effective_web_dir(&self) -> Option<String> {
+        if cfg!(debug_assertions) {
+            let dir = self
+                .web_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("web/dist");
+            return Some(dir.to_string());
+        }
+        None
+    }
+
     pub fn listen_addr(&self) -> String {
         self.server
             .as_ref()
