@@ -1023,20 +1023,12 @@ select:focus-visible {
   margin: 0;
 }
 
-.acp-debug {
+.acp-raw-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 0;
+  gap: 8px;
   flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.acp-raw-wrapper {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  padding-right: 6px;
+  min-height: 240px;
 }
 
 .acp-commands li,
@@ -1065,17 +1057,11 @@ select:focus-visible {
   margin: 0 0 8px;
 }
 
-.acp-raw-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1 1 auto;
-  min-height: 240px;
-}
-
 .acp-raw {
   overflow: auto;
   padding-right: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .acp-raw .meta {
