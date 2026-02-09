@@ -1065,6 +1065,19 @@ select:focus-visible {
   margin: 0 0 8px;
 }
 
+.acp-raw-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
+.acp-raw {
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .acp-raw .meta {
   display: flex;
   gap: 8px;
