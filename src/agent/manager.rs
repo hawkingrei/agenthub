@@ -738,11 +738,37 @@ impl AgentManager {
         input: &str,
         message_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        let now = Utc::now().timestamp();
         let (stdin, acp, output_tx, session_id) = {
             let guard = self.inner.read().await;
-            let handle = guard
-                .get(agent_id)
-                .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+            let handle = match guard.get(agent_id) {
+                Some(handle) => handle,
+                None => {
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE agent_sessions
+                        SET status = 'exited', ended_at = ?1
+                        WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
+                        "#,
+                    )
+                    .bind(now)
+                    .bind(agent_id)
+                    .execute(&self.db)
+                    .await;
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE agents
+                        SET status = 'exited', updated_at = ?1
+                        WHERE id = ?2 AND status = 'running'
+                        "#,
+                    )
+                    .bind(now)
+                    .bind(agent_id)
+                    .execute(&self.db)
+                    .await;
+                    return Err(anyhow::anyhow!("agent not running"));
+                }
+            };
             match &handle.input {
                 AgentInput::Stdin(stdin) => (Some(stdin.clone()), None, None, None),
                 AgentInput::Acp(acp) => (

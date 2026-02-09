@@ -1071,7 +1071,11 @@ export function App() {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
       setInput("");
     } catch (err) {
-      setError(String(err || "websocket not connected"));
+      const msg = String(err || "websocket not connected");
+      setError(msg);
+      if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
+        await refreshAgents();
+      }
     }
   };
 
