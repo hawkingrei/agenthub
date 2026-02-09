@@ -386,13 +386,13 @@ fn json_message(kind: &str, chunk: &ContentChunk) -> Value {
     obj.insert("chunk".to_string(), Value::Bool(true));
     if let Some(meta) = &chunk.meta {
         if let Some(Value::String(message_id)) = meta.get("message_id") {
-            obj.insert(
-                "message_id".to_string(),
-                Value::String(message_id.clone()),
-            );
+            obj.insert("message_id".to_string(), Value::String(message_id.clone()));
         }
         if let Some(Value::Number(chunk_index)) = meta.get("chunk_index") {
-            obj.insert("chunk_index".to_string(), Value::Number(chunk_index.clone()));
+            obj.insert(
+                "chunk_index".to_string(),
+                Value::Number(chunk_index.clone()),
+            );
         } else if let Some(Value::String(chunk_index)) = meta.get("chunk_index") {
             if let Ok(value) = chunk_index.parse::<u64>() {
                 obj.insert(

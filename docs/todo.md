@@ -35,6 +35,7 @@
 - [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
+- [ ] Verify hourly `log_path` output and stdout suppression when configured (see `docs/features/2026-02-09-hourly-log-path.md`).
 - [ ] Verify debug builds serve `web/dist` and release builds force embedded assets (see `docs/features/2026-02-09-web-dir-debug-embedded-release.md`).
 - [ ] Verify db init warns on index creation failures and unexpected ALTER errors (see `docs/features/2026-02-08-db-init-index-logging.md`).
 - [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
