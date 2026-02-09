@@ -1006,6 +1006,16 @@ select:focus-visible {
   max-height: 100%;
 }
 
+.acp-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
 .acp-commands ul,
 .acp-debug ul {
   list-style: none;
