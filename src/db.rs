@@ -195,7 +195,10 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await
     {
-        tracing::warn!("db init: failed to create idx_agent_events_agent_seq: {}", err);
+        tracing::warn!(
+            "db init: failed to create idx_agent_events_agent_seq: {}",
+            err
+        );
     }
     if let Err(err) = sqlx::query(
         r#"
@@ -220,7 +223,10 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await
     {
-        tracing::warn!("db init: failed to create idx_agent_events_agent_id: {}", err);
+        tracing::warn!(
+            "db init: failed to create idx_agent_events_agent_id: {}",
+            err
+        );
     }
     if let Err(err) = sqlx::query(
         r#"
