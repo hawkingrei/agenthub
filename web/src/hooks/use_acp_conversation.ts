@@ -11,13 +11,14 @@ import {
   applyConversationFreeze,
   buildConversationMessages,
   ConversationItem,
-  deriveConversationFreezeMaxSeq,
+  deriveConversationFreezeCursor,
   windowConversation,
 } from "../conversation";
 import { isNearBottom } from "../scroll";
+import type { SeqComparable } from "../seq_order";
 
 type EventMeta = {
-  oldestSeq: string | null;
+  oldestId: number | null;
   hasMore: boolean;
   loading: boolean;
   loaded: boolean;
@@ -74,8 +75,8 @@ export function useAcpConversation({
   const didAutoAlignConversationRef = useRef(false);
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const [conversationFrozen, setConversationFrozen] = useState(false);
-  const [conversationFreezeMaxSeq, setConversationFreezeMaxSeq] = useState<
-    string | null
+  const [conversationFreezeCursor, setConversationFreezeCursor] = useState<
+    SeqComparable | null
   >(null);
   const [conversationFrozenItems, setConversationFrozenItems] = useState<
     ConversationItem[]
@@ -98,7 +99,7 @@ export function useAcpConversation({
   const conversationTailKey = useMemo(() => {
     if (conversationMessages.length === 0) return "empty";
     const last = conversationMessages[conversationMessages.length - 1];
-    const base = `${last.kind}:${last.seq ?? "na"}`;
+    const base = `${last.kind}:${last.event_id ?? last.seq ?? "na"}`;
     if (last.kind === "tool_call") {
       const contentLen = last.content?.length ?? 0;
       const terminalLen = last.terminal_output?.length ?? 0;
@@ -124,7 +125,7 @@ export function useAcpConversation({
     if (!activeAgent) return false;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const meta = eventMeta[key];
-    if (!meta || meta.loading || !meta.hasMore || meta.oldestSeq == null) {
+    if (!meta || meta.loading || !meta.hasMore || meta.oldestId == null) {
       return false;
     }
     return true;
@@ -147,7 +148,7 @@ export function useAcpConversation({
     didAutoAlignConversationRef.current = true;
     setConversationStickToBottom(true);
     setConversationFrozen(false);
-    setConversationFreezeMaxSeq(null);
+    setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
   };
@@ -159,15 +160,15 @@ export function useAcpConversation({
     acpStickToBottomRef.current = stick;
     if (stick !== conversationStickToBottom) {
       if (!stick) {
-        const maxSeq = deriveConversationFreezeMaxSeq(conversationMessages);
-        const frozen = applyConversationFreeze(conversationMessages, maxSeq);
+        const maxCursor = deriveConversationFreezeCursor(conversationMessages);
+        const frozen = applyConversationFreeze(conversationMessages, maxCursor);
         setConversationFrozen(true);
         setConversationFrozenItems(frozen.frozen);
-        setConversationFreezeMaxSeq(maxSeq);
+        setConversationFreezeCursor(maxCursor);
         setConversationPendingCount(frozen.pending);
       } else {
         setConversationFrozen(false);
-        setConversationFreezeMaxSeq(null);
+        setConversationFreezeCursor(null);
         setConversationFrozenItems([]);
         setConversationPendingCount(0);
       }
@@ -267,7 +268,7 @@ export function useAcpConversation({
     if (!conversationFrozen) return;
     const { frozen, pending } = applyConversationFreeze(
       conversationMessages,
-      conversationFreezeMaxSeq
+      conversationFreezeCursor
     );
     if (frozen.length !== conversationFrozenItems.length) {
       setConversationFrozenItems(frozen);
@@ -278,7 +279,7 @@ export function useAcpConversation({
   }, [
     conversationMessages,
     conversationFrozen,
-    conversationFreezeMaxSeq,
+    conversationFreezeCursor,
     acpTab,
     conversationFrozenItems.length,
     conversationPendingCount,

@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import { OutputLine } from "./output_cache";
 
-const STORAGE_KEY = "agenthub_output_cache_v1";
+const STORAGE_KEY = "agenthub_output_cache_v2";
 
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -25,7 +25,7 @@ class MemoryStorage {
 }
 
 const makeLine = (
-  seq: string,
+  event_id: number,
   ts: number,
   stream: OutputLine["stream"] = "stdout",
   sessionId = "session-1"
@@ -33,9 +33,10 @@ const makeLine = (
   agent_id: "agent-1",
   session_id: sessionId,
   ts,
-  seq,
+  event_id,
+  seq: String(event_id),
   stream,
-  message: `${stream}-${seq}`,
+  message: `${stream}-${event_id}`,
 });
 
 let originalStorage: unknown;
@@ -57,28 +58,28 @@ describe("output cache storage", () => {
   it("trims events per session", () => {
     const outputCache = {
       "agent-1:session-1": [
-        makeLine("1", 10),
-        makeLine("2", 20),
-        makeLine("3", 30),
+        makeLine(1, 10),
+        makeLine(2, 20),
+        makeLine(3, 30),
       ],
     };
     const acpOutputCache = {
-      "agent-1:session-1": [makeLine("1", 11, "acp")],
+      "agent-1:session-1": [makeLine(1, 11, "acp")],
     };
     saveOutputCaches(outputCache, acpOutputCache, 2, 5);
 
     const loaded = loadOutputCaches(2, 5);
-    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.seq)).toEqual([
-      "2",
-      "3",
+    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.event_id)).toEqual([
+      2,
+      3,
     ]);
     expect(loaded.acpOutputCache["agent-1:session-1"].length).toBe(1);
   });
 
   it("limits sessions by recency", () => {
     const outputCache = {
-      "agent-1:session-1": [makeLine("1", 10, "stdout", "session-1")],
-      "agent-1:session-2": [makeLine("1", 100, "stdout", "session-2")],
+      "agent-1:session-1": [makeLine(1, 10, "stdout", "session-1")],
+      "agent-1:session-2": [makeLine(2, 100, "stdout", "session-2")],
     };
     saveOutputCaches(outputCache, {}, 10, 1);
 
@@ -120,7 +121,7 @@ describe("output cache storage", () => {
               ts: 3,
               message: "bad stream",
             },
-            makeLine("4", 4),
+            makeLine(4, 4),
           ],
         },
         acpOutputCache: {},
@@ -128,8 +129,21 @@ describe("output cache storage", () => {
     );
 
     const loaded = loadOutputCaches(10, 5);
-    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.seq)).toEqual([
-      "4",
+    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.event_id)).toEqual([
+      4,
+    ]);
+  });
+
+  it("orders cached events by event_id even when ts is out of order", () => {
+    const outputCache = {
+      "agent-1:session-1": [makeLine(3, 1), makeLine(2, 999)],
+    };
+    saveOutputCaches(outputCache, {}, 10, 5);
+
+    const loaded = loadOutputCaches(10, 5);
+    expect(loaded.outputCache["agent-1:session-1"].map((evt) => evt.event_id)).toEqual([
+      2,
+      3,
     ]);
   });
 });

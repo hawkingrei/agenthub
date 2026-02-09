@@ -4,11 +4,15 @@
 
 Event ordering and pagination relied on numeric `seq` values. To avoid JavaScript precision limits and standardize ordering across API, SSE, and polling, the sequence identifier is now a UUIDv7 string.
 
+## Update
+
+- Global ordering now prefers `agent_events.id` (`event_id`). UUIDv7 `seq` remains for ACP semantics but is no longer used for API pagination.
+
 ## Scope
 
 - Change `agent_events.seq` from numeric to `TEXT` and write UUIDv7 values.
-- Update APIs to accept `before_seq` as a string and return `seq` as a string.
-- Update frontend ordering, cursor, and cache logic to compare UUIDv7 strings.
+- Return `seq` as a string for ACP and diagnostic display.
+- Keep frontend parsing of `seq` only as a fallback when `event_id` is missing.
 
 ## Key Decisions
 
@@ -18,7 +22,7 @@ Event ordering and pagination relied on numeric `seq` values. To avoid JavaScrip
 
 ## Validation
 
-- Manual: start an agent, confirm event ordering via UI and `before_seq` pagination.
+- Manual: start an agent, confirm event ordering via UI and `before_id` pagination.
 - Automated:
 
 ```bash

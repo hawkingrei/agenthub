@@ -11,6 +11,8 @@ type AcpPanelProps = {
   acpTab: "conversation" | "debug";
   onSelectTab: (tab: "conversation" | "debug") => void;
   showConversationBadge: boolean;
+  canControlAcp: boolean;
+  onAcpCancel: () => void;
   conversation: AcpConversationProps;
   debug: AcpDebugProps;
 };
@@ -23,9 +25,13 @@ export function AcpPanel({
   acpTab,
   onSelectTab,
   showConversationBadge,
+  canControlAcp,
+  onAcpCancel,
   conversation,
   debug,
 }: AcpPanelProps) {
+  const canInterrupt =
+    canControlAcp && acpView.runStatus?.status === "running";
   return (
     <div className="acp">
       <div className="acp-head">
@@ -46,22 +52,32 @@ export function AcpPanel({
             </span>
           )}
         </div>
-        <div className="acp-tabs">
+        <div className="acp-actions">
           <button
-            className={acpTab === "conversation" ? "tab active" : "tab"}
-            onClick={() => onSelectTab("conversation")}
+            className="acp-interrupt-button"
+            onClick={onAcpCancel}
+            disabled={!canInterrupt}
+            title="Interrupt current run"
           >
-            Conversation
-            {showConversationBadge && (
-              <span className="tab-badge">+{conversation.pendingCount}</span>
-            )}
+            Interrupt
           </button>
-          <button
-            className={acpTab === "debug" ? "tab active" : "tab"}
-            onClick={() => onSelectTab("debug")}
-          >
-            Debug
-          </button>
+          <div className="acp-tabs">
+            <button
+              className={acpTab === "conversation" ? "tab active" : "tab"}
+              onClick={() => onSelectTab("conversation")}
+            >
+              Conversation
+              {showConversationBadge && (
+                <span className="tab-badge">+{conversation.pendingCount}</span>
+              )}
+            </button>
+            <button
+              className={acpTab === "debug" ? "tab active" : "tab"}
+              onClick={() => onSelectTab("debug")}
+            >
+              Debug
+            </button>
+          </div>
         </div>
       </div>
       {acpTab === "conversation" && <AcpConversation {...conversation} />}

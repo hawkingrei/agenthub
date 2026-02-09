@@ -12,7 +12,9 @@ Chat output was held only in memory, so a page refresh or tab crash cleared the 
 
 ## Key Decisions
 
-- Store a single payload with versioning under `agenthub_output_cache_v1`.
+- Store a single payload with versioning under `agenthub_output_cache_v2`.
+- Bump the cache key when the schema changes (e.g. `event_id` required) to avoid
+  mixing older cached payloads.
 - Persist on a short debounce to avoid excessive synchronous writes.
 
 ## Validation

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendOutputLine,
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   mergeOutputsPreserveHistory,
@@ -7,61 +8,73 @@ import {
 } from "./output_cache";
 import { AgentEvent } from "./api";
 
-const makeEvent = (seq: string, stream: AgentEvent["stream"]): AgentEvent => ({
+const makeEvent = (event_id: number, stream: AgentEvent["stream"]): AgentEvent => ({
   agent_id: "agent-1",
   session_id: "session-1",
-  ts: Number(seq),
-  seq,
+  ts: event_id,
+  event_id,
+  seq: String(event_id),
   stream,
-  message: `${stream}-${seq}`,
+  message: `${stream}-${event_id}`,
 });
 
 describe("buildAcpCacheSlice", () => {
   it("keeps ACP events when non-ACP output floods arrive", () => {
-    const existing = [makeEvent("1", "acp"), makeEvent("2", "acp")];
+    const existing = [makeEvent(1, "acp"), makeEvent(2, "acp")];
     const ordered = [
-      makeEvent("50", "acp"),
+      makeEvent(50, "acp"),
       ...Array.from({ length: 80 }, (_, idx) =>
-        makeEvent(String(51 + idx), "stdout")
+        makeEvent(51 + idx, "stdout")
       ),
     ];
     const next = buildAcpCacheSlice(existing, ordered, 3);
-    expect(next.map((evt) => evt.seq)).toEqual(["1", "2", "50"]);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 50]);
     expect(next.every((evt) => evt.stream === "acp")).toBe(true);
   });
 });
 
 describe("buildOutputCacheSlice", () => {
   it("merges and trims to maxCachedEvents", () => {
-    const existing = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
-    const ordered = [makeEvent("3", "stdout"), makeEvent("4", "stdout")];
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const ordered = [makeEvent(3, "stdout"), makeEvent(4, "stdout")];
     const next = buildOutputCacheSlice(existing, ordered, 3);
-    expect(next.map((evt) => evt.seq)).toEqual(["2", "3", "4"]);
+    expect(next.map((evt) => evt.event_id)).toEqual([2, 3, 4]);
   });
 
   it("returns full merge when maxCachedEvents is non-positive", () => {
-    const existing = [makeEvent("1", "stdout")];
-    const ordered = [makeEvent("2", "stdout")];
+    const existing = [makeEvent(1, "stdout")];
+    const ordered = [makeEvent(2, "stdout")];
     const next = buildOutputCacheSlice(existing, ordered, 0);
-    expect(next.map((evt) => evt.seq)).toEqual(["1", "2"]);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
   });
 
-  it("deduplicates by seq when merging", () => {
-    const existing = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
-    const ordered = [makeEvent("2", "stdout"), makeEvent("3", "stdout")];
+  it("deduplicates by event_id when merging", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const ordered = [makeEvent(2, "stdout"), makeEvent(3, "stdout")];
     const next = buildOutputCacheSlice(existing, ordered, 10);
-    expect(next.map((evt) => evt.seq)).toEqual(["1", "2", "3"]);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("appendOutputLine", () => {
+  it("inserts by event_id ordering even if ts regresses", () => {
+    const existing = [
+      { ...makeEvent(2, "stdout"), ts: 200 },
+    ];
+    const incoming = { ...makeEvent(1, "stdout"), ts: 300 };
+    const next = appendOutputLine(existing, incoming);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
   });
 });
 
 describe("selectCachedOutputs", () => {
   it("prefers session cache when available", () => {
     const outputCache = {
-      "agent-1:session-1": [makeEvent("1", "stdout")],
-      "agent-1:latest": [makeEvent("2", "stdout")],
+      "agent-1:session-1": [makeEvent(1, "stdout")],
+      "agent-1:latest": [makeEvent(2, "stdout")],
     };
     const acpCache = {
-      "agent-1:session-1": [makeEvent("1", "acp")],
+      "agent-1:session-1": [makeEvent(1, "acp")],
     };
     const selection = selectCachedOutputs(
       outputCache,
@@ -70,13 +83,13 @@ describe("selectCachedOutputs", () => {
       "agent-1:latest"
     );
     expect(selection.source).toBe("session");
-    expect(selection.outputs?.[0].seq).toBe("1");
-    expect(selection.acpOutputs?.[0].seq).toBe("1");
+    expect(selection.outputs?.[0].event_id).toBe(1);
+    expect(selection.acpOutputs?.[0].event_id).toBe(1);
   });
 
   it("falls back to latest cache when session cache is missing", () => {
     const outputCache = {
-      "agent-1:latest": [makeEvent("3", "stdout")],
+      "agent-1:latest": [makeEvent(3, "stdout")],
     };
     const selection = selectCachedOutputs(
       outputCache,
@@ -85,7 +98,7 @@ describe("selectCachedOutputs", () => {
       "agent-1:latest"
     );
     expect(selection.source).toBe("latest");
-    expect(selection.outputs?.[0].seq).toBe("3");
+    expect(selection.outputs?.[0].event_id).toBe(3);
   });
 
   it("returns none when no cache exists", () => {
@@ -104,26 +117,26 @@ describe("selectCachedOutputs", () => {
 describe("mergeOutputsPreserveHistory", () => {
   it("keeps older outputs when cache is truncated for the same key", () => {
     const previous = [
-      makeEvent("1", "stdout"),
-      makeEvent("2", "stdout"),
-      makeEvent("3", "stdout"),
-      makeEvent("4", "stdout"),
+      makeEvent(1, "stdout"),
+      makeEvent(2, "stdout"),
+      makeEvent(3, "stdout"),
+      makeEvent(4, "stdout"),
     ];
-    const cached = [makeEvent("3", "stdout"), makeEvent("4", "stdout")];
+    const cached = [makeEvent(3, "stdout"), makeEvent(4, "stdout")];
     const merged = mergeOutputsPreserveHistory(previous, cached, true);
-    expect(merged.map((evt) => evt.seq)).toEqual(["1", "2", "3", "4"]);
+    expect(merged.map((evt) => evt.event_id)).toEqual([1, 2, 3, 4]);
   });
 
   it("replaces outputs when the key changes", () => {
-    const previous = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
-    const cached = [makeEvent("3", "stdout")];
+    const previous = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const cached = [makeEvent(3, "stdout")];
     const merged = mergeOutputsPreserveHistory(previous, cached, false);
-    expect(merged.map((evt) => evt.seq)).toEqual(["3"]);
+    expect(merged.map((evt) => evt.event_id)).toEqual([3]);
   });
 
   it("keeps existing outputs when cache is empty for the same key", () => {
-    const previous = [makeEvent("1", "stdout"), makeEvent("2", "stdout")];
+    const previous = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
     const merged = mergeOutputsPreserveHistory(previous, [], true);
-    expect(merged.map((evt) => evt.seq)).toEqual(["1", "2"]);
+    expect(merged.map((evt) => evt.event_id)).toEqual([1, 2]);
   });
 });

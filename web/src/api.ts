@@ -30,6 +30,7 @@ export type AgentRecord = {
 };
 
 export type AgentEvent = {
+  event_id: number;
   agent_id: string;
   session_id: string;
   seq: string;
@@ -247,11 +248,11 @@ export const api = {
     id: string,
     limit = 500,
     sessionId?: string,
-    beforeSeq?: string | null
+    beforeId?: number | null
   ) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (sessionId) params.set("session_id", sessionId);
-    if (beforeSeq != null) params.set("before_seq", String(beforeSeq));
+    if (beforeId != null) params.set("before_id", String(beforeId));
     return apiFetch<AgentEvent[]>(
       `/api/agents/${id}/events?${params.toString()}`,
       token

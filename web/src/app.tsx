@@ -25,6 +25,7 @@ import {
   isCursorNewer,
   updateLastEventCursor,
 } from "./event_polling";
+import { compareEventOrder } from "./seq_order";
 import {
   appendOutputLine,
   buildAcpCacheSlice,
@@ -35,7 +36,6 @@ import {
   OutputLine,
   selectCachedOutputs,
 } from "./output_cache";
-import { uuidV7 } from "./uuid";
 import { isNearBottom } from "./scroll";
 import { escapeHtml } from "./markdown";
 import { AgentsPanel } from "./components/agents_panel";
@@ -132,7 +132,12 @@ export function App() {
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
-      { oldestSeq: string | null; hasMore: boolean; loading: boolean; loaded: boolean }
+      {
+        oldestId: number | null;
+        hasMore: boolean;
+        loading: boolean;
+        loaded: boolean;
+      }
     >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(false);
@@ -266,7 +271,7 @@ export function App() {
       return {
         ...prev,
         [key]: {
-          oldestSeq: current?.oldestSeq ?? null,
+          oldestId: current?.oldestId ?? null,
           hasMore: current?.hasMore ?? false,
           loading: true,
           loaded: current?.loaded ?? false,
@@ -293,7 +298,7 @@ export function App() {
           setEventMeta((prev) => ({
             ...prev,
             [key]: {
-              oldestSeq: null,
+              oldestId: null,
               hasMore: false,
               loading: false,
               loaded: true,
@@ -302,10 +307,12 @@ export function App() {
           return true;
         }
       }
-      const ordered = [...events].sort((a, b) => compareSeq(a.seq, b.seq));
+      const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
       const nextSlice = updateOutputCacheEntry(key, ordered);
       updateAcpOutputCacheEntry(key, ordered);
-      const oldestSeq = nextSlice.length ? nextSlice[0].seq ?? null : null;
+      const oldestEvent = nextSlice.length ? nextSlice[0] : null;
+      const oldestId =
+        typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
       let hasNew = false;
       const maxCursor = getMaxEventCursor(ordered);
       if (maxCursor != null) {
@@ -315,7 +322,7 @@ export function App() {
       }
       setEventMeta((prev) => {
         const nextMeta = {
-          oldestSeq,
+          oldestId,
           hasMore: ordered.length >= eventLimit,
           loading: false,
           loaded: true,
@@ -323,7 +330,7 @@ export function App() {
         const current = prev[key];
         if (
           current &&
-          current.oldestSeq === nextMeta.oldestSeq &&
+          current.oldestId === nextMeta.oldestId &&
           current.hasMore === nextMeta.hasMore &&
           current.loading === nextMeta.loading &&
           current.loaded === nextMeta.loaded
@@ -355,7 +362,7 @@ export function App() {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const meta = eventMeta[key];
-    if (!meta || meta.loading || !meta.hasMore || meta.oldestSeq == null) {
+    if (!meta || meta.loading || !meta.hasMore || meta.oldestId == null) {
       return;
     }
     setEventMeta((prev) => ({
@@ -368,11 +375,15 @@ export function App() {
         activeAgent,
         eventLimit,
         activeSessionId ?? undefined,
-        meta.oldestSeq
+        meta.oldestId
       );
-      const ordered = [...older].sort((a, b) => compareSeq(a.seq, b.seq));
+      const ordered = [...older].sort((a, b) => compareEventOrder(a, b));
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
-      const nextOldest = ordered.length ? ordered[0].seq ?? null : meta.oldestSeq;
+      const nextOldestEvent = ordered.length ? ordered[0] : null;
+      const nextOldestId =
+        typeof nextOldestEvent?.event_id === "number"
+          ? nextOldestEvent.event_id
+          : meta.oldestId;
       const hasMore = ordered.length >= eventLimit;
       setOutputs((prev) => mergeOutputs(prev, ordered));
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
@@ -380,7 +391,12 @@ export function App() {
       updateAcpOutputCacheEntry(key, ordered);
       setEventMeta((prev) => ({
         ...prev,
-        [key]: { oldestSeq: nextOldest, hasMore, loading: false, loaded: true },
+        [key]: {
+          oldestId: nextOldestId ?? null,
+          hasMore,
+          loading: false,
+          loaded: true,
+        },
       }));
     } catch {
       setEventMeta((prev) => ({
@@ -492,15 +508,17 @@ export function App() {
     }
     outputsKeyRef.current = key;
     if (!eventMeta[key]) {
-      const oldestSeq = nextOutputs.length
-        ? nextOutputs[0].seq ?? null
+      const oldestEvent = nextOutputs.length
+        ? nextOutputs[0]
         : nextAcpOutputs.length
-          ? nextAcpOutputs[0].seq ?? null
+          ? nextAcpOutputs[0]
           : null;
+      const oldestId =
+        typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
       setEventMeta((prev) => ({
         ...prev,
         [key]: {
-          oldestSeq,
+          oldestId,
           hasMore:
             nextOutputs.length + nextAcpOutputs.length >= eventLimit,
           loading: false,
@@ -555,12 +573,6 @@ export function App() {
         openSource();
       }, delay);
     };
-    const nextFallbackSeq = (payloadSeq: unknown) => {
-      if (typeof payloadSeq === "string" && payloadSeq) {
-        return payloadSeq;
-      }
-      return uuidV7();
-    };
     const openSource = () => {
       if (cancelled) return;
       const source = new EventSource(
@@ -582,24 +594,23 @@ export function App() {
           const parsed = JSON.parse(event.data);
           if (parsed.type === "output" || parsed.type === "acp") {
             const payload = parsed.payload;
-            if (payload.agent_id && payload.agent_id !== activeAgent) {
+            if (!isValidOutputPayload(payload)) {
               return;
             }
-            if (
-              activeSessionId &&
-              payload.session_id &&
-              payload.session_id !== activeSessionId
-            ) {
+            if (payload.agent_id !== activeAgent) {
               return;
             }
-            const seq = nextFallbackSeq(payload.seq);
+            if (activeSessionId && payload.session_id !== activeSessionId) {
+              return;
+            }
             const line: OutputLine = {
+              event_id: payload.event_id,
               ts: payload.ts,
               stream: payload.stream,
               message: payload.message,
               agent_id: payload.agent_id,
               session_id: payload.session_id,
-              seq,
+              seq: payload.seq,
             };
             const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
             updateLastEventCursor(lastEventCursorRef, key, line);
@@ -1055,25 +1066,6 @@ export function App() {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `local-${Date.now()}`;
-      const localSeq = uuidV7();
-      const line: OutputLine = {
-        agent_id: activeAgent,
-        session_id: activeSessionId,
-        ts: Math.floor(Date.now() / 1000),
-        seq: localSeq,
-        stream: "acp",
-        message: JSON.stringify({
-          type: "user_message",
-          text,
-          chunk: false,
-          message_id: messageId,
-        }),
-      };
-      setOutputs((prev) => mergeOutputs(prev, [line]));
-      const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
-      updateOutputCacheEntry(key, [line]);
-      setAcpOutputs((prev) => mergeOutputs(prev, [line]));
-      updateAcpOutputCacheEntry(key, [line]);
     }
     try {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
@@ -1338,6 +1330,8 @@ export function App() {
                     acpTab,
                     onSelectTab: (next) => setAcpTab(next),
                     showConversationBadge: acpConversation.showConversationBadge,
+                    canControlAcp,
+                    onAcpCancel,
                     conversation: {
                       items: acpConversation.conversationRenderItems,
                       windowOffset: acpConversation.conversationWindowOffset,
@@ -1374,14 +1368,16 @@ export function App() {
                 />
               </OutputErrorBoundary>
             ) : null}
-            <InputDock
-              input={input}
-              onInputChange={setInput}
-              onSendInput={onSendInput}
-              onJumpToBottom={acpConversation.jumpToConversationBottom}
-              showConversationJump={acpConversation.showConversationJump}
-              isComposingRef={isComposingRef}
-            />
+            {!(acpTab === "debug" && acpView.hasAcp) && (
+              <InputDock
+                input={input}
+                onInputChange={setInput}
+                onSendInput={onSendInput}
+                onJumpToBottom={acpConversation.jumpToConversationBottom}
+                showConversationJump={acpConversation.showConversationJump}
+                isComposingRef={isComposingRef}
+              />
+            )}
           </div>
         </section>
       )}
@@ -1571,20 +1567,50 @@ function parseRunStatus(message: string): string | null {
   return null;
 }
 
+function isValidOutputPayload(
+  payload: unknown
+): payload is {
+  event_id: number;
+  agent_id: string;
+  session_id: string;
+  seq: string;
+  ts: number;
+  stream: OutputLine["stream"];
+  message: string;
+} {
+  if (!payload || typeof payload !== "object") return false;
+  const candidate = payload as {
+    event_id?: unknown;
+    agent_id?: unknown;
+    session_id?: unknown;
+    seq?: unknown;
+    ts?: unknown;
+    stream?: unknown;
+    message?: unknown;
+  };
+  if (typeof candidate.event_id !== "number") return false;
+  if (typeof candidate.agent_id !== "string" || !candidate.agent_id) return false;
+  if (typeof candidate.session_id !== "string" || !candidate.session_id) return false;
+  if (typeof candidate.seq !== "string" || !candidate.seq) return false;
+  if (typeof candidate.ts !== "number") return false;
+  if (typeof candidate.message !== "string") return false;
+  if (
+    candidate.stream !== "stdout" &&
+    candidate.stream !== "stderr" &&
+    candidate.stream !== "system" &&
+    candidate.stream !== "acp"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "running") return "running";
   if (status === "idle") return "idle";
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
   return "stopped";
-}
-
-function compareSeq(a?: string | null, b?: string | null): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return -1;
-  if (b == null) return 1;
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
 }
 
 function isSamePermissionList(

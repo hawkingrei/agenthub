@@ -1,3 +1,6 @@
+import MarkdownIt from "markdown-it";
+import hljs from "highlight.js";
+
 export function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -62,24 +65,39 @@ function sanitizeHref(input: string): string | null {
 
 export function renderMarkdown(input: string): string {
   const stripped = input.replace(/cite[^]+/g, "").replace(/[]/g, "");
-  const blocks = stripped.split("```");
-  let out = "";
-  blocks.forEach((part, idx) => {
-    if (idx % 2 === 1) {
-      const safe = escapeHtml(part.replace(/^\n/, "").replace(/\n$/, ""));
-      out += `<pre><code>${safe}</code></pre>`;
-      return;
-    }
-    let safe = escapeHtml(part);
-    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, href) => {
-      const safeHref = sanitizeHref(href);
-      if (!safeHref) return text;
-      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-    });
-    safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    safe = safe.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    out += safe;
+  return getMarkdownRenderer().render(stripped);
+}
+
+let markdownRenderer: MarkdownIt | null = null;
+
+function getMarkdownRenderer(): MarkdownIt {
+  if (markdownRenderer) return markdownRenderer;
+  const renderer = new MarkdownIt({
+    html: true,
+    linkify: false,
+    typographer: true,
+    highlight: (code: string, lang: string) => {
+      const language = lang ? lang.trim().split(/\s+/)[0] : "";
+      if (language && hljs.getLanguage(language)) {
+        try {
+          return `<pre class="hljs"><code>${hljs.highlight(code, { language }).value}</code></pre>`;
+        } catch {
+          // fallback to escaped text
+        }
+      }
+      return `<pre class="hljs"><code>${escapeHtml(code)}</code></pre>`;
+    },
   });
-  return out;
+  renderer.validateLink = (href: string) => sanitizeHref(href) != null;
+  renderer.normalizeLink = (href: string) => sanitizeHref(href) ?? "";
+  const defaultLinkOpen =
+    renderer.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    tokens[idx].attrSet("target", "_blank");
+    tokens[idx].attrSet("rel", "noopener noreferrer");
+    return defaultLinkOpen(tokens, idx, options, env, self);
+  };
+  markdownRenderer = renderer;
+  return renderer;
 }

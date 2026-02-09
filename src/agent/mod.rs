@@ -44,6 +44,7 @@ pub enum AgentStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentOutput {
+    pub event_id: i64,
     pub agent_id: String,
     pub session_id: String,
     pub seq: String,
@@ -54,6 +55,7 @@ pub struct AgentOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEvent {
+    pub event_id: i64,
     pub agent_id: String,
     pub session_id: String,
     pub seq: String,

@@ -51,6 +51,35 @@ describe("buildAcpView", () => {
     expect(view.messages[0].text).toBe("Hello World");
   });
 
+  it("does not merge chunked agent messages onto a non-chunk message", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Final message",
+          chunk: false,
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: " Streamed",
+          chunk: true,
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.messages.length).toBe(2);
+    expect(view.messages[0].text).toBe("Final message");
+    expect(view.messages[1].text).toBe(" Streamed");
+  });
+
   it("does not merge non-chunk messages from the same session", () => {
     const events = [
       {
@@ -108,6 +137,38 @@ describe("buildAcpView", () => {
     const view = buildAcpView(events);
     expect(view.messages.length).toBe(1);
     expect(view.messages[0].text).toBe("Line 1\nLine 2");
+  });
+
+  it("orders chunked agent messages by chunk_index", () => {
+    const events = [
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "World",
+          chunk: true,
+          message_id: "m1",
+          chunk_index: 1,
+        }),
+      },
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Hello ",
+          chunk: true,
+          message_id: "m1",
+          chunk_index: 0,
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.messages.length).toBe(1);
+    expect(view.messages[0].text).toBe("Hello World");
   });
 
   it("tracks thinking timestamps while in thought and clears after message", () => {

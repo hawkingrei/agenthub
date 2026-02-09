@@ -1,5 +1,8 @@
 # PWA Support
 
+Status: deprecated. PWA install/offline support was removed on 2026-02-08.
+See `docs/features/2026-02-08-pwa-removal.md`.
+
 ## Background
 
 We want installable PWA support with an offline shell and a unified service worker that also handles push notifications.

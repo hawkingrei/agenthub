@@ -1,9 +1,5 @@
 import React from "react";
-import {
-  ConversationItem,
-  formatConversationPreview,
-  isToolCallLive,
-} from "../conversation";
+import { ConversationItem, formatConversationPreview, isToolCallLive } from "../conversation";
 import { renderMarkdown } from "../markdown";
 
 type AcpConversationProps = {
@@ -123,22 +119,6 @@ export function AcpConversation({
             );
           }
           if (msg.kind === "agent_message") {
-            if (autoCollapse) {
-              const preview = formatConversationPreview(msg.text, 80);
-              return (
-                <div key={key} className="acp-bubble agent_message">
-                  <details className="acp-message-fold">
-                    <summary>{preview}</summary>
-                    <div
-                      className="acp-text"
-                      dangerouslySetInnerHTML={{
-                        __html: renderMarkdown(msg.text),
-                      }}
-                    />
-                  </details>
-                </div>
-              );
-            }
             return (
               <div key={key} className="acp-bubble agent_message">
                 <div
@@ -147,22 +127,6 @@ export function AcpConversation({
                     __html: renderMarkdown(msg.text),
                   }}
                 />
-              </div>
-            );
-          }
-          if (autoCollapse) {
-            const preview = formatConversationPreview(msg.text, 80);
-            return (
-              <div key={key} className="acp-bubble user_message">
-                <details className="acp-message-fold">
-                  <summary>{preview}</summary>
-                  <div
-                    className="acp-text"
-                    dangerouslySetInnerHTML={{
-                      __html: renderMarkdown(msg.text),
-                    }}
-                  />
-                </details>
               </div>
             );
           }

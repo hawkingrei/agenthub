@@ -26,6 +26,8 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
+  canControlAcp: false,
+  onAcpCancel: () => {},
   conversation: {
     items: [],
     windowOffset: 0,
@@ -101,6 +103,7 @@ describe("OutputBody", () => {
       isOutputLoading: false,
       outputs: [
         {
+          event_id: 1,
           ts: 1,
           seq: "1",
           stream: "stdout",

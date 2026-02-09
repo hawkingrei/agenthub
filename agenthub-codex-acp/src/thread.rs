@@ -60,7 +60,7 @@ use codex_protocol::{
 use heck::ToTitleCase;
 use itertools::Itertools;
 use mcp_types::{CallToolResult, RequestId};
-use serde_json::json;
+use serde_json::{Number, Value, json};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -372,6 +372,7 @@ struct PromptState {
     submission_id: String,
     seen_message_deltas: bool,
     seen_reasoning_deltas: bool,
+    chunk_counters: HashMap<String, u64>,
 }
 
 impl PromptState {
@@ -389,6 +390,7 @@ impl PromptState {
             submission_id,
             seen_message_deltas: false,
             seen_reasoning_deltas: false,
+            chunk_counters: HashMap::new(),
         }
     }
 
@@ -397,6 +399,28 @@ impl PromptState {
             return false;
         };
         !response_tx.is_closed()
+    }
+
+    fn next_chunk_index(&mut self, kind: &str, item_id: &str) -> u64 {
+        let key = format!("{kind}:{item_id}");
+        let counter = self.chunk_counters.entry(key).or_insert(0);
+        let current = *counter;
+        *counter = current + 1;
+        current
+    }
+
+    fn build_chunk_meta(&mut self, kind: &str, item_id: &str) -> Meta {
+        let mut meta = Meta::new();
+        let index = self.next_chunk_index(kind, item_id);
+        meta.insert(
+            "message_id".to_string(),
+            Value::String(item_id.to_string()),
+        );
+        meta.insert(
+            "chunk_index".to_string(),
+            Value::Number(Number::from(index)),
+        );
+        meta
     }
 
     #[expect(clippy::too_many_lines)]
@@ -454,13 +478,15 @@ impl PromptState {
             EventMsg::AgentMessageContentDelta(AgentMessageContentDeltaEvent { thread_id, turn_id, item_id, delta }) => {
                 info!("Agent message content delta received: thread_id: {thread_id}, turn_id: {turn_id}, item_id: {item_id}, delta: {delta:?}");
                 self.seen_message_deltas = true;
-                client.send_agent_text(delta).await;
+                let meta = self.build_chunk_meta("agent_message", &item_id);
+                client.send_agent_text_with_meta(delta, Some(meta)).await;
             }
             EventMsg::ReasoningContentDelta(ReasoningContentDeltaEvent { thread_id, turn_id, item_id, delta, summary_index: index })
             | EventMsg::ReasoningRawContentDelta(ReasoningRawContentDeltaEvent { thread_id, turn_id, item_id, delta, content_index: index }) => {
                 info!("Agent reasoning content delta received: thread_id: {thread_id}, turn_id: {turn_id}, item_id: {item_id}, index: {index}, delta: {delta:?}");
                 self.seen_reasoning_deltas = true;
-                client.send_agent_thought(delta).await;
+                let meta = self.build_chunk_meta("agent_thought", &item_id);
+                client.send_agent_thought_with_meta(delta, Some(meta)).await;
             }
             EventMsg::AgentReasoningSectionBreak(AgentReasoningSectionBreakEvent { item_id, summary_index}) => {
                 info!("Agent reasoning section break received:  item_id: {item_id}, index: {summary_index}");
@@ -1610,18 +1636,30 @@ impl SessionClient {
         .await;
     }
 
+    async fn send_agent_text_with_meta(&self, text: impl Into<String>, meta: Option<Meta>) {
+        let mut chunk = ContentChunk::new(text.into().into());
+        if let Some(meta) = meta {
+            chunk = chunk.meta(meta);
+        }
+        self.send_notification(SessionUpdate::AgentMessageChunk(chunk))
+            .await;
+    }
+
     async fn send_agent_text(&self, text: impl Into<String>) {
-        self.send_notification(SessionUpdate::AgentMessageChunk(ContentChunk::new(
-            text.into().into(),
-        )))
-        .await;
+        self.send_agent_text_with_meta(text, None).await;
+    }
+
+    async fn send_agent_thought_with_meta(&self, text: impl Into<String>, meta: Option<Meta>) {
+        let mut chunk = ContentChunk::new(text.into().into());
+        if let Some(meta) = meta {
+            chunk = chunk.meta(meta);
+        }
+        self.send_notification(SessionUpdate::AgentThoughtChunk(chunk))
+            .await;
     }
 
     async fn send_agent_thought(&self, text: impl Into<String>) {
-        self.send_notification(SessionUpdate::AgentThoughtChunk(ContentChunk::new(
-            text.into().into(),
-        )))
-        .await;
+        self.send_agent_thought_with_meta(text, None).await;
     }
 
     async fn send_tool_call(&self, tool_call: ToolCall) {

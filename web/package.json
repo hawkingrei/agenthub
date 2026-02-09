@@ -12,12 +12,15 @@
   },
   "dependencies": {
     "bootstrap-icons": "^1.11.3",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
     "qrcode": "^1.5.3",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
@@ -28,7 +31,6 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "typescript": "5.5.4",
     "vite": "^7.3.1",
-    "vite-plugin-pwa": "^1.0.3",
     "vitest": "^4.0.18"
   }
 }

@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::get};
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::compression::CompressionLayer;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;

@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify agent list actions, input dock behavior, and permission modal rendering after component extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
@@ -7,6 +8,7 @@
 - [ ] Verify ACP conversation scrolling and auto-collapse behavior after hook extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify Output error boundary fallback and empty state rendering (see `docs/features/2026-02-08-output-error-boundary.md`).
 - [ ] Verify localStorage output cache restores output history after reload (see `docs/features/2026-02-08-output-localstorage.md`).
+- [ ] Verify cache key bump invalidates older payloads cleanly after schema changes (see `docs/features/2026-02-08-output-localstorage.md`).
 - [ ] Verify output cache stays consistent under SSE + polling after ref sync update (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify cached output validation drops incomplete records from localStorage (see `docs/features/2026-02-08-output-cache-consistency.md`).
 - [ ] Verify session-specific output views do not merge unrelated `latest` cache entries (see `docs/features/2026-02-08-output-cache-consistency.md`).
@@ -14,15 +16,27 @@
 - [ ] Verify output cache slice helper behavior and tests (see `docs/features/2026-02-08-output-cache-slice.md`).
 - [x] Verify conversation history retains loaded older messages when cache slices refresh under long output (see `docs/features/2026-02-08-conversation-history-retention.md`).
 - [ ] Verify frontend lint passes locally and in CI (see `docs/features/2026-02-08-frontend-lint.md`).
-- [ ] Review new unit tests and expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
+- [ ] Verify Vite build output and chunk warning limit after dependency updates (see `docs/features/2026-02-08-build-chunk-warning-limit.md`).
+- [ ] Review new unit tests for event cursor ordering and conversation freeze logic, expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
+- [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
+- [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).
+- [ ] Verify ACP interrupt button appears next to Conversation tab, Debug hides input dock, and raw events list scrolls (see `docs/features/2026-02-08-acp-debug-interrupt.md`).
+- [ ] Review raw HTML handling in markdown-it renderer and add sanitization if ACP output becomes untrusted (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).
-- [ ] Verify PWA install prompt, offline shell behavior, and Vite 7-compatible plugin version (see `docs/features/2026-02-08-pwa-support.md`).
-- [ ] Verify service worker registers only once with manual registration enabled (see `docs/features/2026-02-08-pwa-support.md`).
+- [ ] Verify push notifications still work with the minimal service worker after PWA removal (see `docs/features/2026-02-08-pwa-removal.md`).
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
+- [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
+- [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify gzip compression for static assets and JSON responses (see `docs/features/2026-02-08-gzip-compression.md`).
+- [ ] Verify db init warns on index creation failures and unexpected ALTER errors (see `docs/features/2026-02-08-db-init-index-logging.md`).
+- [ ] Verify output ordering remains stable with mixed legacy numeric and UUIDv7 seq values (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
+- [ ] Decide whether to serialize `event_id` as a string in the web API once IDs approach JS safe integer limits (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
+- [ ] Verify conversation messages remain fully visible without auto-collapse (see `docs/features/2026-02-08-conversation-message-display.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).
