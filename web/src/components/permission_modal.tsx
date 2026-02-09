@@ -35,7 +35,7 @@ export function PermissionModal({
                 </div>
                 <div className="options">
                   {perm.options.map((opt, idx) => {
-                    const optionId = opt.option_id ?? opt.optionId ?? "";
+                    const optionId = opt.option_id.trim();
                     return (
                       <button
                         key={optionId || `${perm.id}-${idx}`}

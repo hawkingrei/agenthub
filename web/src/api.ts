@@ -40,8 +40,7 @@ export type AgentEvent = {
 };
 
 export type AcpPermissionOption = {
-  option_id?: string;
-  optionId?: string;
+  option_id: string;
   name: string;
   kind: string;
 };

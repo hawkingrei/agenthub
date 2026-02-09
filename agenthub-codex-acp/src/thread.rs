@@ -977,28 +977,12 @@ impl PromptState {
                         ToolCallStatus::Completed
                     })
                     .raw_output(raw_output)
-                    .content(result.ok().filter(|result| !result.content.is_empty()).map(
-                        |result| {
-                            result
-                                .content
-                                .into_iter()
-                                .filter_map(|content| match serde_json::from_value::<ContentBlock>(
-                                    content.clone(),
-                                ) {
-                                    Ok(block) => Some(block),
-                                    Err(err) => {
-                                        warn!(
-                                            ?err,
-                                            raw = ?content,
-                                            "Failed to deserialize tool output content block"
-                                        );
-                                        None
-                                    }
-                                })
-                                .map(|content| ToolCallContent::Content(Content::new(content)))
-                                .collect()
-                        },
-                    )),
+                    .content(
+                        result
+                            .ok()
+                            .filter(|result| !result.content.is_empty())
+                            .map(|result| map_tool_output_content(result.content)),
+                    ),
             ))
             .await;
     }
@@ -1364,6 +1348,23 @@ struct ParseCommandToolCall {
     terminal_output: bool,
     locations: Vec<ToolCallLocation>,
     kind: ToolKind,
+}
+
+fn map_tool_output_content(contents: Vec<Value>) -> Vec<ToolCallContent> {
+    contents
+        .into_iter()
+        .filter_map(|content| match serde_json::from_value::<ContentBlock>(content.clone()) {
+            Ok(block) => Some(ToolCallContent::Content(Content::new(block))),
+            Err(err) => {
+                warn!(
+                    ?err,
+                    raw = ?content,
+                    "Failed to deserialize tool output content block"
+                );
+                None
+            }
+        })
+        .collect()
 }
 
 fn parse_command_tool_call(parsed_cmd: Vec<ParsedCommand>, cwd: &Path) -> ParseCommandToolCall {
@@ -2431,9 +2432,7 @@ impl<A: Auth> ThreadActor<A> {
                     RequestPermissionOutcome::Selected(SelectedPermissionOutcome {
                         option_id,
                         ..
-                    }) if option_id.0.as_ref() == "allow_once"
-                        || option_id.0.as_ref() == "allow_always" =>
-                    {
+                    }) if is_permission_demo_allowed(option_id.0.as_ref()) => {
                         client.send_agent_text("Permission granted.").await;
                         client
                             .send_tool_call_completed(call_id, Some(json!({ "result": "allowed" })))
@@ -2464,6 +2463,10 @@ impl<A: Auth> ThreadActor<A> {
 
         Ok(())
     }
+
+fn is_permission_demo_allowed(option_id: &str) -> bool {
+    matches!(option_id, "allow_once" | "allow_always")
+}
 
     async fn handle_set_mode(&mut self, mode: SessionModeId) -> Result<(), Error> {
         let preset = APPROVAL_PRESETS
@@ -3165,6 +3168,28 @@ mod tests {
         assert_eq!(ops.as_slice(), &[Op::Undo]);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_permission_demo_allows_always() {
+        assert!(is_permission_demo_allowed("allow_always"));
+        assert!(is_permission_demo_allowed("allow_once"));
+        assert!(!is_permission_demo_allowed("reject_once"));
+    }
+
+    #[test]
+    fn test_map_tool_output_content_filters_invalid() {
+        let valid = serde_json::to_value(ContentBlock::Text(TextContent::new("ok"))).unwrap();
+        let invalid = serde_json::json!({ "bad": true });
+        let mapped = map_tool_output_content(vec![valid, invalid]);
+        assert_eq!(mapped.len(), 1);
+        match &mapped[0] {
+            ToolCallContent::Content(Content { content, .. }) => match content {
+                ContentBlock::Text(TextContent { text, .. }) => assert_eq!(text, "ok"),
+                _ => panic!("expected text content block"),
+            },
+            _ => panic!("expected content tool call entry"),
+        }
     }
 
     #[tokio::test]

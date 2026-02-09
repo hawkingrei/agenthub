@@ -30,3 +30,4 @@ left the controls disabled while tool calls were actively running.
 
 - Trigger a tool call that stays `in_progress`; confirm Interrupt is enabled.
 - Confirm the ACP status badge shows `in_progress` without `run_status`.
+- Run `pnpm test` (or `npm test`) and confirm `acp_panel.test.tsx` passes.

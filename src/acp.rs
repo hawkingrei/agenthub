@@ -5,7 +5,8 @@ use std::sync::Arc;
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
     ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, NewSessionRequest,
-    PromptRequest, ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest,
+    PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
+    RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
     SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, ToolCall,
     ToolCallUpdate, ToolCallUpdateFields,
@@ -110,6 +111,11 @@ impl Client for AcpClient {
         &self,
         args: RequestPermissionRequest,
     ) -> Result<RequestPermissionResponse, agent_client_protocol::Error> {
+        let options = args
+            .options
+            .iter()
+            .map(AcpPermissionOption::from)
+            .collect::<Vec<_>>();
         let (request_id, response_rx) = self
             .permissions
             .create_request(
@@ -125,7 +131,7 @@ impl Client for AcpClient {
                 "permission_id": request_id,
                 "session_id": args.session_id.to_string(),
                 "tool_call_id": args.tool_call.tool_call_id.to_string(),
-                "options": &args.options,
+                "options": &options,
                 "created_at": Utc::now().timestamp(),
             }))
             .await;
@@ -539,12 +545,30 @@ pub struct AcpPermissionRecord {
     pub session_id: String,
     pub acp_session_id: Option<String>,
     pub tool_call_id: Option<String>,
-    pub options: Vec<agent_client_protocol::PermissionOption>,
+    pub options: Vec<AcpPermissionOption>,
     pub tool_call: Option<Value>,
     pub status: String,
     pub selected_option_id: Option<String>,
     pub created_at: i64,
     pub responded_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AcpPermissionOption {
+    #[serde(alias = "optionId")]
+    pub option_id: String,
+    pub name: String,
+    pub kind: PermissionOptionKind,
+}
+
+impl From<&PermissionOption> for AcpPermissionOption {
+    fn from(option: &PermissionOption) -> Self {
+        Self {
+            option_id: option.option_id.0.to_string(),
+            name: option.name.clone(),
+            kind: option.kind,
+        }
+    }
 }
 
 impl AcpPermissionService {
@@ -562,7 +586,12 @@ impl AcpPermissionService {
         args: &RequestPermissionRequest,
     ) -> anyhow::Result<(String, oneshot::Receiver<RequestPermissionOutcome>)> {
         let id = uuid::Uuid::new_v4().to_string();
-        let options_json = serde_json::to_string(&args.options)?;
+        let options = args
+            .options
+            .iter()
+            .map(AcpPermissionOption::from)
+            .collect::<Vec<_>>();
+        let options_json = serde_json::to_string(&options)?;
         let tool_call_json = serde_json::to_string(&args.tool_call)?;
         let now = Utc::now().timestamp();
         sqlx::query(
@@ -685,7 +714,8 @@ impl AcpPermissionService {
         for row in rows {
             let options_json: String = row.get("options_json");
             let tool_call_json: Option<String> = row.try_get("tool_call_json").ok();
-            let options = serde_json::from_str(&options_json).unwrap_or_default();
+            let options = serde_json::from_str::<Vec<AcpPermissionOption>>(&options_json)
+                .unwrap_or_default();
             let tool_call = tool_call_json.and_then(|raw| serde_json::from_str(&raw).ok());
             out.push(AcpPermissionRecord {
                 id: row.get("id"),
