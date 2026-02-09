@@ -115,6 +115,16 @@ impl Client for AcpClient {
             .create_request(&self.sink.agent_id, &args)
             .await
             .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
+        self.sink
+            .emit_json(serde_json::json!({
+                "type": "permission_request",
+                "permission_id": request_id,
+                "session_id": args.session_id.to_string(),
+                "tool_call_id": args.tool_call.tool_call_id.to_string(),
+                "options": args.options,
+                "created_at": Utc::now().timestamp(),
+            }))
+            .await;
 
         let outcome =
             match tokio::time::timeout(std::time::Duration::from_secs(300), response_rx).await {
@@ -126,9 +136,30 @@ impl Client for AcpClient {
                         .permissions
                         .mark_timeout(&request_id, Some(&fallback))
                         .await;
+                    self.sink
+                        .emit_json(serde_json::json!({
+                            "type": "permission_timeout",
+                            "permission_id": request_id,
+                            "session_id": args.session_id.to_string(),
+                            "tool_call_id": args.tool_call.tool_call_id.to_string(),
+                            "outcome": fallback,
+                            "responded_at": Utc::now().timestamp(),
+                        }))
+                        .await;
                     fallback
                 }
             };
+
+        self.sink
+            .emit_json(serde_json::json!({
+                "type": "permission_response",
+                "permission_id": request_id,
+                "session_id": args.session_id.to_string(),
+                "tool_call_id": args.tool_call.tool_call_id.to_string(),
+                "outcome": outcome,
+                "responded_at": Utc::now().timestamp(),
+            }))
+            .await;
 
         Ok(RequestPermissionResponse::new(outcome))
     }
