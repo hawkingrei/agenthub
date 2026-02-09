@@ -121,7 +121,7 @@ impl Client for AcpClient {
                 "permission_id": request_id,
                 "session_id": args.session_id.to_string(),
                 "tool_call_id": args.tool_call.tool_call_id.to_string(),
-                "options": args.options,
+                "options": &args.options,
                 "created_at": Utc::now().timestamp(),
             }))
             .await;
@@ -142,7 +142,7 @@ impl Client for AcpClient {
                             "permission_id": request_id,
                             "session_id": args.session_id.to_string(),
                             "tool_call_id": args.tool_call.tool_call_id.to_string(),
-                            "outcome": fallback,
+                            "outcome": &fallback,
                             "responded_at": Utc::now().timestamp(),
                         }))
                         .await;
@@ -156,7 +156,7 @@ impl Client for AcpClient {
                 "permission_id": request_id,
                 "session_id": args.session_id.to_string(),
                 "tool_call_id": args.tool_call.tool_call_id.to_string(),
-                "outcome": outcome,
+                "outcome": &outcome,
                 "responded_at": Utc::now().timestamp(),
             }))
             .await;

@@ -502,8 +502,10 @@ select:focus-visible {
 .acp {
   height: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   flex: 1;
   overflow: hidden;
 }
@@ -513,7 +515,6 @@ select:focus-visible {
   min-height: 0;
   height: 100%;
   max-height: 100%;
-  flex: 1 1 auto;
   display: block;
 }
 
@@ -589,13 +590,6 @@ select:focus-visible {
   to {
     transform: rotate(360deg);
   }
-}
-
-
-.acp {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr);
 }
 
 
@@ -1015,8 +1009,9 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow: auto;
   padding-right: 6px;
 }

@@ -982,8 +982,18 @@ impl PromptState {
                             result
                                 .content
                                 .into_iter()
-                                .filter_map(|content| {
-                                    serde_json::from_value::<ContentBlock>(content).ok()
+                                .filter_map(|content| match serde_json::from_value::<ContentBlock>(
+                                    content.clone(),
+                                ) {
+                                    Ok(block) => Some(block),
+                                    Err(err) => {
+                                        warn!(
+                                            ?err,
+                                            raw = ?content,
+                                            "Failed to deserialize tool output content block"
+                                        );
+                                        None
+                                    }
                                 })
                                 .map(|content| ToolCallContent::Content(Content::new(content)))
                                 .collect()

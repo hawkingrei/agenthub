@@ -30,12 +30,14 @@ export function AcpPanel({
   conversation,
   debug,
 }: AcpPanelProps) {
+  const runStatus = acpView.runStatus?.status ?? null;
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
   );
   const runStatusLabel =
-    acpView.runStatus?.status ?? (hasInProgressToolCall ? "in_progress" : null);
-  const canInterrupt = canControlAcp && Boolean(runStatusLabel);
+    runStatus ?? (hasInProgressToolCall ? "in_progress" : null);
+  const isActiveRun = runStatus === "running" || hasInProgressToolCall;
+  const canInterrupt = canControlAcp && isActiveRun;
   return (
     <div className="acp">
       <div className="acp-head">

@@ -739,37 +739,9 @@ impl AgentManager {
         message_id: Option<&str>,
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
-        let (stdin, acp, output_tx, session_id) = {
+        let handle_snapshot = {
             let guard = self.inner.read().await;
-            let handle = match guard.get(agent_id) {
-                Some(handle) => handle,
-                None => {
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE agent_sessions
-                        SET status = 'exited', ended_at = ?1
-                        WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
-                        "#,
-                    )
-                    .bind(now)
-                    .bind(agent_id)
-                    .execute(&self.db)
-                    .await;
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE agents
-                        SET status = 'exited', updated_at = ?1
-                        WHERE id = ?2 AND status = 'running'
-                        "#,
-                    )
-                    .bind(now)
-                    .bind(agent_id)
-                    .execute(&self.db)
-                    .await;
-                    return Err(anyhow::anyhow!("agent not running"));
-                }
-            };
-            match &handle.input {
+            guard.get(agent_id).map(|handle| match &handle.input {
                 AgentInput::Stdin(stdin) => (Some(stdin.clone()), None, None, None),
                 AgentInput::Acp(acp) => (
                     None,
@@ -777,6 +749,34 @@ impl AgentManager {
                     Some(handle.output_tx.clone()),
                     Some(handle.session_id.clone()),
                 ),
+            })
+        };
+        let (stdin, acp, output_tx, session_id) = match handle_snapshot {
+            Some(snapshot) => snapshot,
+            None => {
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE agent_sessions
+                    SET status = 'exited', ended_at = ?1
+                    WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
+                    "#,
+                )
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await;
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET status = 'exited', updated_at = ?1
+                    WHERE id = ?2 AND status = 'running'
+                    "#,
+                )
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await;
+                return Err(anyhow::anyhow!("agent not running"));
             }
         };
 
