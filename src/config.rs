@@ -16,6 +16,7 @@ pub struct AppConfig {
     pub push: Option<PushConfig>,
     pub safe_paths: Option<Vec<String>>,
     pub web_dir: Option<String>,
+    pub log_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -118,6 +119,14 @@ impl AppConfig {
         self.safe_paths.clone().unwrap_or_default()
     }
 
+    pub fn log_path(&self) -> Option<String> {
+        self.log_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(expand_tilde)
+    }
+
     pub fn codex_acp_binary(&self) -> String {
         self.codex_acp
             .as_ref()
@@ -168,6 +177,7 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_RP_NAME",
         "AGENTHUB_SAFE_PATHS",
         "AGENTHUB_WEB_DIR",
+        "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
         "AGENTHUB_HTTP_PROXY",
         "AGENTHUB_HTTPS_PROXY",
@@ -180,4 +190,15 @@ fn detect_env_overrides() -> Vec<String> {
         .filter(|key| std::env::var(key).ok().filter(|v| !v.is_empty()).is_some())
         .map(|key| key.to_string())
         .collect()
+}
+
+fn expand_tilde(path: &str) -> String {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        return std::path::Path::new(&home)
+            .join(stripped)
+            .to_string_lossy()
+            .to_string();
+    }
+    path.to_string()
 }

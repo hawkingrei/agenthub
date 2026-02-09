@@ -21,9 +21,22 @@ mod web;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
-
     let (config, info) = config::AppConfig::load_with_info()?;
+    let log_path = config.log_path();
+    let _log_guard = if let Some(path) = &log_path {
+        std::fs::create_dir_all(path)?;
+        let file_appender = tracing_appender::rolling::hourly(path, "agenthub.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+        Some(guard)
+    } else {
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+        None
+    };
     if info.file_exists {
         tracing::info!("config source: file");
         tracing::info!("config path: {}", info.path.display());
@@ -35,6 +48,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("env overrides ignored: {}", info.env_overrides.join(", "));
     }
     tracing::info!("config listen: {}", config.listen_addr());
+    tracing::info!(
+        "config log_path: {}",
+        log_path.as_deref().unwrap_or("<stdout>")
+    );
     tracing::info!("config rp_id: {}", config.rp_id());
     tracing::info!("config rp_origin: {}", config.rp_origin());
     tracing::info!("config rp_name: {}", config.rp_name());
