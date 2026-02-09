@@ -75,13 +75,13 @@ pub fn config_path() -> std::path::PathBuf {
 impl AppConfig {
     pub fn effective_web_dir(&self) -> Option<String> {
         if cfg!(debug_assertions) {
-            let configured = self
+            let dir = self
                 .web_dir
-                .as_ref()
-                .map(|value| value.trim())
+                .as_deref()
+                .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(|value| value.to_string());
-            return Some(configured.unwrap_or_else(|| "web/dist".to_string()));
+                .unwrap_or("web/dist");
+            return Some(dir.to_string());
         }
         None
     }

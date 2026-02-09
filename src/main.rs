@@ -40,16 +40,20 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("config rp_name: {}", config.rp_name());
     let configured_web_dir = config
         .web_dir
-        .clone()
-        .unwrap_or_else(|| "embedded".to_string());
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let web_dir = config.effective_web_dir();
     if !cfg!(debug_assertions) && config.web_dir.is_some() {
         tracing::info!("config web_dir ignored in release build");
     }
-    tracing::info!("config web_dir: {}", configured_web_dir);
+    tracing::info!(
+        "config web_dir: {}",
+        configured_web_dir.unwrap_or("<unset>")
+    );
     tracing::info!(
         "effective web_dir: {}",
-        web_dir.clone().unwrap_or_else(|| "embedded".to_string())
+        web_dir.as_deref().unwrap_or("embedded")
     );
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
