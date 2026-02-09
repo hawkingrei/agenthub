@@ -24,6 +24,7 @@ pub struct AgentManager {
     auth: Arc<AuthService>,
     proxy_env: Vec<(String, String)>,
     codex_acp_binary: String,
+    acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
     starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
@@ -49,6 +50,7 @@ impl AgentManager {
         push: Arc<PushService>,
         proxy_env: Vec<(String, String)>,
         codex_acp_binary: String,
+        acp_default_mode: Option<String>,
         permissions: Arc<AcpPermissionService>,
         auth: Arc<AuthService>,
     ) -> Self {
@@ -58,6 +60,7 @@ impl AgentManager {
             auth,
             proxy_env,
             codex_acp_binary,
+            acp_default_mode,
             permissions,
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
@@ -563,6 +566,16 @@ impl AgentManager {
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
+            if let Some(mode_id) = self.acp_default_mode.as_deref() {
+                if let Err(err) = handle.set_mode(mode_id.to_string()).await {
+                    tracing::warn!(
+                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                        agent.id,
+                        mode_id,
+                        err
+                    );
+                }
+            }
             AgentInput::Acp(handle.clone())
         } else {
             AgentInput::Stdin(stdin.clone())
@@ -738,12 +751,10 @@ impl AgentManager {
         input: &str,
         message_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        let (stdin, acp, output_tx, session_id) = {
+        let now = Utc::now().timestamp();
+        let handle_snapshot = {
             let guard = self.inner.read().await;
-            let handle = guard
-                .get(agent_id)
-                .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
-            match &handle.input {
+            guard.get(agent_id).map(|handle| match &handle.input {
                 AgentInput::Stdin(stdin) => (Some(stdin.clone()), None, None, None),
                 AgentInput::Acp(acp) => (
                     None,
@@ -751,6 +762,34 @@ impl AgentManager {
                     Some(handle.output_tx.clone()),
                     Some(handle.session_id.clone()),
                 ),
+            })
+        };
+        let (stdin, acp, output_tx, session_id) = match handle_snapshot {
+            Some(snapshot) => snapshot,
+            None => {
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE agent_sessions
+                    SET status = 'exited', ended_at = ?1
+                    WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
+                    "#,
+                )
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await;
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET status = 'exited', updated_at = ?1
+                    WHERE id = ?2 AND status = 'running'
+                    "#,
+                )
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await;
+                return Err(anyhow::anyhow!("agent not running"));
             }
         };
 

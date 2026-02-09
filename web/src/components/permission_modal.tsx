@@ -34,17 +34,20 @@ export function PermissionModal({
                   <div className="meta">{perm.status}</div>
                 </div>
                 <div className="options">
-                  {perm.options.map((opt) => (
-                    <button
-                      key={opt.option_id}
-                      disabled={permissionBusy === perm.id}
-                      onClick={() =>
-                        onRespond(perm.agent_id, perm.id, opt.option_id)
-                      }
-                    >
-                      {opt.name}
-                    </button>
-                  ))}
+                  {perm.options.map((opt, idx) => {
+                    const optionId = opt.option_id.trim();
+                    return (
+                      <button
+                        key={optionId || `${perm.id}-${idx}`}
+                        disabled={permissionBusy === perm.id || !optionId}
+                        onClick={() =>
+                          onRespond(perm.agent_id, perm.id, optionId)
+                        }
+                      >
+                        {opt.name}
+                      </button>
+                    );
+                  })}
                   <button
                     disabled={permissionBusy === perm.id}
                     onClick={() => onRespond(perm.agent_id, perm.id)}

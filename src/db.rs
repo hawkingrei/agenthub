@@ -264,6 +264,7 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
+            acp_session_id TEXT,
             tool_call_id TEXT,
             options_json TEXT NOT NULL,
             tool_call_json TEXT,
@@ -304,6 +305,9 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
         .execute(&pool)
         .await;
     let _ = sqlx::query("ALTER TABLE agents ADD COLUMN code_mode INTEGER")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT")
         .execute(&pool)
         .await;
 

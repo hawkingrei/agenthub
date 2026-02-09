@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Refresh codex git dependencies and `Cargo.lock` after ACP protocol sync (see `docs/features/2026-02-09-codex-acp-protocol-sync.md`).
+- [ ] Verify ACP debug layout, interrupt gating, permission debug events, and tool output logging (see `docs/features/2026-02-09-acp-debug-layout-fixes.md`).
 - [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
@@ -24,6 +26,15 @@
 - [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
 - [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).
 - [ ] Verify ACP interrupt button appears next to Conversation tab, Debug hides input dock, and raw events list scrolls (see `docs/features/2026-02-08-acp-debug-interrupt.md`).
+- [ ] Verify ACP permission request/response/timeout events appear in Debug raw events (see `docs/features/2026-02-09-acp-permission-events.md`).
+- [ ] Verify ACP permission requests persist with AgentHub session IDs and capture ACP session IDs (see `docs/features/2026-02-09-acp-permission-session-id.md`).
+- [ ] Verify ACP permission option IDs map correctly in the UI and approvals are accepted (see `docs/features/2026-02-09-acp-permission-option-id.md`).
+- [ ] Verify ACP permission demo allows `allow_always` options after approval (see `docs/features/2026-02-09-acp-permission-option-id.md`).
+- [ ] Verify ACP default_mode config applies to new sessions and triggers permission requests when required (see `docs/features/2026-02-09-acp-default-mode.md`).
+- [ ] Verify API payload naming remains `snake_case` after new endpoint additions (see `docs/features/2026-02-09-api-naming-conventions.md`).
+- [ ] Verify ACP Interrupt enables when tool calls are in progress and status badge shows `in_progress` (see `docs/features/2026-02-09-acp-interrupt-in-progress.md`).
+- [ ] Verify ACP tool output content filtering test coverage (see `docs/features/2026-02-09-acp-tool-output-content-filter.md`).
+- [ ] Verify UI refreshes agent status when input fails with `agent not running` (see `docs/features/2026-02-09-agent-not-running-refresh.md`).
 - [ ] Review raw HTML handling in markdown-it renderer and add sanitization if ACP output becomes untrusted (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Validate SSE streaming output under proxy/load balancer conditions (see `docs/features/2026-02-08-sse-streaming.md`).
 - [ ] Verify SSE heartbeat events are emitted and ignored by the client (see `docs/features/2026-02-08-sse-streaming.md`).

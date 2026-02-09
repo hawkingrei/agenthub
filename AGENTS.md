@@ -106,6 +106,7 @@ agenthub/
 - Add a TODO entry in `docs/todo.md` for follow-up or verification items.
 - Add a feature note under `docs/features/` describing background, scope, key decisions, and validation.
 - Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
+- API naming conventions live in `docs/api_naming.md` and must be followed for all AgentHub-owned payloads.
 
 ## 12. Change Log
 
