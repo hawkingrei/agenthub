@@ -40,7 +40,8 @@ export type AgentEvent = {
 };
 
 export type AcpPermissionOption = {
-  option_id: string;
+  option_id?: string;
+  optionId?: string;
   name: string;
   kind: string;
 };
@@ -49,6 +50,7 @@ export type AcpPermissionRecord = {
   id: string;
   agent_id: string;
   session_id: string;
+  acp_session_id?: string | null;
   tool_call_id?: string | null;
   options: AcpPermissionOption[];
   tool_call?: unknown;

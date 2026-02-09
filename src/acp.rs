@@ -112,7 +112,11 @@ impl Client for AcpClient {
     ) -> Result<RequestPermissionResponse, agent_client_protocol::Error> {
         let (request_id, response_rx) = self
             .permissions
-            .create_request(&self.sink.agent_id, &args)
+            .create_request(
+                &self.sink.agent_id,
+                &self.sink.session_id,
+                &args,
+            )
             .await
             .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
         self.sink
@@ -533,6 +537,7 @@ pub struct AcpPermissionRecord {
     pub id: String,
     pub agent_id: String,
     pub session_id: String,
+    pub acp_session_id: Option<String>,
     pub tool_call_id: Option<String>,
     pub options: Vec<agent_client_protocol::PermissionOption>,
     pub tool_call: Option<Value>,
@@ -553,6 +558,7 @@ impl AcpPermissionService {
     pub async fn create_request(
         &self,
         agent_id: &str,
+        agent_session_id: &str,
         args: &RequestPermissionRequest,
     ) -> anyhow::Result<(String, oneshot::Receiver<RequestPermissionOutcome>)> {
         let id = uuid::Uuid::new_v4().to_string();
@@ -562,14 +568,15 @@ impl AcpPermissionService {
         sqlx::query(
             r#"
             INSERT INTO acp_permission_requests (
-                id, agent_id, session_id, tool_call_id, options_json, tool_call_json,
+                id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
                 status, created_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
             "#,
         )
         .bind(&id)
         .bind(agent_id)
+        .bind(agent_session_id)
         .bind(args.session_id.to_string())
         .bind(args.tool_call.tool_call_id.to_string())
         .bind(options_json)
@@ -648,7 +655,7 @@ impl AcpPermissionService {
         let rows = if let Some(status) = status {
             sqlx::query(
                 r#"
-                SELECT id, agent_id, session_id, tool_call_id, options_json, tool_call_json,
+                SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
                        status, selected_option_id, created_at, responded_at
                 FROM acp_permission_requests
                 WHERE agent_id = ?1 AND status = ?2
@@ -662,7 +669,7 @@ impl AcpPermissionService {
         } else {
             sqlx::query(
                 r#"
-                SELECT id, agent_id, session_id, tool_call_id, options_json, tool_call_json,
+                SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
                        status, selected_option_id, created_at, responded_at
                 FROM acp_permission_requests
                 WHERE agent_id = ?1
@@ -684,6 +691,7 @@ impl AcpPermissionService {
                 id: row.get("id"),
                 agent_id: row.get("agent_id"),
                 session_id: row.get("session_id"),
+                acp_session_id: row.try_get("acp_session_id").ok(),
                 tool_call_id: row.try_get("tool_call_id").ok(),
                 options,
                 tool_call,

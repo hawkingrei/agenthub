@@ -41,6 +41,7 @@ pub struct ProxyConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CodexAcpConfig {
     pub binary: Option<String>,
+    pub default_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -134,6 +135,15 @@ impl AppConfig {
             .unwrap_or_else(|| "agenthub-codex-acp".to_string())
     }
 
+    pub fn codex_acp_default_mode(&self) -> Option<String> {
+        self.codex_acp
+            .as_ref()
+            .and_then(|c| c.default_mode.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
     pub fn proxy_env(&self) -> Vec<(String, String)> {
         let mut items = Vec::new();
         if let Some(proxy) = &self.proxy {
@@ -179,6 +189,7 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_WEB_DIR",
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
+        "AGENTHUB_CODEX_ACP_DEFAULT_MODE",
         "AGENTHUB_HTTP_PROXY",
         "AGENTHUB_HTTPS_PROXY",
         "AGENTHUB_ALL_PROXY",

@@ -27,6 +27,9 @@
 - [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).
 - [ ] Verify ACP interrupt button appears next to Conversation tab, Debug hides input dock, and raw events list scrolls (see `docs/features/2026-02-08-acp-debug-interrupt.md`).
 - [ ] Verify ACP permission request/response/timeout events appear in Debug raw events (see `docs/features/2026-02-09-acp-permission-events.md`).
+- [ ] Verify ACP permission requests persist with AgentHub session IDs and capture ACP session IDs (see `docs/features/2026-02-09-acp-permission-session-id.md`).
+- [ ] Verify ACP permission option IDs map correctly in the UI and approvals are accepted (see `docs/features/2026-02-09-acp-permission-option-id.md`).
+- [ ] Verify ACP default_mode config applies to new sessions and triggers permission requests when required (see `docs/features/2026-02-09-acp-default-mode.md`).
 - [ ] Verify ACP Interrupt enables when tool calls are in progress and status badge shows `in_progress` (see `docs/features/2026-02-09-acp-interrupt-in-progress.md`).
 - [ ] Verify UI refreshes agent status when input fails with `agent not running` (see `docs/features/2026-02-09-agent-not-running-refresh.md`).
 - [ ] Review raw HTML handling in markdown-it renderer and add sanitization if ACP output becomes untrusted (see `docs/features/2026-02-08-markdown-renderer.md`).

@@ -14,11 +14,11 @@ fn styles_keep_acp_conversation_scoped() {
         "styles.css should define .acp-conversation"
     );
     assert!(
-        css.contains(".acp {\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n  overflow: hidden;\n}"),
-        "acp container should be flex and height constrained"
+        css.contains(".acp {\n  height: 100%;\n  min-height: 0;\n  display: grid;\n  gap: 12px;\n  grid-template-columns: minmax(0, 1fr);\n  grid-template-rows: auto minmax(0, 1fr);\n  flex: 1;\n  overflow: hidden;\n}"),
+        "acp container should be grid and height constrained"
     );
     assert!(
-        css.contains(".acp-conversation {\n  overflow: auto;\n  min-height: 0;\n  height: 100%;\n  max-height: 100%;\n  flex: 1 1 auto;\n  display: block;\n}"),
+        css.contains(".acp-conversation {\n  overflow: auto;\n  min-height: 0;\n  height: 100%;\n  max-height: 100%;\n  display: block;\n}"),
         "acp conversation should be scrollable container"
     );
     assert!(

@@ -96,6 +96,13 @@ async fn main() -> anyhow::Result<()> {
         web_dir.as_deref().unwrap_or("embedded")
     );
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
+    tracing::info!(
+        "config codex_acp_default_mode: {}",
+        config
+            .codex_acp_default_mode()
+            .as_deref()
+            .unwrap_or("<unset>")
+    );
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
     tracing::info!(
         "config vapid_keys_path: {}",

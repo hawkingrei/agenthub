@@ -24,6 +24,7 @@ pub struct AgentManager {
     auth: Arc<AuthService>,
     proxy_env: Vec<(String, String)>,
     codex_acp_binary: String,
+    acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
     starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
@@ -49,6 +50,7 @@ impl AgentManager {
         push: Arc<PushService>,
         proxy_env: Vec<(String, String)>,
         codex_acp_binary: String,
+        acp_default_mode: Option<String>,
         permissions: Arc<AcpPermissionService>,
         auth: Arc<AuthService>,
     ) -> Self {
@@ -58,6 +60,7 @@ impl AgentManager {
             auth,
             proxy_env,
             codex_acp_binary,
+            acp_default_mode,
             permissions,
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
@@ -562,6 +565,16 @@ impl AgentManager {
                 .await
             {
                 tracing::error!("persist acp session failed: {}", err);
+            }
+            if let Some(mode_id) = self.acp_default_mode.as_deref() {
+                if let Err(err) = handle.set_mode(mode_id.to_string()).await {
+                    tracing::warn!(
+                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                        agent.id,
+                        mode_id,
+                        err
+                    );
+                }
             }
             AgentInput::Acp(handle.clone())
         } else {

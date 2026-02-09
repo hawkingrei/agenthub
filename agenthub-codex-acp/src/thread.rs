@@ -2408,6 +2408,11 @@ impl<A: Auth> ThreadActor<A> {
                 .await;
 
             let options = vec![
+                PermissionOption::new(
+                    "allow_always",
+                    "Always",
+                    PermissionOptionKind::AllowAlways,
+                ),
                 PermissionOption::new("allow_once", "Allow once", PermissionOptionKind::AllowOnce),
                 PermissionOption::new("reject_once", "Reject", PermissionOptionKind::RejectOnce),
             ];
@@ -2426,7 +2431,9 @@ impl<A: Auth> ThreadActor<A> {
                     RequestPermissionOutcome::Selected(SelectedPermissionOutcome {
                         option_id,
                         ..
-                    }) if option_id.0.as_ref() == "allow_once" => {
+                    }) if option_id.0.as_ref() == "allow_once"
+                        || option_id.0.as_ref() == "allow_always" =>
+                    {
                         client.send_agent_text("Permission granted.").await;
                         client
                             .send_tool_call_completed(call_id, Some(json!({ "result": "allowed" })))
