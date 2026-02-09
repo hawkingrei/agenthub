@@ -412,10 +412,7 @@ impl PromptState {
     fn build_chunk_meta(&mut self, kind: &str, item_id: &str) -> Meta {
         let mut meta = Meta::new();
         let index = self.next_chunk_index(kind, item_id);
-        meta.insert(
-            "message_id".to_string(),
-            Value::String(item_id.to_string()),
-        );
+        meta.insert("message_id".to_string(), Value::String(item_id.to_string()));
         meta.insert(
             "chunk_index".to_string(),
             Value::Number(Number::from(index)),

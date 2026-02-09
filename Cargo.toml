@@ -27,6 +27,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "sy
 tokio-util = { version = "0.7", features = ["compat"] }
 tower-http = { version = "0.5", features = ["fs", "trace", "cors", "compression-gzip"] }
 tracing = "0.1"
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 web-push = "0.10"
