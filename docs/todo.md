@@ -31,6 +31,7 @@
 - [ ] Verify ACP permission option IDs map correctly in the UI and approvals are accepted (see `docs/features/2026-02-09-acp-permission-option-id.md`).
 - [ ] Verify ACP permission demo allows `allow_always` options after approval (see `docs/features/2026-02-09-acp-permission-option-id.md`).
 - [ ] Verify ACP default_mode config applies to new sessions and triggers permission requests when required (see `docs/features/2026-02-09-acp-default-mode.md`).
+- [ ] Verify API payload naming remains `snake_case` after new endpoint additions (see `docs/features/2026-02-09-api-naming-conventions.md`).
 - [ ] Verify ACP Interrupt enables when tool calls are in progress and status badge shows `in_progress` (see `docs/features/2026-02-09-acp-interrupt-in-progress.md`).
 - [ ] Verify ACP tool output content filtering test coverage (see `docs/features/2026-02-09-acp-tool-output-content-filter.md`).
 - [ ] Verify UI refreshes agent status when input fails with `agent not running` (see `docs/features/2026-02-09-agent-not-running-refresh.md`).

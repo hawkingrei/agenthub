@@ -1367,6 +1367,10 @@ fn map_tool_output_content(contents: Vec<Value>) -> Vec<ToolCallContent> {
         .collect()
 }
 
+fn is_permission_demo_allowed(option_id: &str) -> bool {
+    matches!(option_id, "allow_once" | "allow_always")
+}
+
 fn parse_command_tool_call(parsed_cmd: Vec<ParsedCommand>, cwd: &Path) -> ParseCommandToolCall {
     let mut titles = Vec::new();
     let mut locations = Vec::new();
@@ -2463,10 +2467,6 @@ impl<A: Auth> ThreadActor<A> {
 
         Ok(())
     }
-
-fn is_permission_demo_allowed(option_id: &str) -> bool {
-    matches!(option_id, "allow_once" | "allow_always")
-}
 
     async fn handle_set_mode(&mut self, mode: SessionModeId) -> Result<(), Error> {
         let preset = APPROVAL_PRESETS
