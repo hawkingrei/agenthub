@@ -20,7 +20,6 @@ export class OutputErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: unknown, info: unknown) {
-    // eslint-disable-next-line no-console
     console.error("Output render failed", error, info);
   }
 

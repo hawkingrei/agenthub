@@ -4,7 +4,8 @@ import { TerminalOutput } from "./terminal_output";
 import { OutputLine } from "../output_cache";
 
 type OutputBodyProps = {
-  outputRef: React.RefObject<HTMLDivElement>;
+  terminalRef: React.RefObject<HTMLDivElement>;
+  onTerminalScroll?: () => void;
   isOutputLoading: boolean;
   outputs: OutputLine[];
   ansi: (input: string) => string;
@@ -12,14 +13,15 @@ type OutputBodyProps = {
 };
 
 export function OutputBody({
-  outputRef,
+  terminalRef,
+  onTerminalScroll,
   isOutputLoading,
   outputs,
   ansi,
   acpPanelProps,
 }: OutputBodyProps) {
   return (
-    <div className="output-body" ref={outputRef}>
+    <div className="output-body">
       {isOutputLoading ? (
         <div className="output-loading">
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
@@ -33,7 +35,12 @@ export function OutputBody({
           <div className="meta">Send input or start the agent to see output.</div>
         </div>
       ) : (
-        <TerminalOutput outputs={outputs} ansi={ansi} />
+        <TerminalOutput
+          outputs={outputs}
+          ansi={ansi}
+          containerRef={terminalRef}
+          onScroll={onTerminalScroll}
+        />
       )}
     </div>
   );

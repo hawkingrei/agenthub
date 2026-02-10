@@ -1,11 +1,17 @@
 # TODO
 
 - [ ] Verify Mantine UI library POC styling and modal behavior (see `docs/features/2026-02-09-mantine-ui-library.md`).
+- [ ] Verify ESLint 9 upgrade and flat config lint run (see `docs/features/2026-02-10-eslint-9-upgrade.md`).
+- [ ] Verify workspace output header resume control, terminal auto-follow, and collapsed agents rail (see `docs/features/2026-02-10-workspace-output-interaction.md`).
+- [ ] Verify new workspace output/agents component tests and CSS guard updates (see `docs/features/2026-02-10-workspace-output-tests.md`).
+- [ ] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
+- [ ] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
 - [ ] Decide and document MCP configuration source for ACP sessions (Codex config vs AgentHub config).
 - [ ] Investigate ACP output formatting for large chunked messages (e.g., shiro sessions) and fix cache retention/rendering.
 - [ ] Add ACP support for Gemini and Kimi providers, including config wiring and documentation.
 - [ ] Refresh codex git dependencies and `Cargo.lock` after ACP protocol sync (see `docs/features/2026-02-09-codex-acp-protocol-sync.md`).
 - [ ] Verify ACP debug layout, interrupt gating, permission debug events, and tool output logging (see `docs/features/2026-02-09-acp-debug-layout-fixes.md`).
+- [ ] Verify ACP debug raw events auto-scrolls in the Raw tab (see `docs/features/2026-02-10-acp-raw-scroll.md`).
 - [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).

@@ -11,6 +11,7 @@ import {
 } from "./api";
 import { buildAcpView } from "./acp";
 import {
+  AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
   shouldOpenAgentSocket,
   sanitizeAgentError,
@@ -128,7 +129,8 @@ export function App() {
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
   const sseRef = useRef<EventSource | null>(null);
-  const outputRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const terminalStickToBottomRef = useRef(true);
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
@@ -140,7 +142,7 @@ export function App() {
       }
     >
   >({});
-  const [agentsCollapsed, setAgentsCollapsed] = useState(false);
+  const [agentsCollapsed, setAgentsCollapsed] = useState(true);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
     "conversation"
@@ -181,6 +183,14 @@ export function App() {
   useEffect(() => {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
+
+  const handleTerminalScroll = useCallback(() => {
+    const el = terminalRef.current;
+    if (!el) return;
+    const stick = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    if (stick === terminalStickToBottomRef.current) return;
+    terminalStickToBottomRef.current = stick;
+  }, []);
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = outputCacheRef.current[key] ?? [];
@@ -218,7 +228,6 @@ export function App() {
   );
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
-  const showAcpRuntime = isAgentActive;
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
   const canControlAcp = Boolean(activeAgent && isAgentActive);
@@ -721,12 +730,18 @@ export function App() {
   ]);
 
   useEffect(() => {
-    const el = outputRef.current;
+    if (acpView.hasAcp) return;
+    const el = terminalRef.current;
     if (!el) return;
-    if (isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)) {
+    if (terminalStickToBottomRef.current) {
       el.scrollTop = el.scrollHeight;
+      return;
     }
-  }, [outputs, acpView.hasAcp]);
+  }, [outputs.length, acpView.hasAcp]);
+
+  useEffect(() => {
+    terminalStickToBottomRef.current = true;
+  }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
@@ -1297,16 +1312,20 @@ export function App() {
       )}
 
       {auth && (
-        <section className={agentsCollapsed ? "workspace collapsed" : "workspace"}>
+        <section
+          className={agentsCollapsed ? "workspace collapsed" : "workspace"}
+        >
           <AgentsPanel
             agents={agents}
             activeAgent={activeAgent}
             agentsCollapsed={agentsCollapsed}
             onCollapse={() => setAgentsCollapsed(true)}
+            onExpand={() => setAgentsCollapsed(false)}
             onCreateAgent={() => setShowCreateAgent(true)}
             onSelectAgent={(id) => {
               setActiveAgent(id);
               setActiveSessionId(agentSessions[id] ?? null);
+              setAgentsCollapsed(true);
             }}
             onToggleCodeMode={onSetCodeMode}
             onStartAgent={onStartAgent}
@@ -1316,21 +1335,23 @@ export function App() {
           <div className="workspace-right">
             <OutputHeader
               activeAgent={activeAgentRecord}
+              activeSessionId={activeSessionId}
               agentsCollapsed={agentsCollapsed}
+              hasAcp={acpView.hasAcp}
+              thinkingStartTs={thinkingStartTs}
               onToggleAgents={() => setAgentsCollapsed((prev) => !prev)}
             />
             {activeAgent ? (
               <OutputErrorBoundary>
                 <OutputBody
-                  outputRef={outputRef}
+                  terminalRef={terminalRef}
+                  onTerminalScroll={handleTerminalScroll}
                   isOutputLoading={isOutputLoading}
                   outputs={outputs}
                   ansi={ansi}
                   acpPanelProps={{
                     acpView,
-                    activeSessionId,
-                    showAcpRuntime,
-                    thinkingStartTs,
+                    subtitle: activeAgentRecord?.workdir ?? null,
                     acpTab,
                     onSelectTab: (next) => setAcpTab(next),
                     showConversationBadge: acpConversation.showConversationBadge,

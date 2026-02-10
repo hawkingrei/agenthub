@@ -20,9 +20,7 @@ const baseAcpView: AcpView = {
 
 const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
   acpView: { ...baseAcpView, ...override },
-  activeSessionId: null,
-  showAcpRuntime: false,
-  thinkingStartTs: null,
+  subtitle: null,
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
@@ -73,7 +71,7 @@ const renderBody = ({
 }) =>
   renderToStaticMarkup(
     <OutputBody
-      outputRef={React.createRef<HTMLDivElement>()}
+      terminalRef={React.createRef<HTMLDivElement>()}
       isOutputLoading={isOutputLoading}
       outputs={outputs}
       ansi={(input) => input}
@@ -94,7 +92,7 @@ describe("OutputBody", () => {
       outputs: [],
       acpOverride: { hasAcp: true },
     });
-    expect(html).toContain("ACP");
+    expect(html).toContain("Conversation");
     expect(html).not.toContain("No output yet");
   });
 
