@@ -205,7 +205,7 @@ section {
   min-height: 0;
 }
 
-input {
+input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -217,7 +217,7 @@ input {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-textarea {
+textarea:not([class*="mantine-"]) {
   width: 100%;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -232,7 +232,7 @@ textarea {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-select {
+select:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -244,7 +244,7 @@ select {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button {
+button:not([class*="mantine-"]) {
   border: none;
   background: var(--ink);
   color: white;
@@ -256,19 +256,19 @@ button {
   transition: transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-button:active {
+button:not([class*="mantine-"]):active {
   transform: translateY(1px);
 }
 
-button:disabled {
+button:not([class*="mantine-"]):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
+button:not([class*="mantine-"]):focus-visible,
+input:not([class*="mantine-"]):focus-visible,
+textarea:not([class*="mantine-"]):focus-visible,
+select:not([class*="mantine-"]):focus-visible {
   outline: none;
   border-color: var(--focus-border);
   box-shadow: var(--focus-ring);
@@ -290,7 +290,7 @@ select:focus-visible {
   position: relative;
 }
 
-.input button {
+.input button:not([class*="mantine-"]) {
   height: 44px;
 }
 
@@ -1344,29 +1344,6 @@ select:focus-visible {
   font-family: "Source Code Pro", monospace;
 }
 
-.worktree-error {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: #fff3f3;
-  border: 1px solid #f2b1b1;
-  color: #7b1c1c;
-}
-
-.worktree-error h4 {
-  margin: 0 0 6px;
-  font-size: 14px;
-}
-
-.worktree-error p {
-  margin: 0 0 8px;
-}
-
-.worktree-error ul {
-  margin: 0;
-  padding-left: 18px;
-}
-
 .checkbox-row.compact {
   margin-bottom: 6px;
   font-size: 13px;
@@ -1463,11 +1440,11 @@ select:focus-visible {
     flex-direction: column;
   }
 
-  .input.docked textarea {
+  .input.docked textarea:not([class*="mantine-"]) {
     min-height: 80px;
   }
 
-  .input.docked button {
+  .input.docked button:not([class*="mantine-"]) {
     height: 38px;
     font-size: 12px;
     padding: 6px 10px;
@@ -1495,11 +1472,11 @@ select:focus-visible {
   min-height: 220px;
 }
 
-ul {
+ul:not([class*="mantine-"]) {
   padding-left: 18px;
 }
 
-li {
+li:not([class*="mantine-"]) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1553,7 +1530,7 @@ li {
   grid-template-columns: 1fr;
 }
 
-li button {
+li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
   background: #444;
   padding: 4px 8px;
 }
