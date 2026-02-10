@@ -1,12 +1,13 @@
 import React from "react";
+import { formatAgentCommand, listAgentPresets } from "../agent_presets";
 
 type CreateAgentModalProps = {
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
   setAgentWorkdir: (value: string) => void;
-  agentCommand: string;
-  setAgentCommand: (value: string) => void;
+  agentPresetId: string;
+  setAgentPresetId: (value: string) => void;
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   setWorktreeMode: (
     value: "use_existing" | "create_worktree" | "reuse_worktree"
@@ -27,8 +28,8 @@ export function CreateAgentModal({
   setAgentName,
   agentWorkdir,
   setAgentWorkdir,
-  agentCommand,
-  setAgentCommand,
+  agentPresetId,
+  setAgentPresetId,
   worktreeMode,
   setWorktreeMode,
   worktreeRepo,
@@ -41,6 +42,9 @@ export function CreateAgentModal({
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
+  const presets = listAgentPresets();
+  const preset = presets.find((item) => item.id === agentPresetId);
+  const commandSummary = preset ? formatAgentCommand(preset) : "";
   return (
     <div className="modal-backdrop">
       <div className="modal">
@@ -93,12 +97,19 @@ export function CreateAgentModal({
               />
             )}
             <select
-              value={agentCommand}
-              onChange={(e) => setAgentCommand(e.target.value)}
+              value={agentPresetId}
+              onChange={(e) => setAgentPresetId(e.target.value)}
             >
-              <option value="agenthub-codex-acp">agenthub-codex-acp</option>
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
             </select>
           </div>
+          {commandSummary && (
+            <div className="notice">Command: {commandSummary}</div>
+          )}
           <div className="checkbox-row">
             <label className="checkbox">
               <input

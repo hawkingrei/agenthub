@@ -38,6 +38,11 @@ import {
 } from "./output_cache";
 import { isNearBottom } from "./scroll";
 import { escapeHtml } from "./markdown";
+import {
+  DEFAULT_AGENT_PRESET_ID,
+  getAgentPreset,
+  resolveAcpProvider,
+} from "./agent_presets";
 import { AgentsPanel } from "./components/agents_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
 import { InputDock } from "./components/input_dock";
@@ -79,7 +84,10 @@ export function App() {
   );
   const [agentName, setAgentName] = useState("");
   const [agentWorkdir, setAgentWorkdir] = useState("");
-  const [agentCommand, setAgentCommand] = useState("agenthub-codex-acp");
+  const initialPreset = getAgentPreset(DEFAULT_AGENT_PRESET_ID);
+  const [agentPresetId, setAgentPresetId] = useState(DEFAULT_AGENT_PRESET_ID);
+  const [agentCommand, setAgentCommand] = useState(initialPreset.command);
+  const [agentArgs, setAgentArgs] = useState<string[]>(initialPreset.args);
   const [worktreeMode, setWorktreeMode] = useState<
     "use_existing" | "create_worktree" | "reuse_worktree"
   >("use_existing");
@@ -181,6 +189,11 @@ export function App() {
   useEffect(() => {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
+  useEffect(() => {
+    const preset = getAgentPreset(agentPresetId);
+    setAgentCommand(preset.command);
+    setAgentArgs(preset.args);
+  }, [agentPresetId]);
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = outputCacheRef.current[key] ?? [];
@@ -874,7 +887,7 @@ export function App() {
       const name = agentName.trim() || "agent";
       const workdir = agentWorkdir.trim();
       const command = agentCommand.trim();
-      const args: string[] = [];
+      const args = agentArgs.slice();
       if (!workdir) {
         setError("workdir is required");
         return;
@@ -906,7 +919,7 @@ export function App() {
       }
       setAgentName("");
       setAgentWorkdir("");
-      setAgentCommand("agenthub-codex-acp");
+      setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
       setWorktreeRef("");
@@ -1047,7 +1060,11 @@ export function App() {
     if (!token || !activeAgent) return;
     setError(null);
     try {
-      await api.clearAcpSession(token, activeAgent, "codex");
+      const provider =
+        (activeAgentRecord &&
+          resolveAcpProvider(activeAgentRecord.command)) ||
+        "codex";
+      await api.clearAcpSession(token, activeAgent, provider);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
@@ -1392,8 +1409,8 @@ export function App() {
           setAgentName={setAgentName}
           agentWorkdir={agentWorkdir}
           setAgentWorkdir={setAgentWorkdir}
-          agentCommand={agentCommand}
-          setAgentCommand={setAgentCommand}
+          agentPresetId={agentPresetId}
+          setAgentPresetId={setAgentPresetId}
           worktreeMode={worktreeMode}
           setWorktreeMode={setWorktreeMode}
           worktreeRepo={worktreeRepo}

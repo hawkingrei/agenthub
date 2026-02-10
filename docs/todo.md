@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify Gemini/Kimi ACP presets and session clearing work as expected (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Refresh codex git dependencies and `Cargo.lock` after ACP protocol sync (see `docs/features/2026-02-09-codex-acp-protocol-sync.md`).
 - [ ] Verify ACP debug layout, interrupt gating, permission debug events, and tool output logging (see `docs/features/2026-02-09-acp-debug-layout-fixes.md`).
 - [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).

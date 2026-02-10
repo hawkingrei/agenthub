@@ -31,6 +31,8 @@ pub struct AgentManager {
 }
 
 const ACP_PROVIDER_CODEX: &str = "codex";
+const ACP_PROVIDER_GEMINI: &str = "gemini";
+const ACP_PROVIDER_KIMI: &str = "kimi";
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -432,8 +434,9 @@ impl AgentManager {
             return Err(err);
         }
 
-        let is_acp = self.is_acp_command(&agent.command);
-        let command_path = self.resolve_command_path(&agent.command, is_acp);
+        let acp_provider = self.acp_provider_for_command(&agent.command);
+        let is_acp = acp_provider.is_some();
+        let command_path = self.resolve_command_path(&agent.command, acp_provider);
         let mut command = Command::new(&command_path);
         command
             .current_dir(&workdir)
@@ -508,9 +511,9 @@ impl AgentManager {
             return Err(err);
         }
 
-        let input = if is_acp {
+        let input = if let Some(provider) = acp_provider {
             let resume_session_id = self
-                .get_persistent_session(&agent.id, ACP_PROVIDER_CODEX)
+                .get_persistent_session(&agent.id, provider)
                 .await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
@@ -561,20 +564,28 @@ impl AgentManager {
                 }
             };
             if let Err(err) = self
-                .set_persistent_session(&agent.id, ACP_PROVIDER_CODEX, &handle.session_id)
+                .set_persistent_session(&agent.id, provider, &handle.session_id)
                 .await
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            if let Some(mode_id) = self.acp_default_mode.as_deref() {
-                if let Err(err) = handle.set_mode(mode_id.to_string()).await {
-                    tracing::warn!(
-                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
-                        agent.id,
-                        mode_id,
-                        err
-                    );
+            if provider == ACP_PROVIDER_CODEX {
+                if let Some(mode_id) = self.acp_default_mode.as_deref() {
+                    if let Err(err) = handle.set_mode(mode_id.to_string()).await {
+                        tracing::warn!(
+                            "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                            agent.id,
+                            mode_id,
+                            err
+                        );
+                    }
                 }
+            } else if self.acp_default_mode.is_some() {
+                tracing::info!(
+                    "acp default mode ignored for provider {} (agent_id={})",
+                    provider,
+                    agent.id
+                );
             }
             AgentInput::Acp(handle.clone())
         } else {
@@ -1390,22 +1401,34 @@ fn is_acp_message(line: &str) -> bool {
 }
 
 impl AgentManager {
-    fn is_acp_command(&self, command: &str) -> bool {
+    pub fn acp_provider_for_command(&self, command: &str) -> Option<&'static str> {
         if command == self.codex_acp_binary {
-            return true;
+            return Some(ACP_PROVIDER_CODEX);
         }
         let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+        if matches!(command_name, Some("agenthub-codex-acp") | Some("codex-acp")) {
+            return Some(ACP_PROVIDER_CODEX);
+        }
         let target_name = Path::new(&self.codex_acp_binary)
             .file_name()
             .and_then(|n| n.to_str());
-        matches!(
+        if matches!(
             (command_name, target_name),
             (Some(cmd), Some(target)) if cmd == target
-        )
+        ) {
+            return Some(ACP_PROVIDER_CODEX);
+        }
+        if matches!(command_name, Some("gemini")) {
+            return Some(ACP_PROVIDER_GEMINI);
+        }
+        if matches!(command_name, Some("kimi")) {
+            return Some(ACP_PROVIDER_KIMI);
+        }
+        None
     }
 
-    fn resolve_command_path(&self, command: &str, is_acp: bool) -> String {
-        if !is_acp {
+    fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {
+        if provider != Some(ACP_PROVIDER_CODEX) {
             return command.to_string();
         }
         let configured = &self.codex_acp_binary;
