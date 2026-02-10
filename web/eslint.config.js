@@ -55,7 +55,7 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       "no-undef": "off",
-      "no-console": "off",
+      "no-console": "warn",
     },
   },
 ];
