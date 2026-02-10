@@ -1,6 +1,9 @@
 # TODO
 
-- [ ] Verify Gemini/Kimi ACP presets and session clearing work as expected (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify Mantine UI library POC styling and modal behavior (see `docs/features/2026-02-09-mantine-ui-library.md`).
 - [ ] Decide and document MCP configuration source for ACP sessions (Codex config vs AgentHub config).
 - [ ] Investigate ACP output formatting for large chunked messages (e.g., shiro sessions) and fix cache retention/rendering.

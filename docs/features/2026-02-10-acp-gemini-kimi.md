@@ -44,8 +44,11 @@ session persistence and clear-session behavior correct.
 
 ## Validation
 
-- Install Gemini CLI and start an agent with the Gemini preset; verify ACP
+- [ ] Install Gemini CLI and start an agent with the Gemini preset; verify ACP
   events stream and the session can be cleared.
-- Install Kimi CLI and start an agent with the Kimi preset; verify ACP
+- [ ] Install Kimi CLI and start an agent with the Kimi preset; verify ACP
   events stream and the session can be cleared.
-- Start a Codex ACP agent and confirm `codex_acp.default_mode` still applies.
+- [ ] Clear ACP session without a provider in the payload and confirm the
+  provider defaults to the agent command.
+- [ ] Start a Codex ACP agent and confirm `codex_acp.default_mode` still applies.
+- [ ] Start Gemini/Kimi ACP agents and confirm `codex_acp.default_mode` does not apply.
