@@ -44,7 +44,7 @@ export function AcpDebug({
   onAcpClearSession,
 }: AcpDebugProps) {
   const [tab, setTab] = React.useState<DebugTab>("session");
-  const rawRef = React.useRef<HTMLDivElement | null>(null);
+  const rawRef = React.useRef<HTMLUListElement | null>(null);
 
   React.useEffect(() => {
     if (tab !== "raw") return;
@@ -140,9 +140,9 @@ export function AcpDebug({
         </div>
       )}
       {tab === "raw" && (
-        <div className="acp-raw-wrapper" ref={rawRef}>
+        <div className="acp-raw-wrapper">
           <h4>Raw Events</h4>
-          <ul className="acp-raw">
+          <ul className="acp-raw" ref={rawRef}>
             {rawEvents.map((evt, idx) => (
               <li key={`${evt.ts}-${idx}`}>
                 <div className="meta">
