@@ -1,13 +1,20 @@
 import React from "react";
-import { formatAgentCommand, listAgentPresets } from "../agent_presets";
+import {
+  DEFAULT_AGENT_PRESET_ID,
+  formatAgentCommand,
+  getAgentPreset,
+  isAgentPresetId,
+  listAgentPresets,
+  type AgentPresetId,
+} from "../agent_presets";
 
 type CreateAgentModalProps = {
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
   setAgentWorkdir: (value: string) => void;
-  agentPresetId: string;
-  setAgentPresetId: (value: string) => void;
+  agentPresetId: AgentPresetId;
+  setAgentPresetId: (value: AgentPresetId) => void;
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   setWorktreeMode: (
     value: "use_existing" | "create_worktree" | "reuse_worktree"
@@ -43,8 +50,8 @@ export function CreateAgentModal({
   onClose,
 }: CreateAgentModalProps) {
   const presets = listAgentPresets();
-  const preset = presets.find((item) => item.id === agentPresetId);
-  const commandSummary = preset ? formatAgentCommand(preset) : "";
+  const preset = getAgentPreset(agentPresetId);
+  const commandSummary = formatAgentCommand(preset);
   return (
     <div className="modal-backdrop">
       <div className="modal">
@@ -98,7 +105,14 @@ export function CreateAgentModal({
             )}
             <select
               value={agentPresetId}
-              onChange={(e) => setAgentPresetId(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (isAgentPresetId(next)) {
+                  setAgentPresetId(next);
+                } else {
+                  setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+                }
+              }}
             >
               {presets.map((preset) => (
                 <option key={preset.id} value={preset.id}>

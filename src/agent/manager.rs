@@ -1405,26 +1405,22 @@ impl AgentManager {
         if command == self.codex_acp_binary {
             return Some(ACP_PROVIDER_CODEX);
         }
-        let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
-        if matches!(command_name, Some("agenthub-codex-acp") | Some("codex-acp")) {
-            return Some(ACP_PROVIDER_CODEX);
+        let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
+        match command_name {
+            "gemini" => Some(ACP_PROVIDER_GEMINI),
+            "kimi" => Some(ACP_PROVIDER_KIMI),
+            "agenthub-codex-acp" | "codex-acp" => Some(ACP_PROVIDER_CODEX),
+            name => {
+                let target_name = Path::new(&self.codex_acp_binary)
+                    .file_name()
+                    .and_then(|n| n.to_str());
+                if target_name.map_or(false, |target| name == target) {
+                    Some(ACP_PROVIDER_CODEX)
+                } else {
+                    None
+                }
+            }
         }
-        let target_name = Path::new(&self.codex_acp_binary)
-            .file_name()
-            .and_then(|n| n.to_str());
-        if matches!(
-            (command_name, target_name),
-            (Some(cmd), Some(target)) if cmd == target
-        ) {
-            return Some(ACP_PROVIDER_CODEX);
-        }
-        if matches!(command_name, Some("gemini")) {
-            return Some(ACP_PROVIDER_GEMINI);
-        }
-        if matches!(command_name, Some("kimi")) {
-            return Some(ACP_PROVIDER_KIMI);
-        }
-        None
     }
 
     fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {

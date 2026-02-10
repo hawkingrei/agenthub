@@ -34,6 +34,14 @@ session persistence and clear-session behavior correct.
 - `web/src/components/create_agent_modal.tsx`
 - `docs/todo.md`
 
+## Future Compatibility
+
+- Preserve a provider abstraction that can support both embedded ACP (today) and
+  a P2P deployment where each machine runs its own ACP component and connects
+  back to AgentHub.
+- Keep the preset and provider-detection logic flexible so remote ACP runtimes
+  can be added without refactoring the session persistence model.
+
 ## Validation
 
 - Install Gemini CLI and start an agent with the Gemini preset; verify ACP

@@ -42,8 +42,12 @@ export function listAgentPresets(): AgentPreset[] {
   return PRESETS.slice();
 }
 
-export function getAgentPreset(id: string): AgentPreset {
-  return PRESET_MAP.get(id as AgentPresetId) ?? PRESET_MAP.get("codex")!;
+export function isAgentPresetId(value: string): value is AgentPresetId {
+  return PRESET_MAP.has(value as AgentPresetId);
+}
+
+export function getAgentPreset(id: AgentPresetId): AgentPreset {
+  return PRESET_MAP.get(id) ?? PRESET_MAP.get("codex")!;
 }
 
 export function formatAgentCommand(preset: AgentPreset): string {

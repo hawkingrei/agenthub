@@ -42,6 +42,7 @@ import {
   DEFAULT_AGENT_PRESET_ID,
   getAgentPreset,
   resolveAcpProvider,
+  type AgentPresetId,
 } from "./agent_presets";
 import { AgentsPanel } from "./components/agents_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
@@ -84,10 +85,9 @@ export function App() {
   );
   const [agentName, setAgentName] = useState("");
   const [agentWorkdir, setAgentWorkdir] = useState("");
-  const initialPreset = getAgentPreset(DEFAULT_AGENT_PRESET_ID);
-  const [agentPresetId, setAgentPresetId] = useState(DEFAULT_AGENT_PRESET_ID);
-  const [agentCommand, setAgentCommand] = useState(initialPreset.command);
-  const [agentArgs, setAgentArgs] = useState<string[]>(initialPreset.args);
+  const [agentPresetId, setAgentPresetId] = useState<AgentPresetId>(
+    DEFAULT_AGENT_PRESET_ID
+  );
   const [worktreeMode, setWorktreeMode] = useState<
     "use_existing" | "create_worktree" | "reuse_worktree"
   >("use_existing");
@@ -189,11 +189,6 @@ export function App() {
   useEffect(() => {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
-  useEffect(() => {
-    const preset = getAgentPreset(agentPresetId);
-    setAgentCommand(preset.command);
-    setAgentArgs(preset.args);
-  }, [agentPresetId]);
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = outputCacheRef.current[key] ?? [];
@@ -886,8 +881,9 @@ export function App() {
     try {
       const name = agentName.trim() || "agent";
       const workdir = agentWorkdir.trim();
-      const command = agentCommand.trim();
-      const args = agentArgs.slice();
+      const preset = getAgentPreset(agentPresetId);
+      const command = preset.command.trim();
+      const args = preset.args.slice();
       if (!workdir) {
         setError("workdir is required");
         return;

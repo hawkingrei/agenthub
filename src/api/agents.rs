@@ -230,8 +230,8 @@ async fn clear_acp_session(
     Json(payload): Json<ClearSessionRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let provider = match payload.provider.as_deref() {
-        Some(provider) => provider.to_string(),
+    let provider = match payload.provider {
+        Some(provider) => provider,
         None => {
             let agent = state.agents.get_agent(&agent_id).await?;
             state
