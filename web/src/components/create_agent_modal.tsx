@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Group,
+  List,
   Modal,
   Select,
   SimpleGrid,
@@ -140,11 +141,15 @@ export function CreateAgentModal({
         {worktreeError ? (
           <Alert color="red" title="Worktree Setup Failed" variant="light">
             <Text size="sm">{worktreeError}</Text>
-            <ul>
-              <li>Check Safe Paths for the workdir and repo path.</li>
-              <li>Ensure the workdir is empty when creating a worktree.</li>
-              <li>Verify the git repo exists and the ref is valid.</li>
-            </ul>
+            <List size="sm" spacing="xs" mt="xs" withPadding>
+              <List.Item>Check Safe Paths for the workdir and repo path.</List.Item>
+              <List.Item>
+                Ensure the workdir is empty when creating a worktree.
+              </List.Item>
+              <List.Item>
+                Verify the git repo exists and the ref is valid.
+              </List.Item>
+            </List>
           </Alert>
         ) : null}
 
