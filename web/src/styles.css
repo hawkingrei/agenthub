@@ -195,6 +195,20 @@ section {
   height: 100%;
 }
 
+.workspace-left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.agent-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .workspace-left.collapsed {
   padding: 10px 6px;
   display: flex;
@@ -371,6 +385,9 @@ select:not([class*="mantine-"]):focus-visible {
 .agent-list {
   display: grid;
   gap: 6px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .agent-row {
@@ -400,6 +417,13 @@ select:not([class*="mantine-"]):focus-visible {
   margin-bottom: 6px;
 }
 
+.agent-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .agent-row-actions {
   display: inline-flex;
   align-items: center;
@@ -409,6 +433,15 @@ select:not([class*="mantine-"]):focus-visible {
 .agent-name {
   font-weight: 700;
   font-size: 18px;
+}
+
+.agent-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: #3d5466;
+  text-transform: none;
 }
 
 .agent-row-meta {
@@ -590,6 +623,14 @@ select:not([class*="mantine-"]):focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+}
+
+.output-title-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 

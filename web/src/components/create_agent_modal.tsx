@@ -39,6 +39,7 @@ type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  createBusy: boolean;
   withinPortal?: boolean;
   onCreateAgent: () => void;
   onClose: () => void;
@@ -66,6 +67,7 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  createBusy,
   withinPortal = true,
   onCreateAgent,
   onClose,
@@ -182,8 +184,14 @@ export function CreateAgentModal({
         ) : null}
 
         <Group justify="flex-end" mt="xs">
-          <Button onClick={onCreateAgent}>Create Agent</Button>
-          <Button variant="default" onClick={onClose}>
+          <Button
+            onClick={onCreateAgent}
+            loading={createBusy}
+            disabled={createBusy}
+          >
+            Create Agent
+          </Button>
+          <Button variant="default" onClick={onClose} disabled={createBusy}>
             Cancel
           </Button>
         </Group>

@@ -65,3 +65,40 @@ export function resolveAcpProvider(command: string): string | null {
   if (name === "kimi") return "kimi";
   return null;
 }
+
+export function formatAgentModelLabel(
+  command: string,
+  args: string[]
+): string | null {
+  const model = extractArgValue(args, ["--model", "-m"]);
+  if (model) return model;
+  const provider = resolveAcpProvider(command);
+  if (provider) {
+    if (provider === "codex") return "Codex";
+    if (provider === "gemini") return "Gemini";
+    if (provider === "kimi") return "Kimi";
+    return provider;
+  }
+  const name = command.split(/[\\/]/).pop()?.trim();
+  return name || null;
+}
+
+function extractArgValue(args: string[], flags: string[]): string | null {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    for (const flag of flags) {
+      if (arg === flag) {
+        const next = args[i + 1];
+        if (next && !next.startsWith("-")) {
+          return next;
+        }
+      }
+      const prefix = `${flag}=`;
+      if (arg.startsWith(prefix)) {
+        const value = arg.slice(prefix.length).trim();
+        if (value) return value;
+      }
+    }
+  }
+  return null;
+}

@@ -365,6 +365,11 @@ impl AgentManager {
         Ok(())
     }
 
+    async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
+        let guard = self.inner.read().await;
+        guard.get(agent_id).map(|handle| handle.session_id.clone())
+    }
+
     async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
         {
             let guard = self.inner.read().await;
@@ -386,6 +391,9 @@ impl AgentManager {
     }
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        if let Some(session_id) = self.get_running_session_id(agent_id).await {
+            return Ok(session_id);
+        }
         self.reserve_agent_start(agent_id).await?;
         let result = self.start_agent_inner(agent_id).await;
         self.release_agent_start(agent_id).await;

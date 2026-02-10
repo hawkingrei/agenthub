@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentCommand,
+  formatAgentModelLabel,
   getAgentPreset,
   isAgentPresetId,
   listAgentPresets,
@@ -33,5 +34,13 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("/usr/local/bin/gemini")).toBe("gemini");
     expect(resolveAcpProvider("kimi")).toBe("kimi");
     expect(resolveAcpProvider("unknown")).toBe(null);
+  });
+
+  it("formats agent model label from args or provider", () => {
+    expect(formatAgentModelLabel("agenthub-codex-acp", [])).toBe("Codex");
+    expect(formatAgentModelLabel("gemini", ["--model", "gemini-1.5-pro"]))
+      .toBe("gemini-1.5-pro");
+    expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
+      .toBe("moonshot-v1");
   });
 });

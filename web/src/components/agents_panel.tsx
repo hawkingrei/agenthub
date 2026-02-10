@@ -1,6 +1,7 @@
 import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
+import { formatAgentModelLabel } from "../agent_presets";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];
@@ -76,109 +77,120 @@ export function AgentsPanel({
             </div>
             <div className="agent-layout">
               <div className="agent-list">
-                {agents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className={
-                      activeAgent === agent.id ? "agent-row active" : "agent-row"
-                    }
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelectAgent(agent.id)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" ||
-                        e.key === " " ||
-                        e.key === "Spacebar"
-                      ) {
-                        e.preventDefault();
-                        onSelectAgent(agent.id);
+                {agents.map((agent) => {
+                  const modelLabel = formatAgentModelLabel(
+                    agent.command,
+                    agent.args
+                  );
+                  return (
+                    <div
+                      key={agent.id}
+                      className={
+                        activeAgent === agent.id ? "agent-row active" : "agent-row"
                       }
-                    }}
-                    title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
-                  >
-                    <div className="agent-row-head">
-                      <span className="agent-name">{agent.name}</span>
-                      <div className="agent-row-actions">
-                        <button
-                          className={
-                            agent.code_mode
-                              ? "icon-button small code-active"
-                              : "icon-button small"
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleCodeMode(agent.id, !agent.code_mode);
-                          }}
-                          title={
-                            agent.code_mode
-                              ? "Disable code mode"
-                              : "Enable code mode"
-                          }
-                          aria-label={
-                            agent.code_mode
-                              ? "Disable code mode"
-                              : "Enable code mode"
-                          }
-                          aria-pressed={agent.code_mode}
-                        >
-                          <i className="bi bi-code-slash" aria-hidden="true" />
-                        </button>
-                        <span className={`agent-status ${agent.status}`}>
-                          {agent.status}
-                        </span>
-                        <button
-                          className="icon-button small"
-                          disabled={isAgentActiveStatus(agent.status)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!isAgentActiveStatus(agent.status)) {
-                              onStartAgent(agent.id);
-                            }
-                          }}
-                          title={
-                            isAgentActiveStatus(agent.status)
-                              ? "Already running"
-                              : "Start"
-                          }
-                          aria-label="Start"
-                        >
-                          <i className="bi bi-play-fill" aria-hidden="true" />
-                        </button>
-                        {isAgentActiveStatus(agent.status) && (
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelectAgent(agent.id)}
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" ||
+                          e.key === " " ||
+                          e.key === "Spacebar"
+                        ) {
+                          e.preventDefault();
+                          onSelectAgent(agent.id);
+                        }
+                      }}
+                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
+                    >
+                      <div className="agent-row-head">
+                        <div className="agent-row-title">
+                          <span className="agent-name">{agent.name}</span>
+                          {modelLabel ? (
+                            <span className="agent-tag">{modelLabel}</span>
+                          ) : null}
+                        </div>
+                        <div className="agent-row-actions">
                           <button
-                            className="icon-button small"
+                            className={
+                              agent.code_mode
+                                ? "icon-button small code-active"
+                                : "icon-button small"
+                            }
                             onClick={(e) => {
                               e.stopPropagation();
-                              onStopAgent(agent.id);
+                              onToggleCodeMode(agent.id, !agent.code_mode);
                             }}
-                            title="Stop"
-                            aria-label="Stop"
+                            title={
+                              agent.code_mode
+                                ? "Disable code mode"
+                                : "Enable code mode"
+                            }
+                            aria-label={
+                              agent.code_mode
+                                ? "Disable code mode"
+                                : "Enable code mode"
+                            }
+                            aria-pressed={agent.code_mode}
                           >
-                            <i className="bi bi-stop-fill" aria-hidden="true" />
+                            <i className="bi bi-code-slash" aria-hidden="true" />
                           </button>
-                        )}
-                        <button
-                          className="icon-button small danger"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteAgent(agent.id);
-                          }}
-                          title="Delete"
-                          aria-label="Delete"
-                        >
-                          <i className="bi bi-trash" aria-hidden="true" />
-                        </button>
+                          <span className={`agent-status ${agent.status}`}>
+                            {agent.status}
+                          </span>
+                          <button
+                            className="icon-button small"
+                            disabled={isAgentActiveStatus(agent.status)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isAgentActiveStatus(agent.status)) {
+                                onStartAgent(agent.id);
+                              }
+                            }}
+                            title={
+                              isAgentActiveStatus(agent.status)
+                                ? "Already running"
+                                : "Start"
+                            }
+                            aria-label="Start"
+                          >
+                            <i className="bi bi-play-fill" aria-hidden="true" />
+                          </button>
+                          {isAgentActiveStatus(agent.status) && (
+                            <button
+                              className="icon-button small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStopAgent(agent.id);
+                              }}
+                              title="Stop"
+                              aria-label="Stop"
+                            >
+                              <i className="bi bi-stop-fill" aria-hidden="true" />
+                            </button>
+                          )}
+                          <button
+                            className="icon-button small danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteAgent(agent.id);
+                            }}
+                            title="Delete"
+                            aria-label="Delete"
+                          >
+                            <i className="bi bi-trash" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="agent-row-meta">
+                        <span>{agent.workdir}</span>
+                        <span className="agent-code-mode">
+                          Code mode: {agent.code_mode ? "on" : "off"}
+                        </span>
                       </div>
                     </div>
-                    <div className="agent-row-meta">
-                      <span>{agent.workdir}</span>
-                      <span className="agent-code-mode">
-                        Code mode: {agent.code_mode ? "on" : "off"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </>

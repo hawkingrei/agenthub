@@ -69,4 +69,9 @@ describe("OutputHeader", () => {
     const html = renderHeader({ activeSessionId: null });
     expect(html).not.toContain("Session");
   });
+
+  it("renders model tag when label is provided", () => {
+    const html = renderHeader({ modelLabel: "gpt-4o" });
+    expect(html).toContain("gpt-4o");
+  });
 });

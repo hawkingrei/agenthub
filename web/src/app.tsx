@@ -41,6 +41,7 @@ import { isNearBottom } from "./scroll";
 import { escapeHtml } from "./markdown";
 import {
   DEFAULT_AGENT_PRESET_ID,
+  formatAgentModelLabel,
   getAgentPreset,
   resolveAcpProvider,
   type AgentPresetId,
@@ -155,10 +156,12 @@ export function App() {
   const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
     "conversation"
   );
+  const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
   const [, setThinkingTick] = useState(0);
+  const createAgentBusyRef = useRef(false);
   const lastEventCursorRef = useRef<Record<string, EventCursor>>({});
   const eventPollRef = useRef<{
     timer: number | null;
@@ -234,6 +237,13 @@ export function App() {
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
   );
+  const activeAgentModelLabel = useMemo(() => {
+    if (!activeAgentRecord) return null;
+    return formatAgentModelLabel(
+      activeAgentRecord.command,
+      activeAgentRecord.args
+    );
+  }, [activeAgentRecord]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
   const thinkingStartTs =
@@ -891,6 +901,9 @@ export function App() {
 
   const onCreateAgent = async () => {
     if (!token) return;
+    if (createAgentBusyRef.current) return;
+    createAgentBusyRef.current = true;
+    setCreateAgentBusy(true);
     setError(null);
     setWorktreeError(null);
     try {
@@ -942,6 +955,9 @@ export function App() {
         setWorktreeError(hint);
       }
       setError(hint ?? parseApiErrorMessage(err) ?? String(err));
+    } finally {
+      createAgentBusyRef.current = false;
+      setCreateAgentBusy(false);
     }
   };
 
@@ -956,8 +972,13 @@ export function App() {
       setActiveAgent(id);
       await refreshAgents();
     } catch (err) {
+      const message = parseApiErrorMessage(err) ?? String(err);
+      if (message.toLowerCase().includes("agent already running")) {
+        await refreshAgents();
+        return;
+      }
       const hint = formatWorktreeError(err);
-      setError(hint ?? parseApiErrorMessage(err) ?? String(err));
+      setError(hint ?? message);
     }
   };
 
@@ -1352,6 +1373,7 @@ export function App() {
               agentsCollapsed={agentsCollapsed}
               hasAcp={acpView.hasAcp}
               thinkingStartTs={thinkingStartTs}
+              modelLabel={activeAgentModelLabel}
               onToggleAgents={() => setAgentsCollapsed((prev) => !prev)}
             />
             {activeAgent ? (
@@ -1437,6 +1459,7 @@ export function App() {
           codeMode={codeMode}
           setCodeMode={setCodeMode}
           worktreeError={worktreeError}
+          createBusy={createAgentBusy}
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
         />
