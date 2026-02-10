@@ -205,7 +205,7 @@ section {
   min-height: 0;
 }
 
-input {
+input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -217,7 +217,7 @@ input {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-textarea {
+textarea:not([class*="mantine-"]) {
   width: 100%;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -232,7 +232,7 @@ textarea {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-select {
+select:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -244,7 +244,7 @@ select {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button {
+button:not([class*="mantine-"]) {
   border: none;
   background: var(--ink);
   color: white;
@@ -290,7 +290,7 @@ select:focus-visible {
   position: relative;
 }
 
-.input button {
+.input button:not([class*="mantine-"]) {
   height: 44px;
 }
 
@@ -1463,11 +1463,11 @@ select:focus-visible {
     flex-direction: column;
   }
 
-  .input.docked textarea {
+  .input.docked textarea:not([class*="mantine-"]) {
     min-height: 80px;
   }
 
-  .input.docked button {
+  .input.docked button:not([class*="mantine-"]) {
     height: 38px;
     font-size: 12px;
     padding: 6px 10px;
@@ -1495,11 +1495,11 @@ select:focus-visible {
   min-height: 220px;
 }
 
-ul {
+ul:not([class*="mantine-"]) {
   padding-left: 18px;
 }
 
-li {
+li:not([class*="mantine-"]) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1553,7 +1553,7 @@ li {
   grid-template-columns: 1fr;
 }
 
-li button {
+li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
   background: #444;
   padding: 4px 8px;
 }
