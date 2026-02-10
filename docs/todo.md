@@ -9,6 +9,7 @@
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
 - [ ] Verify ACP chunk stitching fixes Kimi/Gemini output ordering (see `docs/features/2026-02-10-acp-chunk-stitching.md`).
+- [ ] Verify agents rows use the compact layout again (see `docs/features/2026-02-10-agents-row-compact.md`).
 - [ ] Verify Mantine UI library POC styling and modal behavior (see `docs/features/2026-02-09-mantine-ui-library.md`).
 - [ ] Verify ESLint 9 upgrade and flat config lint run (see `docs/features/2026-02-10-eslint-9-upgrade.md`).
 - [ ] Verify workspace output header resume control, terminal auto-follow, and collapsed agents rail (see `docs/features/2026-02-10-workspace-output-interaction.md`).

@@ -183,7 +183,7 @@ export function AgentsPanel({
                         </div>
                       </div>
                       <div className="agent-row-meta">
-                        <span>{agent.workdir}</span>
+                        <span className="agent-workdir">{agent.workdir}</span>
                         <span className="agent-code-mode">
                           Code mode: {agent.code_mode ? "on" : "off"}
                         </span>
