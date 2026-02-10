@@ -31,6 +31,7 @@ type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  withinPortal?: boolean;
   onCreateAgent: () => void;
   onClose: () => void;
 };
@@ -61,6 +62,7 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  withinPortal,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
@@ -71,6 +73,7 @@ export function CreateAgentModal({
       title="Create Agent"
       size="lg"
       radius="md"
+      withinPortal={withinPortal}
       overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
     >
       <Stack gap="sm">

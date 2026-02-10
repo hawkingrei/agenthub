@@ -20,6 +20,7 @@ const baseProps = {
   codeMode: false,
   setCodeMode: () => {},
   worktreeError: null as string | null,
+  withinPortal: false,
   onCreateAgent: () => {},
   onClose: () => {},
 };
