@@ -14,7 +14,7 @@ The frontend currently lacks a lint step. Adding ESLint provides consistent code
 
 ## Key Decisions
 
-- Use ESLint 8 with `.eslintrc.cjs` to keep configuration simple.
+- Use ESLint 9 with flat config (`web/eslint.config.js`) to align with current ESLint defaults and TypeScript ESLint peer support.
 - Enable React and React Hooks recommended rules.
 
 ## Validation
