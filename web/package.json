@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mantine/core": "^7.0.0",
-    "@mantine/hooks": "^7.0.0",
+    "@mantine/core": "7.17.8",
+    "@mantine/hooks": "7.17.8",
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",

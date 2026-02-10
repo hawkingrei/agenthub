@@ -73,6 +73,9 @@ export function CreateAgentModal({
       title="Create Agent"
       size="lg"
       radius="md"
+      withCloseButton={false}
+      closeOnEscape={false}
+      closeOnClickOutside={false}
       withinPortal={withinPortal}
       overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
     >
@@ -95,6 +98,7 @@ export function CreateAgentModal({
             placeholder="Select worktree mode"
             value={worktreeMode}
             data={worktreeOptions}
+            allowDeselect={false}
             onChange={(value) => {
               if (
                 value === "use_existing" ||
@@ -127,6 +131,7 @@ export function CreateAgentModal({
             placeholder="Select command"
             value={agentCommand}
             data={commandOptions}
+            allowDeselect={false}
             onChange={(value) => {
               if (value) {
                 setAgentCommand(value);
