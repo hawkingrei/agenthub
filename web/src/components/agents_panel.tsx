@@ -29,9 +29,8 @@ export function AgentsPanel({
   onStopAgent,
   onDeleteAgent,
 }: AgentsPanelProps) {
-  const runningCount = agents.filter((agent) =>
-    isAgentActiveStatus(agent.status)
-  ).length;
+  const runningCount = agents.filter((agent) => agent.status === "running")
+    .length;
   return (
     <>
       {!agentsCollapsed && (

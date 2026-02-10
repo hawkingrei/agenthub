@@ -131,7 +131,6 @@ export function App() {
   const sseRef = useRef<EventSource | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalStickToBottomRef = useRef(true);
-  const terminalLastSeenRef = useRef(0);
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
@@ -144,7 +143,6 @@ export function App() {
     >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(true);
-  const [terminalStickToBottom, setTerminalStickToBottom] = useState(true);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
     "conversation"
@@ -192,7 +190,6 @@ export function App() {
     const stick = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
     if (stick === terminalStickToBottomRef.current) return;
     terminalStickToBottomRef.current = stick;
-    setTerminalStickToBottom(stick);
   }, []);
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
@@ -738,15 +735,12 @@ export function App() {
     if (!el) return;
     if (terminalStickToBottomRef.current) {
       el.scrollTop = el.scrollHeight;
-      terminalLastSeenRef.current = outputs.length;
       return;
     }
   }, [outputs.length, acpView.hasAcp]);
 
   useEffect(() => {
     terminalStickToBottomRef.current = true;
-    setTerminalStickToBottom(true);
-    terminalLastSeenRef.current = outputsRef.current.length;
   }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
@@ -1319,9 +1313,7 @@ export function App() {
 
       {auth && (
         <section
-          className={
-            agentsCollapsed ? "workspace collapsed" : "workspace overlay-open"
-          }
+          className={agentsCollapsed ? "workspace collapsed" : "workspace"}
         >
           <AgentsPanel
             agents={agents}
