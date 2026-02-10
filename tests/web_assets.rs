@@ -38,7 +38,7 @@ fn styles_keep_acp_conversation_scoped() {
         "acp plan bubble should be styled"
     );
     assert!(
-        css.contains(".output-body {\n  max-height: none;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  padding-right: 6px;\n  min-height: 0;\n  flex: 1;\n}"),
+        css.contains(".output-body {\n  max-height: none;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding-right: 6px;\n  min-height: 0;\n  flex: 1;\n}"),
         "output body should be height constrained and non-scrollable"
     );
     assert!(

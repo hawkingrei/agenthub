@@ -5,9 +5,7 @@ import { AcpConversation, AcpConversationProps } from "./acp_conversation";
 
 type AcpPanelProps = {
   acpView: AcpView;
-  activeSessionId: string | null;
-  showAcpRuntime: boolean;
-  thinkingStartTs: number | null;
+  subtitle: string | null;
   acpTab: "conversation" | "debug";
   onSelectTab: (tab: "conversation" | "debug") => void;
   showConversationBadge: boolean;
@@ -19,9 +17,7 @@ type AcpPanelProps = {
 
 export function AcpPanel({
   acpView,
-  activeSessionId,
-  showAcpRuntime,
-  thinkingStartTs,
+  subtitle,
   acpTab,
   onSelectTab,
   showConversationBadge,
@@ -34,27 +30,13 @@ export function AcpPanel({
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
   );
-  const runStatusLabel =
-    runStatus ?? (hasInProgressToolCall ? "in_progress" : null);
   const isActiveRun = runStatus === "running" || hasInProgressToolCall;
   const canInterrupt = canControlAcp && isActiveRun;
   return (
     <div className="acp">
-      <div className="acp-head">
-        <div className="acp-title">
-          ACP
-          {activeSessionId && (
-            <span className="acp-session">{activeSessionId.slice(0, 8)}</span>
-          )}
-          {showAcpRuntime && runStatusLabel && (
-            <span className={`acp-run ${runStatusLabel}`}>{runStatusLabel}</span>
-          )}
-          {showAcpRuntime && thinkingStartTs && (
-            <span className="acp-thinking">
-              thinking {Math.max(0, Math.floor(Date.now() / 1000 - thinkingStartTs))}
-              s
-            </span>
-          )}
+      <div className="acp-head minimal">
+        <div className="acp-subtitle">
+          {subtitle ?? " "}
         </div>
         <div className="acp-actions">
           <button

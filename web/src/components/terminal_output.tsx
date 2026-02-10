@@ -4,11 +4,18 @@ import { OutputLine } from "../output_cache";
 type TerminalOutputProps = {
   outputs: OutputLine[];
   ansi: (input: string) => string;
+  containerRef?: React.RefObject<HTMLDivElement>;
+  onScroll?: () => void;
 };
 
-export function TerminalOutput({ outputs, ansi }: TerminalOutputProps) {
+export function TerminalOutput({
+  outputs,
+  ansi,
+  containerRef,
+  onScroll,
+}: TerminalOutputProps) {
   return (
-    <div className="terminal">
+    <div className="terminal" ref={containerRef} onScroll={onScroll}>
       {outputs.map((line) => {
         const key = `id-${line.event_id}`;
         return (

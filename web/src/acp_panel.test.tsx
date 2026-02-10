@@ -18,9 +18,7 @@ const baseView: AcpView = {
 
 const baseProps: AcpPanelProps = {
   acpView: baseView,
-  activeSessionId: null,
-  showAcpRuntime: true,
-  thinkingStartTs: null,
+  subtitle: null,
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
@@ -81,5 +79,16 @@ describe("AcpPanel interrupt gating", () => {
       runStatus: { status: "completed" },
     });
     expect(interruptDisabled(html)).toBe(true);
+  });
+});
+
+describe("AcpPanel layout", () => {
+  it("renders subtitle and tabs in header", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel {...baseProps} subtitle="/repo/workdir" />
+    );
+    expect(html).toContain("/repo/workdir");
+    expect(html).toContain("Conversation");
+    expect(html).toContain("Debug");
   });
 });
