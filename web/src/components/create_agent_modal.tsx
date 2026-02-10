@@ -92,10 +92,12 @@ export function CreateAgentModal({
             value={worktreeMode}
             data={worktreeOptions}
             onChange={(value) => {
-              if (value) {
-                setWorktreeMode(
-                  value as "use_existing" | "create_worktree" | "reuse_worktree"
-                );
+              if (
+                value === "use_existing" ||
+                value === "create_worktree" ||
+                value === "reuse_worktree"
+              ) {
+                setWorktreeMode(value);
               }
             }}
           />

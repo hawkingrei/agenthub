@@ -256,19 +256,19 @@ button:not([class*="mantine-"]) {
   transition: transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-button:active {
+button:not([class*="mantine-"]):active {
   transform: translateY(1px);
 }
 
-button:disabled {
+button:not([class*="mantine-"]):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
+button:not([class*="mantine-"]):focus-visible,
+input:not([class*="mantine-"]):focus-visible,
+textarea:not([class*="mantine-"]):focus-visible,
+select:not([class*="mantine-"]):focus-visible {
   outline: none;
   border-color: var(--focus-border);
   box-shadow: var(--focus-ring);
@@ -1342,29 +1342,6 @@ select:focus-visible {
 
 .mono {
   font-family: "Source Code Pro", monospace;
-}
-
-.worktree-error {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: #fff3f3;
-  border: 1px solid #f2b1b1;
-  color: #7b1c1c;
-}
-
-.worktree-error h4 {
-  margin: 0 0 6px;
-  font-size: 14px;
-}
-
-.worktree-error p {
-  margin: 0 0 8px;
-}
-
-.worktree-error ul {
-  margin: 0;
-  padding-left: 18px;
 }
 
 .checkbox-row.compact {
