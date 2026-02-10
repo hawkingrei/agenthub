@@ -508,13 +508,13 @@ fn json_message(kind: &str, chunk: &ContentChunk, chunk_state: &mut AcpChunkStat
     let mut message_id: Option<String> = None;
     let mut chunk_index: Option<u64> = None;
     if let Some(meta) = &chunk.meta {
-        if let Some(Value::String(message_id)) = meta.get("message_id") {
-            message_id = Some(message_id.clone());
+        if let Some(Value::String(raw_message_id)) = meta.get("message_id") {
+            message_id = Some(raw_message_id.clone());
         }
-        if let Some(Value::Number(chunk_index)) = meta.get("chunk_index") {
-            chunk_index = chunk_index.as_u64();
-        } else if let Some(Value::String(chunk_index)) = meta.get("chunk_index") {
-            if let Ok(value) = chunk_index.parse::<u64>() {
+        if let Some(Value::Number(raw_chunk_index)) = meta.get("chunk_index") {
+            chunk_index = raw_chunk_index.as_u64();
+        } else if let Some(Value::String(raw_chunk_index)) = meta.get("chunk_index") {
+            if let Ok(value) = raw_chunk_index.parse::<u64>() {
                 chunk_index = Some(value);
             }
         }
