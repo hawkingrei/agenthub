@@ -1,6 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { MantineProvider } from "@mantine/core";
 import { PermissionModal } from "./components/permission_modal";
 import { AcpPermissionRecord } from "./api";
 
@@ -15,18 +16,40 @@ const basePermission: AcpPermissionRecord = {
 
 const renderModal = (permissions: AcpPermissionRecord[]) =>
   renderToStaticMarkup(
-    <PermissionModal
-      permissions={permissions}
-      permissionBusy={null}
-      onRespond={() => {}}
-    />
+    <MantineProvider>
+      <PermissionModal
+        permissions={permissions}
+        permissionBusy={null}
+        onRespond={() => {}}
+        withinPortal={false}
+      />
+    </MantineProvider>
   );
 
-const hasEnabledButton = (html: string, label: string) =>
-  new RegExp(`<button(?![^>]*disabled)[^>]*>${label}</button>`).test(html);
+const findButtonHtml = (html: string, label: string) => {
+  const labelIndex = html.indexOf(label);
+  if (labelIndex < 0) return null;
+  const start = html.lastIndexOf("<button", labelIndex);
+  if (start < 0) return null;
+  const end = html.indexOf("</button>", labelIndex);
+  if (end < 0) return null;
+  return html.slice(start, end + "</button>".length);
+};
 
-const hasDisabledButton = (html: string, label: string) =>
-  new RegExp(`<button[^>]*disabled[^>]*>${label}</button>`).test(html);
+const isDisabledButton = (buttonHtml: string) =>
+  /(?:\s|^)disabled(?:\s|=|>)/.test(buttonHtml) ||
+  /aria-disabled=["']true["']/.test(buttonHtml) ||
+  /data-disabled=["']true["']/.test(buttonHtml);
+
+const hasEnabledButton = (html: string, label: string) => {
+  const button = findButtonHtml(html, label);
+  return Boolean(button) && !isDisabledButton(button);
+};
+
+const hasDisabledButton = (html: string, label: string) => {
+  const button = findButtonHtml(html, label);
+  return Boolean(button) && isDisabledButton(button);
+};
 
 describe("PermissionModal option id handling", () => {
   it("renders enabled buttons when option_id is present", () => {
