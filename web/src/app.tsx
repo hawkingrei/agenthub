@@ -43,7 +43,6 @@ import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
   getAgentPreset,
-  resolveAcpProvider,
   type AgentPresetId,
 } from "./agent_presets";
 import { AgentsPanel } from "./components/agents_panel";
@@ -1092,11 +1091,7 @@ export function App() {
     if (!token || !activeAgent) return;
     setError(null);
     try {
-      const provider =
-        (activeAgentRecord &&
-          resolveAcpProvider(activeAgentRecord.command)) ||
-        "codex";
-      await api.clearAcpSession(token, activeAgent, provider);
+      await api.clearAcpSession(token, activeAgent);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }

@@ -99,6 +99,7 @@ impl AcpEventSink {
     }
 }
 
+// Tracks synthesized message_id/chunk_index values when ACP updates omit them.
 #[derive(Default)]
 struct AcpChunkState {
     current_kind: Option<String>,
@@ -107,12 +108,14 @@ struct AcpChunkState {
 }
 
 impl AcpChunkState {
+    // Reset state when switching away from message chunks.
     fn reset(&mut self) {
         self.current_kind = None;
         self.current_message_id = None;
         self.current_chunk_index = 0;
     }
 
+    // Allocate the next message_id/chunk_index for a message kind.
     fn next_for_kind(&mut self, kind: &str) -> (String, u64) {
         if self.current_kind.as_deref() != Some(kind) || self.current_message_id.is_none() {
             self.current_kind = Some(kind.to_string());
@@ -127,6 +130,7 @@ impl AcpChunkState {
         )
     }
 
+    // Record explicit metadata when the agent provides message_id or chunk_index.
     fn observe(&mut self, kind: &str, message_id: &str, chunk_index: Option<u64>) {
         self.current_kind = Some(kind.to_string());
         self.current_message_id = Some(message_id.to_string());
@@ -135,6 +139,7 @@ impl AcpChunkState {
         }
     }
 
+    // Increment chunk_index for a known message_id within the same kind.
     fn next_index_for_message(&mut self, kind: &str, message_id: &str) -> u64 {
         if self.current_kind.as_deref() != Some(kind)
             || self.current_message_id.as_deref() != Some(message_id)

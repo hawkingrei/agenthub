@@ -233,12 +233,14 @@ async fn clear_acp_session(
     let provider = match payload.provider {
         Some(provider) => provider,
         None => {
-            let agent = state.agents.get_agent(&agent_id).await?;
-            state
-                .agents
-                .acp_provider_for_command(&agent.command)
-                .unwrap_or("codex")
-                .to_string()
+            match state.agents.get_agent(&agent_id).await {
+                Ok(agent) => state
+                    .agents
+                    .acp_provider_for_agent(&agent.command, &agent.args)
+                    .unwrap_or("codex")
+                    .to_string(),
+                Err(_) => "codex".to_string(),
+            }
         }
     };
     state

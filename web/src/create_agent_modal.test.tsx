@@ -58,4 +58,9 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("Worktree missing");
     expect(html).toContain("Check Safe Paths for the workdir and repo path.");
   });
+
+  it("renders the preset command summary", () => {
+    const html = renderModal({ agentPresetId: "gemini" as const });
+    expect(html).toContain("Command: gemini --experimental-acp");
+  });
 });
