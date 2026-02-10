@@ -62,7 +62,7 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
-  withinPortal,
+  withinPortal = true,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
