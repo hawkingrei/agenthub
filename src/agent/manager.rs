@@ -1373,6 +1373,10 @@ impl AgentManager {
         guard.remove(agent_id);
         drop(guard);
         let mut tx = self.db.begin().await?;
+        sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
             .bind(agent_id)
             .execute(&mut *tx)

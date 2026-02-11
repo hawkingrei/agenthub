@@ -15,6 +15,8 @@ A few edge cases surfaced in production:
 
 - Deleting agents with existing events could fail due to foreign key ordering,
   leaving rows in the list after refresh.
+- Deleting agents with pending ACP permissions could fail due to foreign key
+  constraints against agent sessions.
 - `start_agent` could return a stale session_id if the process exited before the
   exit watcher cleaned up.
 - Gemini/Kimi were treated as ACP providers based solely on the command name,
@@ -25,7 +27,8 @@ A few edge cases surfaced in production:
 
 ## Decision
 
-- Delete agent events before sessions and commit deletions in a transaction.
+- Delete ACP permission rows and agent events before sessions and commit
+  deletions in a transaction.
 - Detect stale child processes during `start_agent` and finalize their exit
   before starting a new session.
 - Require Gemini/Kimi ACP args to confirm ACP provider detection.

@@ -388,6 +388,7 @@ select:not([class*="mantine-"]):focus-visible {
   overflow: auto;
   min-height: 0;
   flex: 1 1 auto;
+  align-content: start;
 }
 
 .agent-row {

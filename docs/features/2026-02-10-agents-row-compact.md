@@ -20,6 +20,8 @@ important metadata.
 - Tighten vertical gaps in the row header and metadata section.
 - Keep the header and workdir on a single line with ellipsis to avoid height
   expansion when names or paths are long.
+- Prevent grid rows from stretching by aligning the agents list content to the
+  start.
 
 ## Scope
 
