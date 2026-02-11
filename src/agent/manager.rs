@@ -1489,10 +1489,6 @@ impl AgentManager {
         acp_provider_for_agent_with_binary(&self.codex_acp_binary, command, args)
     }
 
-    pub fn acp_provider_for_command(&self, command: &str) -> Option<&'static str> {
-        acp_provider_for_command_with_binary(&self.codex_acp_binary, command)
-    }
-
     fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {
         if provider != Some(ACP_PROVIDER_CODEX) {
             return command.to_string();
