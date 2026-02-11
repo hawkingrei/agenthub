@@ -239,7 +239,17 @@ async fn clear_acp_session(
                     .acp_provider_for_agent(&agent.command, &agent.args)
                     .unwrap_or("codex")
                     .to_string(),
-                Err(_) => "codex".to_string(),
+                Err(err) => {
+                    if err
+                        .downcast_ref::<sqlx::Error>()
+                        .map(|e| matches!(e, sqlx::Error::RowNotFound))
+                        .unwrap_or(false)
+                    {
+                        "codex".to_string()
+                    } else {
+                        return Err(err.into());
+                    }
+                }
             }
         }
     };

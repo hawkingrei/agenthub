@@ -33,8 +33,9 @@ A few edge cases surfaced in production:
   before starting a new session.
 - Require Gemini/Kimi ACP args to confirm ACP provider detection.
 - Clear ACP sessions without requiring a client-provided provider; fall back to
-  `codex` if the agent record is missing.
-- Prefer the longer tool-call fragment when updates are not prefix-related.
+  `codex` only when the agent record is missing.
+- Prefer the longer tool-call fragment when updates are not prefix-related, and
+  use the newest fragment on ties.
 
 ## Scope
 

@@ -386,7 +386,8 @@ function mergeToolCallContent(prev: string | undefined, next: string): string {
   if (next.startsWith(prev)) return next;
   if (prev.startsWith(next)) return prev;
   // Prefer the longer fragment to avoid dropping partial tool output.
-  return prev.length >= next.length ? prev : next;
+  // On ties, prefer the newer update.
+  return prev.length > next.length ? prev : next;
 }
 
 function parseChunkIndex(value: unknown): number | null {
