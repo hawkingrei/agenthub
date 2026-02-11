@@ -7,6 +7,7 @@ type OutputHeaderProps = {
   agentsCollapsed: boolean;
   hasAcp: boolean;
   thinkingStartTs: number | null;
+  modelLabel?: string | null;
   onToggleAgents: () => void;
 };
 
@@ -16,6 +17,7 @@ export function OutputHeader({
   agentsCollapsed,
   hasAcp,
   thinkingStartTs,
+  modelLabel,
   onToggleAgents,
 }: OutputHeaderProps) {
   const titleText = activeAgent ? activeAgent.name : "No agent selected";
@@ -47,7 +49,12 @@ export function OutputHeader({
           />
         </button>
         <div className="output-title-text">
-          <h2>{titleText}</h2>
+          <div className="output-title-main">
+            <h2>{titleText}</h2>
+            {modelLabel ? (
+              <span className="agent-tag">{modelLabel}</span>
+            ) : null}
+          </div>
         </div>
       </div>
       {activeAgent ? (

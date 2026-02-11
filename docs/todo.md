@@ -1,5 +1,16 @@
 # TODO
 
+- [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
+- [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
+- [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
+- [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
+- [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
+- [ ] Verify ACP chunk stitching fixes Kimi/Gemini output ordering (see `docs/features/2026-02-10-acp-chunk-stitching.md`).
+- [ ] Verify agents rows use the compact layout again (see `docs/features/2026-02-10-agents-row-compact.md`).
+- [ ] Verify agent delete/start edge cases and ACP provider detection (see `docs/features/2026-02-10-agent-runtime-robustness.md`).
 - [ ] Verify Mantine UI library POC styling and modal behavior (see `docs/features/2026-02-09-mantine-ui-library.md`).
 - [ ] Verify ESLint 9 upgrade and flat config lint run (see `docs/features/2026-02-10-eslint-9-upgrade.md`).
 - [ ] Verify workspace output header resume control, terminal auto-follow, and collapsed agents rail (see `docs/features/2026-02-10-workspace-output-interaction.md`).

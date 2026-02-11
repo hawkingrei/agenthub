@@ -9,8 +9,8 @@ const baseProps = {
   setAgentName: () => {},
   agentWorkdir: "",
   setAgentWorkdir: () => {},
-  agentCommand: "agenthub-codex-acp",
-  setAgentCommand: () => {},
+  agentPresetId: "codex" as const,
+  setAgentPresetId: () => {},
   worktreeMode: "use_existing" as const,
   setWorktreeMode: () => {},
   worktreeRepo: "",
@@ -20,6 +20,7 @@ const baseProps = {
   codeMode: false,
   setCodeMode: () => {},
   worktreeError: null as string | null,
+  createBusy: false,
   withinPortal: false,
   onCreateAgent: () => {},
   onClose: () => {},
@@ -56,5 +57,10 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("Worktree Setup Failed");
     expect(html).toContain("Worktree missing");
     expect(html).toContain("Check Safe Paths for the workdir and repo path.");
+  });
+
+  it("renders the preset command summary", () => {
+    const html = renderModal({ agentPresetId: "gemini" as const });
+    expect(html).toContain("Command: gemini --experimental-acp");
   });
 });

@@ -12,14 +12,22 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import {
+  DEFAULT_AGENT_PRESET_ID,
+  formatAgentCommand,
+  getAgentPreset,
+  isAgentPresetId,
+  listAgentPresets,
+  type AgentPresetId,
+} from "../agent_presets";
 
 type CreateAgentModalProps = {
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
   setAgentWorkdir: (value: string) => void;
-  agentCommand: string;
-  setAgentCommand: (value: string) => void;
+  agentPresetId: AgentPresetId;
+  setAgentPresetId: (value: AgentPresetId) => void;
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   setWorktreeMode: (
     value: "use_existing" | "create_worktree" | "reuse_worktree"
@@ -31,6 +39,7 @@ type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  createBusy: boolean;
   withinPortal?: boolean;
   onCreateAgent: () => void;
   onClose: () => void;
@@ -42,17 +51,13 @@ const worktreeOptions = [
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
 
-const commandOptions = [
-  { value: "agenthub-codex-acp", label: "agenthub-codex-acp" },
-];
-
 export function CreateAgentModal({
   agentName,
   setAgentName,
   agentWorkdir,
   setAgentWorkdir,
-  agentCommand,
-  setAgentCommand,
+  agentPresetId,
+  setAgentPresetId,
   worktreeMode,
   setWorktreeMode,
   worktreeRepo,
@@ -62,10 +67,19 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  createBusy,
   withinPortal = true,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
+  const presets = listAgentPresets();
+  const preset = getAgentPreset(agentPresetId);
+  const commandSummary = formatAgentCommand(preset);
+  const presetOptions = presets.map((entry) => ({
+    value: entry.id,
+    label: entry.label,
+  }));
+
   return (
     <Modal
       opened
@@ -127,18 +141,26 @@ export function CreateAgentModal({
             />
           ) : null}
           <Select
-            label="Agent command"
-            placeholder="Select command"
-            value={agentCommand}
-            data={commandOptions}
+            label="Agent preset"
+            placeholder="Select preset"
+            value={agentPresetId}
+            data={presetOptions}
             allowDeselect={false}
             onChange={(value) => {
-              if (value) {
-                setAgentCommand(value);
+              if (value && isAgentPresetId(value)) {
+                setAgentPresetId(value);
+                return;
               }
+              setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
             }}
           />
         </SimpleGrid>
+
+        {commandSummary ? (
+          <Text size="sm" c="dimmed">
+            Command: {commandSummary}
+          </Text>
+        ) : null}
 
         <Switch
           label="Code mode"
@@ -162,8 +184,14 @@ export function CreateAgentModal({
         ) : null}
 
         <Group justify="flex-end" mt="xs">
-          <Button onClick={onCreateAgent}>Create Agent</Button>
-          <Button variant="default" onClick={onClose}>
+          <Button
+            onClick={onCreateAgent}
+            loading={createBusy}
+            disabled={createBusy}
+          >
+            Create Agent
+          </Button>
+          <Button variant="default" onClick={onClose} disabled={createBusy}>
             Cancel
           </Button>
         </Group>

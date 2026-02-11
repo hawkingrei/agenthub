@@ -257,7 +257,12 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.kind) call.kind = String(parsed.kind);
       if (parsed.raw_input) call.raw_input = parsed.raw_input;
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
-      if (parsed.content) call.content = formatAcpContent(parsed.content);
+      if (parsed.content) {
+        const nextContent = formatAcpContent(parsed.content);
+        if (nextContent) {
+          call.content = mergeToolCallContent(call.content, nextContent);
+        }
+      }
       if (call.session_id == null) call.session_id = event.session_id ?? null;
       if (call.ts == null) call.ts = event.ts;
       const updated = compareEventOrder(
@@ -357,13 +362,32 @@ function parseAcpEvent(line: string): Record<string, unknown> | null {
 
 function formatAcpContent(content: unknown): string {
   if (Array.isArray(content)) {
-    return content.map((item) => formatAcpContent(item)).join("\n");
+    return content
+      .map((item) => formatAcpContent(item))
+      .filter((item) => item.length > 0)
+      .join("\n");
   }
   if (typeof content === "string") return content;
   if (content && typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === "string") return obj.text;
+    if (obj.type === "content" && obj.content) {
+      return formatAcpContent(obj.content);
+    }
+    if (obj.content) return formatAcpContent(obj.content);
     return JSON.stringify(content, null, 2);
   }
   return String(content ?? "");
+}
+
+function mergeToolCallContent(prev: string | undefined, next: string): string {
+  if (!prev) return next;
+  if (!next) return prev;
+  if (next.startsWith(prev)) return next;
+  if (prev.startsWith(next)) return prev;
+  // Prefer the longer fragment to avoid dropping partial tool output.
+  // On ties, prefer the newer update.
+  return prev.length > next.length ? prev : next;
 }
 
 function parseChunkIndex(value: unknown): number | null {

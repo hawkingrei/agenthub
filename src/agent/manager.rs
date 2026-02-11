@@ -31,6 +31,8 @@ pub struct AgentManager {
 }
 
 const ACP_PROVIDER_CODEX: &str = "codex";
+const ACP_PROVIDER_GEMINI: &str = "gemini";
+const ACP_PROVIDER_KIMI: &str = "kimi";
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -363,6 +365,53 @@ impl AgentManager {
         Ok(())
     }
 
+    async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
+        let (child, session_id) = {
+            let guard = self.inner.read().await;
+            guard
+                .get(agent_id)
+                .map(|handle| (handle.child.clone(), handle.session_id.clone()))?
+        };
+        let exit_result = {
+            let mut child_guard = child.lock().await;
+            let child_ref = child_guard.as_mut()?;
+            child_ref.try_wait()
+        };
+
+        match exit_result {
+            Ok(None) => Some(session_id),
+            Ok(Some(status)) => {
+                Self::finalize_process_exit(
+                    &self.db,
+                    &self.inner,
+                    &self.push,
+                    agent_id,
+                    &session_id,
+                    status.success(),
+                )
+                .await;
+                None
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "start_agent: failed to poll child status: agent_id={}, error={}",
+                    agent_id,
+                    err
+                );
+                Self::finalize_process_exit(
+                    &self.db,
+                    &self.inner,
+                    &self.push,
+                    agent_id,
+                    &session_id,
+                    false,
+                )
+                .await;
+                None
+            }
+        }
+    }
+
     async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
         {
             let guard = self.inner.read().await;
@@ -384,6 +433,9 @@ impl AgentManager {
     }
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        if let Some(session_id) = self.get_running_session_id(agent_id).await {
+            return Ok(session_id);
+        }
         self.reserve_agent_start(agent_id).await?;
         let result = self.start_agent_inner(agent_id).await;
         self.release_agent_start(agent_id).await;
@@ -432,8 +484,9 @@ impl AgentManager {
             return Err(err);
         }
 
-        let is_acp = self.is_acp_command(&agent.command);
-        let command_path = self.resolve_command_path(&agent.command, is_acp);
+        let acp_provider = self.acp_provider_for_agent(&agent.command, &agent.args);
+        let is_acp = acp_provider.is_some();
+        let command_path = self.resolve_command_path(&agent.command, acp_provider);
         let mut command = Command::new(&command_path);
         command
             .current_dir(&workdir)
@@ -508,9 +561,9 @@ impl AgentManager {
             return Err(err);
         }
 
-        let input = if is_acp {
+        let input = if let Some(provider) = acp_provider {
             let resume_session_id = self
-                .get_persistent_session(&agent.id, ACP_PROVIDER_CODEX)
+                .get_persistent_session(&agent.id, provider)
                 .await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
@@ -561,20 +614,28 @@ impl AgentManager {
                 }
             };
             if let Err(err) = self
-                .set_persistent_session(&agent.id, ACP_PROVIDER_CODEX, &handle.session_id)
+                .set_persistent_session(&agent.id, provider, &handle.session_id)
                 .await
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            if let Some(mode_id) = self.acp_default_mode.as_deref() {
-                if let Err(err) = handle.set_mode(mode_id.to_string()).await {
-                    tracing::warn!(
-                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
-                        agent.id,
-                        mode_id,
-                        err
-                    );
+            if provider == ACP_PROVIDER_CODEX {
+                if let Some(mode_id) = self.acp_default_mode.as_deref() {
+                    if let Err(err) = handle.set_mode(mode_id.to_string()).await {
+                        tracing::warn!(
+                            "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                            agent.id,
+                            mode_id,
+                            err
+                        );
+                    }
                 }
+            } else if self.acp_default_mode.is_some() {
+                tracing::debug!(
+                    "acp default mode ignored for provider {} (agent_id={})",
+                    provider,
+                    agent.id
+                );
             }
             AgentInput::Acp(handle.clone())
         } else {
@@ -1014,106 +1075,130 @@ impl AgentManager {
             };
 
             if let Some(child_mutex) = child {
-                let mut child_guard = child_mutex.lock().await;
-                if let Some(child) = child_guard.as_mut() {
-                    let status = child.wait().await;
-                    let now = Utc::now().timestamp();
-                    let state = if status.is_ok() {
-                        "completed"
-                    } else {
-                        "failed"
+                let success = {
+                    let mut child_guard = child_mutex.lock().await;
+                    let child = match child_guard.as_mut() {
+                        Some(child) => child,
+                        None => return,
                     };
-
-                    let row = sqlx::query(
-                        r#"
-                        SELECT ended_at FROM agent_sessions WHERE id = ?1
-                        "#,
-                    )
-                    .bind(&session_id)
-                    .fetch_optional(&db)
-                    .await
-                    .ok()
-                    .flatten();
-                    let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
-                    if ended_at.is_some() {
-                        let mut guard = inner.write().await;
-                        guard.remove(&agent_id_clone);
-                        return;
+                    match child.wait().await {
+                        Ok(status) => status.success(),
+                        Err(_) => false,
                     }
-
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE agent_sessions
-                        SET status = ?1, ended_at = ?2
-                        WHERE id = ?3
-                        "#,
-                    )
-                    .bind(state)
-                    .bind(now)
-                    .bind(&session_id)
-                    .execute(&db)
-                    .await;
-
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE agents
-                        SET status = ?1, updated_at = ?2
-                        WHERE id = ?3
-                        "#,
-                    )
-                    .bind(if status.is_ok() { "stopped" } else { "failed" })
-                    .bind(now)
-                    .bind(&agent_id)
-                    .execute(&db)
-                    .await;
-
-                    let seq = Uuid::now_v7().to_string();
-                    let ts = Utc::now().timestamp();
-                    let message = serde_json::json!({
-                        "type": "run_status",
-                        "status": state,
-                        "session_id": session_id.clone(),
-                    })
-                    .to_string();
-                    let result = sqlx::query(
-                        r#"
-                        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-                        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                        "#,
-                    )
-                    .bind(&agent_id_clone)
-                    .bind(&session_id)
-                    .bind(&seq)
-                    .bind(ts)
-                    .bind(stream_to_str(&OutputStream::Acp))
-                    .bind(message.clone())
-                    .execute(&db)
-                    .await;
-                    let Ok(result) = result else {
-                        tracing::error!("spawn_exit_watcher: failed to persist event");
-                        let mut guard = inner.write().await;
-                        guard.remove(&agent_id_clone);
-                        return;
-                    };
-                    let output = AgentOutput {
-                        event_id: result.last_insert_rowid(),
-                        agent_id: agent_id_clone.clone(),
-                        session_id: session_id.clone(),
-                        seq: seq.clone(),
-                        ts,
-                        stream: OutputStream::Acp,
-                        message,
-                    };
-                    if let Some(handle) = inner.read().await.get(&agent_id_clone) {
-                        let _ = handle.output_tx.send(output);
-                    }
-
-                    let _ = push.notify_agent_completed(&agent_id, &session_id).await;
-                    let mut guard = inner.write().await;
-                    guard.remove(&agent_id_clone);
-                }
+                };
+                Self::finalize_process_exit(
+                    &db,
+                    &inner,
+                    &push,
+                    &agent_id_clone,
+                    &session_id,
+                    success,
+                )
+                .await;
             }
         });
+    }
+
+    async fn finalize_process_exit(
+        db: &SqlitePool,
+        inner: &Arc<RwLock<HashMap<String, AgentHandle>>>,
+        push: &Arc<PushService>,
+        agent_id: &str,
+        session_id: &str,
+        success: bool,
+    ) {
+        let row = sqlx::query(
+            r#"
+            SELECT ended_at FROM agent_sessions WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
+        if ended_at.is_some() {
+            let mut guard = inner.write().await;
+            guard.remove(agent_id);
+            return;
+        }
+
+        let now = Utc::now().timestamp();
+        let state = if success { "completed" } else { "failed" };
+        let status = if success { "stopped" } else { "failed" };
+        let _ = sqlx::query(
+            r#"
+            UPDATE agent_sessions
+            SET status = ?1, ended_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(state)
+        .bind(now)
+        .bind(session_id)
+        .execute(db)
+        .await;
+
+        let _ = sqlx::query(
+            r#"
+            UPDATE agents
+            SET status = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(status)
+        .bind(now)
+        .bind(agent_id)
+        .execute(db)
+        .await;
+
+        let seq = Uuid::now_v7().to_string();
+        let ts = Utc::now().timestamp();
+        let message = serde_json::json!({
+            "type": "run_status",
+            "status": state,
+            "session_id": session_id,
+        })
+        .to_string();
+        let result = sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(session_id)
+        .bind(&seq)
+        .bind(ts)
+        .bind(stream_to_str(&OutputStream::Acp))
+        .bind(message.clone())
+        .execute(db)
+        .await;
+
+        let Ok(result) = result else {
+            tracing::error!("finalize_process_exit: failed to persist event");
+            let mut guard = inner.write().await;
+            guard.remove(agent_id);
+            return;
+        };
+
+        let output = AgentOutput {
+            event_id: result.last_insert_rowid(),
+            agent_id: agent_id.to_string(),
+            session_id: session_id.to_string(),
+            seq,
+            ts,
+            stream: OutputStream::Acp,
+            message,
+        };
+        if let Some(handle) = inner.read().await.get(agent_id) {
+            let _ = handle.output_tx.send(output);
+        }
+
+        let _ = push.notify_agent_completed(agent_id, session_id).await;
+        let mut guard = inner.write().await;
+        guard.remove(agent_id);
     }
 
     async fn prepare_worktree_with_paths(
@@ -1287,22 +1372,28 @@ impl AgentManager {
         let mut guard = self.inner.write().await;
         guard.remove(agent_id);
         drop(guard);
-        let _ = sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
+        let mut tx = self.db.begin().await?;
+        sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
             .bind(agent_id)
-            .execute(&self.db)
-            .await;
-        let _ = sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
             .bind(agent_id)
-            .execute(&self.db)
-            .await;
-        let _ = sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
             .bind(agent_id)
-            .execute(&self.db)
-            .await;
-        let _ = sqlx::query("DELETE FROM agents WHERE id = ?1")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
             .bind(agent_id)
-            .execute(&self.db)
-            .await;
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM agents WHERE id = ?1")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(())
     }
 }
@@ -1390,22 +1481,16 @@ fn is_acp_message(line: &str) -> bool {
 }
 
 impl AgentManager {
-    fn is_acp_command(&self, command: &str) -> bool {
-        if command == self.codex_acp_binary {
-            return true;
-        }
-        let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
-        let target_name = Path::new(&self.codex_acp_binary)
-            .file_name()
-            .and_then(|n| n.to_str());
-        matches!(
-            (command_name, target_name),
-            (Some(cmd), Some(target)) if cmd == target
-        )
+    pub fn acp_provider_for_agent(
+        &self,
+        command: &str,
+        args: &[String],
+    ) -> Option<&'static str> {
+        acp_provider_for_agent_with_binary(&self.codex_acp_binary, command, args)
     }
 
-    fn resolve_command_path(&self, command: &str, is_acp: bool) -> String {
-        if !is_acp {
+    fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {
+        if provider != Some(ACP_PROVIDER_CODEX) {
             return command.to_string();
         }
         let configured = &self.codex_acp_binary;
@@ -1417,6 +1502,59 @@ impl AgentManager {
             return configured.to_string();
         }
         command.to_string()
+    }
+}
+
+fn acp_provider_for_agent_with_binary(
+    codex_acp_binary: &str,
+    command: &str,
+    args: &[String],
+) -> Option<&'static str> {
+    let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
+    match provider {
+        ACP_PROVIDER_GEMINI => {
+            let has_flag = args.iter().any(|arg| {
+                arg == "--experimental-acp" || arg.starts_with("--experimental-acp=")
+            });
+            if has_flag {
+                Some(ACP_PROVIDER_GEMINI)
+            } else {
+                None
+            }
+        }
+        ACP_PROVIDER_KIMI => {
+            if args.iter().any(|arg| arg == "acp") {
+                Some(ACP_PROVIDER_KIMI)
+            } else {
+                None
+            }
+        }
+        _ => Some(ACP_PROVIDER_CODEX),
+    }
+}
+
+fn acp_provider_for_command_with_binary(
+    codex_acp_binary: &str,
+    command: &str,
+) -> Option<&'static str> {
+    if command == codex_acp_binary {
+        return Some(ACP_PROVIDER_CODEX);
+    }
+    let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
+    match command_name {
+        "gemini" => Some(ACP_PROVIDER_GEMINI),
+        "kimi" => Some(ACP_PROVIDER_KIMI),
+        "agenthub-codex-acp" | "codex-acp" => Some(ACP_PROVIDER_CODEX),
+        name => {
+            let target_name = Path::new(codex_acp_binary)
+                .file_name()
+                .and_then(|n| n.to_str());
+            if target_name.map_or(false, |target| name == target) {
+                Some(ACP_PROVIDER_CODEX)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -1465,8 +1603,9 @@ fn is_path_allowed(target: &str, allowed: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentStatus, OutputStream, expand_tilde, is_path_allowed, normalize_path, status_from_str,
-        status_to_str, stream_from_str, stream_to_str,
+        ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
+        acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
+        status_from_str, status_to_str, stream_from_str, stream_to_str,
     };
     use std::sync::Mutex;
 
@@ -1537,5 +1676,42 @@ mod tests {
             let parsed = stream_from_str(s);
             assert_eq!(stream, parsed);
         }
+    }
+
+    #[test]
+    fn acp_provider_for_agent_requires_expected_args() {
+        let codex_bin = "agenthub-codex-acp";
+        assert_eq!(
+            acp_provider_for_agent_with_binary(codex_bin, "gemini", &[]),
+            None
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(
+                codex_bin,
+                "gemini",
+                &["--experimental-acp".to_string()]
+            ),
+            Some(ACP_PROVIDER_GEMINI)
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(codex_bin, "kimi", &[]),
+            None
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(
+                codex_bin,
+                "kimi",
+                &["acp".to_string()]
+            ),
+            Some(ACP_PROVIDER_KIMI)
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(codex_bin, "codex-acp", &[]),
+            Some(ACP_PROVIDER_CODEX)
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(codex_bin, codex_bin, &[]),
+            Some(ACP_PROVIDER_CODEX)
+        );
     }
 }

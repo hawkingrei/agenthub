@@ -27,6 +27,7 @@ pub struct AcpEventSink {
     output_tx: broadcast::Sender<AgentOutput>,
     agent_id: String,
     session_id: String,
+    chunk_state: Arc<Mutex<AcpChunkState>>,
 }
 
 impl AcpEventSink {
@@ -41,6 +42,7 @@ impl AcpEventSink {
             output_tx,
             agent_id,
             session_id,
+            chunk_state: Arc::new(Mutex::new(AcpChunkState::default())),
         }
     }
 
@@ -87,9 +89,68 @@ impl AcpEventSink {
     }
 
     async fn emit_update(&self, update: SessionUpdate) {
-        if let Some(value) = update_to_event(update) {
+        let value = {
+            let mut chunk_state = self.chunk_state.lock().await;
+            update_to_event(update, &mut chunk_state)
+        };
+        if let Some(value) = value {
             self.emit_json(value).await;
         }
+    }
+}
+
+// Tracks synthesized message_id/chunk_index values when ACP updates omit them.
+#[derive(Default)]
+struct AcpChunkState {
+    current_kind: Option<String>,
+    current_message_id: Option<String>,
+    current_chunk_index: u64,
+}
+
+impl AcpChunkState {
+    // Reset state when switching away from message chunks.
+    fn reset(&mut self) {
+        self.current_kind = None;
+        self.current_message_id = None;
+        self.current_chunk_index = 0;
+    }
+
+    // Allocate the next message_id/chunk_index for a message kind.
+    fn next_for_kind(&mut self, kind: &str) -> (String, u64) {
+        if self.current_kind.as_deref() != Some(kind) || self.current_message_id.is_none() {
+            self.current_kind = Some(kind.to_string());
+            self.current_message_id = Some(Uuid::new_v4().to_string());
+            self.current_chunk_index = 0;
+        } else {
+            self.current_chunk_index = self.current_chunk_index.saturating_add(1);
+        }
+        (
+            self.current_message_id.clone().unwrap_or_else(|| Uuid::new_v4().to_string()),
+            self.current_chunk_index,
+        )
+    }
+
+    // Record explicit metadata when the agent provides message_id or chunk_index.
+    fn observe(&mut self, kind: &str, message_id: &str, chunk_index: Option<u64>) {
+        self.current_kind = Some(kind.to_string());
+        self.current_message_id = Some(message_id.to_string());
+        if let Some(idx) = chunk_index {
+            self.current_chunk_index = idx;
+        }
+    }
+
+    // Increment chunk_index for a known message_id within the same kind.
+    fn next_index_for_message(&mut self, kind: &str, message_id: &str) -> u64 {
+        if self.current_kind.as_deref() != Some(kind)
+            || self.current_message_id.as_deref() != Some(message_id)
+        {
+            self.current_kind = Some(kind.to_string());
+            self.current_message_id = Some(message_id.to_string());
+            self.current_chunk_index = 0;
+            return 0;
+        }
+        self.current_chunk_index = self.current_chunk_index.saturating_add(1);
+        self.current_chunk_index
     }
 }
 
@@ -392,56 +453,99 @@ pub async fn spawn_acp_session(
     }
 }
 
-fn update_to_event(update: SessionUpdate) -> Option<Value> {
+fn update_to_event(update: SessionUpdate, chunk_state: &mut AcpChunkState) -> Option<Value> {
     match &update {
-        SessionUpdate::UserMessageChunk(chunk) => Some(json_message("user_message", chunk)),
-        SessionUpdate::AgentMessageChunk(chunk) => Some(json_message("agent_message", chunk)),
-        SessionUpdate::AgentThoughtChunk(chunk) => Some(json_message("agent_thought", chunk)),
-        SessionUpdate::ToolCall(tool_call) => Some(json_tool_call(tool_call)),
-        SessionUpdate::ToolCallUpdate(update) => Some(json_tool_call_update(update)),
-        SessionUpdate::Plan(plan) => Some(serde_json::json!({
-            "type": "plan",
-            "plan": plan,
-        })),
-        SessionUpdate::AvailableCommandsUpdate(update) => Some(serde_json::json!({
-            "type": "available_commands",
-            "commands": update.available_commands,
-            "meta": update.meta,
-        })),
-        SessionUpdate::CurrentModeUpdate(update) => Some(serde_json::json!({
-            "type": "current_mode",
-            "current_mode_id": update.current_mode_id,
-            "meta": update.meta,
-        })),
-        _ => serde_json::to_value(&update)
-            .ok()
-            .map(|payload| serde_json::json!({ "type": "session_update", "payload": payload })),
+        SessionUpdate::UserMessageChunk(chunk) => {
+            Some(json_message("user_message", chunk, chunk_state))
+        }
+        SessionUpdate::AgentMessageChunk(chunk) => {
+            Some(json_message("agent_message", chunk, chunk_state))
+        }
+        SessionUpdate::AgentThoughtChunk(chunk) => {
+            Some(json_message("agent_thought", chunk, chunk_state))
+        }
+        SessionUpdate::ToolCall(tool_call) => {
+            chunk_state.reset();
+            Some(json_tool_call(tool_call))
+        }
+        SessionUpdate::ToolCallUpdate(update) => {
+            chunk_state.reset();
+            Some(json_tool_call_update(update))
+        }
+        SessionUpdate::Plan(plan) => {
+            chunk_state.reset();
+            Some(serde_json::json!({
+                "type": "plan",
+                "plan": plan,
+            }))
+        }
+        SessionUpdate::AvailableCommandsUpdate(update) => {
+            chunk_state.reset();
+            Some(serde_json::json!({
+                "type": "available_commands",
+                "commands": update.available_commands,
+                "meta": update.meta,
+            }))
+        }
+        SessionUpdate::CurrentModeUpdate(update) => {
+            chunk_state.reset();
+            Some(serde_json::json!({
+                "type": "current_mode",
+                "current_mode_id": update.current_mode_id,
+                "meta": update.meta,
+            }))
+        }
+        _ => {
+            chunk_state.reset();
+            serde_json::to_value(&update)
+                .ok()
+                .map(|payload| serde_json::json!({ "type": "session_update", "payload": payload }))
+        }
     }
 }
 
-fn json_message(kind: &str, chunk: &ContentChunk) -> Value {
+fn json_message(kind: &str, chunk: &ContentChunk, chunk_state: &mut AcpChunkState) -> Value {
     let text = content_to_text(&chunk.content);
     let mut obj = Map::new();
     obj.insert("type".to_string(), Value::String(kind.to_string()));
     obj.insert("text".to_string(), Value::String(text));
     obj.insert("chunk".to_string(), Value::Bool(true));
+    let mut message_id: Option<String> = None;
+    let mut chunk_index: Option<u64> = None;
     if let Some(meta) = &chunk.meta {
-        if let Some(Value::String(message_id)) = meta.get("message_id") {
-            obj.insert("message_id".to_string(), Value::String(message_id.clone()));
+        if let Some(Value::String(raw_message_id)) = meta.get("message_id") {
+            message_id = Some(raw_message_id.clone());
         }
-        if let Some(Value::Number(chunk_index)) = meta.get("chunk_index") {
-            obj.insert(
-                "chunk_index".to_string(),
-                Value::Number(chunk_index.clone()),
-            );
-        } else if let Some(Value::String(chunk_index)) = meta.get("chunk_index") {
-            if let Ok(value) = chunk_index.parse::<u64>() {
-                obj.insert(
-                    "chunk_index".to_string(),
-                    Value::Number(Number::from(value)),
-                );
+        if let Some(Value::Number(raw_chunk_index)) = meta.get("chunk_index") {
+            chunk_index = raw_chunk_index.as_u64();
+        } else if let Some(Value::String(raw_chunk_index)) = meta.get("chunk_index") {
+            if let Ok(value) = raw_chunk_index.parse::<u64>() {
+                chunk_index = Some(value);
             }
         }
+    }
+    if let Some(id) = &message_id {
+        if let Some(idx) = chunk_index {
+            chunk_state.observe(kind, id, Some(idx));
+        } else {
+            let idx = chunk_state.next_index_for_message(kind, id);
+            chunk_index = Some(idx);
+        }
+    } else {
+        let (id, idx) = chunk_state.next_for_kind(kind);
+        message_id = Some(id);
+        if chunk_index.is_none() {
+            chunk_index = Some(idx);
+        }
+    }
+    if let Some(message_id) = message_id {
+        obj.insert("message_id".to_string(), Value::String(message_id));
+    }
+    if let Some(chunk_index) = chunk_index {
+        obj.insert(
+            "chunk_index".to_string(),
+            Value::Number(Number::from(chunk_index)),
+        );
     }
     Value::Object(obj)
 }

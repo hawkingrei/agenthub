@@ -171,6 +171,41 @@ describe("buildAcpView", () => {
     expect(view.messages[0].text).toBe("Hello World");
   });
 
+  it("merges tool call content updates and extracts text blocks", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call_update",
+          id: "tool-1",
+          content: [
+            { type: "content", content: { type: "text", text: "{\"command\": \"g" } },
+          ],
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call_update",
+          id: "tool-1",
+          content: [
+            {
+              type: "content",
+              content: { type: "text", text: "{\"command\": \"grep\"}" },
+            },
+          ],
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.toolCalls.length).toBe(1);
+    expect(view.toolCalls[0].content).toBe("{\"command\": \"grep\"}");
+  });
+
   it("tracks thinking timestamps while in thought and clears after message", () => {
     const thinkingEvents = [
       {

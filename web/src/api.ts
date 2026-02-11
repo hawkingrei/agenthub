@@ -264,10 +264,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ code_mode }),
     }),
-  clearAcpSession: (token: string, id: string, provider = "codex") =>
+  clearAcpSession: (token: string, id: string, provider?: string) =>
     apiFetch<{ status: string }>(`/api/agents/${id}/acp/session/clear`, token, {
       method: "POST",
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify(provider ? { provider } : {}),
     }),
   setAcpMode: (token: string, id: string, mode_id: string) =>
     apiFetch<{ status: string }>(`/api/agents/${id}/acp/mode`, token, {
