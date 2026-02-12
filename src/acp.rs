@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -230,10 +231,76 @@ fn expand_tilde(path: &str) -> String {
     }
 }
 
+fn normalize_path(path: &str) -> String {
+    let mut parts = Vec::new();
+    for comp in std::path::Path::new(path).components() {
+        match comp {
+            std::path::Component::RootDir => parts.clear(),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            std::path::Component::Normal(seg) => {
+                parts.push(seg.to_string_lossy().to_string());
+            }
+            _ => {}
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
+fn is_path_allowed(target: &str, allowed: &str) -> bool {
+    let target = normalize_path(target);
+    let allowed = normalize_path(allowed);
+    if target == allowed {
+        return true;
+    }
+    if !target.starts_with(&allowed) {
+        return false;
+    }
+    target.chars().nth(allowed.len()) == Some('/')
+}
+
+async fn load_safe_paths(db: &SqlitePool) -> anyhow::Result<Vec<String>> {
+    let rows = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
+        .fetch_all(db)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.try_get::<String, _>("path").ok())
+        .collect())
+}
+
+fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    if safe_paths.is_empty() {
+        return false;
+    }
+    let target = normalize_path(&path.to_string_lossy());
+    for safe_path in safe_paths {
+        let allowed = normalize_path(&expand_tilde(safe_path));
+        if is_path_allowed(&target, &allowed) {
+            return true;
+        }
+    }
+    false
+}
+
 fn load_mcp_servers() -> Vec<McpServer> {
     let path = mcp_config_path();
-    let Ok(contents) = fs::read_to_string(&path) else {
-        return Vec::new();
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
+        Err(err) => {
+            tracing::warn!(
+                "mcp config read failed: path={} error={}",
+                path.display(),
+                err
+            );
+            return Vec::new();
+        }
     };
     match parse_mcp_config(&contents) {
         Ok(servers) => servers,
@@ -300,10 +367,19 @@ fn filter_mcp_servers(mcp_servers: Vec<McpServer>, caps: &McpCapabilities) -> Ve
         .collect()
 }
 
-fn load_skills() -> Vec<AcpSkill> {
+fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
     let path = skills_config_path();
-    let Ok(contents) = fs::read_to_string(&path) else {
-        return Vec::new();
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
+        Err(err) => {
+            tracing::warn!(
+                "skills config read failed: path={} error={}",
+                path.display(),
+                err
+            );
+            return Vec::new();
+        }
     };
     let entries = match parse_skills_config(&contents) {
         Ok(entries) => entries,
@@ -317,13 +393,32 @@ fn load_skills() -> Vec<AcpSkill> {
         }
     };
 
+    if safe_paths.is_empty() {
+        tracing::warn!("skills config skipped: no safe paths configured");
+        return Vec::new();
+    }
+
     let mut skills = Vec::new();
     for entry in entries {
         let raw_path = expand_tilde(&entry.path);
         let path_buf = PathBuf::from(&raw_path);
-        let Ok(contents) = fs::read_to_string(&path_buf) else {
-            tracing::warn!("skills config read failed: path={}", path_buf.display());
+        if !is_skill_path_allowed(&path_buf, safe_paths) {
+            tracing::warn!(
+                "skills config skipped: path={} reason=not allowed",
+                path_buf.display()
+            );
             continue;
+        }
+        let contents = match fs::read_to_string(&path_buf) {
+            Ok(contents) => contents,
+            Err(err) => {
+                tracing::warn!(
+                    "skills file read failed: path={} error={}",
+                    path_buf.display(),
+                    err
+                );
+                continue;
+            }
         };
         let name = entry
             .name
@@ -335,15 +430,19 @@ fn load_skills() -> Vec<AcpSkill> {
                     .unwrap_or("skill")
                     .to_string()
             });
+        let escaped_name = escape_skill_meta(&name);
+        let path_display = path_buf.to_string_lossy().to_string();
+        let escaped_path = escape_skill_meta(&path_display);
+        let safe_contents = sanitize_skill_contents(&contents);
         let instructions = format!(
             "<skill>\n<name>{}</name>\n<path>{}</path>\n{}\n</skill>",
-            name,
-            path_buf.display(),
-            contents
+            escaped_name,
+            escaped_path,
+            safe_contents
         );
         skills.push(AcpSkill {
             name,
-            path: path_buf.to_string_lossy().to_string(),
+            path: path_display,
             instructions,
         });
     }
@@ -375,11 +474,16 @@ fn extract_skill_name(contents: &str) -> Option<String> {
         }
         if let Some(rest) = trimmed.strip_prefix("name:") {
             let mut value = rest.trim().to_string();
-            if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
-                value = value[1..value.len() - 1].to_string();
-            }
-            if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
-                value = value[1..value.len() - 1].to_string();
+            if let Some(stripped) = value
+                .strip_prefix('"')
+                .and_then(|item| item.strip_suffix('"'))
+            {
+                value = stripped.to_string();
+            } else if let Some(stripped) = value
+                .strip_prefix('\'')
+                .and_then(|item| item.strip_suffix('\''))
+            {
+                value = stripped.to_string();
             }
             if !value.is_empty() {
                 return Some(value);
@@ -387,6 +491,26 @@ fn extract_skill_name(contents: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn escape_skill_meta(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn sanitize_skill_contents(contents: &str) -> String {
+    let lower = contents.to_ascii_lowercase();
+    let mut output = String::with_capacity(contents.len());
+    let mut last = 0;
+    for (idx, _) in lower.match_indices("</skill") {
+        output.push_str(&contents[last..idx]);
+        output.push_str("<\\/skill");
+        last = idx + "</skill".len();
+    }
+    output.push_str(&contents[last..]);
+    output
 }
 
 fn build_skill_blocks(skills: &[AcpSkill]) -> Vec<ContentBlock> {
@@ -677,16 +801,23 @@ pub async fn spawn_acp_session(
     stdout: ChildStdout,
     stdin: ChildStdin,
 ) -> anyhow::Result<AcpHandle> {
-    let mcp_servers = load_mcp_servers();
-    let skills = load_skills();
-    let skill_blocks = build_skill_blocks(&skills);
-    let skills_meta = build_skills_meta(&skills);
+    let safe_paths = match load_safe_paths(&db).await {
+        Ok(paths) => paths,
+        Err(err) => {
+            tracing::warn!("safe paths load failed: {err}");
+            Vec::new()
+        }
+    };
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(64);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     let sink = AcpEventSink::new(db, output_tx, agent_id, agent_session_id);
 
     std::thread::spawn(move || {
+        let mcp_servers = load_mcp_servers();
+        let skills = load_skills(&safe_paths);
+        let skill_blocks = build_skill_blocks(&skills);
+        let skills_meta = build_skills_meta(&skills);
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -774,7 +905,8 @@ pub async fn spawn_acp_session(
             while let Some(cmd) = cmd_rx.recv().await {
                 match cmd {
                     AcpCommand::Prompt(prompt) => {
-                        let mut blocks = skill_blocks.clone();
+                        let mut blocks = Vec::with_capacity(skill_blocks.len() + 1);
+                        blocks.extend(skill_blocks.iter().cloned());
                         blocks.push(ContentBlock::Text(TextContent::new(prompt)));
                         let request = PromptRequest::new(session_id.clone(), blocks);
                         if let Err(err) = conn.prompt(request).await {
