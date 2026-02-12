@@ -13,7 +13,9 @@ use uuid::Uuid;
 use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
-use crate::acp::{AcpHandle, AcpPermissionService, spawn_acp_session};
+use crate::acp::{
+    AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths, spawn_acp_session,
+};
 use crate::auth::AuthService;
 use crate::push::PushService;
 
@@ -589,9 +591,21 @@ impl AgentManager {
                     return Err(anyhow::anyhow!("acp stdin missing"));
                 }
             };
-            let handle = match spawn_acp_session(
+            let safe_paths = match load_safe_paths(&self.db).await {
+                Ok(paths) => paths,
+                Err(err) => {
+                    tracing::warn!("safe paths load failed: {err}");
+                    Vec::new()
+                }
+            };
+            let event_sink = Arc::new(AgenthubAcpEventSink::new(
                 self.db.clone(),
                 output_tx.clone(),
+                agent.id.clone(),
+                session_id.clone(),
+            ));
+            let handle = match spawn_acp_session(
+                event_sink,
                 self.permissions.clone(),
                 agent.id.clone(),
                 session_id.clone(),
@@ -599,6 +613,7 @@ impl AgentManager {
                 workdir.clone(),
                 stdout,
                 stdin,
+                safe_paths,
             )
             .await
             {

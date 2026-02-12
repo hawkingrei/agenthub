@@ -76,3 +76,5 @@
 - [ ] Decide whether to serialize `event_id` as a string in the web API once IDs approach JS safe integer limits (see `docs/features/2026-02-08-output-ordering-mixed-seq.md`).
 - [ ] Verify conversation messages remain fully visible without auto-collapse (see `docs/features/2026-02-08-conversation-message-display.md`).
 - [ ] Verify frontend UUIDv7 library usage and bundle build after dependency install (see `docs/features/2026-02-08-frontend-uuidv7-library.md`).
+- [ ] Verify ACP sessions still start after crate split and events are persisted/broadcast (see `docs/features/2026-02-12-acp-crates-split.md`).
+- [ ] Verify MCP/skills injection still works after ACP crate split (see `docs/features/2026-02-12-acp-crates-split.md`).
