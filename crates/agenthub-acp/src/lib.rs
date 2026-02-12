@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_client_protocol::{
-    CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
+    Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
     ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
     NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
