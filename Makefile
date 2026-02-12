@@ -11,6 +11,7 @@ build:
 	cargo build
 
 run: build-web
+	cargo build --workspace
 	cargo run
 
 test:
