@@ -108,6 +108,7 @@ pub fn build_mcp_server(name: &str, entry: &McpServerConfigJson) -> Option<McpSe
         return Some(McpServer::Http(server));
     }
 
+    tracing::warn!("mcp server skipped: name={} reason=missing command/url", name);
     None
 }
 
