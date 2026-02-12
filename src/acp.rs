@@ -69,8 +69,8 @@ impl AcpEventSink for AgenthubAcpEventSink {
                     self.session_id,
                     err
                 );
-            return;
-        };
+                return;
+            }
         };
         let output = AgentOutput {
             event_id: result.last_insert_rowid(),
