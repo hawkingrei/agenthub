@@ -1,17 +1,21 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, NewSessionRequest,
-    PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
+    ContentChunk, EnvVariable, HttpHeader, Implementation, InitializeRequest, LoadSessionRequest,
+    McpCapabilities, McpServer, McpServerHttp, McpServerStdio, NewSessionRequest,
+    PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion, TextContent,
     RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
     SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, ToolCall,
     ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
+use serde::Deserialize;
 use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
@@ -20,6 +24,46 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::agent::{AgentOutput, OutputStream};
 use uuid::Uuid;
+
+const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
+const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
+
+#[derive(Debug, Clone)]
+struct AcpSkill {
+    name: String,
+    path: String,
+    instructions: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpConfigFile {
+    #[serde(default, rename = "mcpServers")]
+    mcp_servers: HashMap<String, McpServerConfigJson>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpServerConfigJson {
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: Option<HashMap<String, String>>,
+    url: Option<String>,
+    headers: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SkillsConfigFile {
+    #[serde(default)]
+    skills: Vec<SkillEntryJson>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SkillEntryJson {
+    Path(String),
+    Detailed { path: String, name: Option<String> },
+}
 
 #[derive(Clone)]
 pub struct AcpEventSink {
@@ -151,6 +195,442 @@ impl AcpChunkState {
         }
         self.current_chunk_index = self.current_chunk_index.saturating_add(1);
         self.current_chunk_index
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SkillEntry {
+    path: String,
+    name: Option<String>,
+}
+
+fn mcp_config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    Path::new(&home).join(MCP_CONFIG_FILE)
+}
+
+fn skills_config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    Path::new(&home).join(SKILLS_CONFIG_FILE)
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path == "~" {
+        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            Path::new(&home)
+                .join(stripped)
+                .to_string_lossy()
+                .to_string()
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    }
+}
+
+fn normalize_path(path: &str) -> String {
+    let mut parts = Vec::new();
+    for comp in std::path::Path::new(path).components() {
+        match comp {
+            std::path::Component::RootDir => parts.clear(),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            std::path::Component::Normal(seg) => {
+                parts.push(seg.to_string_lossy().to_string());
+            }
+            _ => {}
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
+fn is_path_allowed(target: &str, allowed: &str) -> bool {
+    let target = normalize_path(target);
+    let allowed = normalize_path(allowed);
+    if target == allowed {
+        return true;
+    }
+    if !target.starts_with(&allowed) {
+        return false;
+    }
+    target.chars().nth(allowed.len()) == Some('/')
+}
+
+async fn load_safe_paths(db: &SqlitePool) -> anyhow::Result<Vec<String>> {
+    let rows = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
+        .fetch_all(db)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.try_get::<String, _>("path").ok())
+        .collect())
+}
+
+fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    if safe_paths.is_empty() {
+        return false;
+    }
+    let target = normalize_path(&path.to_string_lossy());
+    for safe_path in safe_paths {
+        let allowed = normalize_path(&expand_tilde(safe_path));
+        if is_path_allowed(&target, &allowed) {
+            return true;
+        }
+    }
+    false
+}
+
+fn load_mcp_servers() -> Vec<McpServer> {
+    let path = mcp_config_path();
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
+        Err(err) => {
+            tracing::warn!(
+                "mcp config read failed: path={} error={}",
+                path.display(),
+                err
+            );
+            return Vec::new();
+        }
+    };
+    match parse_mcp_config(&contents) {
+        Ok(servers) => servers,
+        Err(err) => {
+            tracing::warn!("mcp config parse failed: path={} error={}", path.display(), err);
+            Vec::new()
+        }
+    }
+}
+
+fn parse_mcp_config(contents: &str) -> Result<Vec<McpServer>, serde_json::Error> {
+    let config: McpConfigFile = serde_json::from_str(contents)?;
+    let mut servers = Vec::new();
+    for (name, entry) in config.mcp_servers {
+        if let Some(server) = build_mcp_server(&name, &entry) {
+            servers.push(server);
+        }
+    }
+    Ok(servers)
+}
+
+fn build_mcp_server(name: &str, entry: &McpServerConfigJson) -> Option<McpServer> {
+    if let Some(command) = entry.command.as_deref() {
+        let command = expand_tilde(command);
+        let args = entry.args.clone().unwrap_or_default();
+        let env = entry
+            .env
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(key, value)| EnvVariable::new(key, value))
+            .collect::<Vec<_>>();
+        let server = McpServerStdio::new(name.to_string(), PathBuf::from(command))
+            .args(args)
+            .env(env);
+        return Some(McpServer::Stdio(server));
+    }
+
+    if let Some(url) = entry.url.as_deref() {
+        let headers = entry
+            .headers
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(key, value)| HttpHeader::new(key, value))
+            .collect::<Vec<_>>();
+        let server = McpServerHttp::new(name.to_string(), url.to_string()).headers(headers);
+        return Some(McpServer::Http(server));
+    }
+
+    tracing::warn!("mcp server skipped: name={} reason=missing command/url", name);
+    None
+}
+
+fn filter_mcp_servers(mcp_servers: Vec<McpServer>, caps: &McpCapabilities) -> Vec<McpServer> {
+    mcp_servers
+        .into_iter()
+        .filter(|server| match server {
+            McpServer::Http(_) => caps.http,
+            McpServer::Sse(_) => caps.sse,
+            McpServer::Stdio(_) => true,
+            _ => false,
+        })
+        .collect()
+}
+
+fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
+    let path = skills_config_path();
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
+        Err(err) => {
+            tracing::warn!(
+                "skills config read failed: path={} error={}",
+                path.display(),
+                err
+            );
+            return Vec::new();
+        }
+    };
+    let entries = match parse_skills_config(&contents) {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::warn!(
+                "skills config parse failed: path={} error={}",
+                path.display(),
+                err
+            );
+            return Vec::new();
+        }
+    };
+
+    if safe_paths.is_empty() {
+        tracing::warn!("skills config skipped: no safe paths configured");
+        return Vec::new();
+    }
+
+    let mut skills = Vec::new();
+    for entry in entries {
+        let raw_path = expand_tilde(&entry.path);
+        let path_buf = PathBuf::from(&raw_path);
+        if !is_skill_path_allowed(&path_buf, safe_paths) {
+            tracing::warn!(
+                "skills config skipped: path={} reason=not allowed",
+                path_buf.display()
+            );
+            continue;
+        }
+        let contents = match fs::read_to_string(&path_buf) {
+            Ok(contents) => contents,
+            Err(err) => {
+                tracing::warn!(
+                    "skills file read failed: path={} error={}",
+                    path_buf.display(),
+                    err
+                );
+                continue;
+            }
+        };
+        let name = entry
+            .name
+            .or_else(|| extract_skill_name(&contents))
+            .unwrap_or_else(|| {
+                path_buf
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("skill")
+                    .to_string()
+            });
+        let escaped_name = escape_skill_meta(&name);
+        let path_display = path_buf.to_string_lossy().to_string();
+        let escaped_path = escape_skill_meta(&path_display);
+        let safe_contents = sanitize_skill_contents(&contents);
+        let instructions = format!(
+            "<skill>\n<name>{}</name>\n<path>{}</path>\n{}\n</skill>",
+            escaped_name,
+            escaped_path,
+            safe_contents
+        );
+        skills.push(AcpSkill {
+            name,
+            path: path_display,
+            instructions,
+        });
+    }
+    skills
+}
+
+fn parse_skills_config(contents: &str) -> Result<Vec<SkillEntry>, serde_json::Error> {
+    let config: SkillsConfigFile = serde_json::from_str(contents)?;
+    Ok(config
+        .skills
+        .into_iter()
+        .map(|entry| match entry {
+            SkillEntryJson::Path(path) => SkillEntry { path, name: None },
+            SkillEntryJson::Detailed { path, name } => SkillEntry { path, name },
+        })
+        .collect())
+}
+
+fn extract_skill_name(contents: &str) -> Option<String> {
+    let mut lines = contents.lines();
+    let first = lines.next()?.trim();
+    if first != "---" {
+        return None;
+    }
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "---" || trimmed == "..." {
+            break;
+        }
+        if let Some(rest) = trimmed.strip_prefix("name:") {
+            let mut value = rest.trim().to_string();
+            if let Some(stripped) = value
+                .strip_prefix('"')
+                .and_then(|item| item.strip_suffix('"'))
+            {
+                value = stripped.to_string();
+            } else if let Some(stripped) = value
+                .strip_prefix('\'')
+                .and_then(|item| item.strip_suffix('\''))
+            {
+                value = stripped.to_string();
+            }
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+fn escape_skill_meta(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn sanitize_skill_contents(contents: &str) -> String {
+    let lower = contents.to_ascii_lowercase();
+    let mut output = String::with_capacity(contents.len());
+    let mut last = 0;
+    for (idx, _) in lower.match_indices("</skill") {
+        output.push_str(&contents[last..idx]);
+        output.push_str("<\\/skill");
+        last = idx + "</skill".len();
+    }
+    output.push_str(&contents[last..]);
+    output
+}
+
+fn build_skill_blocks(skills: &[AcpSkill]) -> Vec<ContentBlock> {
+    skills
+        .iter()
+        .map(|skill| ContentBlock::Text(TextContent::new(skill.instructions.clone())))
+        .collect()
+}
+
+fn build_skills_meta(skills: &[AcpSkill]) -> Option<Map<String, Value>> {
+    if skills.is_empty() {
+        return None;
+    }
+    let skill_items = skills
+        .iter()
+        .map(|skill| {
+            serde_json::json!({
+                "name": skill.name,
+                "path": skill.path,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut agenthub = Map::new();
+    agenthub.insert("skills".to_string(), Value::Array(skill_items));
+    let mut meta = Map::new();
+    meta.insert("agenthub".to_string(), Value::Object(agenthub));
+    Some(meta)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server_name(server: &McpServer) -> &str {
+        match server {
+            McpServer::Http(cfg) => cfg.name.as_str(),
+            McpServer::Sse(cfg) => cfg.name.as_str(),
+            McpServer::Stdio(cfg) => cfg.name.as_str(),
+            _ => "unknown",
+        }
+    }
+
+    #[test]
+    fn parse_mcp_config_supports_stdio_and_http() {
+        let json = r#"
+        {
+          "mcpServers": {
+            "stdio": {
+              "command": "node",
+              "args": ["server.js"],
+              "env": { "TOKEN": "abc" }
+            },
+            "http": {
+              "url": "http://localhost:7777",
+              "headers": { "Authorization": "Bearer xyz" }
+            }
+          }
+        }
+        "#;
+        let servers = parse_mcp_config(json).expect("parse mcp config");
+        assert_eq!(servers.len(), 2);
+
+        let mut by_name = HashMap::new();
+        for server in servers {
+            by_name.insert(server_name(&server).to_string(), server);
+        }
+
+        match by_name.get("stdio") {
+            Some(McpServer::Stdio(cfg)) => {
+                assert_eq!(cfg.command, PathBuf::from("node"));
+                assert_eq!(cfg.args, vec!["server.js".to_string()]);
+                let env_map: HashMap<_, _> =
+                    cfg.env.iter().map(|e| (e.name.clone(), e.value.clone())).collect();
+                assert_eq!(env_map.get("TOKEN"), Some(&"abc".to_string()));
+            }
+            other => panic!("unexpected stdio config: {other:?}"),
+        }
+
+        match by_name.get("http") {
+            Some(McpServer::Http(cfg)) => {
+                assert_eq!(cfg.url, "http://localhost:7777");
+                let header_map: HashMap<_, _> =
+                    cfg.headers.iter().map(|h| (h.name.clone(), h.value.clone())).collect();
+                assert_eq!(header_map.get("Authorization"), Some(&"Bearer xyz".to_string()));
+            }
+            other => panic!("unexpected http config: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_skills_config_accepts_strings_and_objects() {
+        let json = r#"
+        {
+          "skills": [
+            "/tmp/skills/demo/SKILL.md",
+            { "path": "/opt/skills/alpha/SKILL.md", "name": "alpha-skill" }
+          ]
+        }
+        "#;
+        let entries = parse_skills_config(json).expect("parse skills config");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, "/tmp/skills/demo/SKILL.md");
+        assert!(entries[0].name.is_none());
+        assert_eq!(entries[1].path, "/opt/skills/alpha/SKILL.md");
+        assert_eq!(entries[1].name.as_deref(), Some("alpha-skill"));
+    }
+
+    #[test]
+    fn extract_skill_name_reads_front_matter() {
+        let contents = r#"---
+name: demo-skill
+description: sample
+---
+# Body
+"#;
+        assert_eq!(
+            extract_skill_name(contents),
+            Some("demo-skill".to_string())
+        );
+        assert_eq!(extract_skill_name("no front matter"), None);
     }
 }
 
@@ -321,12 +801,23 @@ pub async fn spawn_acp_session(
     stdout: ChildStdout,
     stdin: ChildStdin,
 ) -> anyhow::Result<AcpHandle> {
+    let safe_paths = match load_safe_paths(&db).await {
+        Ok(paths) => paths,
+        Err(err) => {
+            tracing::warn!("safe paths load failed: {err}");
+            Vec::new()
+        }
+    };
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(64);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     let sink = AcpEventSink::new(db, output_tx, agent_id, agent_session_id);
 
     std::thread::spawn(move || {
+        let mcp_servers = load_mcp_servers();
+        let skills = load_skills(&safe_paths);
+        let skill_blocks = build_skill_blocks(&skills);
+        let skills_meta = build_skills_meta(&skills);
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -358,16 +849,28 @@ pub async fn spawn_acp_session(
                 .client_capabilities(ClientCapabilities::default())
                 .client_info(Implementation::new("agenthub", env!("CARGO_PKG_VERSION")));
 
-            if let Err(err) = conn.initialize(init).await {
-                let _ = ready_tx.send(Err(format!("acp initialize failed: {err}")));
-                return;
-            }
+            let init_response = match conn.initialize(init).await {
+                Ok(response) => response,
+                Err(err) => {
+                    let _ = ready_tx.send(Err(format!("acp initialize failed: {err}")));
+                    return;
+                }
+            };
+
+            let mcp_servers =
+                filter_mcp_servers(mcp_servers, &init_response.agent_capabilities.mcp_capabilities);
 
             let cwd = PathBuf::from(&workdir);
             let mut session_id = None;
 
             if let Some(resume_id) = resume_session_id.clone() {
-                let request = LoadSessionRequest::new(resume_id.clone(), cwd.clone());
+                let mut request =
+                    LoadSessionRequest::new(resume_id.clone(), cwd.clone()).mcp_servers(
+                        mcp_servers.clone(),
+                    );
+                if let Some(meta) = skills_meta.clone() {
+                    request = request.meta(meta);
+                }
                 match conn.load_session(request).await {
                     Ok(_) => {
                         sink.emit_system(format!("acp session resumed: {resume_id}"))
@@ -382,7 +885,11 @@ pub async fn spawn_acp_session(
             }
 
             if session_id.is_none() {
-                let session = match conn.new_session(NewSessionRequest::new(cwd)).await {
+                let mut request = NewSessionRequest::new(cwd).mcp_servers(mcp_servers.clone());
+                if let Some(meta) = skills_meta.clone() {
+                    request = request.meta(meta);
+                }
+                let session = match conn.new_session(request).await {
                     Ok(session) => session,
                     Err(err) => {
                         let _ = ready_tx.send(Err(format!("acp new_session failed: {err}")));
@@ -398,12 +905,10 @@ pub async fn spawn_acp_session(
             while let Some(cmd) = cmd_rx.recv().await {
                 match cmd {
                     AcpCommand::Prompt(prompt) => {
-                        let request = PromptRequest::new(
-                            session_id.clone(),
-                            vec![ContentBlock::Text(agent_client_protocol::TextContent::new(
-                                prompt,
-                            ))],
-                        );
+                        let mut blocks = Vec::with_capacity(skill_blocks.len() + 1);
+                        blocks.extend(skill_blocks.iter().cloned());
+                        blocks.push(ContentBlock::Text(TextContent::new(prompt)));
+                        let request = PromptRequest::new(session_id.clone(), blocks);
                         if let Err(err) = conn.prompt(request).await {
                             sink.emit_system(format!("acp prompt error: {err}")).await;
                         }
