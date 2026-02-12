@@ -16,6 +16,7 @@ use super::{
 use crate::acp::{
     AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths, spawn_acp_session,
 };
+use agent_client_protocol::Implementation;
 use crate::auth::AuthService;
 use crate::push::PushService;
 
@@ -604,6 +605,7 @@ impl AgentManager {
                 agent.id.clone(),
                 session_id.clone(),
             ));
+            let client_info = Implementation::new("agenthub", env!("CARGO_PKG_VERSION"));
             let handle = match spawn_acp_session(
                 event_sink,
                 self.permissions.clone(),
@@ -611,6 +613,7 @@ impl AgentManager {
                 session_id.clone(),
                 resume_session_id,
                 workdir.clone(),
+                client_info,
                 stdout,
                 stdin,
                 safe_paths,

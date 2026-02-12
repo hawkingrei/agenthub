@@ -70,13 +70,11 @@ pub fn expand_tilde(path: &str) -> String {
 
 pub fn parse_mcp_config(contents: &str) -> Result<Vec<McpServer>, serde_json::Error> {
     let config: McpConfigFile = serde_json::from_str(contents)?;
-    let mut servers = Vec::new();
-    for (name, entry) in config.mcp_servers {
-        if let Some(server) = build_mcp_server(&name, &entry) {
-            servers.push(server);
-        }
-    }
-    Ok(servers)
+    Ok(config
+        .mcp_servers
+        .into_iter()
+        .filter_map(|(name, entry)| build_mcp_server(&name, &entry))
+        .collect())
 }
 
 pub fn build_mcp_server(name: &str, entry: &McpServerConfigJson) -> Option<McpServer> {
@@ -148,20 +146,14 @@ pub fn extract_skill_name(contents: &str) -> Option<String> {
             break;
         }
         if let Some(rest) = trimmed.strip_prefix("name:") {
-            let mut value = rest.trim().to_string();
-            if let Some(stripped) = value
+            let raw = rest.trim();
+            let value = raw
                 .strip_prefix('"')
                 .and_then(|item| item.strip_suffix('"'))
-            {
-                value = stripped.to_string();
-            } else if let Some(stripped) = value
-                .strip_prefix('\'')
-                .and_then(|item| item.strip_suffix('\''))
-            {
-                value = stripped.to_string();
-            }
+                .or_else(|| raw.strip_prefix('\'').and_then(|item| item.strip_suffix('\'')))
+                .unwrap_or(raw);
             if !value.is_empty() {
-                return Some(value);
+                return Some(value.to_string());
             }
         }
     }

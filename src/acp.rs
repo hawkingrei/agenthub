@@ -57,12 +57,20 @@ impl AcpEventSink for AgenthubAcpEventSink {
         .bind(&seq)
         .bind(ts)
         .bind(stream_to_str(&output_stream))
-        .bind(message.clone())
+        .bind(&message)
         .execute(&self.db)
         .await;
-        let Ok(result) = result else {
-            tracing::error!("acp emit_raw: failed to persist event");
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                tracing::error!(
+                    "acp emit_raw: failed to persist event: agent_id={} session_id={} error={}",
+                    self.agent_id,
+                    self.session_id,
+                    err
+                );
             return;
+        };
         };
         let output = AgentOutput {
             event_id: result.last_insert_rowid(),

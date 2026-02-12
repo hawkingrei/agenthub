@@ -443,6 +443,7 @@ pub async fn spawn_acp_session(
     agent_session_id: String,
     resume_session_id: Option<String>,
     workdir: String,
+    client_info: Implementation,
     stdout: ChildStdout,
     stdin: ChildStdin,
     safe_paths: Vec<String>,
@@ -491,7 +492,7 @@ pub async fn spawn_acp_session(
 
             let init = InitializeRequest::new(ProtocolVersion::V1)
                 .client_capabilities(ClientCapabilities::default())
-                .client_info(Implementation::new("agenthub", env!("CARGO_PKG_VERSION")));
+                .client_info(client_info);
 
             let init_response = match conn.initialize(init).await {
                 Ok(response) => response,
@@ -956,34 +957,21 @@ impl AcpPermissionService {
         agent_id: &str,
         status: Option<&str>,
     ) -> anyhow::Result<Vec<AcpPermissionRecord>> {
-        let rows = if let Some(status) = status {
-            sqlx::query(
-                r#"
-                SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
-                       status, selected_option_id, created_at, responded_at
-                FROM acp_permission_requests
-                WHERE agent_id = ?1 AND status = ?2
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(agent_id)
-            .bind(status)
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
-                       status, selected_option_id, created_at, responded_at
-                FROM acp_permission_requests
-                WHERE agent_id = ?1
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(agent_id)
-            .fetch_all(&self.db)
-            .await?
-        };
+        let mut builder = sqlx::QueryBuilder::new(
+            r#"
+            SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                   status, selected_option_id, created_at, responded_at
+            FROM acp_permission_requests
+            WHERE agent_id = 
+            "#,
+        );
+        builder.push_bind(agent_id);
+        if let Some(status) = status {
+            builder.push(" AND status = ");
+            builder.push_bind(status);
+        }
+        builder.push(" ORDER BY created_at DESC");
+        let rows = builder.build().fetch_all(&self.db).await?;
 
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
