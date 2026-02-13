@@ -54,3 +54,33 @@ pub struct TeamRunEventRecord {
     pub ts: i64,
     pub payload: Value,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum TeamStepStatus {
+    Submitted,
+    Working,
+    InputRequired,
+    Completed,
+    Failed,
+    Canceled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct TeamStepRecord {
+    pub id: String,
+    pub run_id: String,
+    pub step_key: String,
+    pub member_id: String,
+    pub remote_task_id: Option<String>,
+    pub status: TeamStepStatus,
+    pub attempt: i64,
+    pub depends_on: Vec<String>,
+    pub input: Option<Value>,
+    pub output: Option<Value>,
+    pub error_text: Option<String>,
+    pub started_at: Option<i64>,
+    pub ended_at: Option<i64>,
+}

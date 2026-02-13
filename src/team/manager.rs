@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use super::{
     TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamStepRecord, TeamStepStatus,
 };
 
 #[derive(Clone)]
@@ -149,6 +150,419 @@ impl TeamManager {
         })
     }
 
+    #[allow(dead_code)]
+    pub async fn submit_step(
+        &self,
+        run_id: &str,
+        step_key: &str,
+        member_id: &str,
+        depends_on: Vec<String>,
+        input: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let step_id = Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp();
+        let status = TeamStepStatus::Submitted;
+        let depends_on_json = serde_json::to_string(&depends_on)?;
+        let input_json = input.as_ref().map(serde_json::to_string).transpose()?;
+
+        let mut tx = self.db.begin().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_steps (
+                id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json
+            )
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, ?6, ?7)
+            "#,
+        )
+        .bind(&step_id)
+        .bind(run_id)
+        .bind(step_key)
+        .bind(member_id)
+        .bind(team_step_status_to_str(&status))
+        .bind(depends_on_json)
+        .bind(input_json)
+        .execute(&mut *tx)
+        .await?;
+
+        let payload = serde_json::json!({
+            "step_id": step_id,
+            "step_key": step_key,
+            "member_id": member_id,
+            "status": team_step_status_to_str(&status),
+        });
+        sqlx::query(
+            r#"
+            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(run_id)
+        .bind(&step_id)
+        .bind("step_submitted")
+        .bind(now)
+        .bind(payload.to_string())
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        self.get_step(&step_id).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_step(&self, step_id: &str) -> anyhow::Result<TeamStepRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json,
+                input_json,
+                output_json,
+                error_text,
+                started_at,
+                ended_at
+            FROM team_steps
+            WHERE id = ?1
+            "#,
+        )
+        .bind(step_id)
+        .fetch_one(&self.db)
+        .await?;
+        parse_team_step_row(&row)
+    }
+
+    #[allow(dead_code)]
+    pub async fn start_step(
+        &self,
+        step_id: &str,
+        remote_task_id: Option<&str>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'working',
+                remote_task_id = COALESCE(?1, remote_task_id),
+                started_at = COALESCE(started_at, ?2)
+            WHERE id = ?3 AND status IN ('submitted', 'input_required')
+            "#,
+        )
+        .bind(remote_task_id)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let step_row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json,
+                input_json,
+                output_json,
+                error_text,
+                started_at,
+                ended_at
+            FROM team_steps
+            WHERE id = ?1
+            "#,
+        )
+        .bind(step_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let step = parse_team_step_row(&step_row)?;
+
+        if update.rows_affected() > 0 {
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'working', started_at = COALESCE(started_at, ?1)
+                WHERE id = ?2 AND status IN ('submitted', 'input_required')
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "working",
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, NULL, ?2, ?3, ?4)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind("run_working")
+                .bind(now)
+                .bind(run_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
+
+            let step_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "working",
+                "remote_task_id": step.remote_task_id,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_working")
+            .bind(now)
+            .bind(step_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn complete_step(
+        &self,
+        step_id: &str,
+        output: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
+        let mut tx = self.db.begin().await?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'completed',
+                output_json = ?1,
+                ended_at = COALESCE(ended_at, ?2)
+            WHERE id = ?3 AND status IN ('working', 'input_required')
+            "#,
+        )
+        .bind(output_json)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let step_row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json,
+                input_json,
+                output_json,
+                error_text,
+                started_at,
+                ended_at
+            FROM team_steps
+            WHERE id = ?1
+            "#,
+        )
+        .bind(step_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let step = parse_team_step_row(&step_row)?;
+
+        if update.rows_affected() > 0 {
+            let payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "completed",
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_completed")
+            .bind(now)
+            .bind(payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+            let non_completed_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)
+                FROM team_steps
+                WHERE run_id = ?1 AND status <> 'completed'
+                "#,
+            )
+            .bind(&step.run_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if non_completed_count == 0 {
+                let run_update = sqlx::query(
+                    r#"
+                    UPDATE team_runs
+                    SET status = 'completed', ended_at = COALESCE(ended_at, ?1)
+                    WHERE id = ?2 AND status IN ('submitted', 'working', 'input_required')
+                    "#,
+                )
+                .bind(now)
+                .bind(&step.run_id)
+                .execute(&mut *tx)
+                .await?;
+
+                if run_update.rows_affected() > 0 {
+                    let run_payload = serde_json::json!({
+                        "status": "completed",
+                    });
+                    sqlx::query(
+                        r#"
+                        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                        VALUES (?1, NULL, ?2, ?3, ?4)
+                        "#,
+                    )
+                    .bind(&step.run_id)
+                    .bind("run_completed")
+                    .bind(now)
+                    .bind(run_payload.to_string())
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+        }
+
+        tx.commit().await?;
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn fail_step(
+        &self,
+        step_id: &str,
+        error_text: &str,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'failed',
+                error_text = ?1,
+                ended_at = COALESCE(ended_at, ?2)
+            WHERE id = ?3 AND status IN ('submitted', 'working', 'input_required')
+            "#,
+        )
+        .bind(error_text)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let step_row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json,
+                input_json,
+                output_json,
+                error_text,
+                started_at,
+                ended_at
+            FROM team_steps
+            WHERE id = ?1
+            "#,
+        )
+        .bind(step_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let step = parse_team_step_row(&step_row)?;
+
+        if update.rows_affected() > 0 {
+            let payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "failed",
+                "error_text": step.error_text,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_failed")
+            .bind(now)
+            .bind(payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'failed', ended_at = COALESCE(ended_at, ?1)
+                WHERE id = ?2 AND status IN ('submitted', 'working', 'input_required')
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "failed",
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, NULL, ?2, ?3, ?4)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind("run_failed")
+                .bind(now)
+                .bind(run_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(step)
+    }
+
     pub async fn get_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {
         let row = sqlx::query(
             r#"
@@ -179,6 +593,52 @@ impl TeamManager {
         .await?;
 
         if result.rows_affected() > 0 {
+            let active_steps = sqlx::query(
+                r#"
+                SELECT id, step_key
+                FROM team_steps
+                WHERE run_id = ?1 AND status NOT IN ('completed', 'failed', 'canceled')
+                "#,
+            )
+            .bind(run_id)
+            .fetch_all(&mut *tx)
+            .await?;
+
+            for step in active_steps {
+                let step_id: String = step.get("id");
+                let step_key: String = step.get("step_key");
+                sqlx::query(
+                    r#"
+                    UPDATE team_steps
+                    SET status = 'canceled', ended_at = COALESCE(ended_at, ?1)
+                    WHERE id = ?2
+                    "#,
+                )
+                .bind(now)
+                .bind(&step_id)
+                .execute(&mut *tx)
+                .await?;
+
+                let step_payload = serde_json::json!({
+                    "step_id": step_id,
+                    "step_key": step_key,
+                    "status": "canceled",
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(run_id)
+                .bind(&step_id)
+                .bind("step_canceled")
+                .bind(now)
+                .bind(step_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
+
             let payload = serde_json::json!({ "status": "canceled" });
             sqlx::query(
                 r#"
@@ -288,6 +748,36 @@ fn parse_run_event_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<TeamRunE
     })
 }
 
+#[allow(dead_code)]
+fn parse_team_step_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<TeamStepRecord> {
+    let status_raw: String = row.get("status");
+    let depends_on_json: String = row.get("depends_on_json");
+    let depends_on: Vec<String> = serde_json::from_str(&depends_on_json)?;
+    let input = row
+        .try_get::<Option<String>, _>("input_json")?
+        .map(|raw| serde_json::from_str::<Value>(&raw))
+        .transpose()?;
+    let output = row
+        .try_get::<Option<String>, _>("output_json")?
+        .map(|raw| serde_json::from_str::<Value>(&raw))
+        .transpose()?;
+    Ok(TeamStepRecord {
+        id: row.get("id"),
+        run_id: row.get("run_id"),
+        step_key: row.get("step_key"),
+        member_id: row.get("member_id"),
+        remote_task_id: row.try_get("remote_task_id")?,
+        status: team_step_status_from_str(&status_raw),
+        attempt: row.get("attempt"),
+        depends_on,
+        input,
+        output,
+        error_text: row.try_get("error_text")?,
+        started_at: row.try_get("started_at")?,
+        ended_at: row.try_get("ended_at")?,
+    })
+}
+
 fn team_run_status_to_str(status: &TeamRunStatus) -> &'static str {
     match status {
         TeamRunStatus::Submitted => "submitted",
@@ -310,10 +800,34 @@ fn team_run_status_from_str(status: &str) -> TeamRunStatus {
     }
 }
 
+#[allow(dead_code)]
+fn team_step_status_to_str(status: &TeamStepStatus) -> &'static str {
+    match status {
+        TeamStepStatus::Submitted => "submitted",
+        TeamStepStatus::Working => "working",
+        TeamStepStatus::InputRequired => "input_required",
+        TeamStepStatus::Completed => "completed",
+        TeamStepStatus::Failed => "failed",
+        TeamStepStatus::Canceled => "canceled",
+    }
+}
+
+#[allow(dead_code)]
+fn team_step_status_from_str(status: &str) -> TeamStepStatus {
+    match status {
+        "working" => TeamStepStatus::Working,
+        "input_required" => TeamStepStatus::InputRequired,
+        "completed" => TeamStepStatus::Completed,
+        "failed" => TeamStepStatus::Failed,
+        "canceled" => TeamStepStatus::Canceled,
+        _ => TeamStepStatus::Submitted,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::TeamManager;
-    use crate::team::TeamDefinitionConfig;
+    use crate::team::{TeamDefinitionConfig, TeamRunStatus, TeamStepStatus};
     use serde_json::json;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use sqlx::{Row, SqlitePool};
@@ -362,6 +876,31 @@ mod tests {
         .execute(&pool)
         .await
         .expect("create team_runs");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_steps (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                step_key TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                remote_task_id TEXT,
+                status TEXT NOT NULL,
+                attempt INTEGER NOT NULL DEFAULT 0,
+                depends_on_json TEXT NOT NULL DEFAULT '[]',
+                input_json TEXT,
+                output_json TEXT,
+                error_text TEXT,
+                started_at INTEGER,
+                ended_at INTEGER,
+                UNIQUE(run_id, step_key, attempt),
+                FOREIGN KEY(run_id) REFERENCES team_runs(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create team_steps");
 
         sqlx::query(
             r#"
@@ -446,5 +985,223 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].event_type, "run_submitted");
         assert_eq!(events[1].event_type, "run_canceled");
+    }
+
+    #[tokio::test]
+    async fn step_lifecycle_transitions_persist_and_emit_events() {
+        let db = setup_test_db().await;
+        let manager = TeamManager::new(db.clone());
+
+        let team = manager
+            .create_team(TeamDefinitionConfig {
+                name: "step-team".to_string(),
+                description: Some("team with step lifecycle".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = manager
+            .create_run(&team.id, Some("ctx-step"), json!({"payload":"start"}))
+            .await
+            .expect("create run");
+
+        let step = manager
+            .submit_step(
+                &run.id,
+                "plan_step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"draft plan"})),
+            )
+            .await
+            .expect("submit step");
+        assert_eq!(step.status, TeamStepStatus::Submitted);
+
+        let working = manager
+            .start_step(&step.id, Some("remote-task-1"))
+            .await
+            .expect("start step");
+        assert_eq!(working.status, TeamStepStatus::Working);
+        assert_eq!(working.remote_task_id.as_deref(), Some("remote-task-1"));
+        assert!(working.started_at.is_some());
+
+        let run_after_start = manager.get_run(&run.id).await.expect("get run");
+        assert_eq!(run_after_start.status, TeamRunStatus::Working);
+        assert!(run_after_start.started_at.is_some());
+
+        let completed = manager
+            .complete_step(&step.id, Some(json!({"result":"ok"})))
+            .await
+            .expect("complete step");
+        assert_eq!(completed.status, TeamStepStatus::Completed);
+        assert_eq!(completed.output, Some(json!({"result":"ok"})));
+        assert!(completed.ended_at.is_some());
+
+        let run_after_complete = manager.get_run(&run.id).await.expect("get run");
+        assert_eq!(run_after_complete.status, TeamRunStatus::Completed);
+        assert!(run_after_complete.ended_at.is_some());
+
+        let events = manager
+            .list_run_events(&run.id, 100, None)
+            .await
+            .expect("list run events");
+        let event_types: Vec<&str> = events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect();
+        assert_eq!(
+            event_types,
+            vec![
+                "run_submitted",
+                "step_submitted",
+                "run_working",
+                "step_working",
+                "step_completed",
+                "run_completed"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn run_completes_only_after_all_steps_complete() {
+        let db = setup_test_db().await;
+        let manager = TeamManager::new(db.clone());
+
+        let team = manager
+            .create_team(TeamDefinitionConfig {
+                name: "multi-step-team".to_string(),
+                description: Some("team with two parallel steps".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"},{"member_id":"reviewer"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = manager
+            .create_run(&team.id, Some("ctx-multi"), json!({"payload":"start"}))
+            .await
+            .expect("create run");
+
+        let step_1 = manager
+            .submit_step(
+                &run.id,
+                "plan_step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"draft"})),
+            )
+            .await
+            .expect("submit step 1");
+        let step_2 = manager
+            .submit_step(
+                &run.id,
+                "review_step",
+                "reviewer",
+                vec!["plan_step".to_string()],
+                Some(json!({"goal":"review"})),
+            )
+            .await
+            .expect("submit step 2");
+
+        let _ = manager
+            .start_step(&step_1.id, Some("remote-task-1"))
+            .await
+            .expect("start step 1");
+        let _ = manager
+            .start_step(&step_2.id, Some("remote-task-2"))
+            .await
+            .expect("start step 2");
+
+        let _ = manager
+            .complete_step(&step_1.id, Some(json!({"result":"done-1"})))
+            .await
+            .expect("complete step 1");
+        let run_after_first_complete = manager.get_run(&run.id).await.expect("get run");
+        assert_eq!(run_after_first_complete.status, TeamRunStatus::Working);
+        assert!(run_after_first_complete.ended_at.is_none());
+
+        let _ = manager
+            .complete_step(&step_2.id, Some(json!({"result":"done-2"})))
+            .await
+            .expect("complete step 2");
+        let run_after_second_complete = manager.get_run(&run.id).await.expect("get run");
+        assert_eq!(run_after_second_complete.status, TeamRunStatus::Completed);
+        assert!(run_after_second_complete.ended_at.is_some());
+
+        let events = manager
+            .list_run_events(&run.id, 100, None)
+            .await
+            .expect("list run events");
+        let run_completed_count = events
+            .iter()
+            .filter(|event| event.event_type == "run_completed")
+            .count();
+        assert_eq!(run_completed_count, 1);
+        assert_eq!(
+            events.last().map(|event| event.event_type.as_str()),
+            Some("run_completed")
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_step_updates_status_and_emits_event() {
+        let db = setup_test_db().await;
+        let manager = TeamManager::new(db.clone());
+
+        let team = manager
+            .create_team(TeamDefinitionConfig {
+                name: "fail-step-team".to_string(),
+                description: Some("team with failure".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = manager
+            .create_run(&team.id, Some("ctx-fail"), json!({"payload":"start"}))
+            .await
+            .expect("create run");
+        let step = manager
+            .submit_step(
+                &run.id,
+                "failing_step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"can fail"})),
+            )
+            .await
+            .expect("submit step");
+
+        let _ = manager
+            .start_step(&step.id, Some("remote-task-fail"))
+            .await
+            .expect("start step");
+        let failed = manager
+            .fail_step(&step.id, "remote task failed")
+            .await
+            .expect("fail step");
+        assert_eq!(failed.status, TeamStepStatus::Failed);
+        assert_eq!(failed.error_text.as_deref(), Some("remote task failed"));
+
+        let run_after_fail = manager.get_run(&run.id).await.expect("get run");
+        assert_eq!(run_after_fail.status, TeamRunStatus::Failed);
+        assert!(run_after_fail.ended_at.is_some());
+
+        let events = manager
+            .list_run_events(&run.id, 100, None)
+            .await
+            .expect("list run events");
+        let event_types: Vec<&str> = events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect();
+        assert_eq!(
+            event_types,
+            vec![
+                "run_submitted",
+                "step_submitted",
+                "run_working",
+                "step_working",
+                "step_failed",
+                "run_failed"
+            ]
+        );
     }
 }

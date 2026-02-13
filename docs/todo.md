@@ -13,7 +13,9 @@
 - [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
 - [x] Define cross-field Team spec constraints (entrypoint/member/step graph) for scheduler phase.
 - [x] Add Team spec compatibility versioning (`spec_version`) and migration checks before scheduler rollout.
-- [ ] Implement team step lifecycle persistence and event emission (`submitted` -> `working` -> terminal states) for scheduler bootstrap.
+- [x] Implement team step lifecycle persistence and event emission (`submitted` -> `working` -> terminal states) for scheduler bootstrap.
+- [x] Add scheduler-facing run status convergence rules (`working` -> `completed`/`failed`) based on step graph outcomes (see `docs/features/2026-02-13-a2a-team-run-status-convergence.md`).
+- [ ] Expose scheduler-facing team step lifecycle API/service bridge for orchestrator integration.
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
