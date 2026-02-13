@@ -39,4 +39,25 @@ impl ApiError {
             error: anyhow::anyhow!(msg.to_string()),
         }
     }
+
+    pub fn bad_request(msg: &str) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            error: anyhow::anyhow!(msg.to_string()),
+        }
+    }
+
+    pub fn not_found(msg: &str) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            error: anyhow::anyhow!(msg.to_string()),
+        }
+    }
+
+    pub fn conflict(msg: &str) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            error: anyhow::anyhow!(msg.to_string()),
+        }
+    }
 }

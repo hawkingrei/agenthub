@@ -9,10 +9,12 @@ mod authz;
 mod error;
 mod join;
 mod push;
+mod teams;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/agents", agents::router(state.clone()))
+        .nest("/teams", teams::router(state.clone()))
         .nest("/admin", admin::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))
         .nest("/join", join::router(state.clone()))

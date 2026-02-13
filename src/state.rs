@@ -7,11 +7,13 @@ use crate::acp::AcpPermissionService;
 use crate::agent::AgentManager;
 use crate::auth::AuthService;
 use crate::push::PushService;
+use crate::team::TeamManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
     pub agents: Arc<AgentManager>,
+    pub teams: Arc<TeamManager>,
     pub push: Arc<PushService>,
     pub auth: Arc<AuthService>,
     pub acp_permissions: Arc<AcpPermissionService>,
@@ -32,12 +34,14 @@ impl AppState {
             acp_permissions.clone(),
             auth.clone(),
         ));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         agents.mark_exited_on_startup().await?;
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, &config).await?;
         Ok(Self {
             db,
             agents,
+            teams,
             push,
             auth,
             acp_permissions,

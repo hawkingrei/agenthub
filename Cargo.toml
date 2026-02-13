@@ -42,3 +42,6 @@ rust-embed = "8"
 async-trait = "0.1"
 agenthub-acp = { path = "crates/agenthub-acp" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

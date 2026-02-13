@@ -16,6 +16,7 @@ mod db;
 mod push;
 mod sse;
 mod state;
+mod team;
 mod web;
 
 fn split_log_path(path: &str) -> (std::path::PathBuf, String) {

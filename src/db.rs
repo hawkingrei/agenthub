@@ -186,6 +186,80 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_definitions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            spec_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_runs (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            context_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            started_at INTEGER,
+            ended_at INTEGER,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_key TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            remote_task_id TEXT,
+            status TEXT NOT NULL,
+            attempt INTEGER NOT NULL DEFAULT 0,
+            depends_on_json TEXT NOT NULL DEFAULT '[]',
+            input_json TEXT,
+            output_json TEXT,
+            error_text TEXT,
+            started_at INTEGER,
+            ended_at INTEGER,
+            UNIQUE(run_id, step_key, attempt),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_run_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            step_id TEXT,
+            event_type TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(step_id) REFERENCES team_steps(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -239,6 +313,51 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     {
         tracing::warn!(
             "db init: failed to create idx_agent_events_agent_session_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_runs_team_created
+        ON team_runs(team_id, created_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_runs_team_created: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_run_events_run_id
+        ON team_run_events(run_id, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_run_events_run_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_steps_run_status
+        ON team_steps(run_id, status);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_steps_run_status: {}",
             err
         );
     }
