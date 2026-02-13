@@ -24,3 +24,11 @@ pub fn router(state: AppState) -> Router {
 pub async fn health() -> &'static str {
     "ok"
 }
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn health_returns_ok() {
+        assert_eq!(super::health().await, "ok");
+    }
+}

@@ -532,7 +532,8 @@ fn map_not_found_error(err: anyhow::Error, msg: &str) -> ApiError {
 }
 
 fn map_team_internal_error(err: anyhow::Error) -> ApiError {
-    ApiError::from(err)
+    tracing::error!("team api internal error: {}", err);
+    ApiError::from(anyhow::anyhow!("internal server error"))
 }
 
 fn is_row_not_found(err: &anyhow::Error) -> bool {
@@ -543,14 +544,23 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
 }
 
 fn is_unique_team_name_violation(err: &anyhow::Error) -> bool {
-    err.to_string()
-        .contains("UNIQUE constraint failed: team_definitions.name")
+    is_unique_violation_for(err, "team_definitions.name")
 }
 
 fn is_unique_step_attempt_violation(err: &anyhow::Error) -> bool {
-    err.to_string().contains(
-        "UNIQUE constraint failed: team_steps.run_id, team_steps.step_key, team_steps.attempt",
+    is_unique_violation_for(
+        err,
+        "team_steps.run_id, team_steps.step_key, team_steps.attempt",
     )
+}
+
+fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
+    match err.downcast_ref::<SqlxError>() {
+        Some(SqlxError::Database(db_err)) => {
+            db_err.is_unique_violation() && db_err.message().contains(constraint)
+        }
+        _ => false,
+    }
 }
 
 fn parse_depends_on_keys(depends_on: Option<Vec<String>>) -> Result<Vec<String>, ApiError> {

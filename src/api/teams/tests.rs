@@ -50,6 +50,7 @@ async fn build_test_state() -> AppState {
         ..Default::default()
     };
     let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
+    let _ = std::fs::remove_dir_all(&keys_dir);
     let auth = Arc::new(
         AuthService::new(db.clone(), &config)
             .await

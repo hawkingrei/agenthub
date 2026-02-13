@@ -7,6 +7,10 @@ use sqlx::{
 
 pub async fn init_db() -> anyhow::Result<SqlitePool> {
     let db_path = default_db_path();
+    init_db_at_path(&db_path).await
+}
+
+async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     let pool = try_connect(&db_path).await.map_err(|err| {
         anyhow::anyhow!(
             "failed to open db at {}: {}",
@@ -260,6 +264,31 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_actor_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            to_actor_id TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            transport TEXT NOT NULL,
+            route_json TEXT,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            relay_attempt INTEGER NOT NULL DEFAULT 0,
+            relay_next_retry_at INTEGER,
+            relay_last_error TEXT,
+            dead_letter_at INTEGER,
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -362,6 +391,50 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
         );
     }
 
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_messages_run_to_id
+        ON team_actor_messages(run_id, to_actor_id, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_messages_run_to_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_messages_run_status_id
+        ON team_actor_messages(run_id, status, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_messages_run_status_id: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_messages_remote_pending
+        ON team_actor_messages(transport, status, relay_next_retry_at, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_messages_remote_pending: {}",
+            err
+        );
+    }
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -429,6 +502,20 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     let _ = sqlx::query("ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT")
         .execute(&pool)
         .await;
+    let _ = sqlx::query(
+        "ALTER TABLE team_actor_messages ADD COLUMN relay_attempt INTEGER NOT NULL DEFAULT 0",
+    )
+    .execute(&pool)
+    .await;
+    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN relay_next_retry_at INTEGER")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN relay_last_error TEXT")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN dead_letter_at INTEGER")
+        .execute(&pool)
+        .await;
 
     Ok(pool)
 }
@@ -438,6 +525,7 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
         .create_if_missing(true)
+        .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_secs(5));
@@ -465,4 +553,108 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{create_parent_dir, init_db_at_path, try_connect};
+    use sqlx::Row;
+    use uuid::Uuid;
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("agenthub-{name}-{}", Uuid::new_v4()))
+    }
+
+    #[tokio::test]
+    async fn init_db_creates_schema_and_enforces_foreign_keys() {
+        let dir = unique_temp_dir("db-init");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let table_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name IN (
+                'team_definitions',
+                'team_runs',
+                'team_steps',
+                'team_run_events',
+                'team_actor_messages'
+              )
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("count tables");
+        assert_eq!(table_count, 5);
+
+        let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .expect("read pragma foreign_keys");
+        assert_eq!(fk_enabled, 1);
+
+        let fk_err = sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("run-without-team")
+        .bind("missing-team")
+        .bind("ctx")
+        .bind("submitted")
+        .bind("{}")
+        .bind(1_i64)
+        .execute(&pool)
+        .await
+        .expect_err("fk violation expected");
+        assert!(
+            fk_err.to_string().contains("FOREIGN KEY constraint failed"),
+            "unexpected fk error: {fk_err}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn try_connect_sets_foreign_key_pragma() {
+        let dir = unique_temp_dir("db-pragma");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("pragma.db");
+
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let fk_enabled: i64 = sqlx::query("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .expect("query pragma")
+            .get(0);
+        assert_eq!(fk_enabled, 1);
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_parent_dir_creates_nested_directories() {
+        let dir = unique_temp_dir("db-parent");
+        let file_path = dir.join("nested/a/b/c.sqlite");
+        create_parent_dir(&file_path).expect("create nested parent dirs");
+        assert!(
+            file_path
+                .parent()
+                .expect("parent path")
+                .try_exists()
+                .expect("check parent exists"),
+            "parent directory should exist"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -136,6 +136,45 @@ async fn teams_api_rejects_run_for_unsupported_stored_spec_version() {
 }
 
 #[tokio::test]
+async fn teams_api_internal_errors_are_sanitized() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "internal-error-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    sqlx::query("DROP TABLE team_runs")
+        .execute(&state.db)
+        .await
+        .expect("drop team_runs");
+
+    let err = create_team_run(
+        State(state),
+        headers,
+        Path(team.id),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-internal-error".to_string()),
+            input: Some(json!({"prompt":"should fail"})),
+        }),
+    )
+    .await
+    .expect_err("internal error expected");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = decode_json_body(response).await;
+    assert_eq!(body["error"], Value::from("internal server error"));
+}
+
+#[tokio::test]
 async fn team_runs_api_supports_lifecycle_and_event_pagination() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -879,4 +918,3 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
         StatusCode::BAD_REQUEST
     );
 }
-

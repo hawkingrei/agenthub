@@ -869,17 +869,20 @@ impl TeamManager {
             for step in active_steps {
                 let step_id: String = step.get("id");
                 let step_key: String = step.get("step_key");
-                sqlx::query(
+                let step_update = sqlx::query(
                     r#"
                     UPDATE team_steps
                     SET status = 'canceled', ended_at = COALESCE(ended_at, ?1)
-                    WHERE id = ?2
+                    WHERE id = ?2 AND status NOT IN ('completed', 'failed', 'canceled')
                     "#,
                 )
                 .bind(now)
                 .bind(&step_id)
                 .execute(&mut *tx)
                 .await?;
+                if step_update.rows_affected() == 0 {
+                    continue;
+                }
 
                 let step_payload = serde_json::json!({
                     "step_id": step_id,
