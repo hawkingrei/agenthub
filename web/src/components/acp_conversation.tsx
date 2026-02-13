@@ -1,6 +1,6 @@
 import React from "react";
 import { ConversationItem, formatConversationPreview, isToolCallLive } from "../conversation";
-import { renderMarkdown } from "../markdown";
+import { escapeHtml, renderMarkdown } from "../markdown";
 
 type AcpConversationProps = {
   items: ConversationItem[];
@@ -167,7 +167,9 @@ function ToolCallBubble({ msg, ansi }: ToolCallBubbleProps) {
           <pre
             className="acp-content"
             dangerouslySetInnerHTML={{
-              __html: ansi(unescapeLineBreaks(msg.terminal_output)),
+              __html: sanitizeAnsiHtml(
+                ansi(unescapeLineBreaks(msg.terminal_output))
+              ),
             }}
           />
         )}
@@ -198,6 +200,25 @@ function formatToolCallPayload(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return unescapeLineBreaks(value);
   return unescapeLineBreaks(JSON.stringify(value, null, 2));
+}
+
+function sanitizeAnsiHtml(input: string): string {
+  let tokenId = 0;
+  const tokenMap = new Map<string, string>();
+  const preserved = input.replace(
+    /<\/?span(?: style="[a-zA-Z0-9:#;(),.%\s-]*")?>/g,
+    (tag) => {
+      const token = `__agenthub_ansi_token_${tokenId}__`;
+      tokenId += 1;
+      tokenMap.set(token, tag);
+      return token;
+    }
+  );
+  let escaped = escapeHtml(preserved);
+  for (const [token, tag] of tokenMap.entries()) {
+    escaped = escaped.replaceAll(token, tag);
+  }
+  return escaped;
 }
 
 function getConversationItemKey(msg: ConversationItem, fallback: number): string {

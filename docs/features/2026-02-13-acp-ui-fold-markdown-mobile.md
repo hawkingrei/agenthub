@@ -22,6 +22,8 @@ Three regressions were observed in ACP conversation UI:
   - manual toggles for finished calls remain respected.
 - Use stable conversation keys (tool call ID / event cursor) to avoid fold state drift during list updates.
 - Scope admin list styles to `.admin .card` only, so markdown list items keep semantic layout.
+- Disable raw HTML in markdown-it rendering (`html: false`) to prevent HTML injection from untrusted output.
+- Sanitize ANSI-rendered terminal HTML in tool call bubbles to allow only expected `<span style>` tags.
 - Add `100dvh` support and safe-area padding/offset handling for mobile viewport alignment.
 - Stack ACP header controls on narrow screens to prevent action bar overflow.
 

@@ -51,6 +51,28 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
+  it("sanitizes terminal html while keeping allowed ansi span tags", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-unsafe",
+          title: "Shell",
+          status: "in_progress",
+          terminal_output: "ignored",
+        },
+      ],
+      {
+        ansi: () =>
+          '<span style="color:#e06c75">safe</span><img src=x onerror=alert(1)>',
+      }
+    );
+
+    expect(html).toContain("<span style=\"color:#e06c75\">safe</span>");
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
+  });
+
   it("renders finished tool calls collapsed by default", () => {
     const html = renderConversation([
       {
@@ -62,7 +84,7 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("Tool Call: Read");
-    expect(html).not.toMatch(/acp-tool-fold\" open/);
+    expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
   it("renders auto-collapsed summaries for thinking and plan", () => {

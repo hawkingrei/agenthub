@@ -73,7 +73,7 @@ let markdownRenderer: MarkdownIt | null = null;
 function getMarkdownRenderer(): MarkdownIt {
   if (markdownRenderer) return markdownRenderer;
   const renderer = new MarkdownIt({
-    html: true,
+    html: false,
     linkify: false,
     typographer: true,
     highlight: (code: string, lang: string) => {
