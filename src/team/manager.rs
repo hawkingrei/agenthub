@@ -236,6 +236,39 @@ impl TeamManager {
         parse_team_step_row(&row)
     }
 
+    pub async fn list_steps(&self, run_id: &str) -> anyhow::Result<Vec<TeamStepRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json,
+                input_json,
+                output_json,
+                error_text,
+                started_at,
+                ended_at
+            FROM team_steps
+            WHERE run_id = ?1
+            ORDER BY attempt ASC, step_key ASC, id ASC
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut steps = Vec::with_capacity(rows.len());
+        for row in rows {
+            steps.push(parse_team_step_row(&row)?);
+        }
+        Ok(steps)
+    }
+
     #[allow(dead_code)]
     pub async fn start_step(
         &self,
@@ -1059,6 +1092,72 @@ mod tests {
                 "step_completed",
                 "run_completed"
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn list_steps_returns_sorted_steps_for_a_run() {
+        let db = setup_test_db().await;
+        let manager = TeamManager::new(db.clone());
+
+        let team = manager
+            .create_team(TeamDefinitionConfig {
+                name: "list-steps-team".to_string(),
+                description: Some("team for step listing".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = manager
+            .create_run(&team.id, Some("ctx-list"), json!({"payload":"list"}))
+            .await
+            .expect("create run");
+        let run_2 = manager
+            .create_run(&team.id, Some("ctx-list-2"), json!({"payload":"list-2"}))
+            .await
+            .expect("create second run");
+
+        let _ = manager
+            .submit_step(
+                &run.id,
+                "z-step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"z"})),
+            )
+            .await
+            .expect("submit z step");
+        let _ = manager
+            .submit_step(
+                &run.id,
+                "a-step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"a"})),
+            )
+            .await
+            .expect("submit a step");
+        let _ = manager
+            .submit_step(
+                &run_2.id,
+                "other-run-step",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"other"})),
+            )
+            .await
+            .expect("submit step in other run");
+
+        let listed = manager.list_steps(&run.id).await.expect("list steps");
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].run_id, run.id);
+        assert_eq!(listed[1].run_id, run.id);
+        assert_eq!(
+            listed
+                .iter()
+                .map(|step| step.step_key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a-step", "z-step"]
         );
     }
 

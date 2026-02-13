@@ -13,7 +13,9 @@ use sqlx::Error as SqlxError;
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
-use crate::team::{TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord};
+use crate::team::{
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
+};
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
 
@@ -36,6 +38,29 @@ pub struct ListTeamRunEventsQuery {
     pub before_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SubmitTeamRunStepRequest {
+    pub step_key: String,
+    pub member_id: String,
+    pub depends_on: Option<Vec<String>>,
+    pub input: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartTeamRunStepRequest {
+    pub remote_task_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompleteTeamRunStepRequest {
+    pub output: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FailTeamRunStepRequest {
+    pub error_text: String,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
@@ -44,6 +69,22 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
         .route("/runs/:run_id/events", get(list_team_run_events))
+        .route(
+            "/runs/:run_id/steps",
+            post(submit_team_run_step).get(list_team_run_steps),
+        )
+        .route(
+            "/runs/:run_id/steps/:step_id/start",
+            post(start_team_run_step),
+        )
+        .route(
+            "/runs/:run_id/steps/:step_id/complete",
+            post(complete_team_run_step),
+        )
+        .route(
+            "/runs/:run_id/steps/:step_id/fail",
+            post(fail_team_run_step),
+        )
         .with_state(state)
 }
 
@@ -169,9 +210,139 @@ async fn list_team_run_events(
     Ok(Json(events))
 }
 
+async fn list_team_run_steps(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<Json<Vec<TeamStepRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_run_exists(&state, &run_id).await?;
+    let steps = state
+        .teams
+        .list_steps(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(steps))
+}
+
+async fn submit_team_run_step(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(payload): Json<SubmitTeamRunStepRequest>,
+) -> Result<Json<TeamStepRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_run_exists(&state, &run_id).await?;
+
+    let step_key = payload.step_key.trim().to_string();
+    if step_key.is_empty() {
+        return Err(ApiError::bad_request("step_key is required"));
+    }
+    let member_id = payload.member_id.trim().to_string();
+    if member_id.is_empty() {
+        return Err(ApiError::bad_request("member_id is required"));
+    }
+    let depends_on = parse_depends_on_keys(payload.depends_on)?;
+
+    let step = state
+        .teams
+        .submit_step(&run_id, &step_key, &member_id, depends_on, payload.input)
+        .await
+        .map_err(map_submit_step_error)?;
+    Ok(Json(step))
+}
+
+async fn start_team_run_step(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((run_id, step_id)): Path<(String, String)>,
+    Json(payload): Json<StartTeamRunStepRequest>,
+) -> Result<Json<TeamStepRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_run_exists(&state, &run_id).await?;
+    ensure_step_in_run(&state, &run_id, &step_id).await?;
+    let remote_task_id = payload
+        .remote_task_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let step = state
+        .teams
+        .start_step(&step_id, remote_task_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(step))
+}
+
+async fn complete_team_run_step(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((run_id, step_id)): Path<(String, String)>,
+    Json(payload): Json<CompleteTeamRunStepRequest>,
+) -> Result<Json<TeamStepRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_run_exists(&state, &run_id).await?;
+    ensure_step_in_run(&state, &run_id, &step_id).await?;
+    let step = state
+        .teams
+        .complete_step(&step_id, payload.output)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(step))
+}
+
+async fn fail_team_run_step(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((run_id, step_id)): Path<(String, String)>,
+    Json(payload): Json<FailTeamRunStepRequest>,
+) -> Result<Json<TeamStepRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_run_exists(&state, &run_id).await?;
+    ensure_step_in_run(&state, &run_id, &step_id).await?;
+    let error_text = payload.error_text.trim();
+    if error_text.is_empty() {
+        return Err(ApiError::bad_request("error_text is required"));
+    }
+    let step = state
+        .teams
+        .fail_step(&step_id, error_text)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(step))
+}
+
+async fn ensure_run_exists(state: &AppState, run_id: &str) -> Result<(), ApiError> {
+    state
+        .teams
+        .get_run(run_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    Ok(())
+}
+
+async fn ensure_step_in_run(state: &AppState, run_id: &str, step_id: &str) -> Result<(), ApiError> {
+    let step = state
+        .teams
+        .get_step(step_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "step not found"))?;
+    if step.run_id != run_id {
+        return Err(ApiError::not_found("step not found"));
+    }
+    Ok(())
+}
+
 fn map_create_team_error(err: anyhow::Error) -> ApiError {
     if is_unique_team_name_violation(&err) {
         return ApiError::conflict("team name already exists");
+    }
+    map_team_internal_error(err)
+}
+
+fn map_submit_step_error(err: anyhow::Error) -> ApiError {
+    if is_unique_step_attempt_violation(&err) {
+        return ApiError::conflict("step already exists for run and attempt");
     }
     map_team_internal_error(err)
 }
@@ -197,6 +368,33 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
 fn is_unique_team_name_violation(err: &anyhow::Error) -> bool {
     err.to_string()
         .contains("UNIQUE constraint failed: team_definitions.name")
+}
+
+fn is_unique_step_attempt_violation(err: &anyhow::Error) -> bool {
+    err.to_string().contains(
+        "UNIQUE constraint failed: team_steps.run_id, team_steps.step_key, team_steps.attempt",
+    )
+}
+
+fn parse_depends_on_keys(depends_on: Option<Vec<String>>) -> Result<Vec<String>, ApiError> {
+    let depends_on = depends_on.unwrap_or_default();
+    let mut seen = HashSet::with_capacity(depends_on.len());
+    let mut out = Vec::with_capacity(depends_on.len());
+    for dep in depends_on {
+        let dep = dep.trim();
+        if dep.is_empty() {
+            return Err(ApiError::bad_request(
+                "depends_on entries must be non-empty strings",
+            ));
+        }
+        if !seen.insert(dep.to_string()) {
+            return Err(ApiError::bad_request(
+                "depends_on must not contain duplicates",
+            ));
+        }
+        out.push(dep.to_string());
+    }
+    Ok(out)
 }
 
 #[derive(Debug)]
@@ -452,8 +650,11 @@ mod tests {
     use crate::team::TeamManager;
 
     use super::{
-        CreateTeamRequest, CreateTeamRunRequest, ListTeamRunEventsQuery, cancel_team_run,
-        create_team, create_team_run, get_team, get_team_run, list_team_run_events, list_teams,
+        CompleteTeamRunStepRequest, CreateTeamRequest, CreateTeamRunRequest,
+        FailTeamRunStepRequest, ListTeamRunEventsQuery, StartTeamRunStepRequest,
+        SubmitTeamRunStepRequest, cancel_team_run, complete_team_run_step, create_team,
+        create_team_run, fail_team_run_step, get_team, get_team_run, list_team_run_events,
+        list_team_run_steps, list_teams, start_team_run_step, submit_team_run_step,
     };
 
     async fn build_test_state() -> AppState {
@@ -959,6 +1160,250 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
+        let state = build_test_state().await;
+        let headers = auth_headers(&state).await;
+
+        let Json(team) = create_team(
+            State(state.clone()),
+            headers.clone(),
+            Json(CreateTeamRequest {
+                name: "scheduler-team".to_string(),
+                description: None,
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            }),
+        )
+        .await
+        .expect("create team");
+
+        let Json(run) = create_team_run(
+            State(state.clone()),
+            headers.clone(),
+            Path(team.id.clone()),
+            Json(CreateTeamRunRequest {
+                context_id: Some("ctx-scheduler".to_string()),
+                input: Some(json!({"prompt":"run scheduler bridge"})),
+            }),
+        )
+        .await
+        .expect("create run");
+
+        let Json(initial_steps) =
+            list_team_run_steps(State(state.clone()), headers.clone(), Path(run.id.clone()))
+                .await
+                .expect("list initial steps");
+        assert!(initial_steps.is_empty());
+
+        let Json(step) = submit_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path(run.id.clone()),
+            Json(SubmitTeamRunStepRequest {
+                step_key: "plan-step".to_string(),
+                member_id: "planner".to_string(),
+                depends_on: Some(vec![]),
+                input: Some(json!({"goal":"plan"})),
+            }),
+        )
+        .await
+        .expect("submit step");
+        assert_eq!(step.status, crate::team::TeamStepStatus::Submitted);
+        assert_eq!(step.run_id, run.id);
+
+        let duplicate_submit_err = submit_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path(run.id.clone()),
+            Json(SubmitTeamRunStepRequest {
+                step_key: "plan-step".to_string(),
+                member_id: "planner".to_string(),
+                depends_on: None,
+                input: None,
+            }),
+        )
+        .await
+        .expect_err("duplicate step key should conflict");
+        assert_eq!(
+            duplicate_submit_err.into_response().status(),
+            StatusCode::CONFLICT
+        );
+
+        let Json(step_working) = start_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run.id.clone(), step.id.clone())),
+            Json(StartTeamRunStepRequest {
+                remote_task_id: Some("remote-task-bridge".to_string()),
+            }),
+        )
+        .await
+        .expect("start step");
+        assert_eq!(step_working.status, crate::team::TeamStepStatus::Working);
+        assert_eq!(
+            step_working.remote_task_id.as_deref(),
+            Some("remote-task-bridge")
+        );
+
+        let Json(step_completed) = complete_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run.id.clone(), step.id.clone())),
+            Json(CompleteTeamRunStepRequest {
+                output: Some(json!({"result":"ok"})),
+            }),
+        )
+        .await
+        .expect("complete step");
+        assert_eq!(
+            step_completed.status,
+            crate::team::TeamStepStatus::Completed
+        );
+        assert_eq!(step_completed.output, Some(json!({"result":"ok"})));
+
+        let Json(run_after_complete) =
+            get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
+                .await
+                .expect("get run after complete");
+        assert_eq!(
+            run_after_complete.status,
+            crate::team::TeamRunStatus::Completed
+        );
+
+        let Json(steps_after_complete) =
+            list_team_run_steps(State(state.clone()), headers.clone(), Path(run.id.clone()))
+                .await
+                .expect("list steps after complete");
+        assert_eq!(steps_after_complete.len(), 1);
+        assert_eq!(
+            steps_after_complete[0].status,
+            crate::team::TeamStepStatus::Completed
+        );
+
+        let Json(events) = list_team_run_events(
+            State(state.clone()),
+            headers.clone(),
+            Path(run.id.clone()),
+            Query(ListTeamRunEventsQuery {
+                limit: Some(100),
+                before_id: None,
+            }),
+        )
+        .await
+        .expect("list events");
+        let event_types: Vec<&str> = events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect();
+        assert_eq!(
+            event_types,
+            vec![
+                "run_submitted",
+                "step_submitted",
+                "run_working",
+                "step_working",
+                "step_completed",
+                "run_completed"
+            ]
+        );
+
+        let missing_step_err = start_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run.id.clone(), "missing-step".to_string())),
+            Json(StartTeamRunStepRequest {
+                remote_task_id: None,
+            }),
+        )
+        .await
+        .expect_err("missing step should fail");
+        assert_eq!(
+            missing_step_err.into_response().status(),
+            StatusCode::NOT_FOUND
+        );
+
+        let Json(run_2) = create_team_run(
+            State(state.clone()),
+            headers.clone(),
+            Path(team.id.clone()),
+            Json(CreateTeamRunRequest {
+                context_id: Some("ctx-scheduler-2".to_string()),
+                input: Some(json!({"prompt":"run fail path"})),
+            }),
+        )
+        .await
+        .expect("create second run");
+
+        let wrong_run_err = complete_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run_2.id.clone(), step.id.clone())),
+            Json(CompleteTeamRunStepRequest { output: None }),
+        )
+        .await
+        .expect_err("step should not be visible under another run");
+        assert_eq!(
+            wrong_run_err.into_response().status(),
+            StatusCode::NOT_FOUND
+        );
+
+        let Json(step_2) = submit_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path(run_2.id.clone()),
+            Json(SubmitTeamRunStepRequest {
+                step_key: "fail-step".to_string(),
+                member_id: "planner".to_string(),
+                depends_on: None,
+                input: None,
+            }),
+        )
+        .await
+        .expect("submit fail step");
+        let _ = start_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run_2.id.clone(), step_2.id.clone())),
+            Json(StartTeamRunStepRequest {
+                remote_task_id: Some("remote-task-fail".to_string()),
+            }),
+        )
+        .await
+        .expect("start fail step");
+
+        let empty_error_err = fail_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run_2.id.clone(), step_2.id.clone())),
+            Json(FailTeamRunStepRequest {
+                error_text: "   ".to_string(),
+            }),
+        )
+        .await
+        .expect_err("empty error text should be rejected");
+        assert_eq!(
+            empty_error_err.into_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+
+        let Json(step_failed) = fail_team_run_step(
+            State(state.clone()),
+            headers.clone(),
+            Path((run_2.id.clone(), step_2.id.clone())),
+            Json(FailTeamRunStepRequest {
+                error_text: "worker failed".to_string(),
+            }),
+        )
+        .await
+        .expect("fail step");
+        assert_eq!(step_failed.status, crate::team::TeamStepStatus::Failed);
+
+        let Json(run_2_after_fail) = get_team_run(State(state), headers, Path(run_2.id.clone()))
+            .await
+            .expect("get second run after fail");
+        assert_eq!(run_2_after_fail.status, crate::team::TeamRunStatus::Failed);
+    }
+
+    #[tokio::test]
     async fn teams_router_http_contract() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
@@ -1112,6 +1557,187 @@ mod tests {
         let paged = paged.as_array().expect("paged events array");
         assert_eq!(paged.len(), 1);
         assert_eq!(paged[0]["event_type"], "run_submitted");
+
+        let create_step_run_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{team_id}/runs"),
+                Some(&token),
+                Some(json!({
+                    "context_id": "ctx-router-steps",
+                    "input": {"prompt":"run step lifecycle bridge"}
+                })),
+            ))
+            .await
+            .expect("create run for step bridge");
+        assert_eq!(create_step_run_resp.status(), StatusCode::OK);
+        let step_run = decode_json_body(create_step_run_resp).await;
+        let step_run_id = step_run["id"].as_str().expect("step run id").to_string();
+
+        let submit_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{step_run_id}/steps"),
+                Some(&token),
+                Some(json!({
+                    "step_key": "router-step",
+                    "member_id": "planner",
+                    "depends_on": [],
+                    "input": {"goal":"plan"}
+                })),
+            ))
+            .await
+            .expect("submit step via router");
+        assert_eq!(submit_step_resp.status(), StatusCode::OK);
+        let submitted_step = decode_json_body(submit_step_resp).await;
+        let step_id = submitted_step["id"].as_str().expect("step id").to_string();
+        assert_eq!(submitted_step["status"], "submitted");
+        assert_eq!(submitted_step["step_key"], "router-step");
+        assert_eq!(submitted_step["member_id"], "planner");
+
+        let list_steps_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("/runs/{step_run_id}/steps"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("list steps via router");
+        assert_eq!(list_steps_resp.status(), StatusCode::OK);
+        let steps = decode_json_body(list_steps_resp).await;
+        let steps = steps.as_array().expect("steps array");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0]["status"], "submitted");
+
+        let start_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{step_run_id}/steps/{step_id}/start"),
+                Some(&token),
+                Some(json!({"remote_task_id":"router-remote-task"})),
+            ))
+            .await
+            .expect("start step via router");
+        assert_eq!(start_step_resp.status(), StatusCode::OK);
+        let started_step = decode_json_body(start_step_resp).await;
+        assert_eq!(started_step["status"], "working");
+        assert_eq!(started_step["remote_task_id"], "router-remote-task");
+
+        let complete_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{step_run_id}/steps/{step_id}/complete"),
+                Some(&token),
+                Some(json!({"output":{"result":"ok"}})),
+            ))
+            .await
+            .expect("complete step via router");
+        assert_eq!(complete_step_resp.status(), StatusCode::OK);
+        let completed_step = decode_json_body(complete_step_resp).await;
+        assert_eq!(completed_step["status"], "completed");
+
+        let get_step_run_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("/runs/{step_run_id}"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("get step run via router");
+        assert_eq!(get_step_run_resp.status(), StatusCode::OK);
+        let step_run_after_complete = decode_json_body(get_step_run_resp).await;
+        assert_eq!(step_run_after_complete["status"], "completed");
+
+        let create_fail_run_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{team_id}/runs"),
+                Some(&token),
+                Some(json!({"context_id":"ctx-router-fail","input":{"prompt":"fail path"}})),
+            ))
+            .await
+            .expect("create run for fail path");
+        assert_eq!(create_fail_run_resp.status(), StatusCode::OK);
+        let fail_run = decode_json_body(create_fail_run_resp).await;
+        let fail_run_id = fail_run["id"].as_str().expect("fail run id").to_string();
+
+        let submit_fail_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{fail_run_id}/steps"),
+                Some(&token),
+                Some(json!({
+                    "step_key": "router-fail-step",
+                    "member_id": "planner",
+                    "depends_on": [],
+                    "input": null
+                })),
+            ))
+            .await
+            .expect("submit fail step via router");
+        assert_eq!(submit_fail_step_resp.status(), StatusCode::OK);
+        let fail_step = decode_json_body(submit_fail_step_resp).await;
+        let fail_step_id = fail_step["id"].as_str().expect("fail step id").to_string();
+
+        let start_fail_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{fail_run_id}/steps/{fail_step_id}/start"),
+                Some(&token),
+                Some(json!({"remote_task_id":"router-fail-task"})),
+            ))
+            .await
+            .expect("start fail step via router");
+        assert_eq!(start_fail_step_resp.status(), StatusCode::OK);
+
+        let invalid_fail_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{fail_run_id}/steps/{fail_step_id}/fail"),
+                Some(&token),
+                Some(json!({"error_text":"  "})),
+            ))
+            .await
+            .expect("invalid fail step via router");
+        assert_eq!(invalid_fail_resp.status(), StatusCode::BAD_REQUEST);
+
+        let fail_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{fail_run_id}/steps/{fail_step_id}/fail"),
+                Some(&token),
+                Some(json!({"error_text":"worker error"})),
+            ))
+            .await
+            .expect("fail step via router");
+        assert_eq!(fail_step_resp.status(), StatusCode::OK);
+        let failed_step = decode_json_body(fail_step_resp).await;
+        assert_eq!(failed_step["status"], "failed");
+
+        let missing_step_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runs/{step_run_id}/steps/missing-step/start"),
+                Some(&token),
+                Some(json!({"remote_task_id":null})),
+            ))
+            .await
+            .expect("missing step request");
+        assert_eq!(missing_step_resp.status(), StatusCode::NOT_FOUND);
 
         let missing_team_resp = app
             .clone()

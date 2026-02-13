@@ -15,7 +15,8 @@
 - [x] Add Team spec compatibility versioning (`spec_version`) and migration checks before scheduler rollout.
 - [x] Implement team step lifecycle persistence and event emission (`submitted` -> `working` -> terminal states) for scheduler bootstrap.
 - [x] Add scheduler-facing run status convergence rules (`working` -> `completed`/`failed`) based on step graph outcomes (see `docs/features/2026-02-13-a2a-team-run-status-convergence.md`).
-- [ ] Expose scheduler-facing team step lifecycle API/service bridge for orchestrator integration.
+- [x] Expose scheduler-facing team step lifecycle API/service bridge for orchestrator integration (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
+- [ ] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
