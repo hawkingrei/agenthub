@@ -1,6 +1,6 @@
 import React from "react";
 import { ConversationItem, formatConversationPreview, isToolCallLive } from "../conversation";
-import { escapeHtml, renderMarkdown } from "../markdown";
+import { renderMarkdown } from "../markdown";
 
 type AcpConversationProps = {
   items: ConversationItem[];
@@ -164,14 +164,11 @@ function ToolCallBubble({ msg, ansi }: ToolCallBubbleProps) {
           </pre>
         )}
         {msg.terminal_output && (
-          <pre
-            className="acp-content"
-            dangerouslySetInnerHTML={{
-              __html: sanitizeAnsiHtml(
-                ansi(unescapeLineBreaks(msg.terminal_output))
-              ),
-            }}
-          />
+          <pre className="acp-content">
+            {renderAnsiTerminalOutput(
+              ansi(unescapeLineBreaks(msg.terminal_output))
+            )}
+          </pre>
         )}
       </details>
     </div>
@@ -202,28 +199,100 @@ function formatToolCallPayload(value: unknown): string {
   return unescapeLineBreaks(JSON.stringify(value, null, 2));
 }
 
-function sanitizeAnsiHtml(input: string): string {
-  let tokenId = 0;
-  const tokenMap = new Map<string, string>();
-  const preserved = input.replace(
-    /<\/?span(?: style="[a-zA-Z0-9:#;(),.%\s-]*")?>/g,
-    (tag) => {
-      const token = `__agenthub_ansi_token_${tokenId}__`;
-      tokenId += 1;
-      tokenMap.set(token, tag);
-      return token;
-    }
-  );
-  let escaped = escapeHtml(preserved);
-  for (const [token, tag] of tokenMap.entries()) {
-    escaped = escaped.replaceAll(token, tag);
-  }
-  return escaped;
-}
-
 function getConversationItemKey(msg: ConversationItem, fallback: number): string {
   if (msg.kind === "tool_call") return `tool_call:${msg.id}`;
   if (msg.event_id != null) return `${msg.kind}:event:${msg.event_id}`;
   if (msg.seq) return `${msg.kind}:seq:${msg.seq}`;
   return `${msg.kind}:idx:${fallback}`;
+}
+
+const ANSI_SPAN_TAG_PATTERN = /<\/?span(?: style="([a-zA-Z0-9:#;(),.%\s-]*)")?>/g;
+const ANSI_STYLE_VALUE_PATTERN = /^[a-zA-Z0-9#(),.%\s-]+$/;
+const ANSI_ALLOWED_STYLE_PROPERTIES: Record<string, keyof React.CSSProperties> = {
+  color: "color",
+  "background-color": "backgroundColor",
+  "font-weight": "fontWeight",
+  "font-style": "fontStyle",
+  "text-decoration": "textDecoration",
+  "text-decoration-line": "textDecorationLine",
+  "text-decoration-style": "textDecorationStyle",
+};
+
+type AnsiSegment = {
+  text: string;
+  style?: React.CSSProperties;
+};
+
+function renderAnsiTerminalOutput(input: string): React.ReactNode[] {
+  return parseAnsiSegments(input).map((segment, index) => {
+    if (segment.style) {
+      return (
+        <span key={index} style={segment.style}>
+          {segment.text}
+        </span>
+      );
+    }
+    return <React.Fragment key={index}>{segment.text}</React.Fragment>;
+  });
+}
+
+function parseAnsiSegments(input: string): AnsiSegment[] {
+  const segments: AnsiSegment[] = [];
+  const styleStack: React.CSSProperties[] = [];
+  let cursor = 0;
+  ANSI_SPAN_TAG_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ANSI_SPAN_TAG_PATTERN.exec(input)) != null) {
+    if (match.index > cursor) {
+      pushAnsiSegment(segments, input.slice(cursor, match.index), styleStack);
+    }
+    if (match[0].startsWith("</")) {
+      if (styleStack.length > 0) {
+        styleStack.pop();
+      } else {
+        pushAnsiSegment(segments, match[0], styleStack);
+      }
+    } else {
+      styleStack.push(parseAnsiStyle(match[1] ?? ""));
+    }
+    cursor = ANSI_SPAN_TAG_PATTERN.lastIndex;
+  }
+  if (cursor < input.length) {
+    pushAnsiSegment(segments, input.slice(cursor), styleStack);
+  }
+  return segments;
+}
+
+function pushAnsiSegment(
+  segments: AnsiSegment[],
+  text: string,
+  styleStack: React.CSSProperties[]
+): void {
+  if (!text) return;
+  const style = mergeAnsiStyles(styleStack);
+  segments.push(style ? { text, style } : { text });
+}
+
+function mergeAnsiStyles(styleStack: React.CSSProperties[]): React.CSSProperties | undefined {
+  if (styleStack.length === 0) return undefined;
+  const merged: React.CSSProperties = {};
+  for (const style of styleStack) {
+    Object.assign(merged, style);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function parseAnsiStyle(rawStyle: string): React.CSSProperties {
+  const parsed: React.CSSProperties = {};
+  for (const entry of rawStyle.split(";")) {
+    const separator = entry.indexOf(":");
+    if (separator < 0) continue;
+    const rawKey = entry.slice(0, separator).trim().toLowerCase();
+    const rawValue = entry.slice(separator + 1).trim();
+    const targetKey = ANSI_ALLOWED_STYLE_PROPERTIES[rawKey];
+    if (!targetKey) continue;
+    if (!rawValue || !ANSI_STYLE_VALUE_PATTERN.test(rawValue)) continue;
+    (parsed as Record<string, string>)[targetKey] = rawValue;
+  }
+  return parsed;
 }

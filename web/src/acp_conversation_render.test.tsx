@@ -73,6 +73,52 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<img");
   });
 
+  it("keeps nested ansi style spans and combines inherited styles", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-nested-ansi",
+          title: "Shell",
+          status: "completed",
+          terminal_output: "ignored",
+        },
+      ],
+      {
+        ansi: () =>
+          '<span style="color:#123456">outer <span style="font-weight:700">inner</span> tail</span>',
+      }
+    );
+
+    expect(html).toContain("outer");
+    expect(html).toContain("inner");
+    expect(html).toContain("tail");
+    expect(html).toContain("style=\"color:#123456\"");
+    expect(html).toContain("style=\"color:#123456;font-weight:700\"");
+  });
+
+  it("drops unsupported ansi styles and escapes non-whitelisted span tags", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-style-filter",
+          title: "Shell",
+          status: "completed",
+          terminal_output: "ignored",
+        },
+      ],
+      {
+        ansi: () =>
+          '<span style="position:absolute;color:#111111">safe</span><span class="ansi-out">literal</span>',
+      }
+    );
+
+    expect(html).toContain("<span style=\"color:#111111\">safe</span>");
+    expect(html).not.toContain("position:absolute");
+    expect(html).toContain("&lt;span class=&quot;ansi-out&quot;&gt;literal&lt;/span&gt;");
+  });
+
   it("renders finished tool calls collapsed by default", () => {
     const html = renderConversation([
       {

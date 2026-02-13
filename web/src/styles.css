@@ -1346,8 +1346,6 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-text li {
   display: list-item;
-  align-items: initial;
-  gap: 0;
   margin: 0;
 }
 
