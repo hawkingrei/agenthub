@@ -57,4 +57,16 @@ fn styles_keep_acp_conversation_scoped() {
         css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n}"),
         "input docked should stick to bottom"
     );
+    assert!(
+        css.contains("@supports (height: 100dvh)"),
+        "styles.css should use dynamic viewport height fallback for mobile browsers"
+    );
+    assert!(
+        css.contains(".admin .card li:not([class*=\"mantine-\"])"),
+        "admin list layout styles should be scoped and not override markdown lists"
+    );
+    assert!(
+        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 8px;\n  }"),
+        "mobile ACP head should stack controls for narrow screens"
+    );
 }

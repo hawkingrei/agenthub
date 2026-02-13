@@ -235,9 +235,12 @@ describe("conversation freeze helpers", () => {
 });
 
 describe("tool call status helpers", () => {
-  it("treats pending and in_progress as live", () => {
+  it("treats pending, in_progress, and running as live", () => {
     expect(isToolCallLive("pending")).toBe(true);
     expect(isToolCallLive("in_progress")).toBe(true);
+    expect(isToolCallLive("running")).toBe(true);
+    expect(isToolCallLive("in-progress")).toBe(true);
+    expect(isToolCallLive("IN PROGRESS")).toBe(true);
   });
 
   it("treats other statuses as not live", () => {

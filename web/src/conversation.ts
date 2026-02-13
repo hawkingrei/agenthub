@@ -12,6 +12,7 @@ export type ConversationItem =
     }
   | {
       kind: "tool_call";
+      id: string;
       title: string;
       status?: string;
       content?: string;
@@ -31,8 +32,12 @@ export type ConversationWindow = {
 
 export function isToolCallLive(status?: string): boolean {
   if (!status) return false;
-  const normalized = status.toLowerCase();
-  return normalized === "pending" || normalized === "in_progress";
+  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return (
+    normalized === "pending" ||
+    normalized === "in_progress" ||
+    normalized === "running"
+  );
 }
 
 export function formatConversationPreview(text: string, limit: number): string {
@@ -109,7 +114,7 @@ export function buildConversationMessages(
     });
     order += 1;
   }
-    entries.sort((a, b) => {
+  entries.sort((a, b) => {
     const base = compareEventOrder(
       { event_id: a.event_id ?? null, ts: a.ts ?? null },
       { event_id: b.event_id ?? null, ts: b.ts ?? null }
@@ -209,6 +214,7 @@ export function buildConversationMessages(
     }
     items.push({
       kind: "tool_call",
+      id: call.id,
       title: call.title,
       status: call.status,
       content: call.content,
@@ -220,16 +226,16 @@ export function buildConversationMessages(
       ts: call.ts,
     });
   }
-    if (pendingThought) {
-      items.push({
-        kind: "agent_thinking",
-        text: pendingThought,
-        live: true,
-        seq: pendingThoughtSeq ?? undefined,
-        event_id: pendingThoughtEventId ?? undefined,
-        ts: pendingThoughtTs ?? undefined,
-      });
-    }
+  if (pendingThought) {
+    items.push({
+      kind: "agent_thinking",
+      text: pendingThought,
+      live: true,
+      seq: pendingThoughtSeq ?? undefined,
+      event_id: pendingThoughtEventId ?? undefined,
+      ts: pendingThoughtTs ?? undefined,
+    });
+  }
   return items;
 }
 

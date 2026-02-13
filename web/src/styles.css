@@ -56,6 +56,18 @@ body {
   flex: 1;
 }
 
+@supports (height: 100dvh) {
+  body {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+
+  .app {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+}
+
 header {
   display: flex;
   justify-content: space-between;
@@ -1306,7 +1318,6 @@ select:not([class*="mantine-"]):focus-visible {
   padding: 10px 12px;
   line-height: 1.6;
   max-width: 100%;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -1314,7 +1325,8 @@ select:not([class*="mantine-"]):focus-visible {
   word-break: break-word;
   white-space: normal;
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.72;
+  letter-spacing: 0.01em;
   color: #1b1f23;
 }
 
@@ -1334,6 +1346,8 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-text li {
   display: list-item;
+  align-items: initial;
+  gap: 0;
   margin: 0;
 }
 
@@ -1378,6 +1392,7 @@ select:not([class*="mantine-"]):focus-visible {
 .acp-text pre {
   line-height: 1.45;
   white-space: pre;
+  overflow-x: auto;
   tab-size: 2;
 }
 
@@ -1489,7 +1504,8 @@ select:not([class*="mantine-"]):focus-visible {
   color: #295d52;
 }
 
-.acp-bubble code {
+.acp-content code,
+.acp-terminal code {
   background: #0e1116;
   color: #d9e1ee;
   padding: 2px 6px;
@@ -1505,10 +1521,15 @@ select:not([class*="mantine-"]):focus-visible {
   border-radius: 8px;
   overflow: auto;
   margin: 8px 0;
+}
+
+.acp-bubble.agent_thinking pre,
+.acp-bubble.agent_plan pre {
   white-space: pre-wrap;
 }
 
-.acp-bubble pre code {
+.acp-content pre code,
+.acp-terminal pre code {
   background: transparent;
   padding: 0;
   color: inherit;
@@ -1622,7 +1643,7 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 720px) {
   .app {
-    padding: 2px 4px 0;
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px calc(4px + env(safe-area-inset-bottom, 0px));
   }
 
   header {
@@ -1681,13 +1702,36 @@ select:not([class*="mantine-"]):focus-visible {
 
   .workspace-left {
     position: fixed;
-    top: 64px;
+    top: calc(56px + env(safe-area-inset-top, 0px));
     left: 8px;
     right: 8px;
-    bottom: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 30;
     overflow: auto;
     box-shadow: 0 24px 60px rgba(15, 20, 30, 0.35);
+  }
+
+  .acp-head.minimal {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .acp-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .acp-tabs {
+    flex: 1 1 auto;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .acp-interrupt-button {
+    flex: 0 0 auto;
   }
 
   .agents-backdrop {
@@ -1746,11 +1790,11 @@ select:not([class*="mantine-"]):focus-visible {
   min-height: 220px;
 }
 
-ul:not([class*="mantine-"]) {
+.admin .card ul:not([class*="mantine-"]) {
   padding-left: 18px;
 }
 
-li:not([class*="mantine-"]) {
+.admin .card li:not([class*="mantine-"]) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1804,7 +1848,7 @@ li:not([class*="mantine-"]) {
   grid-template-columns: 1fr;
 }
 
-li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
+.admin .card li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
   background: #444;
   padding: 4px 8px;
 }
