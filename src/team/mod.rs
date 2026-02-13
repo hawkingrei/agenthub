@@ -3,7 +3,11 @@ mod manager;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use manager::TeamManager;
+pub use agenthub_team_actor::{
+    ActorMessageRecord as TeamActorMessageRecord, ActorMessageStatus as TeamActorMessageStatus,
+    ActorMessageTransport as TeamActorMessageTransport,
+};
+pub use manager::{TeamManager, TeamRemoteRelayWorkerSettings};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamDefinitionConfig {
