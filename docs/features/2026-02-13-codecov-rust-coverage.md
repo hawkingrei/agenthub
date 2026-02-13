@@ -24,5 +24,5 @@ Coverage trends were not visible in CI because the Rust pipeline only ran tests 
 
 ## Follow-ups
 
-- Add Web coverage upload once `vitest` coverage dependencies are available in CI and lockfile updates can be committed.
+- Web coverage upload is tracked separately in `docs/features/2026-02-13-codecov-web-coverage.md`.
 - Consider changing `fail_ci_if_error` to `true` after Codecov integration is stable.
