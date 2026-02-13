@@ -13,7 +13,7 @@ Coverage trends were not visible in CI because the Rust pipeline only ran tests 
 ## Key Decisions
 
 - Use `cargo-llvm-cov` to generate coverage in `lcov` format from the Rust workspace.
-- Upload with `codecov/codecov-action@v5` using OIDC (`use_oidc: true`) to avoid hard-coding tokens in workflow config.
+- Upload with `codecov/codecov-action@v5` using repository secret `CODECOV_TOKEN`.
 - Keep `fail_ci_if_error: false` initially so CI remains usable while Codecov permissions are being verified.
 
 ## Validation
