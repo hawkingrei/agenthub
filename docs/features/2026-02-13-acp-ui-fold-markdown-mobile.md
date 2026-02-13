@@ -34,6 +34,7 @@ npm run test
 
 - Expect all Vitest suites to pass, including:
   - `src/acp_conversation.test.ts`
+  - `src/acp_conversation_render.test.tsx`
   - `src/conversation.test.ts`
 
 ```bash

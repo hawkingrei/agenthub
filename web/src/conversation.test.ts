@@ -128,6 +128,9 @@ describe("buildConversationMessages", () => {
     expect(items[0].kind).toBe("user_message");
     expect(items[1].kind).toBe("agent_thinking");
     expect(items[2].kind).toBe("tool_call");
+    if (items[2].kind === "tool_call") {
+      expect(items[2].id).toBe("c1");
+    }
     expect(items[3].kind).toBe("agent_message");
   });
 
