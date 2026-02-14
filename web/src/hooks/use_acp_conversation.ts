@@ -38,6 +38,8 @@ type UseAcpConversationResult = {
   acpConversationRef: RefObject<HTMLDivElement>;
   conversationRenderItems: ConversationItem[];
   conversationWindowOffset: number;
+  conversationVirtualTopSpacer: number;
+  conversationVirtualBottomSpacer: number;
   isFrozenView: boolean;
   collapseCutoff: number;
   shouldAutoCollapse: boolean;
@@ -50,6 +52,49 @@ type UseAcpConversationResult = {
   handleConversationScroll: () => void;
 };
 
+type ConversationVirtualSlice = {
+  items: ConversationItem[];
+  offset: number;
+  topSpacer: number;
+  bottomSpacer: number;
+};
+
+const VIRTUALIZATION_MIN_ITEMS = 140;
+const VIRTUALIZATION_OVERSCAN = 14;
+
+export function buildVirtualConversationSlice(
+  sourceItems: ConversationItem[],
+  sourceOffset: number,
+  viewportTop: number,
+  viewportHeight: number,
+  estimatedItemHeight: number,
+  overscan: number = VIRTUALIZATION_OVERSCAN
+): ConversationVirtualSlice {
+  const total = sourceItems.length;
+  if (total === 0) {
+    return {
+      items: sourceItems,
+      offset: sourceOffset,
+      topSpacer: 0,
+      bottomSpacer: 0,
+    };
+  }
+  const itemHeight = Number.isFinite(estimatedItemHeight) && estimatedItemHeight > 0
+    ? estimatedItemHeight
+    : 48;
+  const safeTop = Math.max(0, viewportTop);
+  const safeHeight = Math.max(1, viewportHeight);
+  const start = Math.max(0, Math.floor(safeTop / itemHeight) - overscan);
+  const visibleCount = Math.max(36, Math.ceil(safeHeight / itemHeight) + overscan * 2);
+  const end = Math.min(total, start + visibleCount);
+  return {
+    items: sourceItems.slice(start, end),
+    offset: sourceOffset + start,
+    topSpacer: Math.max(0, Math.round(start * itemHeight)),
+    bottomSpacer: Math.max(0, Math.round((total - end) * itemHeight)),
+  };
+}
+
 export function useAcpConversation({
   acpView,
   activeAgent,
@@ -60,6 +105,7 @@ export function useAcpConversation({
   onLoadOlder,
 }: UseAcpConversationArgs): UseAcpConversationResult {
   const acpConversationRef = useRef<HTMLDivElement | null>(null);
+  const conversationScrollRafRef = useRef<number | null>(null);
   const acpStickToBottomRef = useRef(true);
   const conversationScrollRef = useRef<{
     top: number;
@@ -71,7 +117,11 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
-  const conversationAvgHeightRef = useRef(48);
+  const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
+  const [conversationViewport, setConversationViewport] = useState({
+    top: 0,
+    height: 0,
+  });
   const didAutoAlignConversationRef = useRef(false);
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const [conversationFrozen, setConversationFrozen] = useState(false);
@@ -113,11 +163,39 @@ export function useAcpConversation({
     }
     return `${base}:${last.text?.length ?? 0}`;
   }, [conversationMessages]);
-  const conversationRenderItems =
-    conversationFrozen && conversationFrozenItems.length > 0
-      ? conversationFrozenItems
-      : conversationWindow.items;
   const isFrozenView = conversationFrozen && conversationFrozenItems.length > 0;
+  const conversationSourceItems = isFrozenView
+    ? conversationFrozenItems
+    : conversationWindow.items;
+  const conversationSourceOffset = isFrozenView ? 0 : conversationWindow.offset;
+  const shouldVirtualizeConversation =
+    !conversationStickToBottom &&
+    conversationSourceItems.length >= VIRTUALIZATION_MIN_ITEMS;
+  const conversationVirtualSlice = useMemo(() => {
+    if (!shouldVirtualizeConversation) {
+      return {
+        items: conversationSourceItems,
+        offset: conversationSourceOffset,
+        topSpacer: 0,
+        bottomSpacer: 0,
+      };
+    }
+    return buildVirtualConversationSlice(
+      conversationSourceItems,
+      conversationSourceOffset,
+      conversationViewport.top,
+      conversationViewport.height,
+      conversationAvgHeight
+    );
+  }, [
+    shouldVirtualizeConversation,
+    conversationSourceItems,
+    conversationSourceOffset,
+    conversationViewport.top,
+    conversationViewport.height,
+    conversationAvgHeight,
+  ]);
+  const conversationRenderItems = conversationVirtualSlice.items;
   const collapseCutoff = Math.max(0, conversationMessages.length - 50);
   const shouldAutoCollapse = conversationMessages.length > 50;
 
@@ -131,6 +209,22 @@ export function useAcpConversation({
     return true;
   }, [activeAgent, activeSessionId, eventMeta]);
 
+  const syncConversationViewport = useCallback(() => {
+    const el = acpConversationRef.current;
+    if (!el) return;
+    setConversationViewport((prev) => {
+      const nextTop = el.scrollTop;
+      const nextHeight = el.clientHeight;
+      if (prev.top === nextTop && prev.height === nextHeight) {
+        return prev;
+      }
+      return {
+        top: nextTop,
+        height: nextHeight,
+      };
+    });
+  }, []);
+
   const prepareForLoadOlder = () => {
     const el = acpConversationRef.current;
     if (!el) return;
@@ -140,10 +234,11 @@ export function useAcpConversation({
     };
   };
 
-  const jumpToConversationBottom = () => {
+  const jumpToConversationBottom = useCallback(() => {
     const el = acpConversationRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    syncConversationViewport();
     acpStickToBottomRef.current = true;
     didAutoAlignConversationRef.current = true;
     setConversationStickToBottom(true);
@@ -151,11 +246,12 @@ export function useAcpConversation({
     setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
-  };
+  }, [syncConversationViewport]);
 
-  const handleConversationScroll = () => {
+  const handleConversationScrollNow = useCallback(() => {
     const el = acpConversationRef.current;
     if (!el) return;
+    syncConversationViewport();
     const stick = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
     acpStickToBottomRef.current = stick;
     if (stick !== conversationStickToBottom) {
@@ -178,7 +274,41 @@ export function useAcpConversation({
       prepareForLoadOlder();
       onLoadOlder();
     }
-  };
+  }, [
+    conversationStickToBottom,
+    conversationMessages,
+    onLoadOlder,
+    syncConversationViewport,
+    shouldLoadOlder,
+  ]);
+
+  const handleConversationScroll = useCallback(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      handleConversationScrollNow();
+      return;
+    }
+    if (conversationScrollRafRef.current != null) return;
+    conversationScrollRafRef.current = window.requestAnimationFrame(() => {
+      conversationScrollRafRef.current = null;
+      handleConversationScrollNow();
+    });
+  }, [handleConversationScrollNow]);
+
+  useEffect(() => {
+    return () => {
+      if (
+        conversationScrollRafRef.current != null &&
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(conversationScrollRafRef.current);
+      }
+      conversationScrollRafRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
@@ -208,7 +338,13 @@ export function useAcpConversation({
     if (!el) return;
     if (!conversationStickToBottom) return;
     el.scrollTop = el.scrollHeight;
-  }, [conversationWindow.items.length, acpTab, conversationStickToBottom]);
+    syncConversationViewport();
+  }, [
+    conversationWindow.items.length,
+    acpTab,
+    conversationStickToBottom,
+    syncConversationViewport,
+  ]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
@@ -216,7 +352,13 @@ export function useAcpConversation({
     const el = acpConversationRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [conversationTailKey, acpTab, conversationStickToBottom]);
+    syncConversationViewport();
+  }, [conversationTailKey, acpTab, conversationStickToBottom, syncConversationViewport]);
+
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    syncConversationViewport();
+  }, [acpTab, conversationTailKey, syncConversationViewport]);
 
   useEffect(() => {
     const el = acpConversationRef.current;
@@ -240,7 +382,7 @@ export function useAcpConversation({
     setConversationStickToBottom(false);
     const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
     el.scrollTop = Math.min(saved.top, maxTop);
-  }, [acpTab, conversationStickToBottom, conversationTailKey]);
+  }, [acpTab, conversationStickToBottom, conversationTailKey, jumpToConversationBottom]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
@@ -250,7 +392,10 @@ export function useAcpConversation({
     const count = Math.max(1, conversationMessages.length);
     const estimate = el.scrollHeight / count;
     if (Number.isFinite(estimate) && estimate > 0) {
-      conversationAvgHeightRef.current = Math.min(220, Math.max(24, estimate));
+      const normalized = Math.min(220, Math.max(24, estimate));
+      setConversationAvgHeight((prev) =>
+        Math.abs(prev - normalized) >= 1 ? normalized : prev
+      );
     }
   }, [conversationMessages.length, acpTab, conversationStickToBottom]);
 
@@ -261,7 +406,8 @@ export function useAcpConversation({
     const nextHeight = el.scrollHeight;
     el.scrollTop = nextHeight - pending.prevHeight + pending.prevTop;
     pendingScrollAdjustRef.current = null;
-  }, [acpView.messages.length]);
+    syncConversationViewport();
+  }, [acpView.messages.length, syncConversationViewport]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
@@ -300,6 +446,7 @@ export function useAcpConversation({
     activeAgent,
     isAgentActive,
     conversationMessages.length,
+    jumpToConversationBottom,
   ]);
 
   const showConversationJump =
@@ -310,13 +457,15 @@ export function useAcpConversation({
   return {
     acpConversationRef,
     conversationRenderItems,
-    conversationWindowOffset: conversationWindow.offset,
+    conversationWindowOffset: conversationVirtualSlice.offset,
+    conversationVirtualTopSpacer: conversationVirtualSlice.topSpacer,
+    conversationVirtualBottomSpacer: conversationVirtualSlice.bottomSpacer,
     isFrozenView,
     collapseCutoff,
     shouldAutoCollapse,
     conversationStickToBottom,
     conversationPendingCount,
-    conversationAvgHeight: conversationAvgHeightRef.current,
+    conversationAvgHeight,
     showConversationJump,
     showConversationBadge,
     jumpToConversationBottom,
