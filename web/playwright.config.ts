@@ -4,6 +4,7 @@ const port = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
 const baseURL = `http://127.0.0.1:${port}`;
 const disableWebServer = process.env.PLAYWRIGHT_NO_WEBSERVER === "1";
 const minimalRuntime = process.env.PLAYWRIGHT_MINIMAL_RUNTIME === "1";
+const enableSystemChrome = process.env.PLAYWRIGHT_SYSTEM_CHROME === "1";
 
 const webServer = disableWebServer
   ? undefined
@@ -33,13 +34,17 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
-    {
-      name: "system-chrome",
-      use: {
-        ...devices["Desktop Chrome"],
-        channel: "chrome",
-      },
-    },
+    ...(enableSystemChrome
+      ? [
+          {
+            name: "system-chrome",
+            use: {
+              ...devices["Desktop Chrome"],
+              channel: "chrome" as const,
+            },
+          },
+        ]
+      : []),
   ],
   webServer,
 });

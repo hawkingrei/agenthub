@@ -202,17 +202,17 @@ export function InputDock({
           </div>
         )}
       </div>
+      {showConversationJump && (
+        <button
+          className="jump-bottom"
+          onClick={onJumpToBottom}
+          title="Jump to bottom"
+          aria-label="Jump to bottom"
+        >
+          <i className="bi bi-chevron-down" aria-hidden="true" />
+        </button>
+      )}
       <div className="input-editor-row">
-        {showConversationJump && (
-          <button
-            className="jump-bottom"
-            onClick={onJumpToBottom}
-            title="Jump to bottom"
-            aria-label="Jump to bottom"
-          >
-            <i className="bi bi-chevron-down" aria-hidden="true" />
-          </button>
-        )}
         <textarea
           placeholder="Send input (Enter to send, Shift+Enter for newline)"
           value={input}

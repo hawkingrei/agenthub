@@ -39,15 +39,23 @@ render `Interrupt` on top of the editor.
    control anchor stable across desktop/tablet/mobile widths.
 7. Anchor the `History` popup from the left edge of the trigger and clamp width
    to viewport-safe bounds so it no longer appears visually shifted.
-8. Add Playwright viewport regression checks for mobile and iPad portrait /
+8. Keep `jump-bottom` outside `input-editor-row` so fixed-position behavior does
+   not conflict with editor grid layout assumptions.
+9. Use higher-specificity selectors for `input-send-button` sizing overrides
+   (`.input.docked .input-editor-row .input-send-button`) instead of relying on
+   `!important`.
+10. Add Playwright viewport regression checks for mobile and iPad portrait /
    landscape to validate non-overlap, tap-target sizing, and popup anchoring.
+11. Keep default Playwright project list Chromium-only; enable `system-chrome`
+    only when `PLAYWRIGHT_SYSTEM_CHROME=1` is explicitly provided.
 
 ## Validation
 
 ```bash
 cd web
 npm run test -- src/input_dock_render.test.tsx src/input_dock_keyboard.test.ts
-PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
+PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=chromium
+PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
 npm run lint -- src/components/input_dock.tsx src/input_dock_render.test.tsx
 npm run build
 cd ..

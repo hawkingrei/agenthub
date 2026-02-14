@@ -380,12 +380,13 @@ select:not([class*="mantine-"]):focus-visible {
   min-width: 0;
 }
 
-.input-editor-row .input-send-button {
-  min-height: 48px !important;
+.input.docked .input-editor-row .input-send-button {
+  height: 48px;
+  min-height: 48px;
   min-width: 92px;
-  padding: 0 16px !important;
-  border-radius: 10px !important;
-  font-size: 14px !important;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
   line-height: 1.1;
   align-self: stretch;
 }
@@ -2041,11 +2042,12 @@ select:not([class*="mantine-"]):focus-visible {
     gap: 8px;
   }
 
-  .input-editor-row .input-send-button {
-    min-height: 44px !important;
+  .input.docked .input-editor-row .input-send-button {
+    height: 44px;
+    min-height: 44px;
     min-width: 88px;
-    padding: 0 14px !important;
-    font-size: 13px !important;
+    padding: 0 14px;
+    font-size: 13px;
   }
 
   .input-interrupt-button {

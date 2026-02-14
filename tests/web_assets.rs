@@ -66,11 +66,11 @@ fn styles_keep_acp_conversation_scoped() {
         "input editor row should isolate textarea and send button layout"
     );
     assert!(
-        css.contains(".input-editor-row .input-send-button {\n  min-height: 48px !important;\n  min-width: 92px;\n  padding: 0 16px !important;\n  border-radius: 10px !important;\n  font-size: 14px !important;\n  line-height: 1.1;\n  align-self: stretch;\n}"),
+        css.contains(".input.docked .input-editor-row .input-send-button {\n  height: 48px;\n  min-height: 48px;\n  min-width: 92px;\n  padding: 0 16px;\n  border-radius: 10px;\n  font-size: 14px;\n  line-height: 1.1;\n  align-self: stretch;\n}"),
         "send button should keep larger tap target size"
     );
     assert!(
-        css.contains(".input-editor-row .input-send-button {\n    min-height: 44px !important;\n    min-width: 88px;\n    padding: 0 14px !important;\n    font-size: 13px !important;\n  }"),
+        css.contains(".input.docked .input-editor-row .input-send-button {\n    height: 44px;\n    min-height: 44px;\n    min-width: 88px;\n    padding: 0 14px;\n    font-size: 13px;\n  }"),
         "mobile send button should keep touch-friendly tap target size"
     );
     assert!(

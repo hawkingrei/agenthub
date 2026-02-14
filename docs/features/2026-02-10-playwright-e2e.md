@@ -21,5 +21,6 @@ UI regressions around workspace output and agents layout warrant a basic end-to-
 
 ```bash
 cd web && npm run e2e
-cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
+cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=chromium
+cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
 ```

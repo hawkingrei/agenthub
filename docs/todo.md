@@ -16,6 +16,9 @@
 - [x] Verify input dock `Interrupt + History` row tap ergonomics on mobile viewport via Playwright system-Chrome assertions (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Verify iPad portrait/landscape viewports no longer show `Interrupt` overlapping textarea and action chips keep stable tap targets via Playwright (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Verify one-row `input + Send` layout contract and touch target sizing (`input_dock_render.test.tsx`, `tests/web_assets.rs`) across tablet/mobile breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep `jump-bottom` outside `input-editor-row` to avoid fixed-position element conflicting with editor grid flow (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Replace `input-send-button` sizing `!important` overrides with higher-specificity selectors for maintainable mobile/desktop sizing (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Gate optional Playwright `system-chrome` project behind `PLAYWRIGHT_SYSTEM_CHROME=1` so default E2E runs stay Chromium-only and CI-safe (see `docs/features/2026-02-10-playwright-e2e.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
