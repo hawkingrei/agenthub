@@ -8,6 +8,7 @@
 - [x] Close input history menu on typing, arrow-history navigation, `Escape`, and outside click for keyboard/mouse accessibility (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add input history privacy guard to avoid persisting obvious secret-like commands in localStorage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Increase unit coverage for input dock interaction branches and ACP tab interaction callbacks (`input_dock.tsx`, `acp_panel.tsx`) (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [ ] Verify input dock command history menu and arrow-key recall behavior on desktop/mobile IME (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify input dock `Interrupt + History` row tap ergonomics on mobile devices (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).

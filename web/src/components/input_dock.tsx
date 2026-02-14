@@ -27,12 +27,50 @@ export type InputHistoryNavigationContext = {
   isComposing: boolean;
 };
 
+export type InputDockKeyAction =
+  | { type: "none" }
+  | { type: "close_history" }
+  | { type: "send" }
+  | { type: "navigate_history"; direction: "up" | "down" };
+
+type InputDockOutsideCloseDocument = Pick<
+  Document,
+  "addEventListener" | "removeEventListener"
+>;
+
 export function isImeComposing(
   currentRefState: boolean,
   nativeIsComposing: boolean,
   nativeKeyCode?: number
 ): boolean {
   return currentRefState || nativeIsComposing || nativeKeyCode === 229;
+}
+
+export function shouldCloseHistoryFromPointerTarget(
+  target: EventTarget | null,
+  container: { contains(node: Node): boolean } | null
+): boolean {
+  if (!container) return false;
+  if (typeof Node === "undefined") return false;
+  if (!(target instanceof Node)) return false;
+  return !container.contains(target);
+}
+
+export function bindHistoryOutsideClose(
+  doc: InputDockOutsideCloseDocument,
+  container: { contains(node: Node): boolean } | null,
+  onClose: () => void
+): () => void {
+  const handlePointerDown = (event: Event) => {
+    if (!shouldCloseHistoryFromPointerTarget(event.target, container)) return;
+    onClose();
+  };
+  doc.addEventListener("mousedown", handlePointerDown);
+  doc.addEventListener("touchstart", handlePointerDown);
+  return () => {
+    doc.removeEventListener("mousedown", handlePointerDown);
+    doc.removeEventListener("touchstart", handlePointerDown);
+  };
 }
 
 export function deriveInputHistoryNavigation(
@@ -52,6 +90,45 @@ export function deriveInputHistoryNavigation(
   if (ctx.key === "ArrowUp" && (atStart || !hasNewline)) return "up";
   if (ctx.key === "ArrowDown" && (atEnd || !hasNewline)) return "down";
   return null;
+}
+
+export type InputDockKeyActionContext = {
+  key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  showHistory: boolean;
+  composing: boolean;
+  value: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+};
+
+export function deriveInputDockKeyAction(
+  ctx: InputDockKeyActionContext
+): InputDockKeyAction {
+  if (ctx.key === "Escape" && ctx.showHistory) {
+    return { type: "close_history" };
+  }
+  if (ctx.key === "Enter" && !ctx.shiftKey && !ctx.composing) {
+    return { type: "send" };
+  }
+  const direction = deriveInputHistoryNavigation({
+    key: ctx.key,
+    shiftKey: ctx.shiftKey,
+    altKey: ctx.altKey,
+    metaKey: ctx.metaKey,
+    ctrlKey: ctx.ctrlKey,
+    value: ctx.value,
+    selectionStart: ctx.selectionStart,
+    selectionEnd: ctx.selectionEnd,
+    isComposing: ctx.composing,
+  });
+  if (direction) {
+    return { type: "navigate_history", direction };
+  }
+  return { type: "none" };
 }
 
 export function InputDock({
@@ -75,19 +152,9 @@ export function InputDock({
   React.useEffect(() => {
     if (!showHistory) return;
     if (typeof document === "undefined") return;
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (!historyContainerRef.current?.contains(target)) {
-        setShowHistory(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("touchstart", handlePointerDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("touchstart", handlePointerDown);
-    };
+    return bindHistoryOutsideClose(document, historyContainerRef.current, () => {
+      setShowHistory(false);
+    });
   }, [showHistory]);
 
   return (
@@ -159,38 +226,39 @@ export function InputDock({
           isComposingRef.current = false;
         }}
         onKeyDown={(e) => {
-          if (e.key === "Escape" && showHistory) {
-            setShowHistory(false);
-            return;
-          }
           const nativeEvent = e.nativeEvent as KeyboardEvent;
           const composing = isImeComposing(
             isComposingRef.current,
             nativeEvent.isComposing === true,
             nativeEvent.keyCode
           );
-          if (e.key === "Enter" && !e.shiftKey && !composing) {
-            e.preventDefault();
-            onSendInput();
-            setShowHistory(false);
-            return;
-          }
           const target = e.currentTarget;
-          const direction = deriveInputHistoryNavigation({
+          const action = deriveInputDockKeyAction({
             key: e.key,
             shiftKey: e.shiftKey,
             altKey: e.altKey,
             metaKey: e.metaKey,
             ctrlKey: e.ctrlKey,
+            showHistory,
+            composing,
             value: target.value,
             selectionStart: target.selectionStart,
             selectionEnd: target.selectionEnd,
-            isComposing: composing,
           });
-          if (direction) {
+          if (action.type === "close_history") {
+            setShowHistory(false);
+            return;
+          }
+          if (action.type === "send") {
+            e.preventDefault();
+            onSendInput();
+            setShowHistory(false);
+            return;
+          }
+          if (action.type === "navigate_history") {
             e.preventDefault();
             setShowHistory(false);
-            onNavigateHistory(direction);
+            onNavigateHistory(action.direction);
           }
         }}
         rows={2}

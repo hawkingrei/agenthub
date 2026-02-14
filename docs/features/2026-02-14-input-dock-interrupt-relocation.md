@@ -31,12 +31,18 @@ separates it from input actions that users expect near the dock.
   - enabled only when ACP is controllable and run/tool status is active.
 - Keep `Interrupt` hidden when ACP mode is absent.
 - Keep compact chip styling in dock row to avoid extra height.
+- Add focused unit coverage for dock interaction logic:
+  - keyboard action derivation (escape/send/history navigation),
+  - outside-click close listener binding/cleanup,
+  - ACP tab interaction callbacks and badge rendering.
 
 ## Validation
 
 ```bash
 cd web
 npm run test -- src/acp_panel.test.tsx src/output_body.test.tsx src/input_dock_render.test.tsx src/input_dock_keyboard.test.ts
+npx vitest run src/input_dock_keyboard.test.ts src/input_dock_render.test.tsx --coverage.enabled --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/components/input_dock.tsx
+npx vitest run src/acp_panel.test.tsx --coverage.enabled --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/components/acp_panel.tsx
 npm run lint -- src/components/acp_panel.tsx src/components/input_dock.tsx src/app.tsx src/acp_panel.test.tsx src/output_body.test.tsx src/input_dock_render.test.tsx
 npm run build
 ```
