@@ -128,6 +128,9 @@ describe("buildConversationMessages", () => {
     expect(items[0].kind).toBe("user_message");
     expect(items[1].kind).toBe("agent_thinking");
     expect(items[2].kind).toBe("tool_call");
+    if (items[2].kind === "tool_call") {
+      expect(items[2].id).toBe("c1");
+    }
     expect(items[3].kind).toBe("agent_message");
   });
 
@@ -235,9 +238,12 @@ describe("conversation freeze helpers", () => {
 });
 
 describe("tool call status helpers", () => {
-  it("treats pending and in_progress as live", () => {
+  it("treats pending, in_progress, and running as live", () => {
     expect(isToolCallLive("pending")).toBe(true);
     expect(isToolCallLive("in_progress")).toBe(true);
+    expect(isToolCallLive("running")).toBe(true);
+    expect(isToolCallLive("in-progress")).toBe(true);
+    expect(isToolCallLive("IN PROGRESS")).toBe(true);
   });
 
   it("treats other statuses as not live", () => {

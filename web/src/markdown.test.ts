@@ -47,4 +47,11 @@ describe("renderMarkdown", () => {
     expect(html).toContain("<pre");
     expect(html).toContain("<code");
   });
+
+  it("escapes raw html blocks", () => {
+    const html = renderMarkdown('<img src=x onerror="alert(1)"><b>safe</b>');
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<b>safe</b>");
+  });
 });

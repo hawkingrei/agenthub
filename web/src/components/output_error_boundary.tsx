@@ -20,7 +20,7 @@ export class OutputErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: unknown, info: unknown) {
-    console.error("Output render failed", error, info);
+    reportRenderError(error, info);
   }
 
   handleReset = () => {
@@ -36,12 +36,34 @@ export class OutputErrorBoundary extends React.Component<
       <div className="output-body">
         <div className="output-error">
           <div className="title">Output failed to render</div>
-          <div className="meta">Check the console for details.</div>
+          <div className="meta">Retry rendering the latest output.</div>
           <button className="ghost" onClick={this.handleReset}>
             Retry
           </button>
         </div>
       </div>
     );
+  }
+}
+
+function reportRenderError(error: unknown, info: unknown) {
+  const detail = {
+    source: "output_error_boundary",
+    error,
+    info,
+  };
+  if (
+    "dispatchEvent" in globalThis &&
+    typeof globalThis.dispatchEvent === "function" &&
+    typeof CustomEvent === "function"
+  ) {
+    globalThis.dispatchEvent(
+      new CustomEvent("agenthub:output-render-error", {
+        detail,
+      })
+    );
+  }
+  if ("reportError" in globalThis && typeof globalThis.reportError === "function") {
+    globalThis.reportError(error);
   }
 }
