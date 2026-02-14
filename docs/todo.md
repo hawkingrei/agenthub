@@ -52,8 +52,9 @@
 - [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
-- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `AGENTHUB_ACTOR_RUN_ID` is configured (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
-- [ ] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
+- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [ ] Wire orchestrator worker loop step execution to call `/api/agents/:id/start` with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) and validate end-to-end inbox/ack flow (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
 - [ ] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
 - [ ] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
 - [ ] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).

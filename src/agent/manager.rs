@@ -51,36 +51,11 @@ const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 
-fn normalized_env_var(key: &str) -> Option<String> {
-    std::env::var(key)
+fn default_actor_cli_path() -> String {
+    std::env::current_exe()
         .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn actor_runtime_context_from_env(agent_name: &str) -> Option<AcpActorSkillContext> {
-    let run_id = normalized_env_var(ACTOR_RUNTIME_RUN_ID_ENV)?;
-    let actor_id = normalized_env_var(ACTOR_RUNTIME_ACTOR_ID_ENV)
-        .or_else(|| {
-            let value = agent_name.trim().to_string();
-            if value.is_empty() { None } else { Some(value) }
-        })
-        .unwrap_or_else(|| "agent".to_string());
-    let default_channel =
-        normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV).unwrap_or_else(|| "default".to_string());
-    let actor_cli_path = normalized_env_var(ACTOR_RUNTIME_CLI_ENV)
-        .or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|path| path.into_os_string().into_string().ok())
-        })
-        .unwrap_or_else(|| "agenthub".to_string());
-    Some(AcpActorSkillContext {
-        run_id,
-        actor_id,
-        default_channel,
-        actor_cli_path,
-    })
+        .and_then(|path| path.into_os_string().into_string().ok())
+        .unwrap_or_else(|| "agenthub".to_string())
 }
 
 pub struct AgentHandle {
@@ -482,19 +457,44 @@ impl AgentManager {
     }
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        self.start_agent_with_actor_context(agent_id, None).await
+    }
+
+    pub async fn start_agent_with_actor_context(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
         if let Some(session_id) = self.get_running_session_id(agent_id).await {
             return Ok(session_id);
         }
         self.reserve_agent_start(agent_id).await?;
-        let result = self.start_agent_inner(agent_id).await;
+        let result = self.start_agent_inner(agent_id, actor_context).await;
         self.release_agent_start(agent_id).await;
         result
     }
 
-    async fn start_agent_inner(&self, agent_id: &str) -> anyhow::Result<String> {
+    async fn start_agent_inner(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
-        let actor_context = actor_runtime_context_from_env(&agent.name);
+        let actor_context = actor_context.map(|context| AcpActorSkillContext {
+            run_id: context.run_id,
+            actor_id: context.actor_id,
+            default_channel: if context.default_channel.trim().is_empty() {
+                "default".to_string()
+            } else {
+                context.default_channel
+            },
+            actor_cli_path: if context.actor_cli_path.trim().is_empty() {
+                default_actor_cli_path()
+            } else {
+                context.actor_cli_path
+            },
+        });
         let workdir = expand_tilde(&agent.workdir);
         let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
         if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
