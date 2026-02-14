@@ -1,0 +1,653 @@
+#[tokio::test]
+async fn teams_router_http_contract() {
+    let state = build_test_state().await;
+    let token = create_auth_token(&state).await;
+    let app = super::router(state);
+
+    let unauthorized = app
+        .clone()
+        .oneshot(build_json_request(Method::GET, "/", None, None))
+        .await
+        .expect("run unauthorized request");
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let invalid_spec_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "invalid-router-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[]}
+            })),
+        ))
+        .await
+        .expect("create invalid team via router");
+    assert_eq!(invalid_spec_resp.status(), StatusCode::BAD_REQUEST);
+
+    let create_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "router-team",
+                "description": "router-level contract",
+                "spec": {"entrypoint":"planner","members":[{"member_id":"planner"}]}
+            })),
+        ))
+        .await
+        .expect("create team via router");
+    assert_eq!(create_team_resp.status(), StatusCode::OK);
+    let created_team = decode_json_body(create_team_resp).await;
+    let team_id = created_team["id"].as_str().expect("team id").to_string();
+    assert_eq!(created_team["spec"]["spec_version"], Value::from(1));
+
+    let list_teams_resp = app
+        .clone()
+        .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
+        .await
+        .expect("list teams via router");
+    assert_eq!(list_teams_resp.status(), StatusCode::OK);
+    let listed = decode_json_body(list_teams_resp).await;
+    let listed = listed.as_array().expect("teams array");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["id"], team_id);
+
+    let duplicate_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "router-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[{"member_id":"planner"}]}
+            })),
+        ))
+        .await
+        .expect("duplicate create");
+    assert_eq!(duplicate_resp.status(), StatusCode::CONFLICT);
+
+    let get_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get team via router");
+    assert_eq!(get_team_resp.status(), StatusCode::OK);
+
+    let create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id": "ctx-router",
+                "input": {"prompt":"review this run"}
+            })),
+        ))
+        .await
+        .expect("create run via router");
+    assert_eq!(create_run_resp.status(), StatusCode::OK);
+    let run = decode_json_body(create_run_resp).await;
+    let run_id = run["id"].as_str().expect("run id").to_string();
+    assert_eq!(run["status"], "submitted");
+
+    let cancel_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{run_id}/cancel"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("cancel run via router");
+    assert_eq!(cancel_run_resp.status(), StatusCode::OK);
+    let canceled = decode_json_body(cancel_run_resp).await;
+    assert_eq!(canceled["status"], "canceled");
+
+    let events_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/events?limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list events via router");
+    assert_eq!(events_resp.status(), StatusCode::OK);
+    let events = decode_json_body(events_resp).await;
+    let events = events.as_array().expect("events array");
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["event_type"], "run_submitted");
+    assert_eq!(events[1]["event_type"], "run_canceled");
+    let first_id = events[0]["event_id"].as_i64().expect("first event id");
+    let second_id = events[1]["event_id"].as_i64().expect("second event id");
+    assert!(first_id < second_id);
+
+    let paged_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/events?limit=1&before_id={second_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("page events via router");
+    assert_eq!(paged_resp.status(), StatusCode::OK);
+    let paged = decode_json_body(paged_resp).await;
+    let paged = paged.as_array().expect("paged events array");
+    assert_eq!(paged.len(), 1);
+    assert_eq!(paged[0]["event_type"], "run_submitted");
+
+    let create_step_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id": "ctx-router-steps",
+                "input": {"prompt":"run step lifecycle bridge"}
+            })),
+        ))
+        .await
+        .expect("create run for step bridge");
+    assert_eq!(create_step_run_resp.status(), StatusCode::OK);
+    let step_run = decode_json_body(create_step_run_resp).await;
+    let step_run_id = step_run["id"].as_str().expect("step run id").to_string();
+
+    let submit_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps"),
+            Some(&token),
+            Some(json!({
+                "step_key": "router-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": {"goal":"plan"}
+            })),
+        ))
+        .await
+        .expect("submit step via router");
+    assert_eq!(submit_step_resp.status(), StatusCode::OK);
+    let submitted_step = decode_json_body(submit_step_resp).await;
+    let step_id = submitted_step["id"].as_str().expect("step id").to_string();
+    assert_eq!(submitted_step["status"], "submitted");
+    assert_eq!(submitted_step["step_key"], "router-step");
+    assert_eq!(submitted_step["member_id"], "planner");
+
+    let list_steps_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{step_run_id}/steps"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list steps via router");
+    assert_eq!(list_steps_resp.status(), StatusCode::OK);
+    let steps = decode_json_body(list_steps_resp).await;
+    let steps = steps.as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["status"], "submitted");
+
+    let start_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/{step_id}/start"),
+            Some(&token),
+            Some(json!({"remote_task_id":"router-remote-task"})),
+        ))
+        .await
+        .expect("start step via router");
+    assert_eq!(start_step_resp.status(), StatusCode::OK);
+    let started_step = decode_json_body(start_step_resp).await;
+    assert_eq!(started_step["status"], "working");
+    assert_eq!(started_step["remote_task_id"], "router-remote-task");
+
+    let input_required_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/{step_id}/input_required"),
+            Some(&token),
+            Some(json!({
+                "reason": "need approval",
+                "input": {"question":"approve?"}
+            })),
+        ))
+        .await
+        .expect("set input required via router");
+    assert_eq!(input_required_resp.status(), StatusCode::OK);
+    let input_required_step = decode_json_body(input_required_resp).await;
+    assert_eq!(input_required_step["status"], "input_required");
+    assert_eq!(input_required_step["error_text"], "need approval");
+
+    let invalid_input_required_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/{step_id}/input_required"),
+            Some(&token),
+            Some(json!({
+                "reason": "   ",
+                "input": null
+            })),
+        ))
+        .await
+        .expect("invalid input required request");
+    assert_eq!(
+        invalid_input_required_resp.status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let run_after_input_required_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{step_run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get run after input required");
+    assert_eq!(run_after_input_required_resp.status(), StatusCode::OK);
+    let run_after_input_required = decode_json_body(run_after_input_required_resp).await;
+    assert_eq!(run_after_input_required["status"], "input_required");
+
+    let resume_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/{step_id}/resume"),
+            Some(&token),
+            Some(json!({"input":{"answer":"approved"}})),
+        ))
+        .await
+        .expect("resume step via router");
+    assert_eq!(resume_step_resp.status(), StatusCode::OK);
+    let resumed_step = decode_json_body(resume_step_resp).await;
+    assert_eq!(resumed_step["status"], "working");
+    assert_eq!(resumed_step["input"]["answer"], "approved");
+
+    let complete_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/{step_id}/complete"),
+            Some(&token),
+            Some(json!({"output":{"result":"ok"}})),
+        ))
+        .await
+        .expect("complete step via router");
+    assert_eq!(complete_step_resp.status(), StatusCode::OK);
+    let completed_step = decode_json_body(complete_step_resp).await;
+    assert_eq!(completed_step["status"], "completed");
+
+    let get_step_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{step_run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get step run via router");
+    assert_eq!(get_step_run_resp.status(), StatusCode::OK);
+    let step_run_after_complete = decode_json_body(get_step_run_resp).await;
+    assert_eq!(step_run_after_complete["status"], "completed");
+
+    let create_message_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({"context_id":"ctx-router-msg","input":{"prompt":"msg flow"}})),
+        ))
+        .await
+        .expect("create run for actor messages");
+    assert_eq!(create_message_run_resp.status(), StatusCode::OK);
+    let message_run = decode_json_body(create_message_run_resp).await;
+    let message_run_id = message_run["id"]
+        .as_str()
+        .expect("message run id")
+        .to_string();
+
+    let send_local_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"self-check"}
+            })),
+        ))
+        .await
+        .expect("send local actor message via router");
+    assert_eq!(send_local_message_resp.status(), StatusCode::OK);
+    let local_message = decode_json_body(send_local_message_resp).await;
+    let local_message_id = local_message["message_id"]
+        .as_i64()
+        .expect("local message id");
+    assert_eq!(local_message["transport"], "local");
+    assert_eq!(local_message["status"], "pending");
+
+    let send_remote_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"remote-reviewer",
+                "channel":"federation",
+                "transport":"remote",
+                "route":{"endpoint":"https://remote.example/a2a"},
+                "payload":{"text":"remote request"}
+            })),
+        ))
+        .await
+        .expect("send remote actor message via router");
+    assert_eq!(send_remote_message_resp.status(), StatusCode::OK);
+    let remote_message = decode_json_body(send_remote_message_resp).await;
+    let remote_message_id = remote_message["message_id"]
+        .as_i64()
+        .expect("remote message id");
+    assert_eq!(remote_message["transport"], "remote");
+    assert_eq!(
+        remote_message["route"]["endpoint"],
+        "https://remote.example/a2a"
+    );
+
+    let send_idempotent_first_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"idempotent message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("send idempotent actor message via router");
+    assert_eq!(send_idempotent_first_resp.status(), StatusCode::OK);
+    let idempotent_first = decode_json_body(send_idempotent_first_resp).await;
+    let idempotent_message_id = idempotent_first["message_id"]
+        .as_i64()
+        .expect("idempotent message id");
+
+    let send_idempotent_retry_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"idempotent message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("retry idempotent actor message via router");
+    assert_eq!(send_idempotent_retry_resp.status(), StatusCode::OK);
+    let idempotent_retry = decode_json_body(send_idempotent_retry_resp).await;
+    assert_eq!(
+        idempotent_retry["message_id"],
+        Value::from(idempotent_message_id)
+    );
+
+    let send_idempotent_conflict_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"changed message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("send conflicting idempotent actor message via router");
+    assert_eq!(send_idempotent_conflict_resp.status(), StatusCode::CONFLICT);
+
+    let invalid_remote_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"remote-reviewer-2",
+                "channel":"federation",
+                "transport":"remote",
+                "route":null,
+                "payload":{"text":"missing route"}
+            })),
+        ))
+        .await
+        .expect("send invalid remote actor message via router");
+    assert_eq!(
+        invalid_remote_message_resp.status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let list_inbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{message_run_id}/messages/inbox?actor_id=planner&limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list actor inbox via router");
+    assert_eq!(list_inbox_resp.status(), StatusCode::OK);
+    let inbox = decode_json_body(list_inbox_resp).await;
+    let inbox = inbox.as_array().expect("inbox array");
+    assert_eq!(inbox.len(), 2);
+    let message_ids = inbox
+        .iter()
+        .filter_map(|message| message["message_id"].as_i64())
+        .collect::<Vec<_>>();
+    assert!(message_ids.contains(&local_message_id));
+    assert!(message_ids.contains(&idempotent_message_id));
+
+    let ack_local_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/{local_message_id}/ack"),
+            Some(&token),
+            Some(json!({"actor_id":"planner"})),
+        ))
+        .await
+        .expect("ack actor message via router");
+    assert_eq!(ack_local_message_resp.status(), StatusCode::OK);
+    let acked = decode_json_body(ack_local_message_resp).await;
+    assert_eq!(acked["status"], "delivered");
+
+    let wrong_actor_ack_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/{remote_message_id}/ack"),
+            Some(&token),
+            Some(json!({"actor_id":"planner"})),
+        ))
+        .await
+        .expect("ack remote message by wrong actor via router");
+    assert_eq!(wrong_actor_ack_resp.status(), StatusCode::NOT_FOUND);
+
+    let create_fail_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({"context_id":"ctx-router-fail","input":{"prompt":"fail path"}})),
+        ))
+        .await
+        .expect("create run for fail path");
+    assert_eq!(create_fail_run_resp.status(), StatusCode::OK);
+    let fail_run = decode_json_body(create_fail_run_resp).await;
+    let fail_run_id = fail_run["id"].as_str().expect("fail run id").to_string();
+
+    let submit_fail_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{fail_run_id}/steps"),
+            Some(&token),
+            Some(json!({
+                "step_key": "router-fail-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": null
+            })),
+        ))
+        .await
+        .expect("submit fail step via router");
+    assert_eq!(submit_fail_step_resp.status(), StatusCode::OK);
+    let fail_step = decode_json_body(submit_fail_step_resp).await;
+    let fail_step_id = fail_step["id"].as_str().expect("fail step id").to_string();
+
+    let start_fail_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{fail_run_id}/steps/{fail_step_id}/start"),
+            Some(&token),
+            Some(json!({"remote_task_id":"router-fail-task"})),
+        ))
+        .await
+        .expect("start fail step via router");
+    assert_eq!(start_fail_step_resp.status(), StatusCode::OK);
+
+    let invalid_fail_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{fail_run_id}/steps/{fail_step_id}/fail"),
+            Some(&token),
+            Some(json!({"error_text":"  "})),
+        ))
+        .await
+        .expect("invalid fail step via router");
+    assert_eq!(invalid_fail_resp.status(), StatusCode::BAD_REQUEST);
+
+    let fail_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{fail_run_id}/steps/{fail_step_id}/fail"),
+            Some(&token),
+            Some(json!({"error_text":"worker error"})),
+        ))
+        .await
+        .expect("fail step via router");
+    assert_eq!(fail_step_resp.status(), StatusCode::OK);
+    let failed_step = decode_json_body(fail_step_resp).await;
+    assert_eq!(failed_step["status"], "failed");
+
+    let missing_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{step_run_id}/steps/missing-step/start"),
+            Some(&token),
+            Some(json!({"remote_task_id":null})),
+        ))
+        .await
+        .expect("missing step request");
+    assert_eq!(missing_step_resp.status(), StatusCode::NOT_FOUND);
+
+    let missing_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/missing-team/runs",
+            Some(&token),
+            Some(json!({"input": {}})),
+        ))
+        .await
+        .expect("missing team request");
+    assert_eq!(missing_team_resp.status(), StatusCode::NOT_FOUND);
+
+    let missing_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/runs/missing-run/events",
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("missing run request");
+    assert_eq!(missing_run_resp.status(), StatusCode::NOT_FOUND);
+
+    let unsupported_version_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "unsupported-version-team",
+                "description": null,
+                "spec": {
+                    "spec_version": 2,
+                    "entrypoint": "planner",
+                    "members": [{"member_id":"planner"}]
+                }
+            })),
+        ))
+        .await
+        .expect("unsupported version request");
+    assert_eq!(unsupported_version_resp.status(), StatusCode::BAD_REQUEST);
+}

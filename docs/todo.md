@@ -6,12 +6,40 @@
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
 - [ ] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
+- [ ] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
 - [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
+- [ ] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
+- [ ] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
+- [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
+- [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
+- [x] Define cross-field Team spec constraints (entrypoint/member/step graph) for scheduler phase.
+- [x] Add Team spec compatibility versioning (`spec_version`) and migration checks before scheduler rollout.
+- [x] Implement team step lifecycle persistence and event emission (`submitted` -> `working` -> terminal states) for scheduler bootstrap.
+- [x] Add scheduler-facing run status convergence rules (`working` -> `completed`/`failed`) based on step graph outcomes (see `docs/features/2026-02-13-a2a-team-run-status-convergence.md`).
+- [x] Expose scheduler-facing team step lifecycle API/service bridge for orchestrator integration (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
+- [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
+- [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
+- [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
+- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `AGENTHUB_ACTOR_RUN_ID` is configured (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
+- [ ] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
+- [ ] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [ ] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [ ] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [ ] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
+- [ ] Verify orchestrator worker loop handles `/input_required` and `/resume` transitions with idempotent retries (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
+- [x] Implement remote mailbox relay worker (`transport=remote`) with delivery retry/dead-letter policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [x] Move actor mailbox state machine from `src/team/manager.rs` into `crates/agenthub-team-actor` using trait-based store/relay ports (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
+- [x] Add relay port in `agenthub-team-actor` and implement remote transport worker adapter in AgentHub (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [ ] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [ ] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-13-team-module-file-split.md`).
+- [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
+- [ ] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-13-agent-manager-file-split.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
