@@ -2,6 +2,15 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
 const baseURL = `http://127.0.0.1:${port}`;
+const disableWebServer = process.env.PLAYWRIGHT_NO_WEBSERVER === "1";
+
+const webServer = disableWebServer
+  ? undefined
+  : {
+      command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+    };
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -24,9 +33,5 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer,
 });

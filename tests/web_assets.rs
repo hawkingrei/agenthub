@@ -101,4 +101,20 @@ fn styles_keep_acp_conversation_scoped() {
         css.contains(".acp-debug-tabs {\n    max-width: 100%;\n    flex-wrap: wrap;"),
         "mobile ACP debug tabs should wrap adaptively on narrow screens"
     );
+    assert!(
+        css.contains(".acp-text {\n  word-break: break-word;\n  white-space: normal;\n  font-size: 14px;\n  line-height: 1.72;\n  letter-spacing: 0.01em;\n  color: #1b1f23;\n}"),
+        "ACP markdown text should keep readable typography defaults"
+    );
+    assert!(
+        css.contains(".acp-text ul,\n.acp-text ol {\n  padding-left: 20px;\n  list-style-position: outside;\n}"),
+        "ACP markdown list spacing should remain scoped and readable"
+    );
+    assert!(
+        css.contains(".acp-text table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.95em;\n}"),
+        "ACP markdown tables should keep layout styling in conversation view"
+    );
+    assert!(
+        css.contains(".acp-text :not(pre) > code,\n.acp-text p code,\n.acp-text li code {\n  background: #eef2f6;\n  color: #0f172a;"),
+        "ACP inline code style should stay visible in markdown bubbles"
+    );
 }

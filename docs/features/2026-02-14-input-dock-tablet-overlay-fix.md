@@ -18,6 +18,7 @@ render `Interrupt` on top of the editor.
 - `web/src/components/input_dock.tsx`
 - `web/src/styles.css`
 - `web/src/input_dock_render.test.tsx`
+- `web/tests/e2e/input_dock_layout.e2e.ts`
 - `tests/web_assets.rs`
 - `docs/todo.md`
 
@@ -38,12 +39,15 @@ render `Interrupt` on top of the editor.
    control anchor stable across desktop/tablet/mobile widths.
 7. Anchor the `History` popup from the left edge of the trigger and clamp width
    to viewport-safe bounds so it no longer appears visually shifted.
+8. Add Playwright viewport regression checks for mobile and iPad portrait /
+   landscape to validate non-overlap, tap-target sizing, and popup anchoring.
 
 ## Validation
 
 ```bash
 cd web
 npm run test -- src/input_dock_render.test.tsx src/input_dock_keyboard.test.ts
+PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts
 npm run lint -- src/components/input_dock.tsx src/input_dock_render.test.tsx
 npm run build
 cd ..
@@ -52,8 +56,7 @@ cargo test --test web_assets
 
 ## Follow-ups
 
-- Verify iPad portrait/landscape ergonomics on real devices:
-  - no overlap between actions row and textarea
-  - stable tap targets for `Interrupt` and `History`
-- Verify the one-row editor layout keeps `Send` visible and easy to tap on
-  tablet portrait and narrow mobile widths.
+- Verify the same interaction ergonomics on real iOS/Android hardware after
+  viewport-level E2E checks.
+- Run `input_dock_layout.e2e.ts` in CI (or local environment with Playwright
+  browser binaries installed) to validate viewport assertions end-to-end.
