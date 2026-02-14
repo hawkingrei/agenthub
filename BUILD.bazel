@@ -1,4 +1,4 @@
-load("//bazel/ci:defs.bzl", "workspace_shell_build", "workspace_shell_test")
+load("//:bazel/ci/defs.bzl", "workspace_shell_build", "workspace_shell_test")
 
 filegroup(
     name = "workspace_sources",
