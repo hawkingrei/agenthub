@@ -110,7 +110,8 @@ mod tests {
     async fn test_db() -> sqlx::SqlitePool {
         let options = SqliteConnectOptions::new()
             .filename(":memory:")
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .foreign_keys(true);
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(options)

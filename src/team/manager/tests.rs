@@ -11,7 +11,8 @@ use sqlx::{Row, SqlitePool};
 async fn setup_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(":memory:")
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .foreign_keys(true);
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
