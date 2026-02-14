@@ -29,4 +29,4 @@ jobs:
       - name: Bazel build
         run: bazel build //:ci_build
       - name: Bazel test
-        run: bazel test //:ci_tests
+        run: bazel test --test_output=errors //:ci_tests

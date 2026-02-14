@@ -33,8 +33,29 @@ def _workspace_shell_test_impl(ctx):
         is_executable = True,
         content = """#!/usr/bin/env bash
 set -euo pipefail
-workspace="${BUILD_WORKSPACE_DIRECTORY:-${TEST_SRCDIR}/${TEST_WORKSPACE}}"
-bash "${workspace}/%s" "${workspace}"
+tool_rel="%s"
+workspace="${BUILD_WORKSPACE_DIRECTORY:-}"
+
+if [[ -z "${workspace}" ]]; then
+  candidates=(
+    "${TEST_SRCDIR:-}/${TEST_WORKSPACE:-}"
+    "${TEST_SRCDIR:-}/_main"
+    "${TEST_SRCDIR:-}/__main__"
+  )
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}/${tool_rel}" ]]; then
+      workspace="${candidate}"
+      break
+    fi
+  done
+fi
+
+if [[ -z "${workspace}" ]]; then
+  echo "failed to locate workspace for ${tool_rel}" >&2
+  exit 1
+fi
+
+bash "${workspace}/${tool_rel}" "${workspace}"
 """ % tool.short_path,
     )
 
