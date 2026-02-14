@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { ConversationItem } from "../conversation";
-import { buildVirtualConversationSlice } from "./use_acp_conversation";
+import {
+  buildConversationTailKey,
+  buildVirtualConversationSlice,
+  deriveConversationJumpState,
+  nextConversationViewport,
+  normalizeConversationAvgHeightEstimate,
+  restoreConversationScrollTop,
+  shouldAutoLoadConversationHistory,
+  shouldLoadOlderFromMeta,
+  shouldUseConversationVirtualization,
+} from "./use_acp_conversation";
 
 function makeItems(count: number): ConversationItem[] {
   return Array.from({ length: count }, (_, idx) => ({
@@ -28,5 +38,144 @@ describe("buildVirtualConversationSlice", () => {
     expect(slice.offset).toBeGreaterThan(200);
     expect(slice.topSpacer).toBeGreaterThan(0);
     expect(slice.bottomSpacer).toBeGreaterThan(0);
+  });
+
+  it("falls back to default item height for invalid estimates", () => {
+    const items = makeItems(300);
+    const slice = buildVirtualConversationSlice(items, 0, -80, 0, 0);
+    expect(slice.offset).toBe(0);
+    expect(slice.items.length).toBeGreaterThan(0);
+    expect(slice.items.length).toBeLessThanOrEqual(300);
+    expect(slice.topSpacer).toBe(0);
+  });
+});
+
+describe("buildConversationTailKey", () => {
+  it("handles empty conversations", () => {
+    expect(buildConversationTailKey([])).toBe("empty");
+  });
+
+  it("builds key for plain message item", () => {
+    const key = buildConversationTailKey([
+      {
+        kind: "agent_message",
+        text: "hello",
+        event_id: 42,
+      },
+    ]);
+    expect(key).toBe("agent_message:42:5");
+  });
+
+  it("builds key for tool call including payload lengths", () => {
+    const key = buildConversationTailKey([
+      {
+        kind: "tool_call",
+        id: "call-1",
+        title: "search",
+        content: "abc",
+        terminal_output: "ok",
+        raw_input: { q: "hello" },
+        raw_output: { done: true },
+        event_id: 7,
+      },
+    ]);
+    expect(key).toContain("tool_call:7:3:2:");
+  });
+});
+
+describe("shouldLoadOlderFromMeta", () => {
+  const meta = {
+    "agent-1:latest": {
+      oldestId: 1,
+      hasMore: true,
+      loading: false,
+      loaded: true,
+    },
+  };
+
+  it("returns false without active agent", () => {
+    expect(shouldLoadOlderFromMeta(null, null, meta)).toBe(false);
+  });
+
+  it("returns false when meta is missing or not eligible", () => {
+    expect(shouldLoadOlderFromMeta("agent-x", null, meta)).toBe(false);
+    expect(
+      shouldLoadOlderFromMeta("agent-1", null, {
+        "agent-1:latest": { ...meta["agent-1:latest"], loading: true },
+      })
+    ).toBe(false);
+    expect(
+      shouldLoadOlderFromMeta("agent-1", null, {
+        "agent-1:latest": { ...meta["agent-1:latest"], hasMore: false },
+      })
+    ).toBe(false);
+    expect(
+      shouldLoadOlderFromMeta("agent-1", null, {
+        "agent-1:latest": { ...meta["agent-1:latest"], oldestId: null },
+      })
+    ).toBe(false);
+  });
+
+  it("returns true when metadata indicates older events are available", () => {
+    expect(shouldLoadOlderFromMeta("agent-1", null, meta)).toBe(true);
+  });
+});
+
+describe("conversation helper decisions", () => {
+  it("derives virtualization eligibility", () => {
+    expect(shouldUseConversationVirtualization(true, 500)).toBe(false);
+    expect(shouldUseConversationVirtualization(false, 50)).toBe(false);
+    expect(shouldUseConversationVirtualization(false, 180)).toBe(true);
+  });
+
+  it("computes next viewport state and reuses previous object when unchanged", () => {
+    const prev = { top: 10, height: 400 };
+    expect(nextConversationViewport(prev, 10, 400)).toBe(prev);
+    expect(nextConversationViewport(prev, 20, 420)).toEqual({ top: 20, height: 420 });
+  });
+
+  it("derives auto-load eligibility for short conversation windows", () => {
+    expect(shouldAutoLoadConversationHistory("debug", "agent-1", true, 2)).toBe(false);
+    expect(shouldAutoLoadConversationHistory("conversation", null, true, 2)).toBe(false);
+    expect(
+      shouldAutoLoadConversationHistory("conversation", "agent-1", false, 2)
+    ).toBe(false);
+    expect(
+      shouldAutoLoadConversationHistory("conversation", "agent-1", true, 20)
+    ).toBe(false);
+    expect(
+      shouldAutoLoadConversationHistory("conversation", "agent-1", true, 4)
+    ).toBe(true);
+  });
+
+  it("normalizes average height estimates with bounds and jitter guard", () => {
+    expect(normalizeConversationAvgHeightEstimate(48, 0, 4)).toBe(48);
+    expect(normalizeConversationAvgHeightEstimate(48, 96, 2)).toBe(48);
+    expect(normalizeConversationAvgHeightEstimate(48, 960, 4)).toBe(220);
+    expect(normalizeConversationAvgHeightEstimate(48, 8, 10)).toBe(24);
+  });
+
+  it("restores scroll top within available scroll range", () => {
+    expect(restoreConversationScrollTop(400, 800, 300)).toBe(400);
+    expect(restoreConversationScrollTop(900, 800, 300)).toBe(500);
+  });
+
+  it("derives jump/badge visibility from tab and stick state", () => {
+    expect(deriveConversationJumpState("debug", false, 3)).toEqual({
+      showConversationJump: false,
+      showConversationBadge: false,
+    });
+    expect(deriveConversationJumpState("conversation", true, 3)).toEqual({
+      showConversationJump: false,
+      showConversationBadge: false,
+    });
+    expect(deriveConversationJumpState("conversation", false, 0)).toEqual({
+      showConversationJump: true,
+      showConversationBadge: false,
+    });
+    expect(deriveConversationJumpState("conversation", false, 2)).toEqual({
+      showConversationJump: true,
+      showConversationBadge: true,
+    });
   });
 });
