@@ -101,16 +101,11 @@ impl TeamManager {
         input: Value,
     ) -> anyhow::Result<TeamRunRecord> {
         let run_id = Uuid::new_v4().to_string();
-        let resolved_context_id = if let Some(context_id) = context_id {
-            let context_id = context_id.trim();
-            if context_id.is_empty() {
-                Uuid::new_v4().to_string()
-            } else {
-                context_id.to_string()
-            }
-        } else {
-            Uuid::new_v4().to_string()
-        };
+        let resolved_context_id = context_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = Utc::now().timestamp();
         let status = TeamRunStatus::Submitted;
         let input_json = serde_json::to_string(&input)?;
@@ -133,7 +128,7 @@ impl TeamManager {
 
         let payload = serde_json::json!({
             "team_id": team_id,
-            "context_id": resolved_context_id,
+            "context_id": &resolved_context_id,
             "status": team_run_status_to_str(&status),
         });
         sqlx::query(

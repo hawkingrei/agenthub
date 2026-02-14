@@ -66,5 +66,7 @@ cargo test team::manager -- --nocapture
 
 ## Follow-ups
 
-- Implement team step lifecycle persistence and event emission (`submitted` ->
-  `working` -> terminal states) for scheduler bootstrap.
+- Wire the persisted Team step lifecycle API/service bridge into the
+  orchestrator worker loop with real executors.
+- Verify `input_required`/`resume` transitions and retries remain idempotent
+  through the full worker path.

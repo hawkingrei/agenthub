@@ -122,12 +122,19 @@ pub(super) fn team_run_status_to_str(status: &TeamRunStatus) -> &'static str {
 
 pub(super) fn team_run_status_from_str(status: &str) -> TeamRunStatus {
     match status {
+        "submitted" => TeamRunStatus::Submitted,
         "working" => TeamRunStatus::Working,
         "input_required" => TeamRunStatus::InputRequired,
         "completed" => TeamRunStatus::Completed,
         "failed" => TeamRunStatus::Failed,
         "canceled" => TeamRunStatus::Canceled,
-        _ => TeamRunStatus::Submitted,
+        other => {
+            tracing::warn!(
+                "unknown team run status '{}', defaulting to submitted",
+                other
+            );
+            TeamRunStatus::Submitted
+        }
     }
 }
 

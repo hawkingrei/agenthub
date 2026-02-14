@@ -11,7 +11,7 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
 }
 
 async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
-    let pool = try_connect(&db_path).await.map_err(|err| {
+    let pool = try_connect(db_path).await.map_err(|err| {
         anyhow::anyhow!(
             "failed to open db at {}: {}",
             db_path.display(),
@@ -472,53 +472,78 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
-    if let Err(err) = sqlx::query("ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER")
-        .execute(&pool)
-        .await
-    {
-        let message = err.to_string();
-        if !message.contains("duplicate column name") {
-            tracing::warn!(
-                "db init: failed to add auth_sessions.revoked_at column: {}",
-                message
-            );
-        }
-    }
-    let _ = sqlx::query("ALTER TABLE devices ADD COLUMN last_login_at INTEGER")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN worktree_mode TEXT")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN worktree_repo TEXT")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN worktree_ref TEXT")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE agents ADD COLUMN code_mode INTEGER")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query(
-        "ALTER TABLE team_actor_messages ADD COLUMN relay_attempt INTEGER NOT NULL DEFAULT 0",
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER",
+        "auth_sessions.revoked_at",
     )
-    .execute(&pool)
     .await;
-    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN relay_next_retry_at INTEGER")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN relay_last_error TEXT")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN dead_letter_at INTEGER")
-        .execute(&pool)
-        .await;
-    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN idempotency_key TEXT")
-        .execute(&pool)
-        .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE devices ADD COLUMN last_login_at INTEGER",
+        "devices.last_login_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN worktree_mode TEXT",
+        "agents.worktree_mode",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN worktree_repo TEXT",
+        "agents.worktree_repo",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN worktree_ref TEXT",
+        "agents.worktree_ref",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN code_mode INTEGER",
+        "agents.code_mode",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT",
+        "acp_permission_requests.acp_session_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN relay_attempt INTEGER NOT NULL DEFAULT 0",
+        "team_actor_messages.relay_attempt",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN relay_next_retry_at INTEGER",
+        "team_actor_messages.relay_next_retry_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN relay_last_error TEXT",
+        "team_actor_messages.relay_last_error",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN dead_letter_at INTEGER",
+        "team_actor_messages.dead_letter_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN idempotency_key TEXT",
+        "team_actor_messages.idempotency_key",
+    )
+    .await;
     if let Err(err) = sqlx::query(
         r#"
         CREATE UNIQUE INDEX IF NOT EXISTS idx_team_actor_messages_idempotency
@@ -536,6 +561,15 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     }
 
     Ok(pool)
+}
+
+async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
+    if let Err(err) = sqlx::query(sql).execute(pool).await {
+        let message = err.to_string();
+        if !message.contains("duplicate column name") {
+            tracing::warn!("db init: failed to add {} column: {}", column, message);
+        }
+    }
 }
 
 async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {

@@ -44,6 +44,5 @@ cargo test team::manager -- --nocapture
 
 ## Follow-ups
 
-- Add scheduler-facing API/service bridge that drives step transitions from the
-  orchestrator worker loop.
-- Add input-required and resume transitions for step/run coordination.
+- Verify run status convergence with the orchestrator worker loop end-to-end,
+  including retries, cancellation, and replay ordering.

@@ -136,6 +136,48 @@ async fn teams_api_rejects_run_for_unsupported_stored_spec_version() {
 }
 
 #[tokio::test]
+async fn teams_api_rejects_spec_with_too_many_steps() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let mut steps = Vec::new();
+    for index in 0..2049 {
+        let depends_on = if index == 0 {
+            Vec::new()
+        } else {
+            vec![format!("step-{}", index - 1)]
+        };
+        steps.push(json!({
+            "step_key": format!("step-{index}"),
+            "member_id": "planner",
+            "depends_on": depends_on,
+        }));
+    }
+
+    let err = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "too-many-steps".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint": "step-0",
+                "members": [{"member_id":"planner"}],
+                "steps": steps,
+            }),
+        }),
+    )
+    .await
+    .expect_err("spec with too many steps should fail");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    assert_eq!(
+        body["error"],
+        Value::from("spec.steps must not exceed 2048 entries")
+    );
+}
+
+#[tokio::test]
 async fn teams_api_internal_errors_are_sanitized() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -356,9 +398,12 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
     )
     .await
     .expect_err("duplicate step key should conflict");
+    let duplicate_submit_response = duplicate_submit_err.into_response();
+    assert_eq!(duplicate_submit_response.status(), StatusCode::CONFLICT);
+    let duplicate_submit_body = decode_json_body(duplicate_submit_response).await;
     assert_eq!(
-        duplicate_submit_err.into_response().status(),
-        StatusCode::CONFLICT
+        duplicate_submit_body["error"],
+        Value::from("step already exists for run")
     );
 
     let Json(step_working) = start_team_run_step(

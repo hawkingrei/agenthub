@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use agenthub_team_actor::parse_actor_transport;
 use axum::{
@@ -20,6 +20,8 @@ use crate::team::{
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
+const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
+const MAX_TEAM_SPEC_STEPS: usize = 2048;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -522,7 +524,7 @@ fn map_create_team_error(err: anyhow::Error) -> ApiError {
 
 fn map_submit_step_error(err: anyhow::Error) -> ApiError {
     if is_unique_step_attempt_violation(&err) {
-        return ApiError::conflict("step already exists for run and attempt");
+        return ApiError::conflict("step already exists for run");
     }
     map_team_internal_error(err)
 }
@@ -567,7 +569,8 @@ fn is_unique_step_attempt_violation(err: &anyhow::Error) -> bool {
 fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
     match err.downcast_ref::<SqlxError>() {
         Some(SqlxError::Database(db_err)) => {
-            db_err.is_unique_violation() && db_err.message().contains(constraint)
+            db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE_CODE)
+                && db_err.message().contains(constraint)
         }
         _ => false,
     }
@@ -786,6 +789,11 @@ fn validate_steps(
     if steps.is_empty() {
         return Err(ApiError::bad_request("spec.steps must not be empty"));
     }
+    if steps.len() > MAX_TEAM_SPEC_STEPS {
+        return Err(ApiError::bad_request(
+            "spec.steps must not exceed 2048 entries",
+        ));
+    }
 
     let mut step_specs = Vec::with_capacity(steps.len());
     let mut step_keys = HashSet::with_capacity(steps.len());
@@ -881,43 +889,43 @@ fn validate_steps(
 }
 
 fn ensure_acyclic_steps(steps: &[TeamStepSpec]) -> Result<(), ApiError> {
-    let mut graph: HashMap<&str, &[String]> = HashMap::with_capacity(steps.len());
+    let mut indegree: HashMap<&str, usize> = HashMap::with_capacity(steps.len());
+    let mut dependents: HashMap<&str, Vec<&str>> = HashMap::with_capacity(steps.len());
     for step in steps {
-        graph.insert(step.step_key.as_str(), &step.depends_on);
-    }
-
-    let mut marks: HashMap<&str, u8> = HashMap::with_capacity(steps.len());
-    for key in graph.keys().copied() {
-        if has_cycle(key, &graph, &mut marks) {
-            return Err(ApiError::bad_request(
-                "spec.steps must form an acyclic dependency graph",
-            ));
+        let step_key = step.step_key.as_str();
+        indegree.insert(step_key, step.depends_on.len());
+        for dep in &step.depends_on {
+            dependents.entry(dep.as_str()).or_default().push(step_key);
         }
     }
-    Ok(())
-}
 
-fn has_cycle<'a>(
-    key: &'a str,
-    graph: &HashMap<&'a str, &'a [String]>,
-    marks: &mut HashMap<&'a str, u8>,
-) -> bool {
-    match marks.get(key).copied().unwrap_or(0) {
-        1 => return true,
-        2 => return false,
-        _ => {}
-    }
+    let mut ready: VecDeque<&str> = indegree
+        .iter()
+        .filter_map(|(key, count)| if *count == 0 { Some(*key) } else { None })
+        .collect();
+    let mut visited = 0usize;
 
-    marks.insert(key, 1);
-    if let Some(depends_on) = graph.get(key) {
-        for dep in *depends_on {
-            if has_cycle(dep.as_str(), graph, marks) {
-                return true;
+    while let Some(step_key) = ready.pop_front() {
+        visited += 1;
+        if let Some(children) = dependents.get(step_key) {
+            for child in children {
+                if let Some(count) = indegree.get_mut(child) {
+                    *count -= 1;
+                    if *count == 0 {
+                        ready.push_back(child);
+                    }
+                }
             }
         }
     }
-    marks.insert(key, 2);
-    false
+
+    if visited == steps.len() {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(
+            "spec.steps must form an acyclic dependency graph",
+        ))
+    }
 }
 
 #[cfg(test)]

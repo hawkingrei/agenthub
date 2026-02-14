@@ -1,4 +1,5 @@
 use super::TeamManager;
+use super::codec::team_run_status_from_str;
 use crate::team::{
     TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig, TeamRunStatus,
     TeamStepStatus,
@@ -133,6 +134,18 @@ async fn setup_test_db() -> SqlitePool {
     .expect("create team_actor_messages idempotency index");
 
     pool
+}
+
+#[test]
+fn team_run_status_from_str_handles_submitted_and_unknown_values() {
+    assert_eq!(
+        team_run_status_from_str("submitted"),
+        TeamRunStatus::Submitted
+    );
+    assert_eq!(
+        team_run_status_from_str("unexpected"),
+        TeamRunStatus::Submitted
+    );
 }
 
 #[tokio::test]
