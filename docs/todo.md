@@ -13,8 +13,8 @@
 - [x] Keep input editor and `Send` in one row and enlarge `Send` tap target for touch-friendly interaction (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Left-align `Interrupt` and `History` chips in input action row for stable control placement across breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Verify input dock command history menu close hooks and arrow-key recall guards for desktop/mobile IME via unit tests (`input_dock_keyboard.test.ts`) (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
-- [ ] Verify input dock `Interrupt + History` row tap ergonomics on mobile devices (Playwright viewport test added in `input_dock_layout.e2e.ts`, pending local/CI browser run) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
-- [ ] Verify iPad portrait/landscape viewports no longer show `Interrupt` overlapping textarea and action chips keep stable tap targets (`input_dock_layout.e2e.ts`, pending local/CI browser run) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify input dock `Interrupt + History` row tap ergonomics on mobile viewport via Playwright system-Chrome assertions (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify iPad portrait/landscape viewports no longer show `Interrupt` overlapping textarea and action chips keep stable tap targets via Playwright (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Verify one-row `input + Send` layout contract and touch target sizing (`input_dock_render.test.tsx`, `tests/web_assets.rs`) across tablet/mobile breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).

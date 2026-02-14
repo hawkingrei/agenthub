@@ -47,7 +47,7 @@ render `Interrupt` on top of the editor.
 ```bash
 cd web
 npm run test -- src/input_dock_render.test.tsx src/input_dock_keyboard.test.ts
-PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts
+PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
 npm run lint -- src/components/input_dock.tsx src/input_dock_render.test.tsx
 npm run build
 cd ..
@@ -56,7 +56,5 @@ cargo test --test web_assets
 
 ## Follow-ups
 
-- Verify the same interaction ergonomics on real iOS/Android hardware after
-  viewport-level E2E checks.
-- Run `input_dock_layout.e2e.ts` in CI (or local environment with Playwright
-  browser binaries installed) to validate viewport assertions end-to-end.
+- Keep running `input_dock_layout.e2e.ts` in CI to guard against future
+  responsive layout regressions.

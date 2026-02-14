@@ -63,8 +63,9 @@ async function assertDockLayout(
   expect(row.y + row.height).toBeLessThanOrEqual(textarea.y + 0.5);
 
   // Left-aligned chips keep a stable anchor at the start of the row.
-  expect(history.x).toBeGreaterThanOrEqual(row.x - 0.5);
-  expect(history.x).toBeLessThanOrEqual(row.x + 2.5);
+  expect(interrupt.x).toBeGreaterThanOrEqual(row.x - 0.5);
+  expect(interrupt.x).toBeLessThanOrEqual(row.x + 2.5);
+  expect(history.x).toBeGreaterThanOrEqual(interrupt.x + interrupt.width - 1);
 
   // History popup should be left-anchored to the History trigger.
   expect(menu.x).toBeGreaterThanOrEqual(history.x - 1);
