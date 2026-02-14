@@ -1898,13 +1898,14 @@ select:not([class*="mantine-"]):focus-visible {
   .acp-head.minimal {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 6px;
   }
 
   .acp-actions {
     width: 100%;
     justify-content: space-between;
     flex-wrap: wrap;
+    gap: 6px;
   }
 
   .acp-tabs {
@@ -1912,10 +1913,43 @@ select:not([class*="mantine-"]):focus-visible {
     max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
+    padding: 2px;
+    gap: 4px;
+    border-radius: 12px;
+  }
+
+  .acp-tabs .tab {
+    padding: 4px 9px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .acp-tabs .tab .tab-badge {
+    margin-left: 4px;
+    padding: 1px 5px;
+    font-size: 10px;
   }
 
   .acp-interrupt-button {
     flex: 0 0 auto;
+    padding: 4px 10px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .acp-debug {
+    gap: 8px;
+  }
+
+  .acp-debug-tabs {
+    padding: 2px;
+    gap: 4px;
+  }
+
+  .acp-debug-tabs .tab {
+    padding: 4px 9px;
+    font-size: 11px;
+    line-height: 1.15;
   }
 
   .agents-backdrop {
@@ -1967,6 +2001,19 @@ select:not([class*="mantine-"]):focus-visible {
     width: 30px;
     height: 30px;
     right: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .acp-tabs .tab,
+  .acp-debug-tabs .tab {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .acp-interrupt-button {
+    padding: 4px 8px;
+    font-size: 10px;
   }
 }
 

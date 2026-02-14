@@ -66,7 +66,15 @@ fn styles_keep_acp_conversation_scoped() {
         "admin list layout styles should be scoped and not override markdown lists"
     );
     assert!(
-        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 8px;\n  }"),
+        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 6px;\n  }"),
         "mobile ACP head should stack controls for narrow screens"
+    );
+    assert!(
+        css.contains(".acp-tabs .tab {\n    padding: 4px 9px;\n    font-size: 11px;\n    line-height: 1.15;\n  }"),
+        "mobile ACP top tabs should use compact sizing"
+    );
+    assert!(
+        css.contains(".acp-debug-tabs .tab {\n    padding: 4px 9px;\n    font-size: 11px;\n    line-height: 1.15;\n  }"),
+        "mobile ACP debug tabs should use compact sizing"
     );
 }
