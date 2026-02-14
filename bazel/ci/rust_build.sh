@@ -22,13 +22,14 @@ ensure_command() {
 ensure_command cargo "${CARGO_HOME:-}/bin" "${HOME:-}/.cargo/bin" "/home/runner/.cargo/bin"
 
 workspace="${1:?workspace path is required}"
+workspace_abs="$(cd "${workspace}" && pwd)"
 tmp_target_dir="$(mktemp -d "${TMPDIR:-/tmp}/agenthub-cargo-build.XXXXXX")"
 trap 'rm -rf "${tmp_target_dir}"' EXIT
 
 # RustEmbed expects web/dist to exist during compilation.
-if [[ ! -f "${workspace}/web/dist/index.html" ]]; then
-  bash "${workspace}/bazel/ci/web_build.sh" "${workspace}" "${workspace}/web/dist"
+if [[ ! -f "${workspace_abs}/web/dist/index.html" ]]; then
+  bash "${workspace_abs}/bazel/ci/web_build.sh" "${workspace_abs}" "${workspace_abs}/web/dist"
 fi
 
-cd "${workspace}"
+cd "${workspace_abs}"
 CARGO_TARGET_DIR="${tmp_target_dir}" cargo build --workspace

@@ -23,6 +23,9 @@ ensure_command npm "/opt/hostedtoolcache/node/20.20.0/x64/bin" "/opt/hostedtoolc
 
 workspace="${1:?workspace path is required}"
 dist_output="${2:-}"
+if [[ -n "${dist_output}" && "${dist_output}" != /* ]]; then
+  dist_output="$(cd "${workspace}" && pwd)/${dist_output#./}"
+fi
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/agenthub-web-build.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
