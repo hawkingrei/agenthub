@@ -36,6 +36,8 @@ render `Interrupt` on top of the editor.
    (`textarea` + `Send`) and enlarge `Send` tap target for touch ergonomics.
 6. Left-align `Interrupt` and `History` chips in the actions row to keep the
    control anchor stable across desktop/tablet/mobile widths.
+7. Anchor the `History` popup from the left edge of the trigger and clamp width
+   to viewport-safe bounds so it no longer appears visually shifted.
 
 ## Validation
 

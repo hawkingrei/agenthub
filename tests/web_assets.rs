@@ -74,6 +74,10 @@ fn styles_keep_acp_conversation_scoped() {
         "mobile send button should keep touch-friendly tap target size"
     );
     assert!(
+        css.contains(".input-history-menu {\n  position: absolute;\n  left: 0;\n  right: auto;\n  top: calc(100% + 6px);\n  width: min(560px, calc(100vw - 32px));\n  max-width: min(560px, calc(100vw - 32px));"),
+        "history menu should anchor to left edge with viewport-safe width"
+    );
+    assert!(
         css.contains("@supports (height: 100dvh)"),
         "styles.css should use dynamic viewport height fallback for mobile browsers"
     );

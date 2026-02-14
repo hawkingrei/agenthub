@@ -415,9 +415,11 @@ select:not([class*="mantine-"]):focus-visible {
 
 .input-history-menu {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   top: calc(100% + 6px);
-  width: min(560px, 70vw);
+  width: min(560px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
   max-height: 260px;
   overflow: auto;
   border: 1px solid #d9dee5;
@@ -2054,7 +2056,8 @@ select:not([class*="mantine-"]):focus-visible {
   }
 
   .input-history-menu {
-    width: min(92vw, 560px);
+    width: min(92vw, calc(100vw - 16px));
+    max-width: min(92vw, calc(100vw - 16px));
     max-height: 220px;
   }
 
