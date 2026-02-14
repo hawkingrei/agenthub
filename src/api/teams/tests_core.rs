@@ -982,13 +982,31 @@ async fn team_run_messages_api_supports_idempotency_key() {
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
-            payload: json!({"text":"retry request"}),
+            payload: json!({"text":"review this"}),
             idempotency_key: Some("msg-1".to_string()),
         }),
     )
     .await
     .expect("send retry message");
     assert_eq!(first_message.message_id, second_message.message_id);
+
+    let mismatch_conflict_err = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"text":"changed payload"}),
+            idempotency_key: Some("msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect_err("same idempotency key with changed payload should conflict");
+    assert_eq!(mismatch_conflict_err.into_response().status(), StatusCode::CONFLICT);
 
     let Json(events) = list_team_run_events(
         State(state.clone()),

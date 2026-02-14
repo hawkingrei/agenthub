@@ -50,5 +50,5 @@ cargo test -p agenthub-acp
 
 - Replace global env-based actor context with scheduler-provided per-step runtime
   context.
-- Add idempotency key support in actor CLI send path once orchestrator retry
-  contracts are finalized.
+- Actor send idempotency defaults and duplicate-delivery controls are implemented
+  in `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`.

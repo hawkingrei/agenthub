@@ -1,4 +1,4 @@
-use agenthub_team_actor::parse_actor_transport;
+use agenthub_team_actor::{build_default_actor_message_idempotency_key, parse_actor_transport};
 use serde_json::Value;
 
 use crate::team::{TeamActorMessageTransport, TeamManager};
@@ -36,7 +36,7 @@ fn actor_usage() -> &'static str {
     r#"Usage:
   agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id>] [--limit <n>] [--after-id <id>] [--include-delivered]
   agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id>]
-  agenthub actor send --to-actor-id <actor_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>]
+  agenthub actor send --to-actor-id <actor_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]
 
 Environment fallback:
   AGENTHUB_ACTOR_RUN_ID
@@ -201,6 +201,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut route = None;
             let mut payload = None;
             let mut idempotency_key = None;
+            let mut allow_duplicate = false;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -264,6 +265,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                             anyhow::anyhow!("--idempotency-key requires a value")
                         })?);
                     }
+                    "--allow-duplicate" => {
+                        allow_duplicate = true;
+                    }
                     other => return Err(anyhow::anyhow!("unknown flag for send: {}", other)),
                 }
                 idx += 1;
@@ -283,19 +287,62 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
 
             let fallback_channel = normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV)
                 .unwrap_or_else(|| "default".to_string());
+            let run_id = take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?;
+            let from_actor_id = take_required(
+                from_actor_id,
+                Some(ACTOR_RUNTIME_ACTOR_ID_ENV),
+                "from_actor_id",
+            )?;
+            let to_actor_id = take_required(to_actor_id, None, "to_actor_id")?;
+            let channel = take_optional(channel).unwrap_or(fallback_channel);
+            let payload = payload.ok_or_else(|| anyhow::anyhow!("payload_json is required"))?;
+            let explicit_idempotency_key = match idempotency_key {
+                Some(raw) => {
+                    let trimmed = raw.trim();
+                    if trimmed.is_empty() {
+                        return Err(anyhow::anyhow!(
+                            "idempotency_key must be a non-empty string"
+                        ));
+                    }
+                    if trimmed.len() > 128 {
+                        return Err(anyhow::anyhow!(
+                            "idempotency_key must be at most 128 characters"
+                        ));
+                    }
+                    Some(trimmed.to_string())
+                }
+                None => None,
+            };
+            if allow_duplicate && explicit_idempotency_key.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--allow-duplicate cannot be used with --idempotency-key"
+                ));
+            }
+            let resolved_idempotency_key = if allow_duplicate {
+                None
+            } else {
+                Some(explicit_idempotency_key.unwrap_or_else(|| {
+                    build_default_actor_message_idempotency_key(
+                        &run_id,
+                        &from_actor_id,
+                        &to_actor_id,
+                        &channel,
+                        transport.as_str(),
+                        route.as_ref(),
+                        &payload,
+                    )
+                }))
+            };
+
             Ok(ActorCommand::Send {
-                run_id: take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?,
-                from_actor_id: take_required(
-                    from_actor_id,
-                    Some(ACTOR_RUNTIME_ACTOR_ID_ENV),
-                    "from_actor_id",
-                )?,
-                to_actor_id: take_required(to_actor_id, None, "to_actor_id")?,
-                channel: take_optional(channel).unwrap_or(fallback_channel),
+                run_id,
+                from_actor_id,
+                to_actor_id,
+                channel,
                 transport,
                 route,
-                payload: payload.ok_or_else(|| anyhow::anyhow!("payload_json is required"))?,
-                idempotency_key: take_optional(idempotency_key),
+                payload,
+                idempotency_key: resolved_idempotency_key,
             })
         }
         "help" | "--help" | "-h" => Err(anyhow::anyhow!("{}", actor_usage())),
@@ -437,6 +484,96 @@ mod tests {
         assert!(
             parse_actor_command(&args).is_err(),
             "remote transport must require route-json"
+        );
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_send_generates_default_idempotency_key() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-default-key");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "reviewer".to_string(),
+            "--payload-json".to_string(),
+            r#"{"text":"hello"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse send");
+        match parsed {
+            ActorCommand::Send {
+                idempotency_key, ..
+            } => {
+                let idempotency_key = idempotency_key.expect("default idempotency key");
+                assert!(idempotency_key.starts_with("auto:v1:"));
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_send_allow_duplicate_disables_default_idempotency_key() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-allow-duplicate");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "reviewer".to_string(),
+            "--payload-json".to_string(),
+            r#"{"text":"hello"}"#.to_string(),
+            "--allow-duplicate".to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse send");
+        match parsed {
+            ActorCommand::Send {
+                idempotency_key, ..
+            } => {
+                assert!(
+                    idempotency_key.is_none(),
+                    "allow duplicate should skip idempotency key"
+                );
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_send_rejects_duplicate_flag_with_explicit_idempotency_key() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-duplicate-invalid");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "reviewer".to_string(),
+            "--payload-json".to_string(),
+            r#"{"text":"hello"}"#.to_string(),
+            "--idempotency-key".to_string(),
+            "k-1".to_string(),
+            "--allow-duplicate".to_string(),
+        ];
+        assert!(
+            parse_actor_command(&args).is_err(),
+            "allow duplicate and idempotency key should conflict"
         );
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);

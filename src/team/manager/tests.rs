@@ -648,7 +648,7 @@ async fn actor_message_send_is_idempotent_by_key() {
             "coordination",
             TeamActorMessageTransport::Local,
             None,
-            json!({"text":"retry review"}),
+            json!({"text":"please review"}),
             Some("msg-1"),
         )
         .await
@@ -679,6 +679,73 @@ async fn actor_message_send_is_idempotent_by_key() {
         .filter(|event| event.event_type == "actor_message_sent")
         .count();
     assert_eq!(sent_count, 1);
+}
+
+#[tokio::test]
+async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-message-idempotency-conflict-team".to_string(),
+            description: Some("team for idempotency conflict flow".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-idempotency-conflict"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let _ = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "reviewer",
+            "coordination",
+            TeamActorMessageTransport::Local,
+            None,
+            json!({"text":"please review"}),
+            Some("msg-1"),
+        )
+        .await
+        .expect("first send");
+    let err = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "reviewer",
+            "coordination",
+            TeamActorMessageTransport::Local,
+            None,
+            json!({"text":"changed payload"}),
+            Some("msg-1"),
+        )
+        .await
+        .expect_err("mismatched payload should conflict");
+    assert!(
+        TeamManager::is_actor_message_idempotency_conflict(&err),
+        "expected idempotency conflict error, got: {err}"
+    );
+
+    let message_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_actor_messages WHERE run_id = ?1 AND from_actor_id = ?2",
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .fetch_one(&db)
+    .await
+    .expect("count actor messages");
+    assert_eq!(message_count, 1);
 }
 
 #[tokio::test]

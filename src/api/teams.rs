@@ -16,7 +16,7 @@ use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageTransport, TeamDefinitionConfig, TeamDefinitionRecord,
-    TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
+    TeamManager, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -437,7 +437,7 @@ async fn send_team_run_message(
             idempotency_key.as_deref(),
         )
         .await
-        .map_err(map_team_internal_error)?;
+        .map_err(map_send_actor_message_error)?;
     Ok(Json(message))
 }
 
@@ -523,6 +523,13 @@ fn map_create_team_error(err: anyhow::Error) -> ApiError {
 fn map_submit_step_error(err: anyhow::Error) -> ApiError {
     if is_unique_step_attempt_violation(&err) {
         return ApiError::conflict("step already exists for run and attempt");
+    }
+    map_team_internal_error(err)
+}
+
+fn map_send_actor_message_error(err: anyhow::Error) -> ApiError {
+    if TeamManager::is_actor_message_idempotency_conflict(&err) {
+        return ApiError::conflict("idempotency_key conflicts with an existing message payload");
     }
     map_team_internal_error(err)
 }

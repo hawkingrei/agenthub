@@ -386,6 +386,75 @@ async fn teams_router_http_contract() {
         "https://remote.example/a2a"
     );
 
+    let send_idempotent_first_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"idempotent message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("send idempotent actor message via router");
+    assert_eq!(send_idempotent_first_resp.status(), StatusCode::OK);
+    let idempotent_first = decode_json_body(send_idempotent_first_resp).await;
+    let idempotent_message_id = idempotent_first["message_id"]
+        .as_i64()
+        .expect("idempotent message id");
+
+    let send_idempotent_retry_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"idempotent message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("retry idempotent actor message via router");
+    assert_eq!(send_idempotent_retry_resp.status(), StatusCode::OK);
+    let idempotent_retry = decode_json_body(send_idempotent_retry_resp).await;
+    assert_eq!(
+        idempotent_retry["message_id"],
+        Value::from(idempotent_message_id)
+    );
+
+    let send_idempotent_conflict_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{message_run_id}/messages/send"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"changed message"},
+                "idempotency_key":"router-msg-1"
+            })),
+        ))
+        .await
+        .expect("send conflicting idempotent actor message via router");
+    assert_eq!(send_idempotent_conflict_resp.status(), StatusCode::CONFLICT);
+
     let invalid_remote_message_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -421,8 +490,13 @@ async fn teams_router_http_contract() {
     assert_eq!(list_inbox_resp.status(), StatusCode::OK);
     let inbox = decode_json_body(list_inbox_resp).await;
     let inbox = inbox.as_array().expect("inbox array");
-    assert_eq!(inbox.len(), 1);
-    assert_eq!(inbox[0]["message_id"], Value::from(local_message_id));
+    assert_eq!(inbox.len(), 2);
+    let message_ids = inbox
+        .iter()
+        .filter_map(|message| message["message_id"].as_i64())
+        .collect::<Vec<_>>();
+    assert!(message_ids.contains(&local_message_id));
+    assert!(message_ids.contains(&idempotent_message_id));
 
     let ack_local_message_resp = app
         .clone()

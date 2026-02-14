@@ -5,7 +5,7 @@ use agenthub_team_actor::{
     AckActorMessageCommand, AckActorMessageResult, ActorMailbox, ActorMailboxError,
     ActorMailboxStore, ActorMessageRelay, ActorRelayError, CreatePendingMessageResult,
     ListActorInboxQuery, PendingRemoteRelayRecord, RelayRemotePendingCommand,
-    RelayRemotePendingResult, SendActorMessageCommand,
+    RelayRemotePendingResult, SendActorMessageCommand, actor_message_fingerprint,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -40,6 +40,11 @@ impl Default for TeamRemoteRelayWorkerSettings {
 }
 
 impl TeamManager {
+    pub fn is_actor_message_idempotency_conflict(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<SqlActorMailboxStoreError>()
+            .is_some_and(|cause| matches!(cause, SqlActorMailboxStoreError::IdempotencyConflict))
+    }
+
     pub fn spawn_remote_relay_worker(self: Arc<Self>, settings: TeamRemoteRelayWorkerSettings) {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(
@@ -236,9 +241,17 @@ struct SqlActorMailboxStore {
     db: SqlitePool,
 }
 
+#[derive(Debug, Error)]
+enum SqlActorMailboxStoreError {
+    #[error(transparent)]
+    Sql(#[from] sqlx::Error),
+    #[error("actor message idempotency conflict")]
+    IdempotencyConflict,
+}
+
 #[async_trait]
 impl ActorMailboxStore for SqlActorMailboxStore {
-    type Error = sqlx::Error;
+    type Error = SqlActorMailboxStoreError;
 
     async fn create_pending_message(
         &self,
@@ -298,11 +311,13 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 idempotency_key,
             )
             .await?;
+            ensure_idempotency_compatible(cmd, &message)?;
             (message, false)
         } else {
             return Err(sqlx::Error::Protocol(
                 "insert was ignored without idempotency_key".to_string(),
-            ));
+            )
+            .into());
         };
         tx.commit().await?;
         Ok(CreatePendingMessageResult { message, created })
@@ -671,8 +686,43 @@ async fn fetch_message_by_idempotency(
     parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
 }
 
-fn map_actor_mailbox_store_error(err: ActorMailboxError<sqlx::Error>) -> anyhow::Error {
+fn ensure_idempotency_compatible(
+    cmd: &SendActorMessageCommand,
+    existing: &TeamActorMessageRecord,
+) -> Result<(), SqlActorMailboxStoreError> {
+    let incoming_fp = actor_message_fingerprint(
+        &cmd.run_id,
+        &cmd.from_actor_id,
+        &cmd.to_actor_id,
+        &cmd.channel,
+        cmd.transport.as_str(),
+        cmd.route.as_ref(),
+        &cmd.payload,
+    );
+    let existing_fp = actor_message_fingerprint(
+        &existing.run_id,
+        &existing.from_actor_id,
+        &existing.to_actor_id,
+        &existing.channel,
+        existing.transport.as_str(),
+        existing.route.as_ref(),
+        &existing.payload,
+    );
+    if incoming_fp != existing_fp {
+        return Err(SqlActorMailboxStoreError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn map_actor_mailbox_store_error(
+    err: ActorMailboxError<SqlActorMailboxStoreError>,
+) -> anyhow::Error {
     match err {
-        ActorMailboxError::Store(store_err) => anyhow::Error::new(store_err),
+        ActorMailboxError::Store(store_err) => match store_err {
+            SqlActorMailboxStoreError::Sql(sql_err) => anyhow::Error::new(sql_err),
+            SqlActorMailboxStoreError::IdempotencyConflict => {
+                anyhow::Error::new(SqlActorMailboxStoreError::IdempotencyConflict)
+            }
+        },
     }
 }
