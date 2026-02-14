@@ -1905,35 +1905,45 @@ select:not([class*="mantine-"]):focus-visible {
     width: 100%;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: clamp(4px, 1.6vw, 8px);
   }
 
   .acp-tabs {
+    --acp-tab-font-size: clamp(10px, 2.8vw, 11px);
+    --acp-tab-pad-y: clamp(3px, 1vw, 5px);
+    --acp-tab-pad-x: clamp(8px, 3.2vw, 11px);
     flex: 1 1 auto;
+    min-width: 0;
     max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
-    padding: 2px;
-    gap: 4px;
+    padding: clamp(2px, 0.6vw, 3px);
+    gap: clamp(3px, 1vw, 5px);
     border-radius: 12px;
   }
 
   .acp-tabs .tab {
-    padding: 4px 9px;
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-height: 30px;
+    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
+    font-size: var(--acp-tab-font-size);
     line-height: 1.15;
   }
 
   .acp-tabs .tab .tab-badge {
-    margin-left: 4px;
-    padding: 1px 5px;
-    font-size: 10px;
+    margin-left: clamp(3px, 1vw, 5px);
+    padding: 1px clamp(4px, 1.4vw, 6px);
+    font-size: clamp(9px, 2.3vw, 10px);
   }
 
   .acp-interrupt-button {
     flex: 0 0 auto;
-    padding: 4px 10px;
-    font-size: 11px;
+    min-height: 30px;
+    padding: clamp(3px, 1vw, 5px) clamp(8px, 3vw, 11px);
+    font-size: clamp(10px, 2.8vw, 11px);
     line-height: 1.15;
   }
 
@@ -1942,13 +1952,16 @@ select:not([class*="mantine-"]):focus-visible {
   }
 
   .acp-debug-tabs {
-    padding: 2px;
-    gap: 4px;
+    max-width: 100%;
+    flex-wrap: wrap;
+    padding: clamp(2px, 0.6vw, 3px);
+    gap: clamp(3px, 1vw, 5px);
   }
 
   .acp-debug-tabs .tab {
-    padding: 4px 9px;
-    font-size: 11px;
+    min-height: 30px;
+    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
+    font-size: var(--acp-tab-font-size);
     line-height: 1.15;
   }
 
@@ -2001,19 +2014,6 @@ select:not([class*="mantine-"]):focus-visible {
     width: 30px;
     height: 30px;
     right: 12px;
-  }
-}
-
-@media (max-width: 420px) {
-  .acp-tabs .tab,
-  .acp-debug-tabs .tab {
-    padding: 4px 7px;
-    font-size: 10px;
-  }
-
-  .acp-interrupt-button {
-    padding: 4px 8px;
-    font-size: 10px;
   }
 }
 

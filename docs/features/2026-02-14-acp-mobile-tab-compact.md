@@ -2,8 +2,8 @@
 
 ## Summary
 
-Reduce the visual footprint of ACP tab controls on phones so `Conversation` /
-`Debug` tab cards no longer look oversized in narrow viewports.
+Reduce the visual footprint of ACP tab controls on phones and make sizing
+adaptive across different narrow viewport widths.
 
 ## Background
 
@@ -22,13 +22,11 @@ chips appear too large.
 - Keep desktop/tabet styles unchanged; apply compact sizing only under mobile
   breakpoints.
 - For `@media (max-width: 720px)`:
-  - shrink ACP header gap and action spacing,
-  - reduce top tab chip padding/font size,
-  - reduce badge size,
-  - reduce interrupt button size,
-  - reduce debug tab chip size.
-- For `@media (max-width: 420px)`:
-  - apply an additional compact pass to tabs and interrupt button.
+  - use `clamp(...)` for tab font sizes/paddings and interrupt button sizing,
+  - center and equalize top tabs with flexible width (`flex: 1 1 0`),
+  - keep badge sizing adaptive with viewport-scaled spacing,
+  - allow debug tabs to wrap on narrower widths.
+- Remove fixed 420px-only overrides and use fluid sizing instead.
 - Update CSS guard test to assert compact mobile tab styles are present.
 
 ## Validation
