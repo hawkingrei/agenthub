@@ -137,6 +137,40 @@ describe("deriveInputDockKeyAction", () => {
     ).toEqual({ type: "send" });
   });
 
+  it("does not send on Enter when Shift is pressed", () => {
+    expect(
+      deriveInputDockKeyAction({
+        key: "Enter",
+        shiftKey: true,
+        altKey: false,
+        metaKey: false,
+        ctrlKey: false,
+        showHistory: false,
+        composing: false,
+        value: "hi",
+        selectionStart: 2,
+        selectionEnd: 2,
+      })
+    ).toEqual({ type: "none" });
+  });
+
+  it("does not send on Enter while IME composing", () => {
+    expect(
+      deriveInputDockKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        ctrlKey: false,
+        showHistory: false,
+        composing: true,
+        value: "hi",
+        selectionStart: 2,
+        selectionEnd: 2,
+      })
+    ).toEqual({ type: "none" });
+  });
+
   it("returns history navigation action when arrow key recalls history", () => {
     expect(
       deriveInputDockKeyAction({
@@ -152,6 +186,40 @@ describe("deriveInputDockKeyAction", () => {
         selectionEnd: 0,
       })
     ).toEqual({ type: "navigate_history", direction: "up" });
+  });
+
+  it("does not close history on Escape when menu is hidden", () => {
+    expect(
+      deriveInputDockKeyAction({
+        key: "Escape",
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        ctrlKey: false,
+        showHistory: false,
+        composing: false,
+        value: "",
+        selectionStart: 0,
+        selectionEnd: 0,
+      })
+    ).toEqual({ type: "none" });
+  });
+
+  it("does not recall history when multiline cursor is not at boundary", () => {
+    expect(
+      deriveInputDockKeyAction({
+        key: "ArrowUp",
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        ctrlKey: false,
+        showHistory: false,
+        composing: false,
+        value: "line1\nline2",
+        selectionStart: 2,
+        selectionEnd: 2,
+      })
+    ).toEqual({ type: "none" });
   });
 
   it("returns none when no input dock shortcut applies", () => {
@@ -224,6 +292,8 @@ describe("history outside close helpers", () => {
     expect(closeCount).toBe(0);
     listeners.get("mousedown")?.({ target: outside } as unknown as Event);
     expect(closeCount).toBe(1);
+    listeners.get("touchstart")?.({ target: outside } as unknown as Event);
+    expect(closeCount).toBe(2);
 
     cleanup();
     expect(removed).toEqual(["mousedown", "touchstart"]);

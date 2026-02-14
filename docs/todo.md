@@ -3,6 +3,7 @@
 - [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Memoize ACP conversation row rendering (`ConversationBubble` + tool/plan/markdown bubbles) to cut repeated render work during scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Guard ACP conversation virtual-slice/freeze state against blank-window rendering when stale viewport/freeze state occurs; recover without requiring manual `Jump to bottom` (see `docs/features/2026-02-14-acp-conversation-blank-window-guard.md`).
 - [x] Add IME-safe keyboard guards for input history recall (`nativeEvent.isComposing`/keyCode `229`) with unit coverage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add unit-level verification for reusable `requestAnimationFrame` throttle dedupe/cancel behavior in ACP conversation scroll path (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Close input history menu on typing, arrow-history navigation, `Escape`, and outside click for keyboard/mouse accessibility (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
@@ -10,12 +11,20 @@
 - [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [x] Increase unit coverage for input dock interaction branches and ACP tab interaction callbacks (`input_dock.tsx`, `acp_panel.tsx`) (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [x] Increase unit coverage for `use_acp_conversation` by extracting deterministic helper decisions into pure functions and testing branch-heavy paths (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
-- [ ] Verify input dock command history menu and arrow-key recall behavior on desktop/mobile IME (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
-- [ ] Verify input dock `Interrupt + History` row tap ergonomics on mobile devices (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Refactor `InputDock` into stable flow rows (`input-row` + `input-editor-row`) and remove absolute-position action overlay to prevent tablet overlap (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep input editor and `Send` in one row and enlarge `Send` tap target for touch-friendly interaction (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Left-align `Interrupt` and `History` chips in input action row for stable control placement across breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify input dock command history menu close hooks and arrow-key recall guards for desktop/mobile IME via unit tests (`input_dock_keyboard.test.ts`) (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Verify input dock `Interrupt + History` row tap ergonomics on mobile viewport via Playwright system-Chrome assertions (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify iPad portrait/landscape viewports no longer show `Interrupt` overlapping textarea and action chips keep stable tap targets via Playwright (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify one-row `input + Send` layout contract and touch target sizing (`input_dock_render.test.tsx`, `tests/web_assets.rs`) across tablet/mobile breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep `jump-bottom` outside `input-editor-row` to avoid fixed-position element conflicting with editor grid flow (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Replace `input-send-button` sizing `!important` overrides with higher-specificity selectors for maintainable mobile/desktop sizing (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Gate optional Playwright `system-chrome` project behind `PLAYWRIGHT_SYSTEM_CHROME=1` so default E2E runs stay Chromium-only and CI-safe (see `docs/features/2026-02-10-playwright-e2e.md`).
 - [ ] Verify `use_acp_conversation` helper extraction keeps scroll restoration and jump-badge behavior unchanged across long sessions (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
-- [ ] Verify ACP markdown typography and list/table/code rendering in conversation view on desktop and mobile (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
+- [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify mobile workspace alignment with safe-area insets and ACP header action wrapping (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [x] Compact ACP top tabs (`Conversation`/`Debug`) and debug sub-tabs on mobile breakpoints to reduce oversized tab cards (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).

@@ -54,8 +54,28 @@ fn styles_keep_acp_conversation_scoped() {
         "app should be fixed height with overflow auto"
     );
     assert!(
-        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n}"),
-        "input docked should stick to bottom"
+        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 8px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n}"),
+        "input docked should use grid slots for actions and editor rows"
+    );
+    assert!(
+        css.contains(".input-row {\n  position: static;\n  display: flex;\n  align-items: center;\n  justify-content: flex-start;\n  flex-wrap: wrap;\n  gap: 6px;\n  min-height: 28px;\n}"),
+        "input actions row should be flow layout and left aligned for consistent chip placement"
+    );
+    assert!(
+        css.contains(".input-editor-row {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto;\n  align-items: stretch;\n  gap: 12px;\n  min-width: 0;\n}"),
+        "input editor row should isolate textarea and send button layout"
+    );
+    assert!(
+        css.contains(".input.docked .input-editor-row .input-send-button {\n  height: 48px;\n  min-height: 48px;\n  min-width: 92px;\n  padding: 0 16px;\n  border-radius: 10px;\n  font-size: 14px;\n  line-height: 1.1;\n  align-self: stretch;\n}"),
+        "send button should keep larger tap target size"
+    );
+    assert!(
+        css.contains(".input.docked .input-editor-row .input-send-button {\n    height: 44px;\n    min-height: 44px;\n    min-width: 88px;\n    padding: 0 14px;\n    font-size: 13px;\n  }"),
+        "mobile send button should keep touch-friendly tap target size"
+    );
+    assert!(
+        css.contains(".input-history-menu {\n  position: absolute;\n  left: 0;\n  right: auto;\n  top: calc(100% + 6px);\n  width: min(560px, calc(100vw - 32px));\n  max-width: min(560px, calc(100vw - 32px));"),
+        "history menu should anchor to left edge with viewport-safe width"
     );
     assert!(
         css.contains("@supports (height: 100dvh)"),
@@ -80,5 +100,21 @@ fn styles_keep_acp_conversation_scoped() {
     assert!(
         css.contains(".acp-debug-tabs {\n    max-width: 100%;\n    flex-wrap: wrap;"),
         "mobile ACP debug tabs should wrap adaptively on narrow screens"
+    );
+    assert!(
+        css.contains(".acp-text {\n  word-break: break-word;\n  white-space: normal;\n  font-size: 14px;\n  line-height: 1.72;\n  letter-spacing: 0.01em;\n  color: #1b1f23;\n}"),
+        "ACP markdown text should keep readable typography defaults"
+    );
+    assert!(
+        css.contains(".acp-text ul,\n.acp-text ol {\n  padding-left: 20px;\n  list-style-position: outside;\n}"),
+        "ACP markdown list spacing should remain scoped and readable"
+    );
+    assert!(
+        css.contains(".acp-text table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.95em;\n}"),
+        "ACP markdown tables should keep layout styling in conversation view"
+    );
+    assert!(
+        css.contains(".acp-text :not(pre) > code,\n.acp-text p code,\n.acp-text li code {\n  background: #eef2f6;\n  color: #0f172a;"),
+        "ACP inline code style should stay visible in markdown bubbles"
     );
 }

@@ -208,4 +208,37 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("acp-conversation-spacer");
     expect(html).toContain("height:120px");
   });
+
+  it("renders markdown list, table, and code blocks in conversation bubbles", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_message",
+        text: [
+          "- item a",
+          "- item b",
+          "",
+          "| col | value |",
+          "| --- | --- |",
+          "| k1 | v1 |",
+          "",
+          "Inline `code` sample.",
+          "",
+          "```ts",
+          "const n = 1;",
+          "```",
+        ].join("\n"),
+        event_id: 10,
+      },
+    ]);
+
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>item a</li>");
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th>col</th>");
+    expect(html).toContain("<td>v1</td>");
+    expect(html).toContain("<code>code</code>");
+    expect(html).toContain("<pre class=\"hljs\"><code>");
+    expect(html).toContain("hljs-keyword\">const</span>");
+    expect(html).toContain("hljs-number\">1</span>");
+  });
 });

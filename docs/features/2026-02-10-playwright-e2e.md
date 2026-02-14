@@ -14,9 +14,13 @@ UI regressions around workspace output and agents layout warrant a basic end-to-
 
 - Use only Chromium to keep CI runtime reasonable.
 - Use a dev server instead of preview build to reduce setup steps.
+- Allow opting out of webServer startup via `PLAYWRIGHT_NO_WEBSERVER=1` for
+  component-level layout tests that use inline HTML/CSS only.
 
 ## Validation
 
 ```bash
 cd web && npm run e2e
+cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=chromium
+cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MINIMAL_RUNTIME=1 PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test tests/e2e/input_dock_layout.e2e.ts --project=system-chrome
 ```

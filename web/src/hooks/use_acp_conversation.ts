@@ -191,9 +191,14 @@ export function buildVirtualConversationSlice(
     : 48;
   const safeTop = Math.max(0, viewportTop);
   const safeHeight = Math.max(1, viewportHeight);
-  const start = Math.max(0, Math.floor(safeTop / itemHeight) - overscan);
+  const estimatedTotalHeight = total * itemHeight;
+  const maxViewportTop = Math.max(0, estimatedTotalHeight - safeHeight);
+  const clampedTop = Math.min(safeTop, maxViewportTop);
+  const rawStart = Math.max(0, Math.floor(clampedTop / itemHeight) - overscan);
   const visibleCount = Math.max(36, Math.ceil(safeHeight / itemHeight) + overscan * 2);
-  const end = Math.min(total, start + visibleCount);
+  const maxStart = Math.max(0, total - visibleCount);
+  const start = Math.min(rawStart, maxStart);
+  const end = Math.min(total, Math.max(start + 1, start + visibleCount));
   return {
     items: sourceItems.slice(start, end),
     offset: sourceOffset + start,
@@ -425,6 +430,17 @@ export function useAcpConversation({
 
   useEffect(() => {
     didAutoAlignConversationRef.current = false;
+    acpStickToBottomRef.current = true;
+    pendingScrollAdjustRef.current = null;
+    setConversationStickToBottom(true);
+    setConversationFrozen(false);
+    setConversationFreezeCursor(null);
+    setConversationFrozenItems([]);
+    setConversationPendingCount(0);
+    setConversationViewport((prev) => ({
+      top: 0,
+      height: prev.height,
+    }));
   }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
@@ -526,6 +542,32 @@ export function useAcpConversation({
     acpTab,
     conversationFrozenItems.length,
     conversationPendingCount,
+  ]);
+
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!conversationFrozen) return;
+    if (conversationMessages.length === 0) return;
+    if (conversationFrozenItems.length > 0) return;
+    // Guard against stale freeze cursor/state causing an empty visible list.
+    const maxCursor = deriveConversationFreezeCursor(conversationMessages);
+    const { frozen, pending } = applyConversationFreeze(
+      conversationMessages,
+      maxCursor
+    );
+    if (frozen.length === 0) {
+      jumpToConversationBottom();
+      return;
+    }
+    setConversationFreezeCursor(maxCursor);
+    setConversationFrozenItems(frozen);
+    setConversationPendingCount(pending);
+  }, [
+    acpTab,
+    conversationFrozen,
+    conversationMessages,
+    conversationFrozenItems.length,
+    jumpToConversationBottom,
   ]);
 
   useEffect(() => {

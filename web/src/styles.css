@@ -351,16 +351,44 @@ select:not([class*="mantine-"]):focus-visible {
   box-shadow: var(--shadow);
   margin-top: auto;
   position: relative;
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto;
+  align-items: stretch;
 }
 
 .input-row {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 2;
-  display: inline-flex;
+  position: static;
+  display: flex;
   align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
+  min-height: 28px;
+}
+
+.input-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.input-editor-row textarea:not([class*="mantine-"]) {
+  width: 100%;
+  min-width: 0;
+}
+
+.input.docked .input-editor-row .input-send-button {
+  height: 48px;
+  min-height: 48px;
+  min-width: 92px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.1;
+  align-self: stretch;
 }
 
 .input-history {
@@ -388,9 +416,11 @@ select:not([class*="mantine-"]):focus-visible {
 
 .input-history-menu {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   top: calc(100% + 6px);
-  width: min(560px, 70vw);
+  width: min(560px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
   max-height: 260px;
   overflow: auto;
   border: 1px solid #d9dee5;
@@ -400,6 +430,7 @@ select:not([class*="mantine-"]):focus-visible {
   padding: 6px;
   display: grid;
   gap: 4px;
+  z-index: 8;
 }
 
 .input-history-item {
@@ -1999,12 +2030,24 @@ select:not([class*="mantine-"]):focus-visible {
   }
 
   .input.docked {
-    flex-direction: column;
+    gap: 6px;
   }
 
   .input-row {
-    position: static;
-    align-self: flex-end;
+    justify-content: flex-start;
+    min-height: 26px;
+  }
+
+  .input-editor-row {
+    gap: 8px;
+  }
+
+  .input.docked .input-editor-row .input-send-button {
+    height: 44px;
+    min-height: 44px;
+    min-width: 88px;
+    padding: 0 14px;
+    font-size: 13px;
   }
 
   .input-interrupt-button {
@@ -2015,7 +2058,8 @@ select:not([class*="mantine-"]):focus-visible {
   }
 
   .input-history-menu {
-    width: min(92vw, 560px);
+    width: min(92vw, calc(100vw - 16px));
+    max-width: min(92vw, calc(100vw - 16px));
     max-height: 220px;
   }
 

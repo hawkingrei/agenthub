@@ -40,6 +40,15 @@ describe("buildVirtualConversationSlice", () => {
     expect(slice.bottomSpacer).toBeGreaterThan(0);
   });
 
+  it("clamps overshot viewport top to avoid empty slices", () => {
+    const items = makeItems(220);
+    const slice = buildVirtualConversationSlice(items, 0, 999_999, 420, 36, 8);
+    expect(slice.items.length).toBeGreaterThan(0);
+    expect(slice.offset).toBeGreaterThanOrEqual(0);
+    expect(slice.offset).toBeLessThan(items.length);
+    expect(slice.bottomSpacer).toBeGreaterThanOrEqual(0);
+  });
+
   it("falls back to default item height for invalid estimates", () => {
     const items = makeItems(300);
     const slice = buildVirtualConversationSlice(items, 0, -80, 0, 0);
