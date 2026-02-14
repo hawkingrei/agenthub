@@ -25,5 +25,10 @@ workspace="${1:?workspace path is required}"
 tmp_target_dir="$(mktemp -d "${TMPDIR:-/tmp}/agenthub-cargo-build.XXXXXX")"
 trap 'rm -rf "${tmp_target_dir}"' EXIT
 
+# RustEmbed expects web/dist to exist during compilation.
+if [[ ! -f "${workspace}/web/dist/index.html" ]]; then
+  bash "${workspace}/bazel/ci/web_build.sh" "${workspace}" "${workspace}/web/dist"
+fi
+
 cd "${workspace}"
 CARGO_TARGET_DIR="${tmp_target_dir}" cargo build --workspace

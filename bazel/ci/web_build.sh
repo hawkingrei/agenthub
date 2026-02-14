@@ -22,6 +22,7 @@ ensure_command() {
 ensure_command npm "/opt/hostedtoolcache/node/20.20.0/x64/bin" "/opt/hostedtoolcache/node/20.19.0/x64/bin"
 
 workspace="${1:?workspace path is required}"
+dist_output="${2:-}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/agenthub-web-build.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
@@ -32,3 +33,9 @@ cd "${tmp_dir}/web"
 
 npm ci
 npm run build
+
+if [[ -n "${dist_output}" ]]; then
+  rm -rf "${dist_output}"
+  mkdir -p "$(dirname "${dist_output}")"
+  cp -R "${tmp_dir}/web/dist" "${dist_output}"
+fi
