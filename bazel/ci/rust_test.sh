@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ensure_rustup_env() {
+  if [[ -z "${CARGO_HOME:-}" ]]; then
+    if [[ -d "${HOME:-}/.cargo" ]]; then
+      export CARGO_HOME="${HOME}/.cargo"
+    elif [[ -d "/home/runner/.cargo" ]]; then
+      export CARGO_HOME="/home/runner/.cargo"
+    fi
+  fi
+  if [[ -z "${RUSTUP_HOME:-}" ]]; then
+    if [[ -d "${HOME:-}/.rustup" ]]; then
+      export RUSTUP_HOME="${HOME}/.rustup"
+    elif [[ -d "/home/runner/.rustup" ]]; then
+      export RUSTUP_HOME="/home/runner/.rustup"
+    fi
+  fi
+}
+
 ensure_command() {
   local cmd="$1"
   shift
@@ -19,6 +36,7 @@ ensure_command() {
   fi
 }
 
+ensure_rustup_env
 ensure_command cargo "${CARGO_HOME:-}/bin" "${HOME:-}/.cargo/bin" "/home/runner/.cargo/bin"
 
 workspace="${1:?workspace path is required}"

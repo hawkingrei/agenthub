@@ -61,7 +61,9 @@ bash "${workspace}/${tool_rel}" "${workspace}"
 
     runfiles = ctx.runfiles(files = [tool])
     for dep in ctx.attr.data:
-        runfiles = runfiles.merge(dep[DefaultInfo].default_runfiles)
+        info = dep[DefaultInfo]
+        runfiles = runfiles.merge(info.default_runfiles)
+        runfiles = runfiles.merge(ctx.runfiles(files = info.files.to_list()))
 
     return [DefaultInfo(executable = test_script, runfiles = runfiles)]
 
