@@ -3,8 +3,11 @@ import React from "react";
 type InputDockProps = {
   input: string;
   historyCommands: string[];
+  showInterrupt: boolean;
+  canInterrupt: boolean;
   onInputChange: (value: string) => void;
   onSendInput: () => void;
+  onInterrupt: () => void;
   onNavigateHistory: (direction: "up" | "down") => void;
   onSelectHistoryCommand: (value: string) => void;
   onJumpToBottom: () => void;
@@ -54,8 +57,11 @@ export function deriveInputHistoryNavigation(
 export function InputDock({
   input,
   historyCommands,
+  showInterrupt,
+  canInterrupt,
   onInputChange,
   onSendInput,
+  onInterrupt,
   onNavigateHistory,
   onSelectHistoryCommand,
   onJumpToBottom,
@@ -87,6 +93,17 @@ export function InputDock({
   return (
     <div className="input docked">
       <div className="input-row">
+        {showInterrupt && (
+          <button
+            className="acp-interrupt-button input-interrupt-button"
+            onClick={onInterrupt}
+            disabled={!canInterrupt}
+            title="Interrupt current run"
+            aria-label="Interrupt current run"
+          >
+            Interrupt
+          </button>
+        )}
         {historyCommands.length > 0 && (
           <div className="input-history" ref={historyContainerRef}>
             <button

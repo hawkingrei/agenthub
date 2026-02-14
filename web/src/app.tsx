@@ -261,6 +261,12 @@ export function App() {
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
   const canControlAcp = Boolean(activeAgent && isAgentActive);
+  const hasInProgressToolCall = acpView.toolCalls.some(
+    (call) => call.status === "in_progress"
+  );
+  const canInterruptAcpRun =
+    canControlAcp &&
+    (acpView.runStatus?.status === "running" || hasInProgressToolCall);
   const activeEventKey = activeAgent
     ? `${activeAgent}:${activeSessionId ?? "latest"}`
     : null;
@@ -1455,8 +1461,6 @@ export function App() {
                     acpTab,
                     onSelectTab: (next) => setAcpTab(next),
                     showConversationBadge: acpConversation.showConversationBadge,
-                    canControlAcp,
-                    onAcpCancel,
                     conversation: {
                       items: acpConversation.conversationRenderItems,
                       windowOffset: acpConversation.conversationWindowOffset,
@@ -1500,8 +1504,11 @@ export function App() {
               <InputDock
                 input={input}
                 historyCommands={inputHistory}
+                showInterrupt={acpView.hasAcp}
+                canInterrupt={canInterruptAcpRun}
                 onInputChange={onInputChange}
                 onSendInput={onSendInput}
+                onInterrupt={onAcpCancel}
                 onNavigateHistory={onNavigateInputHistory}
                 onSelectHistoryCommand={onSelectInputHistory}
                 onJumpToBottom={acpConversation.jumpToConversationBottom}

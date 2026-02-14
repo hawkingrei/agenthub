@@ -22,8 +22,6 @@ const baseProps: AcpPanelProps = {
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
-  canControlAcp: true,
-  onAcpCancel: () => {},
   conversation: {
     items: [],
     windowOffset: 0,
@@ -61,30 +59,6 @@ const baseProps: AcpPanelProps = {
   },
 };
 
-const renderPanel = (override: Partial<AcpView>) =>
-  renderToStaticMarkup(
-    <AcpPanel {...baseProps} acpView={{ ...baseView, ...override }} />
-  );
-
-const interruptDisabled = (html: string) =>
-  /acp-interrupt-button[^>]*disabled/.test(html);
-
-describe("AcpPanel interrupt gating", () => {
-  it("enables interrupt when a tool call is in progress without run status", () => {
-    const html = renderPanel({
-      toolCalls: [{ id: "call-1", title: "Tool", status: "in_progress" }],
-    });
-    expect(interruptDisabled(html)).toBe(false);
-  });
-
-  it("disables interrupt when run status is non-running and no tool call active", () => {
-    const html = renderPanel({
-      runStatus: { status: "completed" },
-    });
-    expect(interruptDisabled(html)).toBe(true);
-  });
-});
-
 describe("AcpPanel layout", () => {
   it("renders subtitle and tabs in header", () => {
     const html = renderToStaticMarkup(
@@ -93,5 +67,6 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("/repo/workdir");
     expect(html).toContain("Conversation");
     expect(html).toContain("Debug");
+    expect(html).not.toContain("Interrupt");
   });
 });

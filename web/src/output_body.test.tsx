@@ -24,8 +24,6 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
-  canControlAcp: false,
-  onAcpCancel: () => {},
   conversation: {
     items: [],
     windowOffset: 0,

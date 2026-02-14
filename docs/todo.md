@@ -7,7 +7,9 @@
 - [x] Add unit-level verification for reusable `requestAnimationFrame` throttle dedupe/cancel behavior in ACP conversation scroll path (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Close input history menu on typing, arrow-history navigation, `Escape`, and outside click for keyboard/mouse accessibility (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add input history privacy guard to avoid persisting obvious secret-like commands in localStorage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [ ] Verify input dock command history menu and arrow-key recall behavior on desktop/mobile IME (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [ ] Verify input dock `Interrupt + History` row tap ergonomics on mobile devices (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP markdown typography and list/table/code rendering in conversation view on desktop and mobile (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).

@@ -9,29 +9,18 @@ type AcpPanelProps = {
   acpTab: "conversation" | "debug";
   onSelectTab: (tab: "conversation" | "debug") => void;
   showConversationBadge: boolean;
-  canControlAcp: boolean;
-  onAcpCancel: () => void;
   conversation: AcpConversationProps;
   debug: AcpDebugProps;
 };
 
 export function AcpPanel({
-  acpView,
   subtitle,
   acpTab,
   onSelectTab,
   showConversationBadge,
-  canControlAcp,
-  onAcpCancel,
   conversation,
   debug,
 }: AcpPanelProps) {
-  const runStatus = acpView.runStatus?.status ?? null;
-  const hasInProgressToolCall = acpView.toolCalls.some(
-    (call) => call.status === "in_progress"
-  );
-  const isActiveRun = runStatus === "running" || hasInProgressToolCall;
-  const canInterrupt = canControlAcp && isActiveRun;
   return (
     <div className="acp">
       <div className="acp-head minimal">
@@ -39,14 +28,6 @@ export function AcpPanel({
           {subtitle ?? " "}
         </div>
         <div className="acp-actions">
-          <button
-            className="acp-interrupt-button"
-            onClick={onAcpCancel}
-            disabled={!canInterrupt}
-            title="Interrupt current run"
-          >
-            Interrupt
-          </button>
           <div className="acp-tabs">
             <button
               className={acpTab === "conversation" ? "tab active" : "tab"}
