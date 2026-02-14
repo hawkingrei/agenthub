@@ -68,10 +68,12 @@ fn actor_runtime_context_from_env(agent_name: &str) -> Option<AcpActorSkillConte
         .unwrap_or_else(|| "agent".to_string());
     let default_channel =
         normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV).unwrap_or_else(|| "default".to_string());
-    let actor_cli_path = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.into_os_string().into_string().ok())
-        .or_else(|| normalized_env_var(ACTOR_RUNTIME_CLI_ENV))
+    let actor_cli_path = normalized_env_var(ACTOR_RUNTIME_CLI_ENV)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.into_os_string().into_string().ok())
+        })
         .unwrap_or_else(|| "agenthub".to_string());
     Some(AcpActorSkillContext {
         run_id,
