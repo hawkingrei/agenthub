@@ -1,14 +1,55 @@
-sh_binary(
-    name = "rust_checks",
-    srcs = ["bazel/ci/rust_checks.sh"],
+load("//bazel/ci:defs.bzl", "workspace_shell_build", "workspace_shell_test")
+
+filegroup(
+    name = "workspace_sources",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            "bazel-*/**",
+            "target/**",
+            "web/node_modules/**",
+            "web/dist/**",
+            "web/coverage/**",
+        ],
+    ),
 )
 
-sh_binary(
-    name = "web_checks",
-    srcs = ["bazel/ci/web_checks.sh"],
+workspace_shell_build(
+    name = "rust_build",
+    tool = "//:bazel/ci/rust_build.sh",
+    data = [":workspace_sources"],
 )
 
-sh_binary(
-    name = "ci_checks",
-    srcs = ["bazel/ci/ci_checks.sh"],
+workspace_shell_build(
+    name = "web_build",
+    tool = "//:bazel/ci/web_build.sh",
+    data = [":workspace_sources"],
+)
+
+filegroup(
+    name = "ci_build",
+    srcs = [
+        ":rust_build",
+        ":web_build",
+    ],
+)
+
+workspace_shell_test(
+    name = "rust_test",
+    tool = "//:bazel/ci/rust_test.sh",
+    data = [":workspace_sources"],
+)
+
+workspace_shell_test(
+    name = "web_test",
+    tool = "//:bazel/ci/web_test.sh",
+    data = [":workspace_sources"],
+)
+
+test_suite(
+    name = "ci_tests",
+    tests = [
+        ":rust_test",
+        ":web_test",
+    ],
 )

@@ -25,13 +25,16 @@ lint-web:
 lint: lint-web
 
 bazel-rust:
-	bazel run //:rust_checks
+	bazel build //:rust_build
+	bazel test //:rust_test
 
 bazel-web:
-	bazel run //:web_checks
+	bazel build //:web_build
+	bazel test //:web_test
 
 bazel-ci:
-	bazel run //:ci_checks
+	bazel build //:ci_build
+	bazel test //:ci_tests
 
 
 reset:

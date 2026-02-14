@@ -60,7 +60,8 @@ cd web
 npm run test
 
 # Bazel-driven checks
-bazel run //:ci_checks
+bazel build //:ci_build
+bazel test //:ci_tests
 ```
 
 ## Project Layout

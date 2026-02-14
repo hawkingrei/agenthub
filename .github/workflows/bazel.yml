@@ -24,5 +24,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
-      - name: Bazel checks
-        run: bazel run //:ci_checks
+      - name: Bazel build
+        run: bazel build //:ci_build
+      - name: Bazel test
+        run: bazel test //:ci_tests
