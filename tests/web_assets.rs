@@ -54,8 +54,20 @@ fn styles_keep_acp_conversation_scoped() {
         "app should be fixed height with overflow auto"
     );
     assert!(
-        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n}"),
-        "input docked should stick to bottom"
+        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 8px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n}"),
+        "input docked should use grid slots for actions and editor rows"
+    );
+    assert!(
+        css.contains(".input-row {\n  position: static;\n  display: flex;\n  align-items: center;\n  justify-content: flex-start;\n  flex-wrap: wrap;\n  gap: 6px;\n  min-height: 28px;\n}"),
+        "input actions row should be flow layout and left aligned for consistent chip placement"
+    );
+    assert!(
+        css.contains(".input-editor-row {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto;\n  align-items: stretch;\n  gap: 12px;\n  min-width: 0;\n}"),
+        "input editor row should isolate textarea and send button layout"
+    );
+    assert!(
+        css.contains(".input-editor-row .input-send-button {\n  min-height: 48px !important;\n  min-width: 92px;\n  padding: 0 16px !important;\n  border-radius: 10px !important;\n  font-size: 14px !important;\n  line-height: 1.1;\n  align-self: stretch;\n}"),
+        "send button should keep larger tap target size"
     );
     assert!(
         css.contains("@supports (height: 100dvh)"),

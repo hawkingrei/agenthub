@@ -159,7 +159,7 @@ export function InputDock({
 
   return (
     <div className="input docked">
-      <div className="input-row">
+      <div className="input-row" role="group" aria-label="Input actions">
         {showInterrupt && (
           <button
             className="acp-interrupt-button input-interrupt-button"
@@ -202,68 +202,76 @@ export function InputDock({
           </div>
         )}
       </div>
-      {showConversationJump && (
+      <div className="input-editor-row">
+        {showConversationJump && (
+          <button
+            className="jump-bottom"
+            onClick={onJumpToBottom}
+            title="Jump to bottom"
+            aria-label="Jump to bottom"
+          >
+            <i className="bi bi-chevron-down" aria-hidden="true" />
+          </button>
+        )}
+        <textarea
+          placeholder="Send input (Enter to send, Shift+Enter for newline)"
+          value={input}
+          onChange={(e) => {
+            setShowHistory(false);
+            onInputChange(e.target.value);
+          }}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false;
+          }}
+          onKeyDown={(e) => {
+            const nativeEvent = e.nativeEvent as KeyboardEvent;
+            const composing = isImeComposing(
+              isComposingRef.current,
+              nativeEvent.isComposing === true,
+              nativeEvent.keyCode
+            );
+            const target = e.currentTarget;
+            const action = deriveInputDockKeyAction({
+              key: e.key,
+              shiftKey: e.shiftKey,
+              altKey: e.altKey,
+              metaKey: e.metaKey,
+              ctrlKey: e.ctrlKey,
+              showHistory,
+              composing,
+              value: target.value,
+              selectionStart: target.selectionStart,
+              selectionEnd: target.selectionEnd,
+            });
+            if (action.type === "close_history") {
+              setShowHistory(false);
+              return;
+            }
+            if (action.type === "send") {
+              e.preventDefault();
+              onSendInput();
+              setShowHistory(false);
+              return;
+            }
+            if (action.type === "navigate_history") {
+              e.preventDefault();
+              setShowHistory(false);
+              onNavigateHistory(action.direction);
+            }
+          }}
+          rows={2}
+        />
         <button
-          className="jump-bottom"
-          onClick={onJumpToBottom}
-          title="Jump to bottom"
-          aria-label="Jump to bottom"
+          className="input-send-button"
+          onClick={onSendInput}
+          aria-label="Send input"
         >
-          <i className="bi bi-chevron-down" aria-hidden="true" />
+          Send
         </button>
-      )}
-      <textarea
-        placeholder="Send input (Enter to send, Shift+Enter for newline)"
-        value={input}
-        onChange={(e) => {
-          setShowHistory(false);
-          onInputChange(e.target.value);
-        }}
-        onCompositionStart={() => {
-          isComposingRef.current = true;
-        }}
-        onCompositionEnd={() => {
-          isComposingRef.current = false;
-        }}
-        onKeyDown={(e) => {
-          const nativeEvent = e.nativeEvent as KeyboardEvent;
-          const composing = isImeComposing(
-            isComposingRef.current,
-            nativeEvent.isComposing === true,
-            nativeEvent.keyCode
-          );
-          const target = e.currentTarget;
-          const action = deriveInputDockKeyAction({
-            key: e.key,
-            shiftKey: e.shiftKey,
-            altKey: e.altKey,
-            metaKey: e.metaKey,
-            ctrlKey: e.ctrlKey,
-            showHistory,
-            composing,
-            value: target.value,
-            selectionStart: target.selectionStart,
-            selectionEnd: target.selectionEnd,
-          });
-          if (action.type === "close_history") {
-            setShowHistory(false);
-            return;
-          }
-          if (action.type === "send") {
-            e.preventDefault();
-            onSendInput();
-            setShowHistory(false);
-            return;
-          }
-          if (action.type === "navigate_history") {
-            e.preventDefault();
-            setShowHistory(false);
-            onNavigateHistory(action.direction);
-          }
-        }}
-        rows={2}
-      />
-      <button onClick={onSendInput}>Send</button>
+      </div>
     </div>
   );
 }

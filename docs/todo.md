@@ -9,8 +9,13 @@
 - [x] Add input history privacy guard to avoid persisting obvious secret-like commands in localStorage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [x] Increase unit coverage for input dock interaction branches and ACP tab interaction callbacks (`input_dock.tsx`, `acp_panel.tsx`) (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Refactor `InputDock` into stable flow rows (`input-row` + `input-editor-row`) and remove absolute-position action overlay to prevent tablet overlap (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep input editor and `Send` in one row and enlarge `Send` tap target for touch-friendly interaction (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Left-align `Interrupt` and `History` chips in input action row for stable control placement across breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [ ] Verify input dock command history menu and arrow-key recall behavior on desktop/mobile IME (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify input dock `Interrupt + History` row tap ergonomics on mobile devices (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [ ] Verify iPad portrait/landscape no longer shows `Interrupt` overlapping textarea and action chips keep stable tap targets (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [ ] Verify one-row `input + Send` layout keeps `Send` visible and easy to tap across tablet portrait and narrow mobile widths (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP markdown typography and list/table/code rendering in conversation view on desktop and mobile (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).

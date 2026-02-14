@@ -351,16 +351,43 @@ select:not([class*="mantine-"]):focus-visible {
   box-shadow: var(--shadow);
   margin-top: auto;
   position: relative;
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto;
+  align-items: stretch;
 }
 
 .input-row {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 2;
-  display: inline-flex;
+  position: static;
+  display: flex;
   align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
+  min-height: 28px;
+}
+
+.input-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.input-editor-row textarea:not([class*="mantine-"]) {
+  width: 100%;
+  min-width: 0;
+}
+
+.input-editor-row .input-send-button {
+  min-height: 48px !important;
+  min-width: 92px;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  line-height: 1.1;
+  align-self: stretch;
 }
 
 .input-history {
@@ -400,6 +427,7 @@ select:not([class*="mantine-"]):focus-visible {
   padding: 6px;
   display: grid;
   gap: 4px;
+  z-index: 8;
 }
 
 .input-history-item {
@@ -1999,12 +2027,23 @@ select:not([class*="mantine-"]):focus-visible {
   }
 
   .input.docked {
-    flex-direction: column;
+    gap: 6px;
   }
 
   .input-row {
-    position: static;
-    align-self: flex-end;
+    justify-content: flex-start;
+    min-height: 26px;
+  }
+
+  .input-editor-row {
+    gap: 8px;
+  }
+
+  .input-editor-row .input-send-button {
+    min-height: 44px !important;
+    min-width: 88px;
+    padding: 0 14px !important;
+    font-size: 13px !important;
   }
 
   .input-interrupt-button {
