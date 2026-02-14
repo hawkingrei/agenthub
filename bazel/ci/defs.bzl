@@ -12,7 +12,11 @@ def _workspace_shell_build_impl(ctx):
         arguments = [tool.path, ctx.attr.workspace_dir, output.path],
         command = """
 set -euo pipefail
-bash "$1" "$2"
+workspace="$2"
+if [[ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]]; then
+  workspace="${BUILD_WORKSPACE_DIRECTORY}"
+fi
+bash "$1" "${workspace}"
 touch "$3"
 """,
         mnemonic = "WorkspaceShellBuild",
@@ -29,7 +33,7 @@ def _workspace_shell_test_impl(ctx):
         is_executable = True,
         content = """#!/usr/bin/env bash
 set -euo pipefail
-workspace="${TEST_SRCDIR}/${TEST_WORKSPACE}"
+workspace="${BUILD_WORKSPACE_DIRECTORY:-${TEST_SRCDIR}/${TEST_WORKSPACE}}"
 bash "${workspace}/%s" "${workspace}"
 """ % tool.short_path,
     )

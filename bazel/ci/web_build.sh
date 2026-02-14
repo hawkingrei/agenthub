@@ -25,7 +25,9 @@ workspace="${1:?workspace path is required}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/agenthub-web-build.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-cp -R "${workspace}/web" "${tmp_dir}/web"
+# Bazel exposes workspace files as symlinks in sandbox/execroot.
+# Use -L to materialize real files so Vite module resolution stays inside tmp_dir.
+cp -RL "${workspace}/web" "${tmp_dir}/web"
 cd "${tmp_dir}/web"
 
 npm ci

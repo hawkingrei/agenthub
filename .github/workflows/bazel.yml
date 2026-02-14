@@ -27,6 +27,6 @@ jobs:
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
       - name: Bazel build
-        run: bazel build //:ci_build
+        run: BUILD_WORKSPACE_DIRECTORY="${GITHUB_WORKSPACE}" bazel build //:ci_build
       - name: Bazel test
-        run: bazel test //:ci_tests
+        run: BUILD_WORKSPACE_DIRECTORY="${GITHUB_WORKSPACE}" bazel test --test_env=BUILD_WORKSPACE_DIRECTORY //:ci_tests
