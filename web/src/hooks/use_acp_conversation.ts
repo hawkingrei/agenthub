@@ -60,8 +60,114 @@ type ConversationVirtualSlice = {
   bottomSpacer: number;
 };
 
+type ConversationViewport = {
+  top: number;
+  height: number;
+};
+
 const VIRTUALIZATION_MIN_ITEMS = 140;
 const VIRTUALIZATION_OVERSCAN = 14;
+
+export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
+  if (conversationMessages.length === 0) return "empty";
+  const last = conversationMessages[conversationMessages.length - 1];
+  const base = `${last.kind}:${last.event_id ?? last.seq ?? "na"}`;
+  if (last.kind === "tool_call") {
+    const contentLen = last.content?.length ?? 0;
+    const terminalLen = last.terminal_output?.length ?? 0;
+    const rawInLen = last.raw_input
+      ? JSON.stringify(last.raw_input).length
+      : 0;
+    const rawOutLen = last.raw_output
+      ? JSON.stringify(last.raw_output).length
+      : 0;
+    return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
+  }
+  return `${base}:${last.text?.length ?? 0}`;
+}
+
+export function shouldLoadOlderFromMeta(
+  activeAgent: string | null,
+  activeSessionId: string | null,
+  eventMeta: Record<string, EventMeta>
+): boolean {
+  if (!activeAgent) return false;
+  const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+  const meta = eventMeta[key];
+  if (!meta || meta.loading || !meta.hasMore || meta.oldestId == null) {
+    return false;
+  }
+  return true;
+}
+
+export function shouldUseConversationVirtualization(
+  conversationStickToBottom: boolean,
+  sourceItemsLength: number
+): boolean {
+  return !conversationStickToBottom && sourceItemsLength >= VIRTUALIZATION_MIN_ITEMS;
+}
+
+export function nextConversationViewport(
+  prev: ConversationViewport,
+  nextTop: number,
+  nextHeight: number
+): ConversationViewport {
+  if (prev.top === nextTop && prev.height === nextHeight) {
+    return prev;
+  }
+  return {
+    top: nextTop,
+    height: nextHeight,
+  };
+}
+
+export function shouldAutoLoadConversationHistory(
+  acpTab: "conversation" | "debug",
+  activeAgent: string | null,
+  canLoadOlder: boolean,
+  conversationMessageCount: number,
+  minMessages: number = 12
+): boolean {
+  if (acpTab !== "conversation") return false;
+  if (!activeAgent) return false;
+  if (!canLoadOlder) return false;
+  return conversationMessageCount < minMessages;
+}
+
+export function normalizeConversationAvgHeightEstimate(
+  previous: number,
+  scrollHeight: number,
+  messageCount: number
+): number {
+  const count = Math.max(1, messageCount);
+  const estimate = scrollHeight / count;
+  if (!Number.isFinite(estimate) || estimate <= 0) return previous;
+  const normalized = Math.min(220, Math.max(24, estimate));
+  if (Math.abs(previous - normalized) < 1) return previous;
+  return normalized;
+}
+
+export function restoreConversationScrollTop(
+  savedTop: number,
+  scrollHeight: number,
+  clientHeight: number
+): number {
+  const maxTop = Math.max(0, scrollHeight - clientHeight);
+  return Math.min(savedTop, maxTop);
+}
+
+export function deriveConversationJumpState(
+  acpTab: "conversation" | "debug",
+  conversationStickToBottom: boolean,
+  conversationPendingCount: number
+): { showConversationJump: boolean; showConversationBadge: boolean } {
+  const showConversationJump =
+    acpTab === "conversation" && !conversationStickToBottom;
+  return {
+    showConversationJump,
+    showConversationBadge: showConversationJump && conversationPendingCount > 0,
+  };
+}
 
 export function buildVirtualConversationSlice(
   sourceItems: ConversationItem[],
@@ -154,31 +260,19 @@ export function useAcpConversation({
     () => windowConversation(conversationMessages, conversationStickToBottom, 200),
     [conversationMessages, conversationStickToBottom]
   );
-  const conversationTailKey = useMemo(() => {
-    if (conversationMessages.length === 0) return "empty";
-    const last = conversationMessages[conversationMessages.length - 1];
-    const base = `${last.kind}:${last.event_id ?? last.seq ?? "na"}`;
-    if (last.kind === "tool_call") {
-      const contentLen = last.content?.length ?? 0;
-      const terminalLen = last.terminal_output?.length ?? 0;
-      const rawInLen = last.raw_input
-        ? JSON.stringify(last.raw_input).length
-        : 0;
-      const rawOutLen = last.raw_output
-        ? JSON.stringify(last.raw_output).length
-        : 0;
-      return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
-    }
-    return `${base}:${last.text?.length ?? 0}`;
-  }, [conversationMessages]);
+  const conversationTailKey = useMemo(
+    () => buildConversationTailKey(conversationMessages),
+    [conversationMessages]
+  );
   const isFrozenView = conversationFrozen && conversationFrozenItems.length > 0;
   const conversationSourceItems = isFrozenView
     ? conversationFrozenItems
     : conversationWindow.items;
   const conversationSourceOffset = isFrozenView ? 0 : conversationWindow.offset;
-  const shouldVirtualizeConversation =
-    !conversationStickToBottom &&
-    conversationSourceItems.length >= VIRTUALIZATION_MIN_ITEMS;
+  const shouldVirtualizeConversation = shouldUseConversationVirtualization(
+    conversationStickToBottom,
+    conversationSourceItems.length
+  );
   const conversationVirtualSlice = useMemo(() => {
     if (!shouldVirtualizeConversation) {
       return {
@@ -208,13 +302,7 @@ export function useAcpConversation({
   const shouldAutoCollapse = conversationMessages.length > 50;
 
   const shouldLoadOlder = useCallback(() => {
-    if (!activeAgent) return false;
-    const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
-    const meta = eventMeta[key];
-    if (!meta || meta.loading || !meta.hasMore || meta.oldestId == null) {
-      return false;
-    }
-    return true;
+    return shouldLoadOlderFromMeta(activeAgent, activeSessionId, eventMeta);
   }, [activeAgent, activeSessionId, eventMeta]);
 
   const syncConversationViewport = useCallback(() => {
@@ -223,13 +311,7 @@ export function useAcpConversation({
     setConversationViewport((prev) => {
       const nextTop = el.scrollTop;
       const nextHeight = el.clientHeight;
-      if (prev.top === nextTop && prev.height === nextHeight) {
-        return prev;
-      }
-      return {
-        top: nextTop,
-        height: nextHeight,
-      };
+      return nextConversationViewport(prev, nextTop, nextHeight);
     });
   }, []);
 
@@ -324,11 +406,16 @@ export function useAcpConversation({
   }, [handleConversationScrollNow]);
 
   useEffect(() => {
-    if (acpTab !== "conversation") return;
-    if (!activeAgent) return;
-    if (!shouldLoadOlder()) return;
-    const minMessages = 12;
-    if (conversationMessages.length >= minMessages) return;
+    if (
+      !shouldAutoLoadConversationHistory(
+        acpTab,
+        activeAgent,
+        shouldLoadOlder(),
+        conversationMessages.length
+      )
+    ) {
+      return;
+    }
     prepareForLoadOlder();
     onLoadOlder();
   }, [
@@ -404,8 +491,11 @@ export function useAcpConversation({
     }
     acpStickToBottomRef.current = false;
     setConversationStickToBottom(false);
-    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollTop = Math.min(saved.top, maxTop);
+    el.scrollTop = restoreConversationScrollTop(
+      saved.top,
+      el.scrollHeight,
+      el.clientHeight
+    );
   }, [acpTab, conversationStickToBottom, conversationTailKey, jumpToConversationBottom]);
 
   useEffect(() => {
@@ -413,14 +503,13 @@ export function useAcpConversation({
     if (!conversationStickToBottom) return;
     const el = acpConversationRef.current;
     if (!el) return;
-    const count = Math.max(1, conversationMessages.length);
-    const estimate = el.scrollHeight / count;
-    if (Number.isFinite(estimate) && estimate > 0) {
-      const normalized = Math.min(220, Math.max(24, estimate));
-      setConversationAvgHeight((prev) =>
-        Math.abs(prev - normalized) >= 1 ? normalized : prev
-      );
-    }
+    setConversationAvgHeight((prev) =>
+      normalizeConversationAvgHeightEstimate(
+        prev,
+        el.scrollHeight,
+        conversationMessages.length
+      )
+    );
   }, [conversationMessages.length, acpTab, conversationStickToBottom]);
 
   useEffect(() => {
@@ -499,10 +588,11 @@ export function useAcpConversation({
     jumpToConversationBottom,
   ]);
 
-  const showConversationJump =
-    acpTab === "conversation" && !conversationStickToBottom;
-  const showConversationBadge =
-    showConversationJump && conversationPendingCount > 0;
+  const { showConversationJump, showConversationBadge } = deriveConversationJumpState(
+    acpTab,
+    conversationStickToBottom,
+    conversationPendingCount
+  );
 
   return {
     acpConversationRef,

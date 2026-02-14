@@ -10,6 +10,7 @@
 - [x] Add input history privacy guard to avoid persisting obvious secret-like commands in localStorage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
 - [x] Increase unit coverage for input dock interaction branches and ACP tab interaction callbacks (`input_dock.tsx`, `acp_panel.tsx`) (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Increase unit coverage for `use_acp_conversation` by extracting deterministic helper decisions into pure functions and testing branch-heavy paths (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
 - [x] Refactor `InputDock` into stable flow rows (`input-row` + `input-editor-row`) and remove absolute-position action overlay to prevent tablet overlap (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Keep input editor and `Send` in one row and enlarge `Send` tap target for touch-friendly interaction (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Left-align `Interrupt` and `History` chips in input action row for stable control placement across breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
@@ -20,6 +21,7 @@
 - [x] Keep `jump-bottom` outside `input-editor-row` to avoid fixed-position element conflicting with editor grid flow (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Replace `input-send-button` sizing `!important` overrides with higher-specificity selectors for maintainable mobile/desktop sizing (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
 - [x] Gate optional Playwright `system-chrome` project behind `PLAYWRIGHT_SYSTEM_CHROME=1` so default E2E runs stay Chromium-only and CI-safe (see `docs/features/2026-02-10-playwright-e2e.md`).
+- [ ] Verify `use_acp_conversation` helper extraction keeps scroll restoration and jump-badge behavior unchanged across long sessions (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
