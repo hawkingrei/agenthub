@@ -228,6 +228,7 @@ async fn init_test_schema(db: &SqlitePool) {
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
@@ -242,6 +243,17 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
+        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_actor_messages idempotency index");
 }
 
 async fn auth_headers(state: &AppState) -> HeaderMap {

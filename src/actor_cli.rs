@@ -28,6 +28,7 @@ enum ActorCommand {
         transport: TeamActorMessageTransport,
         route: Option<Value>,
         payload: Value,
+        idempotency_key: Option<String>,
     },
 }
 
@@ -35,7 +36,7 @@ fn actor_usage() -> &'static str {
     r#"Usage:
   agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id>] [--limit <n>] [--after-id <id>] [--include-delivered]
   agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id>]
-  agenthub actor send --to-actor-id <actor_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>]
+  agenthub actor send --to-actor-id <actor_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>]
 
 Environment fallback:
   AGENTHUB_ACTOR_RUN_ID
@@ -199,6 +200,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut transport = None;
             let mut route = None;
             let mut payload = None;
+            let mut idempotency_key = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -256,6 +258,12 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                             .ok_or_else(|| anyhow::anyhow!("--payload-json requires a value"))?;
                         payload = Some(parse_json(raw, "payload_json")?);
                     }
+                    "--idempotency-key" => {
+                        idx += 1;
+                        idempotency_key = Some(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("--idempotency-key requires a value")
+                        })?);
+                    }
                     other => return Err(anyhow::anyhow!("unknown flag for send: {}", other)),
                 }
                 idx += 1;
@@ -287,6 +295,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 transport,
                 route,
                 payload: payload.ok_or_else(|| anyhow::anyhow!("payload_json is required"))?,
+                idempotency_key: take_optional(idempotency_key),
             })
         }
         "help" | "--help" | "-h" => Err(anyhow::anyhow!("{}", actor_usage())),
@@ -332,6 +341,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             transport,
             route,
             payload,
+            idempotency_key,
         } => {
             let message = manager
                 .send_actor_message(
@@ -342,6 +352,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
                     transport,
                     route,
                     payload,
+                    idempotency_key.as_deref(),
                 )
                 .await?;
             println!("{}", serde_json::to_string(&message)?);

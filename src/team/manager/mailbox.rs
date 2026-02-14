@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use agenthub_team_actor::{
     AckActorMessageCommand, AckActorMessageResult, ActorMailbox, ActorMailboxError,
-    ActorMailboxStore, ActorMessageRelay, ActorRelayError, ListActorInboxQuery,
-    PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
-    SendActorMessageCommand,
+    ActorMailboxStore, ActorMessageRelay, ActorRelayError, CreatePendingMessageResult,
+    ListActorInboxQuery, PendingRemoteRelayRecord, RelayRemotePendingCommand,
+    RelayRemotePendingResult, SendActorMessageCommand,
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, Sqlite, SqlitePool};
 use thiserror::Error;
 
 use super::TeamManager;
@@ -84,6 +84,7 @@ impl TeamManager {
         transport: TeamActorMessageTransport,
         route: Option<Value>,
         payload: Value,
+        idempotency_key: Option<&str>,
     ) -> anyhow::Result<TeamActorMessageRecord> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
@@ -96,6 +97,7 @@ impl TeamManager {
                 transport,
                 route,
                 payload,
+                idempotency_key: idempotency_key.map(str::to_string),
                 created_at: now,
             })
             .await
@@ -241,7 +243,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
     async fn create_pending_message(
         &self,
         cmd: &SendActorMessageCommand,
-    ) -> Result<TeamActorMessageRecord, Self::Error> {
+    ) -> Result<CreatePendingMessageResult, Self::Error> {
         let route_json = cmd
             .route
             .as_ref()
@@ -254,9 +256,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         let status_raw = team_actor_message_status_to_str(&TeamActorMessageStatus::Pending);
 
         let mut tx = self.db.begin().await?;
-        let result = sqlx::query(
+        let inserted = sqlx::query(
             r#"
-            INSERT INTO team_actor_messages (
+            INSERT OR IGNORE INTO team_actor_messages (
                 run_id,
                 from_actor_id,
                 to_actor_id,
@@ -265,9 +267,10 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 route_json,
                 payload_json,
                 status,
-                created_at
+                created_at,
+                idempotency_key
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
         )
         .bind(&cmd.run_id)
@@ -279,35 +282,30 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .bind(payload_json)
         .bind(status_raw)
         .bind(cmd.created_at)
+        .bind(&cmd.idempotency_key)
         .execute(&mut *tx)
         .await?;
-        let message_id = result.last_insert_rowid();
 
-        let message_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                from_actor_id,
-                to_actor_id,
-                channel,
-                transport,
-                route_json,
-                payload_json,
-                status,
-                created_at,
-                delivered_at
-            FROM team_actor_messages
-            WHERE id = ?1
-            "#,
-        )
-        .bind(message_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let message = parse_team_actor_message_row(&message_row)
-            .map_err(|err| sqlx::Error::Protocol(err.to_string()))?;
+        let (message, created) = if inserted.rows_affected() == 1 {
+            let message_id = inserted.last_insert_rowid();
+            let message = fetch_message_by_id(&mut tx, message_id).await?;
+            (message, true)
+        } else if let Some(idempotency_key) = cmd.idempotency_key.as_deref() {
+            let message = fetch_message_by_idempotency(
+                &mut tx,
+                &cmd.run_id,
+                &cmd.from_actor_id,
+                idempotency_key,
+            )
+            .await?;
+            (message, false)
+        } else {
+            return Err(sqlx::Error::Protocol(
+                "insert was ignored without idempotency_key".to_string(),
+            ));
+        };
         tx.commit().await?;
-        Ok(message)
+        Ok(CreatePendingMessageResult { message, created })
     }
 
     async fn list_inbox(
@@ -610,6 +608,67 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .await?;
         Ok(())
     }
+}
+
+async fn fetch_message_by_id(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    message_id: i64,
+) -> Result<TeamActorMessageRecord, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            status,
+            created_at,
+            delivered_at
+        FROM team_actor_messages
+        WHERE id = ?1
+        "#,
+    )
+    .bind(message_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
+}
+
+async fn fetch_message_by_idempotency(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    from_actor_id: &str,
+    idempotency_key: &str,
+) -> Result<TeamActorMessageRecord, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            status,
+            created_at,
+            delivered_at
+        FROM team_actor_messages
+        WHERE run_id = ?1 AND from_actor_id = ?2 AND idempotency_key = ?3
+        LIMIT 1
+        "#,
+    )
+    .bind(run_id)
+    .bind(from_actor_id)
+    .bind(idempotency_key)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
 }
 
 fn map_actor_mailbox_store_error(err: ActorMailboxError<sqlx::Error>) -> anyhow::Error {

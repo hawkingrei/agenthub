@@ -82,6 +82,7 @@ pub struct SendTeamRunMessageRequest {
     pub transport: Option<String>,
     pub route: Option<Value>,
     pub payload: Value,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -414,6 +415,7 @@ async fn send_team_run_message(
         .filter(|value| !value.is_empty())
         .unwrap_or("default")
         .to_string();
+    let idempotency_key = normalize_optional_idempotency_key(payload.idempotency_key.as_deref())?;
     let transport = parse_message_transport(payload.transport.as_deref())?;
     validate_message_actors(
         &member_ids,
@@ -432,6 +434,7 @@ async fn send_team_run_message(
             transport,
             payload.route,
             payload.payload,
+            idempotency_key.as_deref(),
         )
         .await
         .map_err(map_team_internal_error)?;
@@ -603,6 +606,24 @@ fn normalize_optional_non_empty(value: Option<&str>) -> Result<Option<&str>, Api
             Ok(Some(trimmed))
         }
     }
+}
+
+fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(
+            "idempotency_key must be a non-empty string",
+        ));
+    }
+    if trimmed.len() > 128 {
+        return Err(ApiError::bad_request(
+            "idempotency_key must be at most 128 characters",
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 async fn load_run_and_member_ids(

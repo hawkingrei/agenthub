@@ -105,6 +105,7 @@ async fn setup_test_db() -> SqlitePool {
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
@@ -119,6 +120,17 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
+        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_actor_messages idempotency index");
 
     pool
 }
@@ -534,6 +546,7 @@ async fn actor_messages_support_inbox_and_ack_flow() {
             TeamActorMessageTransport::Local,
             None,
             json!({"text":"please review"}),
+            None,
         )
         .await
         .expect("send message");
@@ -590,6 +603,85 @@ async fn actor_messages_support_inbox_and_ack_flow() {
 }
 
 #[tokio::test]
+async fn actor_message_send_is_idempotent_by_key() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-message-idempotent-team".to_string(),
+            description: Some("team for idempotent send flow".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-idempotent"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let first = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "reviewer",
+            "coordination",
+            TeamActorMessageTransport::Local,
+            None,
+            json!({"text":"please review"}),
+            Some("msg-1"),
+        )
+        .await
+        .expect("first send");
+    let second = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "reviewer",
+            "coordination",
+            TeamActorMessageTransport::Local,
+            None,
+            json!({"text":"retry review"}),
+            Some("msg-1"),
+        )
+        .await
+        .expect("retry send");
+    assert_eq!(first.message_id, second.message_id);
+
+    let deduped_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1 AND from_actor_id = ?2 AND idempotency_key = ?3
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .bind("msg-1")
+    .fetch_one(&db)
+    .await
+    .expect("count deduped messages");
+    assert_eq!(deduped_count, 1);
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let sent_count = events
+        .iter()
+        .filter(|event| event.event_type == "actor_message_sent")
+        .count();
+    assert_eq!(sent_count, 1);
+}
+
+#[tokio::test]
 async fn remote_actor_messages_relay_success_marks_message_delivered() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -623,6 +715,7 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
             TeamActorMessageTransport::Remote,
             Some(json!({"endpoint":"mock://ok/remote-reviewer"})),
             json!({"text":"review this"}),
+            None,
         )
         .await
         .expect("send remote message");
@@ -690,6 +783,7 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             TeamActorMessageTransport::Remote,
             Some(json!({"endpoint":"mock://retry/remote-retry"})),
             json!({"text":"retry this"}),
+            None,
         )
         .await
         .expect("send retry remote message");
@@ -702,6 +796,7 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             TeamActorMessageTransport::Remote,
             Some(json!({"endpoint":"mock://dead/remote-dead"})),
             json!({"text":"dead-letter this"}),
+            None,
         )
         .await
         .expect("send dead remote message");

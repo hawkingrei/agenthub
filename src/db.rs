@@ -275,6 +275,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
@@ -434,7 +435,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             err
         );
     }
-
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -516,6 +516,24 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN dead_letter_at INTEGER")
         .execute(&pool)
         .await;
+    let _ = sqlx::query("ALTER TABLE team_actor_messages ADD COLUMN idempotency_key TEXT")
+        .execute(&pool)
+        .await;
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_actor_messages_idempotency
+        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_messages_idempotency: {}",
+            err
+        );
+    }
 
     Ok(pool)
 }

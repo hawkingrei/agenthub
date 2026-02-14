@@ -752,6 +752,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             transport: Some("local".to_string()),
             route: None,
             payload: json!({"text":"review this"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -773,6 +774,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             transport: Some("remote".to_string()),
             route: Some(json!({"endpoint":"https://remote.example/a2a"})),
             payload: json!({"text":"federated request"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -797,6 +799,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             transport: Some("remote".to_string()),
             route: None,
             payload: json!({"text":"missing route"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -817,6 +820,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             transport: Some("local".to_string()),
             route: None,
             payload: json!({"text":"invalid local target"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -915,6 +919,112 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
     .expect_err("blank actor id should fail");
     assert_eq!(
         blank_actor_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn team_run_messages_api_supports_idempotency_key() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-idempotent-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-idempotent-api".to_string()),
+            input: Some(json!({"prompt":"mailbox flow"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(first_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"text":"review this"}),
+            idempotency_key: Some("msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send first message");
+
+    let Json(second_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"text":"retry request"}),
+            idempotency_key: Some("msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send retry message");
+    assert_eq!(first_message.message_id, second_message.message_id);
+
+    let Json(events) = list_team_run_events(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(100),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+    let sent_count = events
+        .iter()
+        .filter(|event| event.event_type == "actor_message_sent")
+        .count();
+    assert_eq!(sent_count, 1);
+
+    let invalid_idempotency_err = send_team_run_message(
+        State(state.clone()),
+        headers,
+        Path(run.id),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"text":"bad idempotency key"}),
+            idempotency_key: Some("   ".to_string()),
+        }),
+    )
+    .await
+    .expect_err("blank idempotency key should fail");
+    assert_eq!(
+        invalid_idempotency_err.into_response().status(),
         StatusCode::BAD_REQUEST
     );
 }
