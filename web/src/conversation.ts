@@ -1,10 +1,13 @@
-import { AcpMessage, AcpPlanView, AcpToolCall } from "./acp";
+import { AcpMessage, AcpPlanEntry, AcpPlanView, AcpToolCall } from "./acp";
 import { compareEventOrder, type SeqComparable } from "./seq_order";
+
+export type PlanEntryView = Pick<AcpPlanEntry, "content" | "status" | "priority">;
 
 export type ConversationItem =
   | {
       kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
       text: string;
+      plan_entries?: PlanEntryView[];
       live?: boolean;
       seq?: string;
       event_id?: number;
@@ -189,6 +192,11 @@ export function buildConversationMessages(
       items.push({
         kind: "agent_plan",
         text: planText,
+        plan_entries: plan.entries?.map((entry) => ({
+          content: entry.content,
+          status: entry.status,
+          priority: entry.priority,
+        })),
         live: false,
         seq: entry.seq ?? undefined,
         event_id: entry.event_id ?? undefined,

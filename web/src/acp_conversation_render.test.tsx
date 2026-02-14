@@ -15,6 +15,9 @@ function renderConversation(
       isFrozenView={false}
       shouldAutoCollapse={false}
       collapseCutoff={0}
+      runStatus={null}
+      virtualTopSpacer={0}
+      virtualBottomSpacer={0}
       stickToBottom={true}
       pendingCount={0}
       avgHeight={40}
@@ -157,6 +160,26 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Thinking:");
     expect(html).toContain("Plan:");
+  });
+
+  it("renders plan entries as a structured plan card", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_plan",
+        text: "1. analyze\n2. implement",
+        plan_entries: [
+          { content: "analyze", status: "completed", priority: "high" },
+          { content: "implement", status: "in_progress" },
+        ],
+        event_id: 2,
+      },
+    ]);
+
+    expect(html).toContain("acp-plan-card");
+    expect(html).toContain("1/2 completed");
+    expect(html).toContain("analyze");
+    expect(html).toContain("implement");
+    expect(html).toContain("in_progress");
   });
 
   it("renders markdown bubbles and pending spacer", () => {

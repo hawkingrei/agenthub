@@ -353,6 +353,78 @@ select:not([class*="mantine-"]):focus-visible {
   position: relative;
 }
 
+.input-row {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-history {
+  position: relative;
+}
+
+.input-interrupt-button {
+  height: 28px !important;
+  min-height: 28px;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  line-height: 1.15;
+}
+
+.history-toggle {
+  height: 28px !important;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  background: #f4f6f8 !important;
+  border: 1px solid #d9dee5 !important;
+  color: #3e4954 !important;
+}
+
+.input-history-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(560px, 70vw);
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #d9dee5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(18, 26, 35, 0.12);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.input-history-item {
+  width: 100%;
+  text-align: left;
+  height: auto !important;
+  min-height: 30px;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
+  background: #fff !important;
+  color: #1f2a36 !important;
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.input-history-item:hover {
+  background: #f5f8ff !important;
+  border-color: #d8e3ff !important;
+}
+
 .input button:not([class*="mantine-"]) {
   height: 44px;
 }
@@ -1502,6 +1574,132 @@ select:not([class*="mantine-"]):focus-visible {
   color: #295d52;
 }
 
+.acp-subfold {
+  margin-top: 8px;
+}
+
+.acp-subfold > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #4d5a65;
+  margin-bottom: 6px;
+}
+
+.acp-subfold-preview {
+  color: #6b7a87;
+  font-family: "Source Code Pro", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(64vw, 520px);
+}
+
+.acp-plan-card {
+  border: 1px solid #efd9a9;
+  border-radius: 10px;
+  background: #fffbf1;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.acp-plan-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.acp-plan-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: #6f5e33;
+}
+
+.acp-plan-progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #f2e4be;
+  overflow: hidden;
+}
+
+.acp-plan-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #b48a2c, #7fcb76);
+}
+
+.acp-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.acp-plan-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #eddab0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+}
+
+.acp-plan-item.completed {
+  border-color: #c7e6c9;
+  background: #f4fbf5;
+}
+
+.acp-plan-item.active {
+  border-color: #c6ddf6;
+  background: #f5f9ff;
+}
+
+.acp-plan-index {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #f6e7bc;
+  color: #6f5e33;
+  font-size: 11px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.acp-plan-content {
+  font-size: 13px;
+  color: #2f3a45;
+  min-width: 0;
+}
+
+.acp-plan-priority,
+.acp-plan-status {
+  font-size: 10px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: #f1f3f5;
+  color: #4f5a65;
+}
+
+.acp-plan-item.completed .acp-plan-status {
+  background: #dff2e2;
+  color: #295d52;
+}
+
+.acp-plan-item.active .acp-plan-status {
+  background: #dcecff;
+  color: #1f4d86;
+}
+
 .acp-content code,
 .acp-terminal code {
   background: #0e1116;
@@ -1712,24 +1910,71 @@ select:not([class*="mantine-"]):focus-visible {
   .acp-head.minimal {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 6px;
   }
 
   .acp-actions {
     width: 100%;
     justify-content: space-between;
     flex-wrap: wrap;
+    gap: clamp(4px, 1.6vw, 8px);
   }
 
   .acp-tabs {
+    --acp-tab-font-size: clamp(10px, 2.8vw, 11px);
+    --acp-tab-pad-y: clamp(3px, 1vw, 5px);
+    --acp-tab-pad-x: clamp(8px, 3.2vw, 11px);
     flex: 1 1 auto;
+    min-width: 0;
     max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
+    padding: clamp(2px, 0.6vw, 3px);
+    gap: clamp(3px, 1vw, 5px);
+    border-radius: 12px;
+  }
+
+  .acp-tabs .tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-height: 30px;
+    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
+    font-size: var(--acp-tab-font-size);
+    line-height: 1.15;
+  }
+
+  .acp-tabs .tab .tab-badge {
+    margin-left: clamp(3px, 1vw, 5px);
+    padding: 1px clamp(4px, 1.4vw, 6px);
+    font-size: clamp(9px, 2.3vw, 10px);
   }
 
   .acp-interrupt-button {
     flex: 0 0 auto;
+    min-height: 30px;
+    padding: clamp(3px, 1vw, 5px) clamp(8px, 3vw, 11px);
+    font-size: clamp(10px, 2.8vw, 11px);
+    line-height: 1.15;
+  }
+
+  .acp-debug {
+    gap: 8px;
+  }
+
+  .acp-debug-tabs {
+    max-width: 100%;
+    flex-wrap: wrap;
+    padding: clamp(2px, 0.6vw, 3px);
+    gap: clamp(3px, 1vw, 5px);
+  }
+
+  .acp-debug-tabs .tab {
+    min-height: 30px;
+    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
+    font-size: var(--acp-tab-font-size);
+    line-height: 1.15;
   }
 
   .agents-backdrop {
@@ -1755,6 +2000,23 @@ select:not([class*="mantine-"]):focus-visible {
 
   .input.docked {
     flex-direction: column;
+  }
+
+  .input-row {
+    position: static;
+    align-self: flex-end;
+  }
+
+  .input-interrupt-button {
+    height: 26px !important;
+    min-height: 26px;
+    padding: 3px 8px !important;
+    font-size: 10px !important;
+  }
+
+  .input-history-menu {
+    width: min(92vw, 560px);
+    max-height: 220px;
   }
 
   .input.docked textarea:not([class*="mantine-"]) {

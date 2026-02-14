@@ -66,7 +66,19 @@ fn styles_keep_acp_conversation_scoped() {
         "admin list layout styles should be scoped and not override markdown lists"
     );
     assert!(
-        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 8px;\n  }"),
+        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 6px;\n  }"),
         "mobile ACP head should stack controls for narrow screens"
+    );
+    assert!(
+        css.contains("--acp-tab-font-size: clamp(10px, 2.8vw, 11px);"),
+        "mobile ACP tabs should use adaptive font sizing"
+    );
+    assert!(
+        css.contains(".acp-tabs .tab {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    flex: 1 1 0;\n    min-height: 30px;"),
+        "mobile ACP top tabs should be adaptive and centered"
+    );
+    assert!(
+        css.contains(".acp-debug-tabs {\n    max-width: 100%;\n    flex-wrap: wrap;"),
+        "mobile ACP debug tabs should wrap adaptively on narrow screens"
     );
 }

@@ -59,6 +59,11 @@ import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { JoinPage } from "./pages/join_page";
 import { ensurePushSubscription } from "./push";
 import {
+  INPUT_HISTORY_STORAGE_KEY,
+  parseInputHistory,
+  pushInputHistory,
+} from "./input_history";
+import {
   loginCredentialToJson,
   publicKeyCredentialCreationOptionsFromJson,
   publicKeyCredentialRequestOptionsFromJson,
@@ -136,6 +141,11 @@ export function App() {
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
+  const [inputHistory, setInputHistory] = useState<string[]>(() =>
+    parseInputHistory(localStorage.getItem(INPUT_HISTORY_STORAGE_KEY))
+  );
+  const [inputHistoryCursor, setInputHistoryCursor] = useState(-1);
+  const inputHistoryDraftRef = useRef("");
   const sseRef = useRef<EventSource | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalStickToBottomRef = useRef(true);
@@ -193,6 +203,9 @@ export function App() {
   useEffect(() => {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
+  useEffect(() => {
+    localStorage.setItem(INPUT_HISTORY_STORAGE_KEY, JSON.stringify(inputHistory));
+  }, [inputHistory]);
 
   const handleTerminalScroll = useCallback(() => {
     const el = terminalRef.current;
@@ -248,6 +261,12 @@ export function App() {
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
   const canControlAcp = Boolean(activeAgent && isAgentActive);
+  const hasInProgressToolCall = acpView.toolCalls.some(
+    (call) => call.status === "in_progress"
+  );
+  const canInterruptAcpRun =
+    canControlAcp &&
+    (acpView.runStatus?.status === "running" || hasInProgressToolCall);
   const activeEventKey = activeAgent
     ? `${activeAgent}:${activeSessionId ?? "latest"}`
     : null;
@@ -255,6 +274,11 @@ export function App() {
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
+  useEffect(() => {
+    setInputHistoryCursor(-1);
+    inputHistoryDraftRef.current = "";
+  }, [activeAgent, activeSessionId]);
+
   const refreshAgents = useCallback(async () => {
     if (!token) return;
     try {
@@ -1113,6 +1137,9 @@ export function App() {
     }
     try {
       await api.sendInput(token, activeAgent, text, messageId ?? undefined);
+      setInputHistory((prev) => pushInputHistory(prev, text));
+      setInputHistoryCursor(-1);
+      inputHistoryDraftRef.current = "";
       setInput("");
     } catch (err) {
       const msg = String(err || "websocket not connected");
@@ -1122,6 +1149,55 @@ export function App() {
       }
     }
   };
+
+  const onInputChange = useCallback(
+    (value: string) => {
+      setInput(value);
+      if (inputHistoryCursor >= 0) {
+        setInputHistoryCursor(-1);
+      }
+      inputHistoryDraftRef.current = value;
+    },
+    [inputHistoryCursor]
+  );
+
+  const onNavigateInputHistory = useCallback(
+    (direction: "up" | "down") => {
+      if (inputHistory.length === 0) return;
+      if (direction === "up") {
+        if (inputHistoryCursor < 0) {
+          inputHistoryDraftRef.current = input;
+          setInputHistoryCursor(0);
+          setInput(inputHistory[0]);
+          return;
+        }
+        const nextCursor = Math.min(inputHistory.length - 1, inputHistoryCursor + 1);
+        setInputHistoryCursor(nextCursor);
+        setInput(inputHistory[nextCursor]);
+        return;
+      }
+      if (inputHistoryCursor < 0) return;
+      if (inputHistoryCursor === 0) {
+        setInputHistoryCursor(-1);
+        setInput(inputHistoryDraftRef.current);
+        return;
+      }
+      const nextCursor = inputHistoryCursor - 1;
+      setInputHistoryCursor(nextCursor);
+      setInput(inputHistory[nextCursor]);
+    },
+    [input, inputHistory, inputHistoryCursor]
+  );
+
+  const onSelectInputHistory = useCallback(
+    (value: string) => {
+      const nextCursor = inputHistory.findIndex((item) => item === value);
+      setInputHistoryCursor(nextCursor);
+      setInput(value);
+      inputHistoryDraftRef.current = value;
+    },
+    [inputHistory]
+  );
 
   const onRespondPermission = async (
     agentId: string,
@@ -1385,14 +1461,15 @@ export function App() {
                     acpTab,
                     onSelectTab: (next) => setAcpTab(next),
                     showConversationBadge: acpConversation.showConversationBadge,
-                    canControlAcp,
-                    onAcpCancel,
                     conversation: {
                       items: acpConversation.conversationRenderItems,
                       windowOffset: acpConversation.conversationWindowOffset,
                       isFrozenView: acpConversation.isFrozenView,
                       shouldAutoCollapse: acpConversation.shouldAutoCollapse,
                       collapseCutoff: acpConversation.collapseCutoff,
+                      runStatus: acpView.runStatus?.status ?? null,
+                      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
+                      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
                       stickToBottom: acpConversation.conversationStickToBottom,
                       pendingCount: acpConversation.conversationPendingCount,
                       avgHeight: acpConversation.conversationAvgHeight,
@@ -1426,8 +1503,14 @@ export function App() {
             {!(acpTab === "debug" && acpView.hasAcp) && (
               <InputDock
                 input={input}
-                onInputChange={setInput}
+                historyCommands={inputHistory}
+                showInterrupt={acpView.hasAcp}
+                canInterrupt={canInterruptAcpRun}
+                onInputChange={onInputChange}
                 onSendInput={onSendInput}
+                onInterrupt={onAcpCancel}
+                onNavigateHistory={onNavigateInputHistory}
+                onSelectHistoryCommand={onSelectInputHistory}
                 onJumpToBottom={acpConversation.jumpToConversationBottom}
                 showConversationJump={acpConversation.showConversationJump}
                 isComposingRef={isComposingRef}
