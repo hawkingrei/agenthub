@@ -12,6 +12,45 @@ type InputDockProps = {
   isComposingRef: React.MutableRefObject<boolean>;
 };
 
+export type InputHistoryNavigationContext = {
+  key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  value: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+  isComposing: boolean;
+};
+
+export function isImeComposing(
+  currentRefState: boolean,
+  nativeIsComposing: boolean,
+  nativeKeyCode?: number
+): boolean {
+  return currentRefState || nativeIsComposing || nativeKeyCode === 229;
+}
+
+export function deriveInputHistoryNavigation(
+  ctx: InputHistoryNavigationContext
+): "up" | "down" | null {
+  if (ctx.isComposing) return null;
+  if (ctx.key !== "ArrowUp" && ctx.key !== "ArrowDown") return null;
+  if (ctx.shiftKey || ctx.altKey || ctx.metaKey || ctx.ctrlKey) return null;
+
+  const value = ctx.value;
+  const hasNewline = value.includes("\n");
+  const selectionStart = ctx.selectionStart ?? 0;
+  const selectionEnd = ctx.selectionEnd ?? selectionStart;
+  const atStart = selectionStart === 0 && selectionEnd === 0;
+  const atEnd = selectionStart === value.length && selectionEnd === value.length;
+
+  if (ctx.key === "ArrowUp" && (atStart || !hasNewline)) return "up";
+  if (ctx.key === "ArrowDown" && (atEnd || !hasNewline)) return "down";
+  return null;
+}
+
 export function InputDock({
   input,
   historyCommands,
@@ -79,34 +118,33 @@ export function InputDock({
           isComposingRef.current = false;
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+          const nativeEvent = e.nativeEvent as KeyboardEvent;
+          const composing = isImeComposing(
+            isComposingRef.current,
+            nativeEvent.isComposing === true,
+            nativeEvent.keyCode
+          );
+          if (e.key === "Enter" && !e.shiftKey && !composing) {
             e.preventDefault();
             onSendInput();
             setShowHistory(false);
             return;
           }
-          if (
-            (e.key === "ArrowUp" || e.key === "ArrowDown") &&
-            !e.shiftKey &&
-            !e.altKey &&
-            !e.metaKey &&
-            !e.ctrlKey &&
-            !isComposingRef.current
-          ) {
-            const target = e.currentTarget;
-            const value = target.value;
-            const hasNewline = value.includes("\n");
-            const selectionStart = target.selectionStart ?? 0;
-            const selectionEnd = target.selectionEnd ?? selectionStart;
-            const atStart = selectionStart === 0 && selectionEnd === 0;
-            const atEnd =
-              selectionStart === value.length && selectionEnd === value.length;
-            const canHandleUp = e.key === "ArrowUp" && (atStart || !hasNewline);
-            const canHandleDown = e.key === "ArrowDown" && (atEnd || !hasNewline);
-            if (canHandleUp || canHandleDown) {
-              e.preventDefault();
-              onNavigateHistory(e.key === "ArrowUp" ? "up" : "down");
-            }
+          const target = e.currentTarget;
+          const direction = deriveInputHistoryNavigation({
+            key: e.key,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey,
+            ctrlKey: e.ctrlKey,
+            value: target.value,
+            selectionStart: target.selectionStart,
+            selectionEnd: target.selectionEnd,
+            isComposing: composing,
+          });
+          if (direction) {
+            e.preventDefault();
+            onNavigateHistory(direction);
           }
         }}
         rows={2}

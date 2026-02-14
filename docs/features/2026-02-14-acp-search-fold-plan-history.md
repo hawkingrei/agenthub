@@ -49,11 +49,17 @@ Three interaction gaps were reported in daily usage:
     guards to avoid breaking multi-line editing).
 - History persistence uses local storage key `agenthub_input_history` and keeps
   a bounded de-duplicated list.
+- Input keyboard handling now includes explicit IME guards:
+  - `nativeEvent.isComposing` and keyCode `229` are treated as composing state,
+  - history navigation key handling is extracted to pure decision helpers with
+    unit coverage.
 - ACP conversation render hot path now includes cache layers:
   - markdown render cache keyed by message text,
   - ANSI segment parse cache keyed by terminal payload text.
 - Conversation scroll handler now batches work with `requestAnimationFrame` to
   avoid bursty state updates under fast scroll.
+- `requestAnimationFrame` throttling now uses a reusable helper
+  (`createRafThrottle`) with unit coverage for dedupe and cancel behavior.
 - ACP conversation row rendering now uses memoized row components:
   - conversation rows are split into a memoized `ConversationBubble`,
   - tool/plan/markdown bubbles are memoized to avoid repeated render work
@@ -68,6 +74,7 @@ Three interaction gaps were reported in daily usage:
 ```bash
 cd web
 npm run test -- src/hooks/use_acp_conversation.test.ts src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/input_history.test.ts
+npm run test -- src/input_dock_keyboard.test.ts src/raf_throttle.test.ts
 npm run lint -- src/components/acp_conversation.tsx src/components/input_dock.tsx src/input_history.ts src/input_history.test.ts src/conversation.ts src/app.tsx
 npm run build
 ```

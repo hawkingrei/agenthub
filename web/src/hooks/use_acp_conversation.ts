@@ -16,6 +16,7 @@ import {
 } from "../conversation";
 import { isNearBottom } from "../scroll";
 import type { SeqComparable } from "../seq_order";
+import { createRafThrottle } from "../raf_throttle";
 
 type EventMeta = {
   oldestId: number | null;
@@ -105,7 +106,9 @@ export function useAcpConversation({
   onLoadOlder,
 }: UseAcpConversationArgs): UseAcpConversationResult {
   const acpConversationRef = useRef<HTMLDivElement | null>(null);
-  const conversationScrollRafRef = useRef<number | null>(null);
+  const conversationScrollThrottleRef = useRef<ReturnType<
+    typeof createRafThrottle
+  > | null>(null);
   const acpStickToBottomRef = useRef(true);
   const conversationScrollRef = useRef<{
     top: number;
@@ -283,32 +286,37 @@ export function useAcpConversation({
   ]);
 
   const handleConversationScroll = useCallback(() => {
+    const throttle = conversationScrollThrottleRef.current;
+    if (!throttle) {
+      handleConversationScrollNow();
+      return;
+    }
+    throttle.schedule();
+  }, [handleConversationScrollNow]);
+
+  useEffect(() => {
     if (
       typeof window === "undefined" ||
       typeof window.requestAnimationFrame !== "function"
     ) {
-      handleConversationScrollNow();
+      conversationScrollThrottleRef.current = null;
       return;
     }
-    if (conversationScrollRafRef.current != null) return;
-    conversationScrollRafRef.current = window.requestAnimationFrame(() => {
-      conversationScrollRafRef.current = null;
-      handleConversationScrollNow();
-    });
-  }, [handleConversationScrollNow]);
-
-  useEffect(() => {
-    return () => {
-      if (
-        conversationScrollRafRef.current != null &&
-        typeof window !== "undefined" &&
-        typeof window.cancelAnimationFrame === "function"
-      ) {
-        window.cancelAnimationFrame(conversationScrollRafRef.current);
+    conversationScrollThrottleRef.current = createRafThrottle(
+      handleConversationScrollNow,
+      {
+        requestAnimationFrame: window.requestAnimationFrame.bind(window),
+        cancelAnimationFrame:
+          typeof window.cancelAnimationFrame === "function"
+            ? window.cancelAnimationFrame.bind(window)
+            : undefined,
       }
-      conversationScrollRafRef.current = null;
+    );
+    return () => {
+      conversationScrollThrottleRef.current?.cancel();
+      conversationScrollThrottleRef.current = null;
     };
-  }, []);
+  }, [handleConversationScrollNow]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
