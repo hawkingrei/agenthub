@@ -3,6 +3,7 @@
 - [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Memoize ACP conversation row rendering (`ConversationBubble` + tool/plan/markdown bubbles) to cut repeated render work during scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Guard ACP conversation virtual-slice/freeze state against blank-window rendering when stale viewport/freeze state occurs; recover without requiring manual `Jump to bottom` (see `docs/features/2026-02-14-acp-conversation-blank-window-guard.md`).
 - [x] Add IME-safe keyboard guards for input history recall (`nativeEvent.isComposing`/keyCode `229`) with unit coverage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add unit-level verification for reusable `requestAnimationFrame` throttle dedupe/cancel behavior in ACP conversation scroll path (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Close input history menu on typing, arrow-history navigation, `Escape`, and outside click for keyboard/mouse accessibility (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
