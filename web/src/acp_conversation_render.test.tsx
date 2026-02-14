@@ -176,7 +176,7 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("acp-plan-card");
-    expect(html).toContain("2 completed");
+    expect(html).toContain("1/2 completed");
     expect(html).toContain("analyze");
     expect(html).toContain("implement");
     expect(html).toContain("in_progress");

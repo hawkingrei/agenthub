@@ -63,17 +63,38 @@ export function InputDock({
   isComposingRef,
 }: InputDockProps) {
   const [showHistory, setShowHistory] = React.useState(false);
+  const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
+
+  React.useEffect(() => {
+    if (!showHistory) return;
+    if (typeof document === "undefined") return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!historyContainerRef.current?.contains(target)) {
+        setShowHistory(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [showHistory]);
+
   return (
     <div className="input docked">
       <div className="input-row">
         {historyCommands.length > 0 && (
-          <div className="input-history">
+          <div className="input-history" ref={historyContainerRef}>
             <button
               className="history-toggle"
               onClick={() => setShowHistory((prev) => !prev)}
               title="Show sent command history"
               aria-label="Show sent command history"
+              aria-expanded={showHistory}
             >
               History
             </button>
@@ -110,7 +131,10 @@ export function InputDock({
       <textarea
         placeholder="Send input (Enter to send, Shift+Enter for newline)"
         value={input}
-        onChange={(e) => onInputChange(e.target.value)}
+        onChange={(e) => {
+          setShowHistory(false);
+          onInputChange(e.target.value);
+        }}
         onCompositionStart={() => {
           isComposingRef.current = true;
         }}
@@ -118,6 +142,10 @@ export function InputDock({
           isComposingRef.current = false;
         }}
         onKeyDown={(e) => {
+          if (e.key === "Escape" && showHistory) {
+            setShowHistory(false);
+            return;
+          }
           const nativeEvent = e.nativeEvent as KeyboardEvent;
           const composing = isImeComposing(
             isComposingRef.current,
@@ -144,6 +172,7 @@ export function InputDock({
           });
           if (direction) {
             e.preventDefault();
+            setShowHistory(false);
             onNavigateHistory(direction);
           }
         }}

@@ -49,10 +49,15 @@ Three interaction gaps were reported in daily usage:
     guards to avoid breaking multi-line editing).
 - History persistence uses local storage key `agenthub_input_history` and keeps
   a bounded de-duplicated list.
+- Input history privacy guard now skips obvious secret-like commands from
+  persistence (`password`/`token`/`api_key` assignments, bearer headers, and
+  private key blocks).
+- Input history menu behavior now closes on typing, history arrow navigation,
+  `Escape`, and outside click.
 - Input keyboard handling now includes explicit IME guards:
   - `nativeEvent.isComposing` and keyCode `229` are treated as composing state,
   - history navigation key handling is extracted to pure decision helpers with
-    unit coverage.
+  unit coverage.
 - ACP conversation render hot path now includes cache layers:
   - markdown render cache keyed by message text,
   - ANSI segment parse cache keyed by terminal payload text.
@@ -75,6 +80,7 @@ Three interaction gaps were reported in daily usage:
 cd web
 npm run test -- src/hooks/use_acp_conversation.test.ts src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/input_history.test.ts
 npm run test -- src/input_dock_keyboard.test.ts src/raf_throttle.test.ts
+npm run test -- src/input_history.test.ts
 npm run lint -- src/components/acp_conversation.tsx src/components/input_dock.tsx src/input_history.ts src/input_history.test.ts src/conversation.ts src/app.tsx
 npm run build
 ```

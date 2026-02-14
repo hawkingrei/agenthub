@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseInputHistory, pushInputHistory } from "./input_history";
+import {
+  parseInputHistory,
+  pushInputHistory,
+  shouldStoreInputHistoryValue,
+} from "./input_history";
 
 describe("parseInputHistory", () => {
   it("returns empty list for invalid data", () => {
@@ -30,5 +34,27 @@ describe("pushInputHistory", () => {
 
   it("ignores empty commands", () => {
     expect(pushInputHistory(["cargo test"], "  ")).toEqual(["cargo test"]);
+  });
+
+  it("does not persist obvious sensitive assignments", () => {
+    expect(pushInputHistory([], "OPENAI_API_KEY=sk-test")).toEqual([]);
+    expect(pushInputHistory([], "--password=topsecret")).toEqual([]);
+    expect(pushInputHistory([], "authorization: bearer abc.def.ghi")).toEqual([]);
+  });
+});
+
+describe("shouldStoreInputHistoryValue", () => {
+  it("allows regular command content", () => {
+    expect(shouldStoreInputHistoryValue("cargo test ./web")).toBe(true);
+  });
+
+  it("blocks sensitive key patterns", () => {
+    expect(shouldStoreInputHistoryValue("token=abc123")).toBe(false);
+    expect(shouldStoreInputHistoryValue("private_key: foo")).toBe(false);
+    expect(
+      shouldStoreInputHistoryValue(
+        "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----"
+      )
+    ).toBe(false);
   });
 });
