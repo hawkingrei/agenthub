@@ -27,7 +27,7 @@ render `Interrupt` on top of the editor.
    - `input-row` for action chips
    - `input-editor-row` for textarea + send button
 2. Remove absolute positioning from `input-row` and switch to wrapped flow
-   alignment (`justify-content: flex-end`).
+   alignment in normal document flow.
 3. Keep narrow-screen sizing tweaks, but reuse the same flow model across
    desktop/tablet/mobile breakpoints.
 4. Add style guard coverage in `tests/web_assets.rs` so overlay-prone absolute

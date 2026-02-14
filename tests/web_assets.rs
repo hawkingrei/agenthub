@@ -70,6 +70,10 @@ fn styles_keep_acp_conversation_scoped() {
         "send button should keep larger tap target size"
     );
     assert!(
+        css.contains(".input-editor-row .input-send-button {\n    min-height: 44px !important;\n    min-width: 88px;\n    padding: 0 14px !important;\n    font-size: 13px !important;\n  }"),
+        "mobile send button should keep touch-friendly tap target size"
+    );
+    assert!(
         css.contains("@supports (height: 100dvh)"),
         "styles.css should use dynamic viewport height fallback for mobile browsers"
     );

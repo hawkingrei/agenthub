@@ -59,4 +59,14 @@ describe("InputDock interrupt placement", () => {
     expect(html).toContain('class="input-send-button"');
     expect(html).toContain('aria-label="Send input"');
   });
+
+  it("keeps textarea and send button in the same editor row", () => {
+    const html = renderDock();
+    const editorRowStart = html.indexOf('class="input-editor-row"');
+    expect(editorRowStart).toBeGreaterThanOrEqual(0);
+    const textareaPos = html.indexOf("<textarea", editorRowStart);
+    const sendPos = html.indexOf('class="input-send-button"', editorRowStart);
+    expect(textareaPos).toBeGreaterThan(editorRowStart);
+    expect(sendPos).toBeGreaterThan(textareaPos);
+  });
 });
