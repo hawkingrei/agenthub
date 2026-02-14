@@ -23,7 +23,8 @@ use self::codec::{
 };
 use super::{AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream};
 use crate::acp::{
-    AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths, spawn_acp_session,
+    AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths,
+    spawn_acp_session,
 };
 use crate::auth::AuthService;
 use crate::push::PushService;
@@ -45,6 +46,40 @@ pub struct AgentManager {
 const ACP_PROVIDER_CODEX: &str = "codex";
 const ACP_PROVIDER_GEMINI: &str = "gemini";
 const ACP_PROVIDER_KIMI: &str = "kimi";
+const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
+const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
+const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
+const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
+
+fn normalized_env_var(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn actor_runtime_context_from_env(agent_name: &str) -> Option<AcpActorSkillContext> {
+    let run_id = normalized_env_var(ACTOR_RUNTIME_RUN_ID_ENV)?;
+    let actor_id = normalized_env_var(ACTOR_RUNTIME_ACTOR_ID_ENV)
+        .or_else(|| {
+            let value = agent_name.trim().to_string();
+            if value.is_empty() { None } else { Some(value) }
+        })
+        .unwrap_or_else(|| "agent".to_string());
+    let default_channel =
+        normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV).unwrap_or_else(|| "default".to_string());
+    let actor_cli_path = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.into_os_string().into_string().ok())
+        .or_else(|| normalized_env_var(ACTOR_RUNTIME_CLI_ENV))
+        .unwrap_or_else(|| "agenthub".to_string());
+    Some(AcpActorSkillContext {
+        run_id,
+        actor_id,
+        default_channel,
+        actor_cli_path,
+    })
+}
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -457,6 +492,7 @@ impl AgentManager {
     async fn start_agent_inner(&self, agent_id: &str) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
+        let actor_context = actor_runtime_context_from_env(&agent.name);
         let workdir = expand_tilde(&agent.workdir);
         let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
         if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
@@ -508,6 +544,12 @@ impl AgentManager {
             .stderr(Stdio::piped());
         for (key, value) in &self.proxy_env {
             command.env(key, value);
+        }
+        if let Some(context) = actor_context.as_ref() {
+            command.env(ACTOR_RUNTIME_RUN_ID_ENV, &context.run_id);
+            command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
+            command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
+            command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
         }
 
         let mut child = match command.spawn() {
@@ -624,6 +666,7 @@ impl AgentManager {
                 stdout,
                 stdin,
                 safe_paths,
+                actor_context.clone(),
             )
             .await
             {

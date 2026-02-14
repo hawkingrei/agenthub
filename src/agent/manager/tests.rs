@@ -1,7 +1,9 @@
 use super::{
-    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
-    acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
-    status_from_str, status_to_str, stream_from_str, stream_to_str,
+    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, ACTOR_RUNTIME_ACTOR_ID_ENV,
+    ACTOR_RUNTIME_CHANNEL_ENV, ACTOR_RUNTIME_RUN_ID_ENV, AgentStatus, OutputStream,
+    acp_provider_for_agent_with_binary, actor_runtime_context_from_env, expand_tilde,
+    is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
+    stream_to_str,
 };
 use std::sync::Mutex;
 
@@ -105,4 +107,60 @@ fn acp_provider_for_agent_requires_expected_args() {
         acp_provider_for_agent_with_binary(codex_bin, codex_bin, &[]),
         Some(ACP_PROVIDER_CODEX)
     );
+}
+
+#[test]
+fn actor_runtime_context_uses_env_and_agent_defaults() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+    let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+    let prev_channel = std::env::var(ACTOR_RUNTIME_CHANNEL_ENV).ok();
+
+    unsafe {
+        std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-42");
+        std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+        std::env::set_var(ACTOR_RUNTIME_CHANNEL_ENV, "coordination");
+    }
+
+    let context = actor_runtime_context_from_env("planner-agent").expect("actor context");
+    assert_eq!(context.run_id, "run-42");
+    assert_eq!(context.actor_id, "planner-agent");
+    assert_eq!(context.default_channel, "coordination");
+    assert!(!context.actor_cli_path.trim().is_empty());
+
+    if let Some(value) = prev_run {
+        unsafe { std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, value) }
+    } else {
+        unsafe { std::env::remove_var(ACTOR_RUNTIME_RUN_ID_ENV) }
+    }
+    if let Some(value) = prev_actor {
+        unsafe { std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, value) }
+    } else {
+        unsafe { std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV) }
+    }
+    if let Some(value) = prev_channel {
+        unsafe { std::env::set_var(ACTOR_RUNTIME_CHANNEL_ENV, value) }
+    } else {
+        unsafe { std::env::remove_var(ACTOR_RUNTIME_CHANNEL_ENV) }
+    }
+}
+
+#[test]
+fn actor_runtime_context_requires_run_id() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+    unsafe {
+        std::env::remove_var(ACTOR_RUNTIME_RUN_ID_ENV);
+    }
+
+    assert!(
+        actor_runtime_context_from_env("planner-agent").is_none(),
+        "actor context should be disabled without run id"
+    );
+
+    if let Some(value) = prev_run {
+        unsafe { std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, value) }
+    } else {
+        unsafe { std::env::remove_var(ACTOR_RUNTIME_RUN_ID_ENV) }
+    }
 }

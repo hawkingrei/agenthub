@@ -22,6 +22,8 @@
 - [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
+- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `AGENTHUB_ACTOR_RUN_ID` is configured (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
+- [ ] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
 - [ ] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
 - [ ] Verify orchestrator worker loop handles `/input_required` and `/resume` transitions with idempotent retries (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Implement remote mailbox relay worker (`transport=remote`) with delivery retry/dead-letter policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
