@@ -790,7 +790,7 @@ export function App() {
     };
     const openSource = () => {
       if (cancelled) return;
-      setSseState((prev) => (prev === "reconnecting" ? "reconnecting" : "connecting"));
+      setSseState("connecting");
       const source = new EventSource(
         `${location.origin}/sse/agents?ids=${encodeURIComponent(
           streamTarget
