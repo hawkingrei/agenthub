@@ -47,6 +47,10 @@ type UseAcpConversationResult = {
   conversationStickToBottom: boolean;
   conversationPendingCount: number;
   conversationAvgHeight: number;
+  conversationTotalItems: number;
+  conversationSourceItems: number;
+  conversationRenderedItems: number;
+  conversationVirtualized: boolean;
   showConversationJump: boolean;
   showConversationBadge: boolean;
   jumpToConversationBottom: () => void;
@@ -703,6 +707,10 @@ export function useAcpConversation({
     conversationStickToBottom,
     conversationPendingCount,
     conversationAvgHeight,
+    conversationTotalItems: conversationMessages.length,
+    conversationSourceItems: conversationSourceItems.length,
+    conversationRenderedItems: conversationRenderItems.length,
+    conversationVirtualized: shouldVirtualizeConversation,
     showConversationJump,
     showConversationBadge,
     jumpToConversationBottom,

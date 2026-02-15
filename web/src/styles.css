@@ -1356,6 +1356,38 @@ select:not([class*="mantine-"]):focus-visible {
   color: #fff;
 }
 
+.acp-runtime {
+  display: grid;
+  gap: 8px;
+}
+
+.acp-runtime-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.acp-runtime-card {
+  border: 1px solid #d9e0e7;
+  border-radius: 10px;
+  background: #fbfcfd;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.acp-runtime-label {
+  font-size: 11px;
+  color: #5c6978;
+}
+
+.acp-runtime-value {
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  color: #1f2a34;
+  word-break: break-word;
+}
+
 .acp-commands ul,
 .acp-debug ul {
   list-style: none;
@@ -1697,6 +1729,11 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0;
 }
 
+.acp-payload-segmented {
+  display: grid;
+  gap: 8px;
+}
+
 .acp-payload-list {
   margin: 0;
   padding-left: 18px;
@@ -1758,6 +1795,43 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-diff-line.context {
   color: #2f3a33;
+}
+
+.acp-segmented-block {
+  display: grid;
+  gap: 8px;
+}
+
+.acp-segmented-note {
+  font-size: 11px;
+  color: #5f6f66;
+}
+
+.acp-segmented-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.acp-segmented-meta {
+  font-size: 11px;
+  color: #5f6f66;
+}
+
+.acp-segmented-button {
+  border: 1px solid #b9cbc0;
+  background: #f4faf6;
+  color: #295d52;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.acp-segmented-button:hover {
+  background: #e9f6ee;
 }
 
 .acp-plan-card {

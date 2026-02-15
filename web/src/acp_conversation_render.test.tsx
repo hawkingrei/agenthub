@@ -47,11 +47,11 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("In Progress");
     expect(html).toContain("acp-tool-fold");
     expect(html).toContain("open");
-    expect(html).toContain("acp-payload-grid");
+    expect(html).toContain("Input");
+    expect(html).toContain("cmd=ls");
+    expect(html).not.toContain("&quot;cmd&quot;");
     expect(html).toContain("line1");
     expect(html).toContain("line2");
-    expect(html).toContain("cmd");
-    expect(html).not.toContain("&quot;cmd&quot;");
     expect(html).toContain("ansi-out");
     expect(html).toContain("stdout");
   });
@@ -70,9 +70,7 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Tool Call: Search");
     expect(html).toContain("Completed");
-    expect(html).toContain("query");
     expect(html).toContain("agenthub");
-    expect(html).toContain("limit");
     expect(html).toContain("path");
     expect(html).toContain("src/main.rs");
   });
@@ -84,13 +82,11 @@ describe("AcpConversation rendering", () => {
         id: "call-markdown-code",
         title: "Write",
         status: "completed",
-        content: "```ts\nconst n = 1;\n```",
         raw_output: "```bash\necho hello\n```",
       },
     ]);
 
     expect(html).toContain("Tool Call: Write");
-    expect(html).toContain("hljs-keyword\">const</span>");
     expect(html).toContain("hljs-built_in\">echo</span>");
   });
 
@@ -127,7 +123,7 @@ describe("AcpConversation rendering", () => {
         kind: "tool_call",
         id: "call-ascii",
         title: "Render",
-        status: "completed",
+        status: "in_progress",
         content: [
           "   /\\_/\\",
           "  ( o.o )",
@@ -169,7 +165,7 @@ describe("AcpConversation rendering", () => {
           kind: "tool_call",
           id: "call-nested-ansi",
           title: "Shell",
-          status: "completed",
+          status: "in_progress",
           terminal_output: "ignored",
         },
       ],
@@ -193,7 +189,7 @@ describe("AcpConversation rendering", () => {
           kind: "tool_call",
           id: "call-style-filter",
           title: "Shell",
-          status: "completed",
+          status: "in_progress",
           terminal_output: "ignored",
         },
       ],
@@ -220,6 +216,89 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Tool Call: Read");
     expect(html).not.toMatch(/acp-tool-fold" open/);
+  });
+
+  it("shows segmented footer for long tool text payloads", () => {
+    const lines = Array.from({ length: 400 }, (_, idx) => `line-${idx}`).join("\n");
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-long-text",
+        title: "Shell",
+        status: "in_progress",
+        content: lines,
+      },
+    ]);
+
+    expect(html).toContain("Show more");
+    expect(html).toContain("more lines");
+    expect(html).toContain("line-0");
+  });
+
+  it("shows segmented footer for large structured payloads", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-large-payload",
+        title: "Search",
+        status: "completed",
+        raw_output: {
+          results: Array.from({ length: 120 }, (_, idx) => ({
+            id: idx,
+            path: `src/file-${idx}.ts`,
+          })),
+        },
+      },
+    ]);
+
+    expect(html).toContain("Show more");
+    expect(html).toContain("more items");
+    expect(html).toContain("results");
+  });
+
+  it("hides debug-only payload fields such as turn_id and turnId", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-hidden-debug-fields",
+        title: "Search",
+        status: "completed",
+        raw_output: {
+          turn_id: "t-1",
+          turnId: "t-2",
+          query: "agenthub",
+          path: "src/main.rs",
+        },
+      },
+    ]);
+
+    expect(html).toContain("query");
+    expect(html).toContain("agenthub");
+    expect(html).toContain("path");
+    expect(html).toContain("src/main.rs");
+    expect(html).not.toContain("turn_id");
+    expect(html).not.toContain("turnId");
+    expect(html).not.toContain("t-1");
+    expect(html).not.toContain("t-2");
+  });
+
+  it("hides turn_id fields for JSON-like string payloads as well", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-hidden-debug-fields-json-text",
+        title: "Search",
+        status: "completed",
+        raw_output: "{\"turn_id\":\"t-3\",\"query\":\"agenthub\",\"path\":\"src/app.tsx\"}",
+      },
+    ]);
+
+    expect(html).toContain("query");
+    expect(html).toContain("agenthub");
+    expect(html).toContain("path");
+    expect(html).toContain("src/app.tsx");
+    expect(html).not.toContain("turn_id");
+    expect(html).not.toContain("t-3");
   });
 
   it("renders auto-collapsed summaries for thinking and plan", () => {

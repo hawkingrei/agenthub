@@ -2,7 +2,26 @@ import React from "react";
 import { AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
 
-type DebugTab = "session" | "permissions" | "raw";
+type DebugTab = "session" | "runtime" | "permissions" | "raw";
+
+type AcpRuntimeMetrics = {
+  totalConversationItems: number;
+  sourceConversationItems: number;
+  renderedConversationItems: number;
+  pendingConversationItems: number;
+  virtualizedConversation: boolean;
+  stickToBottom: boolean;
+  averageConversationHeight: number;
+  rawEventCount: number;
+  toolCallCount: number;
+  messageCount: number;
+  markdownCacheHits: number;
+  markdownCacheMisses: number;
+  ansiCacheHits: number;
+  ansiCacheMisses: number;
+  payloadParses: number;
+  payloadParseFailures: number;
+};
 
 type AcpDebugProps = {
   currentMode: string | null;
@@ -22,6 +41,7 @@ type AcpDebugProps = {
   onAcpSetConfig: () => void;
   onAcpCancel: () => void;
   onAcpClearSession: () => void;
+  runtimeMetrics: AcpRuntimeMetrics;
 };
 
 export function AcpDebug({
@@ -42,9 +62,22 @@ export function AcpDebug({
   onAcpSetConfig,
   onAcpCancel,
   onAcpClearSession,
+  runtimeMetrics,
 }: AcpDebugProps) {
   const [tab, setTab] = React.useState<DebugTab>("session");
   const rawRef = React.useRef<HTMLUListElement | null>(null);
+  const markdownTotal = runtimeMetrics.markdownCacheHits + runtimeMetrics.markdownCacheMisses;
+  const ansiTotal = runtimeMetrics.ansiCacheHits + runtimeMetrics.ansiCacheMisses;
+  const payloadParseSuccess = Math.max(
+    0,
+    runtimeMetrics.payloadParses - runtimeMetrics.payloadParseFailures
+  );
+  const markdownHitRate = markdownTotal > 0
+    ? Math.round((runtimeMetrics.markdownCacheHits / markdownTotal) * 100)
+    : 0;
+  const ansiHitRate = ansiTotal > 0
+    ? Math.round((runtimeMetrics.ansiCacheHits / ansiTotal) * 100)
+    : 0;
 
   React.useEffect(() => {
     if (tab !== "raw") return;
@@ -60,6 +93,12 @@ export function AcpDebug({
           onClick={() => setTab("session")}
         >
           Session Controls
+        </button>
+        <button
+          className={tab === "runtime" ? "tab active" : "tab"}
+          onClick={() => setTab("runtime")}
+        >
+          Runtime
         </button>
         <button
           className={tab === "permissions" ? "tab active" : "tab"}
@@ -123,6 +162,61 @@ export function AcpDebug({
           </div>
         </div>
       )}
+      {tab === "runtime" && (
+        <div className="acp-runtime">
+          <h4>Runtime Metrics</h4>
+          <div className="acp-runtime-grid">
+            <RuntimeMetricCard label="Conversation (total/source/rendered)">
+              {runtimeMetrics.totalConversationItems}
+              {" / "}
+              {runtimeMetrics.sourceConversationItems}
+              {" / "}
+              {runtimeMetrics.renderedConversationItems}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Pending Items">
+              {runtimeMetrics.pendingConversationItems}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Virtualized">
+              {runtimeMetrics.virtualizedConversation ? "yes" : "no"}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Stick To Bottom">
+              {runtimeMetrics.stickToBottom ? "yes" : "no"}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Average Row Height">
+              {runtimeMetrics.averageConversationHeight}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Raw / Tool / Message">
+              {runtimeMetrics.rawEventCount}
+              {" / "}
+              {runtimeMetrics.toolCallCount}
+              {" / "}
+              {runtimeMetrics.messageCount}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Markdown Cache">
+              {runtimeMetrics.markdownCacheHits}
+              {" / "}
+              {runtimeMetrics.markdownCacheMisses}
+              {" ("}
+              {markdownHitRate}
+              {"% hit)"}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="ANSI Cache">
+              {runtimeMetrics.ansiCacheHits}
+              {" / "}
+              {runtimeMetrics.ansiCacheMisses}
+              {" ("}
+              {ansiHitRate}
+              {"% hit)"}
+            </RuntimeMetricCard>
+            <RuntimeMetricCard label="Payload JSON Parse">
+              {payloadParseSuccess}
+              {" success / "}
+              {runtimeMetrics.payloadParseFailures}
+              {" fail"}
+            </RuntimeMetricCard>
+          </div>
+        </div>
+      )}
       {tab === "permissions" && (
         <div className="acp-permissions">
           <h4>Permissions</h4>
@@ -161,4 +255,19 @@ export function AcpDebug({
   );
 }
 
-export type { AcpDebugProps };
+function RuntimeMetricCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="acp-runtime-card">
+      <div className="acp-runtime-label">{label}</div>
+      <div className="acp-runtime-value">{children}</div>
+    </div>
+  );
+}
+
+export type { AcpDebugProps, AcpRuntimeMetrics };

@@ -32,6 +32,8 @@
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
+- [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
+- [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
 - [x] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
 - [x] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
 - [x] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
