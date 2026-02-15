@@ -34,6 +34,9 @@ expectations and cause review/CI confusion.
    merge.
 4. Add explicit proto-file header comments and README instructions for local
    developer workflow.
+5. Keep generated file discovery path-safe in the check script by using
+   null-delimited `find` parsing and bash-side mtime comparison (compatible
+   with both Linux and macOS `stat` variants).
 
 ## Validation
 
