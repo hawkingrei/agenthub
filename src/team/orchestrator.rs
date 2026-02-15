@@ -186,7 +186,10 @@ impl TeamOrchestratorWorker {
         summary: &mut TeamOrchestratorDispatchSummary,
     ) -> anyhow::Result<()> {
         for step in steps {
-            if step.status != TeamStepStatus::Working {
+            if !matches!(
+                step.status,
+                TeamStepStatus::Working | TeamStepStatus::InputRequired
+            ) {
                 continue;
             }
             let Some(session_id) = step.remote_task_id.as_deref() else {
@@ -971,6 +974,201 @@ mod tests {
                 .error_text
                 .as_deref()
                 .is_some_and(|text| text.contains("session-failed"))
+        );
+        let failed_run = teams.get_run(&run.id).await.expect("get failed run");
+        assert_eq!(failed_run.status, crate::team::TeamRunStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_handles_input_required_resume_with_idempotent_retries() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-input-required-resume-team".to_string(),
+                description: Some("team for input_required/resume reconciliation".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(&team.id, Some("ctx-input-required"), json!({"prompt":"go"}))
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        let _ = teams
+            .start_step(&step.id, Some("session-input-resume"))
+            .await
+            .expect("start step");
+        let _ = teams
+            .set_step_input_required(
+                &step.id,
+                Some("need approval"),
+                Some(json!({"question":"approve?"})),
+            )
+            .await
+            .expect("set input_required");
+        let input_retry = teams
+            .set_step_input_required(
+                &step.id,
+                Some("retry should be idempotent"),
+                Some(json!({"question":"approve?"})),
+            )
+            .await
+            .expect("retry input_required");
+        assert_eq!(input_retry.status, TeamStepStatus::InputRequired);
+        assert_eq!(input_retry.error_text.as_deref(), Some("need approval"));
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at)
+            VALUES (?1, ?2, ?3, 1)
+            "#,
+        )
+        .bind("session-input-resume")
+        .bind("planner")
+        .bind("running")
+        .execute(&db)
+        .await
+        .expect("insert running session");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+
+        let summary_before_resume = worker
+            .dispatch_once(10)
+            .await
+            .expect("dispatch before resume");
+        assert_eq!(summary_before_resume.reconciled_completed, 0);
+        assert_eq!(summary_before_resume.reconciled_failed, 0);
+        assert!(starter.calls().is_empty());
+        let step_before_resume = teams
+            .get_step(&step.id)
+            .await
+            .expect("get input_required step");
+        assert_eq!(step_before_resume.status, TeamStepStatus::InputRequired);
+
+        let resumed = teams
+            .resume_step(&step.id, Some(json!({"answer":"approved"})))
+            .await
+            .expect("resume step");
+        assert_eq!(resumed.status, TeamStepStatus::Working);
+        assert_eq!(resumed.input, Some(json!({"answer":"approved"})));
+        let resumed_retry = teams
+            .resume_step(&step.id, Some(json!({"answer":"approved-again"})))
+            .await
+            .expect("retry resume step");
+        assert_eq!(resumed_retry.status, TeamStepStatus::Working);
+        assert_eq!(resumed_retry.input, Some(json!({"answer":"approved"})));
+
+        sqlx::query(
+            r#"
+            UPDATE agent_sessions
+            SET status = 'completed', ended_at = 2
+            WHERE id = ?1
+            "#,
+        )
+        .bind("session-input-resume")
+        .execute(&db)
+        .await
+        .expect("mark session completed");
+
+        let summary_after_resume = worker
+            .dispatch_once(10)
+            .await
+            .expect("dispatch after resume");
+        assert_eq!(summary_after_resume.reconciled_completed, 1);
+        assert_eq!(summary_after_resume.reconciled_failed, 0);
+        assert!(starter.calls().is_empty());
+
+        let completed_step = teams.get_step(&step.id).await.expect("get completed step");
+        assert_eq!(completed_step.status, TeamStepStatus::Completed);
+        let completed_run = teams.get_run(&run.id).await.expect("get completed run");
+        assert_eq!(completed_run.status, crate::team::TeamRunStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_reconciles_input_required_step_from_failed_session() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-input-required-fail-team".to_string(),
+                description: Some("team for input_required failed session reconcile".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-input-required-fail"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        let _ = teams
+            .start_step(&step.id, Some("session-input-fail"))
+            .await
+            .expect("start step");
+        let _ = teams
+            .set_step_input_required(
+                &step.id,
+                Some("waiting for review"),
+                Some(json!({"question":"approve?"})),
+            )
+            .await
+            .expect("set input_required");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, 1, 2)
+            "#,
+        )
+        .bind("session-input-fail")
+        .bind("planner")
+        .bind("exited")
+        .execute(&db)
+        .await
+        .expect("insert exited session");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+
+        assert_eq!(summary.dispatched, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.reconciled_completed, 0);
+        assert_eq!(summary.reconciled_failed, 1);
+        assert!(starter.calls().is_empty());
+
+        let failed_step = teams.get_step(&step.id).await.expect("get failed step");
+        assert_eq!(failed_step.status, TeamStepStatus::Failed);
+        assert!(
+            failed_step
+                .error_text
+                .as_deref()
+                .is_some_and(|text| text.contains("session-input-fail"))
         );
         let failed_run = teams.get_run(&run.id).await.expect("get failed run");
         assert_eq!(failed_run.status, crate::team::TeamRunStatus::Failed);
