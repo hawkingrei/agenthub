@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package agenthub.internal.v1;
+
+service TeamInternalControl {
+  rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
+  rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
+  rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
+  rpc TransitionStep(TransitionStepRequest) returns (TransitionStepResponse);
+  rpc IssueNodeCredential(IssueNodeCredentialRequest) returns (IssueNodeCredentialResponse);
+}
+
+message SendActorMessageRequest {
+  string run_id = 1;
+  string from_actor_id = 2;
+  string to_actor_id = 3;
+  string channel = 4;
+  string transport = 5;
+  string route_json = 6;
+  string payload_json = 7;
+  string idempotency_key = 8;
+}
+
+message SendActorMessageResponse {
+  int64 message_id = 1;
+  string status = 2;
+  string idempotency_key = 3;
+}
+
+message ListActorInboxRequest {
+  string run_id = 1;
+  string actor_id = 2;
+  int64 limit = 3;
+  int64 after_message_id = 4;
+  bool include_delivered = 5;
+}
+
+message ListActorInboxResponse {
+  repeated ActorMessage messages = 1;
+}
+
+message AckActorMessageRequest {
+  string run_id = 1;
+  string actor_id = 2;
+  int64 message_id = 3;
+}
+
+message AckActorMessageResponse {
+  ActorMessage message = 1;
+}
+
+message ActorMessage {
+  int64 message_id = 1;
+  string run_id = 2;
+  string from_actor_id = 3;
+  string to_actor_id = 4;
+  string channel = 5;
+  string transport = 6;
+  string route_json = 7;
+  string payload_json = 8;
+  string status = 9;
+  int64 created_at = 10;
+  int64 delivered_at = 11;
+  string idempotency_key = 12;
+}
+
+message TransitionStepRequest {
+  string run_id = 1;
+  string step_id = 2;
+  string action = 3;
+  string remote_task_id = 4;
+  string output_json = 5;
+  string error_text = 6;
+  string input_json = 7;
+  string reason = 8;
+}
+
+message TransitionStepResponse {
+  string step_id = 1;
+  string run_id = 2;
+  string step_key = 3;
+  string member_id = 4;
+  string remote_task_id = 5;
+  string status = 6;
+  string error_text = 7;
+}
+
+message IssueNodeCredentialRequest {
+  string node_id = 1;
+  string role = 2;
+  string actor_id = 3;
+  string run_id = 4;
+  repeated string permissions = 5;
+  int64 ttl_seconds = 6;
+}
+
+message IssueNodeCredentialResponse {
+  string node_id = 1;
+  string role = 2;
+  string access_token = 3;
+  int64 expires_at = 4;
+  string cert_pem = 5;
+  string key_pem = 6;
+  string ca_cert_pem = 7;
+  string security_mode = 8;
+}

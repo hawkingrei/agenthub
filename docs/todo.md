@@ -56,7 +56,7 @@
 - [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
-- [x] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-15-a2a-team-actor-runtime-start-and-relay-replay-guidance.md`).
 - [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
 - [x] Harden `actor_runtime.actor_cli_path` with strict default-binary allow-list validation and shared normalization helpers across API/agent/orchestrator (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
 - [x] Prevent actor-context starts from silently reusing already-running sessions; return conflict semantics for HTTP start requests (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
@@ -69,7 +69,16 @@
 - [x] Harden relay route header parsing with strict header name/value validation and reject CR/LF control characters in values (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Add relay timeout default/clamping and explicit HTTP client transport limits for remote mailbox delivery (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Reuse remote relay adapter (`OnceLock`) across worker ticks to preserve HTTP connection pooling and reduce repeated client allocation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
-- [x] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-actor-runtime-start-and-relay-replay-guidance.md`).
+- [ ] Verify remote relay receiver implementation applies timestamp window + dedupe policy in staging and captures rejection metrics by reason code.
+- [x] Add internal gRPC control-plane baseline (`TeamInternalControl`) with `send/inbox/ack/transition_step` RPCs and capability-token auth checks (see `docs/features/2026-02-15-internal-grpc-zero-trust-foundation.md`).
+- [x] Add internal gRPC security bootstrap with auto-generated TLS certs + auto-generated shared secret, and `internal_grpc.security.mode=disabled` for local test runs (see `docs/features/2026-02-15-internal-grpc-zero-trust-foundation.md`).
+- [x] Enforce zero-trust worker restrictions: worker token can only operate on its own `actor_id` and cannot transition steps (see `docs/features/2026-02-15-internal-grpc-zero-trust-foundation.md`).
+- [x] Add internal gRPC node bootstrap (`IssueNodeCredential`) with auto-generated bootstrap token and scoped leader/worker capability token issuance (see `docs/features/2026-02-15-internal-grpc-zero-trust-foundation.md`).
+- [x] Add internal gRPC `mtls` mode with auto-generated CA/server/client cert chain and bootstrap-friendly optional client-auth policy (see `docs/features/2026-02-15-internal-grpc-zero-trust-foundation.md`).
+- [ ] Add same-port HTTP+gRPC multiplexing support so internal gRPC can share the public listener when required by deployment.
+- [ ] Integrate SPIFFE/SPIRE (or equivalent workload identity) for production-grade mTLS node identity and automated certificate rotation.
+- [ ] Validate Cloudflare deployment topology for internal gRPC: edge mTLS + origin mTLS policy, and document whether strict origin-side client-cert validation needs a non-proxied private listener.
 - [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
@@ -93,6 +102,7 @@
 - [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
+- [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).

@@ -47,3 +47,29 @@ Protocol rules:
         &instructions,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AcpActorSkillContext, build_actor_runtime_skill};
+
+    #[test]
+    fn actor_runtime_skill_includes_context_and_cli_contract() {
+        let skill = build_actor_runtime_skill(&AcpActorSkillContext {
+            run_id: "run-42".to_string(),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+            actor_cli_path: "/tmp/agenthub".to_string(),
+        });
+        assert_eq!(skill.name, "agenthub-actor-runtime");
+        assert_eq!(skill.path, "builtin://agenthub/actor-runtime/planner");
+        assert!(skill.instructions.contains("run_id`: `run-42`"));
+        assert!(skill.instructions.contains("actor_id`: `planner`"));
+        assert!(
+            skill
+                .instructions
+                .contains("default_channel`: `coordination`")
+        );
+        assert!(skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
+        assert!(skill.instructions.contains("actor send --idempotency-key"));
+    }
+}

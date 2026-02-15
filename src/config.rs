@@ -18,6 +18,7 @@ pub struct AppConfig {
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
     pub push: Option<PushConfig>,
+    pub internal_grpc: Option<InternalGrpcConfig>,
     pub safe_paths: Option<Vec<String>>,
     pub web_dir: Option<String>,
     pub log_path: Option<String>,
@@ -57,6 +58,33 @@ pub struct CodexAcpConfig {
 pub struct PushConfig {
     pub subject: Option<String>,
     pub keys_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InternalGrpcConfig {
+    pub enabled: Option<bool>,
+    pub listen: Option<String>,
+    pub security: Option<InternalGrpcSecurityConfig>,
+    pub auth: Option<InternalGrpcAuthConfig>,
+    pub bootstrap: Option<InternalGrpcBootstrapConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InternalGrpcSecurityConfig {
+    pub mode: Option<String>,
+    pub cert_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InternalGrpcAuthConfig {
+    pub shared_secret: Option<String>,
+    pub issuer: Option<String>,
+    pub audience: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InternalGrpcBootstrapConfig {
+    pub token: Option<String>,
 }
 
 impl AppConfig {
@@ -178,6 +206,93 @@ impl AppConfig {
             .map(|value| value.to_string())
     }
 
+    pub fn internal_grpc_enabled(&self) -> bool {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn internal_grpc_listen_addr(&self) -> String {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.listen.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "127.0.0.1:50051".to_string())
+    }
+
+    pub fn internal_grpc_security_mode(&self) -> String {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.security.as_ref())
+            .and_then(|security| security.mode.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "tls".to_string())
+    }
+
+    pub fn internal_grpc_cert_dir(&self) -> String {
+        let configured = self
+            .internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.security.as_ref())
+            .and_then(|security| security.cert_dir.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(expand_tilde);
+        if let Some(path) = configured {
+            return path;
+        }
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        std::path::Path::new(&home)
+            .join(".agenthub/internal-grpc")
+            .to_string_lossy()
+            .to_string()
+    }
+
+    pub fn internal_grpc_auth_shared_secret(&self) -> Option<String> {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.auth.as_ref())
+            .and_then(|auth| auth.shared_secret.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    pub fn internal_grpc_auth_issuer(&self) -> Option<String> {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.auth.as_ref())
+            .and_then(|auth| auth.issuer.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    pub fn internal_grpc_auth_audience(&self) -> Option<String> {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.auth.as_ref())
+            .and_then(|auth| auth.audience.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    pub fn internal_grpc_bootstrap_token(&self) -> Option<String> {
+        self.internal_grpc
+            .as_ref()
+            .and_then(|cfg| cfg.bootstrap.as_ref())
+            .and_then(|bootstrap| bootstrap.token.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
     pub fn proxy_env(&self) -> Vec<(String, String)> {
         let mut items = Vec::new();
         if let Some(proxy) = &self.proxy {
@@ -224,6 +339,14 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
         "AGENTHUB_CODEX_ACP_DEFAULT_MODE",
+        "AGENTHUB_INTERNAL_GRPC_ENABLED",
+        "AGENTHUB_INTERNAL_GRPC_LISTEN",
+        "AGENTHUB_INTERNAL_GRPC_SECURITY_MODE",
+        "AGENTHUB_INTERNAL_GRPC_CERT_DIR",
+        "AGENTHUB_INTERNAL_GRPC_AUTH_SHARED_SECRET",
+        "AGENTHUB_INTERNAL_GRPC_AUTH_ISSUER",
+        "AGENTHUB_INTERNAL_GRPC_AUTH_AUDIENCE",
+        "AGENTHUB_INTERNAL_GRPC_BOOTSTRAP_TOKEN",
         "AGENTHUB_HTTP_PROXY",
         "AGENTHUB_HTTPS_PROXY",
         "AGENTHUB_ALL_PROXY",
@@ -310,5 +433,17 @@ mod tests {
             config.safe_paths(),
             vec!["~/.agenthub/worktrees".to_string(), "/tmp/a".to_string()]
         );
+    }
+
+    #[test]
+    fn internal_grpc_defaults_are_stable() {
+        let config = AppConfig::default();
+        assert!(!config.internal_grpc_enabled());
+        assert_eq!(config.internal_grpc_listen_addr(), "127.0.0.1:50051");
+        assert_eq!(config.internal_grpc_security_mode(), "tls");
+        assert!(config.internal_grpc_auth_shared_secret().is_none());
+        assert!(config.internal_grpc_auth_issuer().is_none());
+        assert!(config.internal_grpc_auth_audience().is_none());
+        assert!(config.internal_grpc_bootstrap_token().is_none());
     }
 }
