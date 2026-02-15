@@ -36,6 +36,12 @@ next step is wiring a worker that actually uses it.
 4. Keep worker settings explicit (`poll_interval_secs`,
    `max_dispatch_per_tick`) and start it from `AppState::init`.
 5. Add `TeamManager::list_active_runs(limit)` as the worker-facing query helper.
+6. Introduce a `TeamMemberAgentStarter` port so worker dispatch is testable
+   without spawning real agent subprocesses.
+7. Add worker-level integration tests to verify:
+   - injected actor runtime context (`run_id` / `actor_id`) at dispatch time,
+   - mailbox `send` -> `inbox` -> `ack` flow against the injected actor id,
+   - failed member startup marks step as `failed` deterministically.
 
 ## Validation
 
