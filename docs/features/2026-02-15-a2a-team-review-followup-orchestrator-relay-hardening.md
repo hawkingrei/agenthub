@@ -68,9 +68,43 @@ cargo test remote_actor_messages_relay
 cargo test dispatch_once_stops_run_dispatch_after_first_failure_in_tick
 ```
 
+## Receiver Replay Protection Guidance
+
+For remote relay receivers, treat mailbox delivery as at-least-once. Apply both
+time-window filtering and idempotency dedupe before accepting payloads.
+
+### Required checks
+
+1. Validate `X-AgentHub-Timestamp` against local clock:
+   - reject requests outside an allowed skew window (recommended: `+-120s`).
+2. Validate signature over canonical payload fields (including
+   `X-AgentHub-Message-Id`).
+3. Use `(from_actor_id, message_id)` or `(message_id, signature)` as dedupe
+   key and persist with TTL.
+4. On duplicate key:
+   - return success (`200`/`202`) without reprocessing business logic.
+5. Record rejected replay attempts with reason (`expired`, `duplicate`,
+   `signature_mismatch`) for audit and alerting.
+
+### Reference receiver flow
+
+```text
+if abs(now - X-AgentHub-Timestamp) > skew_window:
+    reject 401/408 (expired timestamp)
+
+if !verify_hmac_signature(headers, body):
+    reject 401 (invalid signature)
+
+dedupe_key = X-AgentHub-Message-Id
+if dedupe_store.exists(dedupe_key):
+    return 202 (already processed)
+
+dedupe_store.put(dedupe_key, ttl=24h)
+process_message_once()
+return 202
+```
+
 ## Follow-ups
 
-- Add receiver-side replay protection guidance (timestamp skew window +
-  dedupe key policy) to remote relay integration docs.
 - Evaluate whether relay worker should expose metrics for timeout and dead-letter
   reasons per route endpoint.

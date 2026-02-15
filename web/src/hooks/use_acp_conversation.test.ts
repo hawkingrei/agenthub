@@ -4,6 +4,7 @@ import {
   buildConversationTailKey,
   buildVirtualConversationSlice,
   deriveConversationJumpState,
+  estimateTailPayloadSize,
   nextConversationViewport,
   normalizeConversationAvgHeightEstimate,
   restoreConversationScrollTop,
@@ -89,6 +90,43 @@ describe("buildConversationTailKey", () => {
       },
     ]);
     expect(key).toContain("tool_call:7:3:2:");
+  });
+
+  it("uses lightweight payload size estimation for large payloads", () => {
+    const huge = {
+      items: Array.from({ length: 200 }, (_, idx) => ({
+        id: idx,
+        text: `payload-${idx}`.repeat(10),
+      })),
+    };
+    const key = buildConversationTailKey([
+      {
+        kind: "tool_call",
+        id: "call-2",
+        title: "search",
+        raw_input: huge,
+        raw_output: huge,
+        event_id: 8,
+      },
+    ]);
+    expect(key).toContain("tool_call:8:");
+    expect(key.length).toBeLessThan(120);
+  });
+});
+
+describe("estimateTailPayloadSize", () => {
+  it("handles primitives and nested structures deterministically", () => {
+    expect(estimateTailPayloadSize(null)).toBe(0);
+    expect(estimateTailPayloadSize("hello")).toBe(5);
+    expect(estimateTailPayloadSize(12)).toBe(8);
+    expect(estimateTailPayloadSize(true)).toBe(8);
+    expect(
+      estimateTailPayloadSize({
+        q: "agenthub",
+        tags: ["a", "b", "c"],
+        meta: { page: 1, ok: true },
+      })
+    ).toBeGreaterThan(20);
   });
 });
 

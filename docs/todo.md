@@ -24,23 +24,27 @@
 - [ ] Verify `use_acp_conversation` helper extraction keeps scroll restoration and jump-badge behavior unchanged across long sessions (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [ ] Verify ACP conversation stick-to-bottom remains stable under bursty tool-call/message updates and does not require manual jump-to-bottom recovery (see `docs/features/2026-02-15-acp-conversation-stick-bottom-hardening.md`).
 - [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify mobile workspace alignment with safe-area insets and ACP header action wrapping (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [x] Compact ACP top tabs (`Conversation`/`Debug`) and debug sub-tabs on mobile breakpoints to reduce oversized tab cards (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
-- [ ] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
-- [ ] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
-- [ ] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
+- [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
+- [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
+- [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
+- [x] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
+- [x] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
+- [x] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
 - [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
-- [ ] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
-- [ ] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
 - [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
 - [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
@@ -92,6 +96,12 @@
 - [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
 - [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
+- [x] Verify Create Agent modal loads `default_worktree_root` from `/api/settings/defaults` and pre-fills workdir fallback (`~/.agenthub/worktrees`) for worktree creation flows (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `/api/settings/defaults` enforces auth and returns `default_worktree_root` via router-level tests (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify worktree-default helper logic (`runtime defaults` + `create modal prefill`) with dedicated web unit tests to keep coverage stable (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
@@ -102,8 +112,8 @@
 - [ ] Verify ESLint 9 upgrade and flat config lint run (see `docs/features/2026-02-10-eslint-9-upgrade.md`).
 - [ ] Verify workspace output header resume control, terminal auto-follow, and collapsed agents rail (see `docs/features/2026-02-10-workspace-output-interaction.md`).
 - [ ] Verify new workspace output/agents component tests and CSS guard updates (see `docs/features/2026-02-10-workspace-output-tests.md`).
-- [ ] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
-- [ ] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
+- [x] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
+- [x] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
 - [ ] Decide and document MCP configuration source for ACP sessions (Codex config vs AgentHub config).
 - [ ] Investigate ACP output formatting for large chunked messages (e.g., shiro sessions) and fix cache retention/rendering.
 - [ ] Add ACP support for Gemini and Kimi providers, including config wiring and documentation.
@@ -130,6 +140,7 @@
 - [ ] Review new unit tests for event cursor ordering and conversation freeze logic, expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
 - [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify markdown whitelist auto-link only converts approved bare URLs (GitHub pull URLs) and keeps non-whitelist URLs as plain text in conversation output (see `docs/features/2026-02-15-markdown-whitelist-autolink.md`).
 - [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
 - [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).

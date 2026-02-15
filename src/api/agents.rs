@@ -5,6 +5,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionRecord;
@@ -127,12 +128,19 @@ async fn create_agent(
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
     let _user = require_user(&headers, &state).await?;
+    let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
+    let workdir = resolve_create_agent_workdir(
+        &payload.workdir,
+        &payload.name,
+        &worktree_mode,
+        &state.default_worktree_root,
+    )?;
     let config = AgentConfig {
         name: payload.name,
-        workdir: payload.workdir,
+        workdir,
         command: payload.command,
         args: payload.args,
-        worktree_mode: parse_worktree_mode(payload.worktree_mode.as_deref()),
+        worktree_mode,
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
         code_mode: payload.code_mode.unwrap_or(true),
@@ -392,6 +400,58 @@ fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
     }
 }
 
+fn resolve_create_agent_workdir(
+    requested_workdir: &str,
+    agent_name: &str,
+    worktree_mode: &WorktreeMode,
+    default_worktree_root: &str,
+) -> Result<String, ApiError> {
+    let trimmed = requested_workdir.trim();
+    if !trimmed.is_empty() {
+        return Ok(trimmed.to_string());
+    }
+    if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
+        return Err(ApiError::bad_request("workdir is required"));
+    }
+    Ok(default_worktree_path(agent_name, default_worktree_root))
+}
+
+fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> String {
+    let root = default_worktree_root
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches('\\');
+    let name = sanitize_worktree_segment(agent_name);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let segment = format!("{name}-{}", &suffix[..8]);
+    std::path::PathBuf::from(root)
+        .join(segment)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn sanitize_worktree_segment(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in value.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_dash = false;
+            continue;
+        }
+        if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "agent".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn parse_start_actor_runtime_context(
     payload: Option<StartAgentRequest>,
 ) -> Result<Option<AcpActorSkillContext>, ApiError> {
@@ -455,7 +515,8 @@ mod tests {
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
-        parse_start_actor_runtime_context, parse_worktree_mode, router,
+        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
+        router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -480,6 +541,59 @@ mod tests {
             parse_worktree_mode(Some("reuse_worktree")),
             WorktreeMode::ReuseWorktree
         ));
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_uses_explicit_value() {
+        let resolved = resolve_create_agent_workdir(
+            " /tmp/work ",
+            "planner",
+            &WorktreeMode::CreateWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect("resolve workdir");
+        assert_eq!(resolved, "/tmp/work");
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_generates_default_for_create_mode() {
+        let resolved = resolve_create_agent_workdir(
+            "",
+            "Team Planner",
+            &WorktreeMode::CreateWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect("resolve default workdir");
+        assert!(resolved.starts_with("~/.agenthub/worktrees/team-planner-"));
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_rejects_blank_for_non_create_mode() {
+        let err = resolve_create_agent_workdir(
+            "",
+            "planner",
+            &WorktreeMode::ReuseWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect_err("blank workdir should be rejected");
+        let _ = err;
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_trims_mixed_edge_separators() {
+        let sanitized = sanitize_worktree_segment("_-...Planner Team...-_");
+        assert_eq!(sanitized, "planner-team");
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_collapses_repeated_internal_separators() {
+        assert_eq!(sanitize_worktree_segment("agent...name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent__name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent._-name"), "agent-name");
+        assert_eq!(
+            sanitize_worktree_segment("agent   ---   name"),
+            "agent-name"
+        );
     }
 
     #[test]

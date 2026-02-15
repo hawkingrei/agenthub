@@ -1,4 +1,7 @@
 use serde::Deserialize;
+use std::collections::HashSet;
+
+const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -12,6 +15,7 @@ pub struct AppConfig {
     pub server: Option<ServerConfig>,
     pub web: Option<WebConfig>,
     pub proxy: Option<ProxyConfig>,
+    pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
@@ -37,6 +41,11 @@ pub struct ProxyConfig {
     pub http: Option<String>,
     pub https: Option<String>,
     pub all: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorktreeConfig {
+    pub default_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -103,6 +112,16 @@ pub fn config_path() -> std::path::PathBuf {
 }
 
 impl AppConfig {
+    pub fn default_worktree_root(&self) -> String {
+        self.worktree
+            .as_ref()
+            .and_then(|w| w.default_root.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("~/.agenthub/worktrees")
+            .to_string()
+    }
+
     pub fn effective_web_dir(&self) -> Option<String> {
         if cfg!(debug_assertions) {
             let dir = self
@@ -145,7 +164,22 @@ impl AppConfig {
     }
 
     pub fn safe_paths(&self) -> Vec<String> {
-        self.safe_paths.clone().unwrap_or_default()
+        let mut paths = Vec::new();
+        paths.push(DEFAULT_SAFE_PATH.to_string());
+        if let Some(configured_paths) = &self.safe_paths {
+            for path in configured_paths {
+                let trimmed = path.trim();
+                if !trimmed.is_empty() {
+                    paths.push(trimmed.to_string());
+                }
+            }
+        }
+
+        let mut seen = HashSet::new();
+        paths
+            .into_iter()
+            .filter(|path| seen.insert(path.clone()))
+            .collect()
     }
 
     pub fn log_path(&self) -> Option<String> {
@@ -345,7 +379,61 @@ fn expand_tilde(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::AppConfig;
+    use super::{AppConfig, WorktreeConfig};
+
+    #[test]
+    fn default_worktree_root_uses_builtin_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
+    }
+
+    #[test]
+    fn default_worktree_root_uses_configured_value() {
+        let config = AppConfig {
+            worktree: Some(WorktreeConfig {
+                default_root: Some("/tmp/custom-worktrees".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.default_worktree_root(), "/tmp/custom-worktrees");
+    }
+
+    #[test]
+    fn default_worktree_root_trims_blank_value() {
+        let config = AppConfig {
+            worktree: Some(WorktreeConfig {
+                default_root: Some("   ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
+    }
+
+    #[test]
+    fn safe_paths_includes_default_worktrees_path() {
+        let config = AppConfig::default();
+        assert_eq!(
+            config.safe_paths(),
+            vec!["~/.agenthub/worktrees".to_string()]
+        );
+    }
+
+    #[test]
+    fn safe_paths_merges_configured_paths_and_deduplicates() {
+        let config = AppConfig {
+            safe_paths: Some(vec![
+                " /tmp/a ".to_string(),
+                "~/.agenthub/worktrees".to_string(),
+                "".to_string(),
+                "/tmp/a".to_string(),
+            ]),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.safe_paths(),
+            vec!["~/.agenthub/worktrees".to_string(), "/tmp/a".to_string()]
+        );
+    }
 
     #[test]
     fn internal_grpc_defaults_are_stable() {

@@ -118,6 +118,10 @@ async fn main() -> anyhow::Result<()> {
     );
     tracing::info!("config safe_paths: {}", config.safe_paths().len());
     tracing::info!(
+        "config worktree.default_root: {}",
+        config.default_worktree_root()
+    );
+    tracing::info!(
         "config internal_grpc.enabled: {}",
         config.internal_grpc_enabled()
     );
