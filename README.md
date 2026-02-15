@@ -59,6 +59,19 @@ cd web
 npm run test
 ```
 
+## Internal Proto Codegen
+
+`proto/internal/v1/team.proto` is compiled at build-time by `build.rs` through
+`tonic-build` and is not checked into git as generated Rust code.
+
+```bash
+# verify protobuf codegen path and generated symbols
+make proto-check
+
+# manual regeneration trigger (generated output under target/*/build/*/out/)
+cargo check --locked
+```
+
 ## Project Layout
 
 ```
