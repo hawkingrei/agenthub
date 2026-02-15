@@ -47,6 +47,7 @@ cargo test runtime_defaults_requires_authentication -- --nocapture
 cargo test runtime_defaults_returns_configured_worktree_root -- --nocapture
 cd web
 npm run test -- src/create_agent_modal.test.tsx
+npm run test -- src/worktree_defaults.test.ts
 ```
 
 ## Review Follow-up
@@ -57,6 +58,8 @@ npm run test -- src/create_agent_modal.test.tsx
   separator prefixes/suffixes.
 - Updated runtime defaults hydration in `web/src/app.tsx` to preserve user-edited
   workdir while still replacing untouched placeholders with backend defaults.
+- Extracted workdir-default decision logic into `web/src/worktree_defaults.ts`
+  and added unit tests to keep CI coverage stable.
 - Replaced silent runtime-defaults fetch failure with explicit console logging.
 - Added `src/api/settings.rs` router tests for both unauthenticated rejection and
   authenticated default-root response.

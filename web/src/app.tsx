@@ -70,6 +70,11 @@ import {
   registerCredentialToJson,
 } from "./webauthn";
 import { AuthState } from "./types";
+import {
+  normalizeRuntimeWorktreeRoot,
+  resolveWorkdirForCreateModal,
+  resolveWorkdirForRuntimeDefaults,
+} from "./worktree_defaults";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 
@@ -601,27 +606,26 @@ export function App() {
     api
       .getRuntimeDefaults(token)
       .then((defaults) => {
-        const root = defaults.default_worktree_root.trim() || DEFAULT_WORKTREE_ROOT;
+        const root = normalizeRuntimeWorktreeRoot(
+          defaults.default_worktree_root,
+          DEFAULT_WORKTREE_ROOT
+        );
         setDefaultWorktreeRoot(root);
-        setAgentWorkdir((prev) => {
-          const trimmedPrev = prev.trim();
-          if (!trimmedPrev || trimmedPrev === DEFAULT_WORKTREE_ROOT) {
-            return root;
-          }
-          return prev;
-        });
+        setAgentWorkdir((prev) =>
+          resolveWorkdirForRuntimeDefaults(prev, root, DEFAULT_WORKTREE_ROOT)
+        );
       })
       .catch((err) => console.error("Failed to get runtime defaults:", err));
   }, [token]);
 
   const openCreateAgentModal = useCallback(() => {
-    setAgentWorkdir((prev) => {
-      const trimmedPrev = prev.trim();
-      if (!trimmedPrev || trimmedPrev === DEFAULT_WORKTREE_ROOT) {
-        return defaultWorktreeRoot;
-      }
-      return prev;
-    });
+    setAgentWorkdir((prev) =>
+      resolveWorkdirForCreateModal(
+        prev,
+        defaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      )
+    );
     setShowCreateAgent(true);
   }, [defaultWorktreeRoot]);
 
