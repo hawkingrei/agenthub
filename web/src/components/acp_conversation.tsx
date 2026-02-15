@@ -732,7 +732,7 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
   const parsedJsonText = React.useMemo(() => {
     if (payload.kind !== "json_text") return undefined;
     return parseJsonLikeString(payload.text, true);
-  }, [payload.kind, payload.kind === "json_text" ? payload.text : ""]);
+  }, [payload]);
 
   if (payload.kind === "empty") return null;
   if (payload.kind === "text") {
@@ -775,13 +775,13 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
 }
 
 function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number }) {
-  if (value.length === 0) return <span className="acp-payload-scalar muted">[]</span>;
-  const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
   const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
     value.length,
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
+  if (value.length === 0) return <span className="acp-payload-scalar muted">[]</span>;
+  const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
   const visibleItems = value.slice(0, visibleCount);
 
   if (allScalar) {
@@ -830,12 +830,12 @@ function PayloadObjectView({
   depth: number;
 }) {
   const entries = filterPayloadEntries(value);
-  if (entries.length === 0) return <span className="acp-payload-scalar muted">{"{}"}</span>;
   const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
     entries.length,
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
+  if (entries.length === 0) return <span className="acp-payload-scalar muted">{"{}"}</span>;
   const visibleEntries = entries.slice(0, visibleCount);
   return (
     <div className="acp-payload-segmented">
