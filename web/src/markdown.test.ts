@@ -34,6 +34,29 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("&amp;amp;");
   });
 
+  it("auto-links whitelisted github pull URLs", () => {
+    const html = renderMarkdown(
+      "See https://github.com/hawkingrei/agenthub/pull/1233 for details."
+    );
+    expect(html).toContain(
+      'href="https://github.com/hawkingrei/agenthub/pull/1233"'
+    );
+  });
+
+  it("does not auto-link non-whitelisted bare URLs", () => {
+    const html = renderMarkdown("See https://example.com/docs for details.");
+    expect(html).toContain("https://example.com/docs");
+    expect(html).not.toContain('href="https://example.com/docs"');
+  });
+
+  it("does not auto-link URLs inside inline or fenced code", () => {
+    const html = renderMarkdown(
+      "`https://github.com/hawkingrei/agenthub/pull/1`\n\n```txt\nhttps://github.com/hawkingrei/agenthub/pull/2\n```"
+    );
+    expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/1"');
+    expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/2"');
+  });
+
   it("keeps soft line breaks without hard <br>", () => {
     const html = renderMarkdown("line one\nline two");
     expect(html).toContain("line one");

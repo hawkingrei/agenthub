@@ -131,6 +131,7 @@
 - [ ] Review new unit tests for event cursor ordering and conversation freeze logic, expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
 - [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify markdown whitelist auto-link only converts approved bare URLs (GitHub pull URLs) and keeps non-whitelist URLs as plain text in conversation output (see `docs/features/2026-02-15-markdown-whitelist-autolink.md`).
 - [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
 - [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).
