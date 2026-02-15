@@ -24,6 +24,14 @@ cargo run
 
 By default, AgentHub serves the UI at `http://localhost:8080`.
 
+## Run With Explicit Config
+
+If your setup uses a custom config path, run:
+
+```bash
+cargo run -- -c /path/to/config.toml
+```
+
 ## Runtime Data Location
 
 AgentHub stores data under `~/.agenthub/` by default, including:
@@ -48,3 +56,13 @@ safe_paths = [
 ```
 
 Set `safe_paths` to the directories users are allowed to use as agent workdirs.
+
+## Smoke Check
+
+After startup:
+
+1. Open `http://localhost:8080`
+2. Confirm login page loads
+3. Create one test agent
+4. Start and send one simple instruction
+5. Confirm output appears in Conversation

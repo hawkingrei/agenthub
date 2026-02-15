@@ -23,7 +23,10 @@ until manual checks.
    `web` workflow to keep ownership and failure scope clear.
 2. Use Node 20 to match existing frontend workflow runtime baseline.
 3. Run `npm install` then `npm run build` in `userdocs/` as the minimum
-   correctness gate for documentation publishing readiness.
+   correctness gate for static documentation generation readiness.
+4. Add path filters so this workflow runs only when `userdocs` or related docs
+   metadata/workflow files change.
+5. Add `workflow_dispatch` for manual rerun when validating doc-only updates.
 
 ## Validation
 
@@ -41,4 +44,5 @@ Expected outcomes:
 
 ## Follow-ups
 
-- Define and document deployment target for publishing generated docs.
+- Add `package-lock.json` for reproducible installs and migrate workflow install
+  step from `npm install` to `npm ci`.

@@ -3,7 +3,7 @@
 ## Summary
 
 Add a dedicated Docusaurus-based user documentation website under `userdocs/`
-and publish end-user guides for the core AgentHub workflow.
+to generate end-user guides for the core AgentHub workflow.
 
 ## Background
 
@@ -62,4 +62,4 @@ Expected outcomes:
 ## Follow-ups
 
 - Add CI workflow to verify `userdocs` install/build on pull requests.
-- Define deployment target for publishing the static docs site.
+- Add `README` guidance for optional external hosting providers if needed.

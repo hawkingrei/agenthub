@@ -5,21 +5,40 @@ const sidebars = {
     {
       type: 'category',
       label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/login'],
+      items: [
+        'getting-started/installation',
+        'getting-started/configuration-basics',
+        'getting-started/login',
+        'getting-started/first-task-walkthrough',
+      ],
     },
     {
       type: 'category',
       label: 'Core Workflow',
       items: [
         'core/create-agent',
+        'core/workdir-worktree-strategy',
         'core/run-and-interact',
         'core/view-output',
+        'core/review-and-apply-changes',
+        'core/session-lifecycle',
       ],
     },
     {
       type: 'category',
+      label: 'Prompting',
+      items: ['prompting/task-instruction-patterns'],
+    },
+    {
+      type: 'category',
       label: 'Operations',
-      items: ['operations/notifications', 'operations/troubleshooting'],
+      items: [
+        'operations/daily-operations-checklist',
+        'operations/security-and-path-safety',
+        'operations/notifications',
+        'operations/troubleshooting',
+        'operations/faq',
+      ],
     },
   ],
 };

@@ -3,7 +3,24 @@ name: User Docs
 on:
   push:
     branches: ["main"]
+    paths:
+      - "userdocs/**"
+      - ".github/workflows/userdocs.yml"
+      - "README.md"
+      - "docs/features/2026-02-15-docusaurus-userdocs-site.md"
+      - "docs/features/2026-02-15-userdocs-ci-build-check.md"
+      - "docs/features/2026-02-15-userdocs-content-expansion.md"
+      - "docs/todo.md"
   pull_request:
+    paths:
+      - "userdocs/**"
+      - ".github/workflows/userdocs.yml"
+      - "README.md"
+      - "docs/features/2026-02-15-docusaurus-userdocs-site.md"
+      - "docs/features/2026-02-15-userdocs-ci-build-check.md"
+      - "docs/features/2026-02-15-userdocs-content-expansion.md"
+      - "docs/todo.md"
+  workflow_dispatch:
 
 jobs:
   userdocs:
