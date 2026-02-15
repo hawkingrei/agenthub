@@ -32,7 +32,13 @@ fn canonicalize_actor_cli_path(path: &str) -> anyhow::Result<PathBuf> {
 
 pub(crate) fn default_actor_cli_path() -> anyhow::Result<String> {
     let exe = std::env::current_exe().context("resolve current executable for actor cli")?;
-    pathbuf_to_utf8(exe, "actor_runtime.actor_cli_path")
+    let canonical = std::fs::canonicalize(&exe).with_context(|| {
+        format!(
+            "resolve canonical executable path for actor cli: {}",
+            exe.display()
+        )
+    })?;
+    pathbuf_to_utf8(canonical, "actor_runtime.actor_cli_path")
 }
 
 pub(crate) fn normalize_actor_cli_path(raw: Option<&str>) -> anyhow::Result<String> {

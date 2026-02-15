@@ -19,7 +19,13 @@ ensure_command() {
   fi
 }
 
-ensure_command npm "/opt/hostedtoolcache/node/20.20.0/x64/bin" "/opt/hostedtoolcache/node/20.19.0/x64/bin"
+ensure_command \
+  npm \
+  "/opt/hostedtoolcache/node/20.20.0/x64/bin" \
+  "/opt/hostedtoolcache/node/20.19.0/x64/bin" \
+  "/opt/homebrew/bin" \
+  "/opt/homebrew/opt/node/bin" \
+  "/usr/local/bin"
 
 workspace="${1:?workspace path is required}"
 dist_output="${2:-}"
