@@ -1,5 +1,7 @@
 # Bazel Build and Test Integration
 
+> Note: This document captures the initial shell-wrapper Bazel integration. It is superseded by `docs/features/2026-02-15-bazel-native-rules-rust-core.md` for the native `rules_rust` migration.
+
 ## Background
 
 The repository currently runs compile/test checks through direct `cargo` and `npm` commands in CI. We need a Bazel entrypoint so build and test workflows can be triggered through a single toolchain driver.

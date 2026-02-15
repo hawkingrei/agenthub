@@ -1,5 +1,5 @@
 .PHONY: build-web run run-web build test lint lint-web
-.PHONY: bazel-rust bazel-web bazel-ci
+.PHONY: bazel-rust bazel-ci
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
@@ -25,16 +25,12 @@ lint-web:
 lint: lint-web
 
 bazel-rust:
-	bazel build //:rust_build
-	bazel test //:rust_test
-
-bazel-web:
-	bazel build //:web_build
-	bazel test //:web_test
+	bazel build //...
+	bazel test //...
 
 bazel-ci:
-	bazel build //:ci_build
-	bazel test //:ci_tests
+	bazel build //...
+	bazel test //...
 
 
 reset:

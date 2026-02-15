@@ -17,7 +17,7 @@ AgentHub is a single-binary service for managing and interacting with remote AI 
 
 - Rust (stable)
 - Node.js 20+ (for the web build)
-- Bazel / Bazelisk (optional, for unified build + test entrypoints)
+- Bazel / Bazelisk (optional, for Bazel-driven Rust build + test entrypoints)
 
 ## Quick Start
 
@@ -60,8 +60,8 @@ cd web
 npm run test
 
 # Bazel-driven checks
-bazel build //:ci_build
-bazel test //:ci_tests
+bazel build //...
+bazel test //...
 ```
 
 ## Project Layout

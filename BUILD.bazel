@@ -1,56 +1,49 @@
-load("//:bazel/ci/defs.bzl", "workspace_shell_build", "workspace_shell_test")
+load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 
-filegroup(
-    name = "workspace_sources",
-    srcs = glob(
-        ["**"],
-        exclude = [
-            "bazel-*/**",
-            "target/**",
-            "web/node_modules/**",
-            "web/dist/**",
-            "web/coverage/**",
-        ],
-    ),
-)
+package(default_visibility = ["//visibility:public"])
 
-workspace_shell_build(
-    name = "rust_build",
-    tool = "//:bazel/ci/rust_build.sh",
-    data = [":workspace_sources"],
-)
-
-workspace_shell_build(
-    name = "web_build",
-    tool = "//:bazel/ci/web_build.sh",
-    data = [":workspace_sources"],
-)
-
-filegroup(
-    name = "ci_build",
-    srcs = [
-        ":rust_build",
-        ":web_build",
+rust_binary(
+    name = "agenthub",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    edition = "2024",
+    aliases = aliases(),
+    deps = all_crate_deps(normal = True) + [
+        "//crates/agenthub-acp:agenthub_acp",
+        "//crates/agenthub-team-actor:agenthub_team_actor",
     ],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
-workspace_shell_test(
-    name = "rust_test",
-    tool = "//:bazel/ci/rust_test.sh",
-    data = [":workspace_sources"],
+rust_test(
+    name = "agenthub_unit_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    edition = "2024",
+    aliases = aliases(
+        normal = True,
+        normal_dev = True,
+        proc_macro = True,
+        proc_macro_dev = True,
+    ),
+    deps = all_crate_deps(
+        normal = True,
+        normal_dev = True,
+    ) + [
+        "//crates/agenthub-acp:agenthub_acp",
+        "//crates/agenthub-team-actor:agenthub_team_actor",
+    ],
+    proc_macro_deps = all_crate_deps(
+        proc_macro = True,
+        proc_macro_dev = True,
+    ),
     timeout = "long",
 )
 
-workspace_shell_test(
-    name = "web_test",
-    tool = "//:bazel/ci/web_test.sh",
-    data = [":workspace_sources"],
-)
-
-test_suite(
-    name = "ci_tests",
-    tests = [
-        ":rust_test",
-        ":web_test",
-    ],
+rust_test(
+    name = "web_assets_test",
+    srcs = ["tests/web_assets.rs"],
+    crate_root = "tests/web_assets.rs",
+    edition = "2024",
 )

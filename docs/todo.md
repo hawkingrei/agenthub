@@ -31,7 +31,9 @@
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
-- [ ] Verify Bazel CI workflow and local `bazel build //:ci_build` + `bazel test //:ci_tests` behavior on clean environments (see `docs/features/2026-02-14-bazel-build-test-integration.md`).
+- [x] Migrate Bazel from shell-wrapper targets to native `rules_rust` targets for core Rust crates (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [ ] Verify Bazel CI workflow and local `bazel build //...` + `bazel test //...` behavior on clean environments (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [ ] Extend native Bazel coverage to web build/test targets (replace remaining non-native gaps) (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
 - [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
 - [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
 - [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
