@@ -59,6 +59,7 @@
 - [x] Treat orchestrator dispatch as failed when `start_step` does not enter `working`, with best-effort member stop cleanup (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
 - [x] Validate `spec.steps` dependencies and reject cycles/missing step references before orchestrator bootstrap submits tasks (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Improve orchestrator dispatch loop to refresh step state after successful dispatch passes and avoid stale in-tick scheduling decisions (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add idle-tick heartbeat logging for orchestrator worker to improve operational liveness visibility without noisy per-tick logs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Harden relay route header parsing with strict header name/value validation and reject CR/LF control characters in values (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Add relay timeout default/clamping and explicit HTTP client transport limits for remote mailbox delivery (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [ ] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).

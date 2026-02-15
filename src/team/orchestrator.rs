@@ -16,6 +16,7 @@ use super::{TeamManager, TeamRunRecord, TeamStepRecord, TeamStepStatus};
 pub struct TeamOrchestratorWorkerSettings {
     pub poll_interval_secs: i64,
     pub max_dispatch_per_tick: i64,
+    pub heartbeat_interval_ticks: i64,
 }
 
 impl Default for TeamOrchestratorWorkerSettings {
@@ -23,6 +24,7 @@ impl Default for TeamOrchestratorWorkerSettings {
         Self {
             poll_interval_secs: 2,
             max_dispatch_per_tick: 32,
+            heartbeat_interval_ticks: 150,
         }
     }
 }
@@ -93,6 +95,8 @@ impl TeamOrchestratorWorker {
 
     pub fn spawn(self, settings: TeamOrchestratorWorkerSettings) {
         tokio::spawn(async move {
+            let heartbeat_interval_ticks = settings.heartbeat_interval_ticks.max(1);
+            let mut idle_ticks = 0_i64;
             let mut ticker = tokio::time::interval(Duration::from_secs(
                 settings.poll_interval_secs.max(1) as u64,
             ));
@@ -101,12 +105,13 @@ impl TeamOrchestratorWorker {
                 ticker.tick().await;
                 match self.dispatch_once(settings.max_dispatch_per_tick).await {
                     Ok(summary) => {
-                        if summary.scanned > 0
+                        let has_activity = summary.scanned > 0
                             || summary.dispatched > 0
                             || summary.failed > 0
                             || summary.reconciled_completed > 0
-                            || summary.reconciled_failed > 0
-                        {
+                            || summary.reconciled_failed > 0;
+                        if has_activity {
+                            idle_ticks = 0;
                             tracing::debug!(
                                 scanned = summary.scanned,
                                 dispatched = summary.dispatched,
@@ -115,6 +120,16 @@ impl TeamOrchestratorWorker {
                                 reconciled_failed = summary.reconciled_failed,
                                 "team orchestrator tick"
                             );
+                        } else {
+                            idle_ticks += 1;
+                            if idle_ticks % heartbeat_interval_ticks == 0 {
+                                tracing::info!(
+                                    idle_ticks,
+                                    poll_interval_secs = settings.poll_interval_secs.max(1),
+                                    max_dispatch_per_tick = settings.max_dispatch_per_tick.max(1),
+                                    "team orchestrator heartbeat"
+                                );
+                            }
                         }
                     }
                     Err(err) => {
@@ -1480,5 +1495,6 @@ mod tests {
         let settings = TeamOrchestratorWorkerSettings::default();
         assert_eq!(settings.poll_interval_secs, 2);
         assert_eq!(settings.max_dispatch_per_tick, 32);
+        assert_eq!(settings.heartbeat_interval_ticks, 150);
     }
 }
