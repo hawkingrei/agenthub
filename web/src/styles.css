@@ -1834,6 +1834,12 @@ select:not([class*="mantine-"]):focus-visible {
   background: #e9f6ee;
 }
 
+.acp-segmented-button:focus-visible {
+  outline: none;
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
 .acp-plan-card {
   border: 1px solid #efd9a9;
   border-radius: 10px;

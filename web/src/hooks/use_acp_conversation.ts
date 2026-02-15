@@ -107,14 +107,22 @@ function estimateTailPayloadSizeInternal(value: unknown, depth: number): number 
     return size;
   }
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    let size = entries.length * 2;
-    const limit = Math.min(TAIL_PAYLOAD_MAX_ENTRIES, entries.length);
-    for (let i = 0; i < limit; i += 1) {
-      const [key, item] = entries[i];
+    let size = 0;
+    let count = 0;
+    let hasMore = false;
+    const record = value as Record<string, unknown>;
+    for (const key in record) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+      if (count >= TAIL_PAYLOAD_MAX_ENTRIES) {
+        hasMore = true;
+        break;
+      }
+      size += 2;
       size += key.length;
-      size += estimateTailPayloadSizeInternal(item, depth + 1);
+      size += estimateTailPayloadSizeInternal(record[key], depth + 1);
+      count += 1;
     }
+    if (hasMore) size += 8;
     return size;
   }
   return 0;

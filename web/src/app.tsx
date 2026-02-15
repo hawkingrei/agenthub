@@ -485,38 +485,25 @@ export function App() {
     isAgentActive,
     onLoadOlder: loadOlderEvents,
   });
-  const acpRuntimeMetrics = useMemo(() => {
-    const cacheStats = getAcpConversationCacheStats();
-    return {
-      totalConversationItems: acpConversation.conversationTotalItems,
-      sourceConversationItems: acpConversation.conversationSourceItems,
-      renderedConversationItems: acpConversation.conversationRenderedItems,
-      pendingConversationItems: acpConversation.conversationPendingCount,
-      virtualizedConversation: acpConversation.conversationVirtualized,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
-      rawEventCount: acpView.rawEvents.length,
-      toolCallCount: acpView.toolCalls.length,
-      messageCount: acpView.messages.length,
-      markdownCacheHits: cacheStats.markdownHits,
-      markdownCacheMisses: cacheStats.markdownMisses,
-      ansiCacheHits: cacheStats.ansiHits,
-      ansiCacheMisses: cacheStats.ansiMisses,
-      payloadParses: cacheStats.payloadParses,
-      payloadParseFailures: cacheStats.payloadParseFailures,
-    };
-  }, [
-    acpConversation.conversationTotalItems,
-    acpConversation.conversationSourceItems,
-    acpConversation.conversationRenderedItems,
-    acpConversation.conversationPendingCount,
-    acpConversation.conversationVirtualized,
-    acpConversation.conversationStickToBottom,
-    acpConversation.conversationAvgHeight,
-    acpView.rawEvents.length,
-    acpView.toolCalls.length,
-    acpView.messages.length,
-  ]);
+  const cacheStats = getAcpConversationCacheStats();
+  const acpRuntimeMetrics = {
+    totalConversationItems: acpConversation.conversationTotalItems,
+    sourceConversationItems: acpConversation.conversationSourceItems,
+    renderedConversationItems: acpConversation.conversationRenderedItems,
+    pendingConversationItems: acpConversation.conversationPendingCount,
+    virtualizedConversation: acpConversation.conversationVirtualized,
+    stickToBottom: acpConversation.conversationStickToBottom,
+    averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+    rawEventCount: acpView.rawEvents.length,
+    toolCallCount: acpView.toolCalls.length,
+    messageCount: acpView.messages.length,
+    markdownCacheHits: cacheStats.markdownHits,
+    markdownCacheMisses: cacheStats.markdownMisses,
+    ansiCacheHits: cacheStats.ansiHits,
+    ansiCacheMisses: cacheStats.ansiMisses,
+    payloadParses: cacheStats.payloadParses,
+    payloadParseFailures: cacheStats.payloadParseFailures,
+  };
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);

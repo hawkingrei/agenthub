@@ -474,25 +474,18 @@ function FoldSection({
   children,
 }: FoldSectionProps) {
   const [open, setOpen] = React.useState(defaultOpen);
-  const [activated, setActivated] = React.useState(defaultOpen);
 
   React.useEffect(() => {
-    if (!defaultOpen) return;
-    setOpen(true);
-    setActivated(true);
+    setOpen(defaultOpen);
   }, [defaultOpen]);
 
-  const shouldRenderBody = !lazyRender || activated;
+  const shouldRenderBody = !lazyRender || open;
   return (
     <details
       className="acp-subfold"
       open={open}
       onToggle={(event) => {
-        const nextOpen = event.currentTarget.open;
-        setOpen(nextOpen);
-        if (nextOpen) {
-          setActivated(true);
-        }
+        setOpen(event.currentTarget.open);
       }}
     >
       <summary>
@@ -585,7 +578,7 @@ function unescapeLineBreaks(text: string): string {
 type NormalizedToolPayload =
   | { kind: "empty" }
   | { kind: "text"; text: string }
-  | { kind: "json_text"; text: string }
+  | { kind: "json_text"; text: string; parsed?: unknown }
   | { kind: "json"; value: unknown };
 
 function normalizeToolPayload(value: unknown): NormalizedToolPayload {
@@ -593,7 +586,13 @@ function normalizeToolPayload(value: unknown): NormalizedToolPayload {
   if (typeof value === "string") {
     const text = unescapeLineBreaks(value).trim();
     if (!text) return { kind: "empty" };
-    if (isJsonLikeText(text)) return { kind: "json_text", text };
+    if (isJsonLikeText(text)) {
+      return {
+        kind: "json_text",
+        text,
+        parsed: parseJsonLikeString(text, true),
+      };
+    }
     return { kind: "text", text };
   }
   return { kind: "json", value };
@@ -627,9 +626,8 @@ function summarizeToolPayload(payload: NormalizedToolPayload, limit: number): st
   if (payload.kind === "empty") return "";
   if (payload.kind === "text") return formatConversationPreview(payload.text, limit);
   if (payload.kind === "json_text") {
-    const parsed = parseJsonLikeString(payload.text);
-    if (parsed !== undefined) {
-      return formatConversationPreview(summarizePayloadValue(parsed), limit);
+    if (payload.parsed !== undefined) {
+      return formatConversationPreview(summarizePayloadValue(payload.parsed), limit);
     }
     return formatConversationPreview(payload.text.replace(/\s+/g, " "), limit);
   }
@@ -696,15 +694,27 @@ function summarizeScalarValue(value: unknown): string {
 function formatToolCallStatus(status?: string): string {
   if (!status) return "";
   const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (normalized === "in_progress") return "In Progress";
-  if (normalized === "completed") return "Completed";
-  if (normalized === "failed") return "Failed";
-  if (normalized === "pending") return "Pending";
-  if (normalized === "running") return "Running";
-  if (normalized === "cancelled" || normalized === "canceled") return "Cancelled";
-  if (normalized === "interrupted") return "Interrupted";
-  if (normalized === "stopped") return "Stopped";
-  return status;
+  switch (normalized) {
+    case "in_progress":
+      return "In Progress";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "pending":
+      return "Pending";
+    case "running":
+      return "Running";
+    case "cancelled":
+    case "canceled":
+      return "Cancelled";
+    case "interrupted":
+      return "Interrupted";
+    case "stopped":
+      return "Stopped";
+    default:
+      return status;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -729,22 +739,17 @@ function filterPayloadEntries(
 }
 
 function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
-  const parsedJsonText = React.useMemo(() => {
-    if (payload.kind !== "json_text") return undefined;
-    return parseJsonLikeString(payload.text, true);
-  }, [payload]);
-
   if (payload.kind === "empty") return null;
   if (payload.kind === "text") {
     return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
   }
   if (payload.kind === "json_text") {
-    if (parsedJsonText === undefined) {
+    if (payload.parsed === undefined) {
       return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
     }
     return (
       <div className="acp-payload-card">
-        {renderPayloadValue(parsedJsonText, 0)}
+        {renderPayloadValue(payload.parsed, 0)}
       </div>
     );
   }
@@ -1031,7 +1036,12 @@ function SegmentedMoreFooter({
       <span className="acp-segmented-meta">
         {remaining} more {unitLabel}
       </span>
-      <button type="button" className="acp-segmented-button" onClick={onShowMore}>
+      <button
+        type="button"
+        className="acp-segmented-button"
+        onClick={onShowMore}
+        aria-label={`Show ${remaining} more ${unitLabel}`}
+      >
         Show more
       </button>
     </div>
@@ -1109,7 +1119,7 @@ function ToolDiffView({ text }: { text: string }) {
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);
           return (
-            <span className={`acp-diff-line ${kind}`} key={`${index}-${line}`}>
+            <span className={`acp-diff-line ${kind}`} key={index}>
               {line.length > 0 ? line : " "}
             </span>
           );
