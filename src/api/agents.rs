@@ -832,6 +832,7 @@ mod tests {
             push,
             auth,
             acp_permissions: permissions,
+            default_worktree_root: config.default_worktree_root(),
         }
     }
 

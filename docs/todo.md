@@ -102,6 +102,7 @@
 - [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
+- [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
