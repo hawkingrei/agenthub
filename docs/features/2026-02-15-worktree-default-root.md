@@ -42,9 +42,24 @@ which increased friction and could cause inconsistent behavior between clients.
 ```bash
 cargo test default_worktree_root_ -- --nocapture
 cargo test resolve_create_agent_workdir_ -- --nocapture
+cargo test sanitize_worktree_segment_trims_mixed_edge_separators -- --nocapture
+cargo test runtime_defaults_requires_authentication -- --nocapture
+cargo test runtime_defaults_returns_configured_worktree_root -- --nocapture
 cd web
 npm run test -- src/create_agent_modal.test.tsx
 ```
+
+## Review Follow-up
+
+- Removed duplicate fallback handling in `default_worktree_path` to keep default
+  root policy centralized in `AppConfig::default_worktree_root`.
+- Fixed `sanitize_worktree_segment` edge trimming to correctly strip mixed
+  separator prefixes/suffixes.
+- Updated runtime defaults hydration in `web/src/app.tsx` to preserve user-edited
+  workdir while still replacing untouched placeholders with backend defaults.
+- Replaced silent runtime-defaults fetch failure with explicit console logging.
+- Added `src/api/settings.rs` router tests for both unauthenticated rejection and
+  authenticated default-root response.
 
 ## Follow-ups
 

@@ -421,11 +421,6 @@ fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> Strin
         .trim()
         .trim_end_matches('/')
         .trim_end_matches('\\');
-    let root = if root.is_empty() {
-        "~/.agenthub/worktrees"
-    } else {
-        root
-    };
     let name = sanitize_worktree_segment(agent_name);
     let suffix = Uuid::new_v4().simple().to_string();
     format!("{root}/{name}-{}", &suffix[..8])
@@ -450,7 +445,7 @@ fn sanitize_worktree_segment(value: &str) -> String {
             last_dash = true;
         }
     }
-    let trimmed = out.trim_matches('-').trim_matches('_').trim_matches('.');
+    let trimmed = out.trim_matches(|c| c == '-' || c == '_' || c == '.');
     if trimmed.is_empty() {
         "agent".to_string()
     } else {
@@ -504,6 +499,7 @@ mod tests {
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
         parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
+        sanitize_worktree_segment,
     };
 
     #[test]
@@ -564,6 +560,12 @@ mod tests {
         )
         .expect_err("blank workdir should be rejected");
         let _ = err;
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_trims_mixed_edge_separators() {
+        let sanitized = sanitize_worktree_segment("_-...Planner Team...-_");
+        assert_eq!(sanitized, "planner-team");
     }
 
     #[test]

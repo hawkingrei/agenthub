@@ -84,6 +84,7 @@
 - [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [x] Verify Create Agent modal loads `default_worktree_root` from `/api/settings/defaults` and pre-fills workdir fallback (`~/.agenthub/worktrees`) for worktree creation flows (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `/api/settings/defaults` enforces auth and returns `default_worktree_root` via router-level tests (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).

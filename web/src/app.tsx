@@ -92,7 +92,7 @@ export function App() {
     () => new Set()
   );
   const [agentName, setAgentName] = useState("");
-  const [agentWorkdir, setAgentWorkdir] = useState(DEFAULT_WORKTREE_ROOT);
+  const [agentWorkdir, setAgentWorkdir] = useState("");
   const [defaultWorktreeRoot, setDefaultWorktreeRoot] = useState(
     DEFAULT_WORKTREE_ROOT
   );
@@ -595,6 +595,7 @@ export function App() {
   useEffect(() => {
     if (!token) {
       setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      setAgentWorkdir("");
       return;
     }
     api
@@ -602,13 +603,25 @@ export function App() {
       .then((defaults) => {
         const root = defaults.default_worktree_root.trim() || DEFAULT_WORKTREE_ROOT;
         setDefaultWorktreeRoot(root);
-        setAgentWorkdir((prev) => (prev.trim() ? prev : root));
+        setAgentWorkdir((prev) => {
+          const trimmedPrev = prev.trim();
+          if (!trimmedPrev || trimmedPrev === DEFAULT_WORKTREE_ROOT) {
+            return root;
+          }
+          return prev;
+        });
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to get runtime defaults:", err));
   }, [token]);
 
   const openCreateAgentModal = useCallback(() => {
-    setAgentWorkdir((prev) => (prev.trim() ? prev : defaultWorktreeRoot));
+    setAgentWorkdir((prev) => {
+      const trimmedPrev = prev.trim();
+      if (!trimmedPrev || trimmedPrev === DEFAULT_WORKTREE_ROOT) {
+        return defaultWorktreeRoot;
+      }
+      return prev;
+    });
     setShowCreateAgent(true);
   }, [defaultWorktreeRoot]);
 
@@ -946,7 +959,7 @@ export function App() {
     setVapidInfo(null);
     setWorktreeError(null);
     setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
-    setAgentWorkdir(DEFAULT_WORKTREE_ROOT);
+    setAgentWorkdir("");
   };
 
   const onCreateAgent = async () => {

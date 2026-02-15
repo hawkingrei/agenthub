@@ -35,7 +35,7 @@ use super::{
     start_team_run_step, submit_team_run_step,
 };
 
-async fn build_test_state() -> AppState {
+pub(crate) async fn build_test_state() -> AppState {
     let db = create_test_db().await;
     init_test_schema(&db).await;
     let keys_dir = std::env::temp_dir().join(format!("agenthub-a2a-{}", Uuid::new_v4()));
@@ -342,7 +342,7 @@ async fn auth_headers(state: &AppState) -> HeaderMap {
     headers
 }
 
-async fn create_auth_token(state: &AppState) -> String {
+pub(crate) async fn create_auth_token(state: &AppState) -> String {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
     sqlx::query(
