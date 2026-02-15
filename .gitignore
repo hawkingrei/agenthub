@@ -12,4 +12,7 @@ bazel-*
 MODULE.bazel.lock
 web/test-results
 web/playwright-report
+userdocs/node_modules
+userdocs/build
+userdocs/.docusaurus
 .info/
