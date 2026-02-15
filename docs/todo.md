@@ -30,17 +30,17 @@
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
-- [ ] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
-- [ ] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
-- [ ] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
+- [x] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
+- [x] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
+- [x] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
 - [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
-- [ ] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
-- [ ] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
 - [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
 - [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
@@ -52,7 +52,7 @@
 - [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
-- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
 - [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
 - [x] Harden `actor_runtime.actor_cli_path` with strict default-binary allow-list validation and shared normalization helpers across API/agent/orchestrator (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
 - [x] Prevent actor-context starts from silently reusing already-running sessions; return conflict semantics for HTTP start requests (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
@@ -65,7 +65,7 @@
 - [x] Harden relay route header parsing with strict header name/value validation and reject CR/LF control characters in values (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Add relay timeout default/clamping and explicit HTTP client transport limits for remote mailbox delivery (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Reuse remote relay adapter (`OnceLock`) across worker ticks to preserve HTTP connection pooling and reduce repeated client allocation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
-- [ ] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
 - [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
@@ -83,6 +83,12 @@
 - [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
 - [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
+- [x] Verify Create Agent modal loads `default_worktree_root` from `/api/settings/defaults` and pre-fills workdir fallback (`~/.agenthub/worktrees`) for worktree creation flows (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `/api/settings/defaults` enforces auth and returns `default_worktree_root` via router-level tests (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify worktree-default helper logic (`runtime defaults` + `create modal prefill`) with dedicated web unit tests to keep coverage stable (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
@@ -93,8 +99,8 @@
 - [ ] Verify ESLint 9 upgrade and flat config lint run (see `docs/features/2026-02-10-eslint-9-upgrade.md`).
 - [ ] Verify workspace output header resume control, terminal auto-follow, and collapsed agents rail (see `docs/features/2026-02-10-workspace-output-interaction.md`).
 - [ ] Verify new workspace output/agents component tests and CSS guard updates (see `docs/features/2026-02-10-workspace-output-tests.md`).
-- [ ] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
-- [ ] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
+- [x] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
+- [x] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
 - [ ] Decide and document MCP configuration source for ACP sessions (Codex config vs AgentHub config).
 - [ ] Investigate ACP output formatting for large chunked messages (e.g., shiro sessions) and fix cache retention/rendering.
 - [ ] Add ACP support for Gemini and Kimi providers, including config wiring and documentation.

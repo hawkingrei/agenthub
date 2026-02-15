@@ -120,6 +120,10 @@ export type VapidRotateResponse = {
   public_key: string;
 };
 
+export type RuntimeDefaults = {
+  default_worktree_root: string;
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -207,6 +211,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ challenge_id, credential }),
     }),
+  getRuntimeDefaults: (token: string) =>
+    apiFetch<RuntimeDefaults>("/api/settings/defaults", token),
   listSafePaths: (token: string) =>
     apiFetch<SafePath[]>("/api/admin/safe_paths", token),
   addSafePath: (token: string, path: string) =>
