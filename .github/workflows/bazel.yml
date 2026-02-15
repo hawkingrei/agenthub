@@ -15,7 +15,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.88.0
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
       - name: Bazel build

@@ -112,6 +112,7 @@
 - [x] Make local Bazel shell wrappers resolve `npm`/`cargo` on macOS and fallback to writable Cargo home so `bazel build //...` works without custom env flags (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
 - [x] Raise Bazel `rust_test` timeout to `long` so CI does not fail at 300s while tests are still progressing (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
 - [x] Bump Bazel Rust toolchain to `1.88.0` to satisfy `time-macros 0.2.26` MSRV and fix CI unstable-feature compile failures (see `docs/features/2026-02-15-bazel-rust-toolchain-time-macros-msrv.md`).
+- [x] Pin Rust version to `1.88.0` across rustup files and CI workflows to keep Bazel/Cargo/CI toolchains consistent (see `docs/features/2026-02-15-rust-version-pinning-unified.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).
