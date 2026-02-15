@@ -151,6 +151,7 @@ fn output_stream_with_limits(
             heartbeat: tokio::time::interval(heartbeat_interval),
             shutdown_tx,
             disconnect_rx,
+            disconnect_watch_active: true,
             forwarders,
         },
         |mut state| async move {
@@ -163,9 +164,18 @@ fn output_stream_with_limits(
                         let event = Event::default().data("heartbeat");
                         return Some((Ok(event), state));
                     }
-                    changed = state.disconnect_rx.changed() => {
-                        if changed.is_err() || *state.disconnect_rx.borrow() {
-                            return None;
+                    changed = state.disconnect_rx.changed(), if state.disconnect_watch_active => {
+                        match changed {
+                            Ok(()) => {
+                                if *state.disconnect_rx.borrow() {
+                                    return None;
+                                }
+                            }
+                            Err(_) => {
+                                // All disconnect senders are dropped. Keep draining output_rx
+                                // until it is naturally exhausted.
+                                state.disconnect_watch_active = false;
+                            }
                         }
                     }
                     msg = state.output_rx.recv() => {
@@ -190,6 +200,7 @@ struct OutputStreamState {
     heartbeat: tokio::time::Interval,
     shutdown_tx: watch::Sender<bool>,
     disconnect_rx: watch::Receiver<bool>,
+    disconnect_watch_active: bool,
     forwarders: Vec<JoinHandle<()>>,
 }
 
@@ -643,6 +654,37 @@ mod tests {
         assert!(
             next.is_none(),
             "stream should close after sustained backpressure timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn output_stream_drains_buffered_messages_after_forwarder_shutdown() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let mut stream = std::pin::pin!(super::output_stream_with_limits(
+            vec![rx],
+            8,
+            std::time::Duration::from_secs(1),
+        ));
+
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive first event")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
+        assert!(format!("{first:?}").contains("heartbeat"));
+
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send output");
+        drop(tx);
+
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive buffered output after forwarder shutdown");
+        assert!(
+            second.is_some(),
+            "stream should emit buffered output before termination"
         );
     }
 }
