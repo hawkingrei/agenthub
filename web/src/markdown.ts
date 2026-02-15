@@ -3,7 +3,7 @@ import hljs from "highlight.js";
 
 const GITHUB_PULL_URL_PATTERN =
   /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/pull\/\d+(?:[/?#][^\s<>"']*)?$/;
-const URL_CANDIDATE_PATTERN = /https:\/\/[^\s<>()]+/g;
+const URL_CANDIDATE_PATTERN = /https:\/\/[^\s<>()]+(?:\([^\s<>]*\)[^\s<>()]*)*/g;
 const AUTOLINK_MAX_INPUT_LENGTH = 120_000;
 
 export function escapeHtml(input: string): string {
@@ -95,15 +95,87 @@ function isLikelyExistingLinkContext(segment: string, index: number): boolean {
   return false;
 }
 
+function splitInlineCodeSegments(
+  line: string
+): { text: string; isCode: boolean }[] {
+  const segments: { text: string; isCode: boolean }[] = [];
+  const length = line.length;
+  let i = 0;
+  let lastIndex = 0;
+  let inCode = false;
+  let delimiterLength = 0;
+  let codeStart = 0;
+
+  while (i < length) {
+    const ch = line.charAt(i);
+    if (!inCode) {
+      if (ch !== "`") {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j < length && line.charAt(j) === "`") {
+        j += 1;
+      }
+      if (i > lastIndex) {
+        segments.push({
+          text: line.slice(lastIndex, i),
+          isCode: false,
+        });
+      }
+      inCode = true;
+      delimiterLength = j - i;
+      codeStart = i;
+      i = j;
+      lastIndex = codeStart;
+      continue;
+    }
+    if (ch !== "`") {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < length && line.charAt(j) === "`") {
+      j += 1;
+    }
+    const runLength = j - i;
+    if (runLength === delimiterLength) {
+      segments.push({
+        text: line.slice(codeStart, j),
+        isCode: true,
+      });
+      inCode = false;
+      delimiterLength = 0;
+      i = j;
+      lastIndex = i;
+      continue;
+    }
+    i = j;
+  }
+
+  if (!inCode && lastIndex < length) {
+    segments.push({
+      text: line.slice(lastIndex),
+      isCode: false,
+    });
+  } else if (inCode) {
+    segments.push({
+      text: line.slice(codeStart),
+      isCode: false,
+    });
+  }
+  return segments;
+}
+
 function autoLinkWhitelistedUrlsInLine(line: string): string {
-  const parts = line.split(/(`[^`]*`)/g);
-  return parts
-    .map((part) => {
-      if (part.startsWith("`") && part.endsWith("`")) return part;
-      return part.replace(URL_CANDIDATE_PATTERN, (matched, offset, source) => {
+  const segments = splitInlineCodeSegments(line);
+  return segments
+    .map((segment) => {
+      if (segment.isCode) return segment.text;
+      return segment.text.replace(URL_CANDIDATE_PATTERN, (matched, offset, source) => {
         const start = Number(offset);
-        const segment = String(source);
-        if (isLikelyExistingLinkContext(segment, start)) {
+        const sourceSegment = String(source);
+        if (isLikelyExistingLinkContext(sourceSegment, start)) {
           return matched;
         }
         const { url, trailing } = splitUrlAndTrailingPunctuation(matched);
@@ -121,17 +193,23 @@ function autoLinkWhitelistedUrls(input: string): string {
   const output: string[] = [];
   let inFence = false;
   let fenceToken = "";
+  let fenceLength = 0;
   for (const line of lines) {
     const trimmed = line.trimStart();
     const fenceMatch = trimmed.match(/^(```+|~~~+)/);
     if (fenceMatch) {
-      const nextFence = fenceMatch[1].charAt(0);
+      const nextFence = fenceMatch[1];
       if (!inFence) {
         inFence = true;
-        fenceToken = nextFence;
-      } else if (nextFence === fenceToken) {
+        fenceToken = nextFence.charAt(0);
+        fenceLength = nextFence.length;
+      } else if (
+        nextFence.charAt(0) === fenceToken &&
+        nextFence.length >= fenceLength
+      ) {
         inFence = false;
         fenceToken = "";
+        fenceLength = 0;
       }
       output.push(line);
       continue;

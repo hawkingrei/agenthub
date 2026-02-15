@@ -265,6 +265,7 @@ export function useAcpConversation({
   const conversationBottomAlignThrottleRef = useRef<ReturnType<
     typeof createRafThrottle
   > | null>(null);
+  const alignConversationBottomNowRef = useRef<() => void>(() => {});
   const acpStickToBottomRef = useRef(true);
   const conversationScrollRef = useRef<{
     top: number;
@@ -423,14 +424,18 @@ export function useAcpConversation({
     });
   }, [acpTab, conversationStickToBottom, syncConversationViewport]);
 
+  useEffect(() => {
+    alignConversationBottomNowRef.current = alignConversationBottomNow;
+  }, [alignConversationBottomNow]);
+
   const scheduleConversationBottomAlign = useCallback(() => {
     const throttle = conversationBottomAlignThrottleRef.current;
     if (!throttle) {
-      alignConversationBottomNow();
+      alignConversationBottomNowRef.current();
       return;
     }
     throttle.schedule();
-  }, [alignConversationBottomNow]);
+  }, []);
 
   const handleConversationScrollNow = useCallback(() => {
     const el = acpConversationRef.current;
@@ -508,7 +513,9 @@ export function useAcpConversation({
       return;
     }
     conversationBottomAlignThrottleRef.current = createRafThrottle(
-      alignConversationBottomNow,
+      () => {
+        alignConversationBottomNowRef.current();
+      },
       {
         requestAnimationFrame: window.requestAnimationFrame.bind(window),
         cancelAnimationFrame:
@@ -521,7 +528,7 @@ export function useAcpConversation({
       conversationBottomAlignThrottleRef.current?.cancel();
       conversationBottomAlignThrottleRef.current = null;
     };
-  }, [alignConversationBottomNow]);
+  }, []);
 
   useEffect(() => {
     if (

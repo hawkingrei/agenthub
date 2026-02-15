@@ -57,6 +57,30 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/2"');
   });
 
+  it("does not auto-link inside unmatched shorter fenced close markers", () => {
+    const html = renderMarkdown(
+      "````txt\ncode line\n```\nhttps://github.com/hawkingrei/agenthub/pull/2\n````"
+    );
+    expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/2"');
+  });
+
+  it("supports whitelisted URLs with parentheses in query parts", () => {
+    const html = renderMarkdown(
+      "See https://github.com/hawkingrei/agenthub/pull/1233?note=(alpha) for details."
+    );
+    expect(html).toContain(
+      'href="https://github.com/hawkingrei/agenthub/pull/1233?note=(alpha)"'
+    );
+  });
+
+  it("does not auto-link URLs inside multi-backtick inline code", () => {
+    const html = renderMarkdown(
+      "``https://github.com/hawkingrei/agenthub/pull/7`` and https://github.com/hawkingrei/agenthub/pull/8"
+    );
+    expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/7"');
+    expect(html).toContain('href="https://github.com/hawkingrei/agenthub/pull/8"');
+  });
+
   it("skips whitelist autolink preprocessing for very large markdown inputs", () => {
     const prefix = "x".repeat(130_000);
     const html = renderMarkdown(
