@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  user-docs:
+  userdocs:
     name: User Docs
     runs-on: ubuntu-latest
     steps:
@@ -18,7 +18,7 @@ jobs:
           node-version: "20"
       - name: Install
         run: npm install
-        working-directory: user-docs
+        working-directory: userdocs
       - name: Build
         run: npm run build
-        working-directory: user-docs
+        working-directory: userdocs

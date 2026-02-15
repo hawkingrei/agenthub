@@ -35,10 +35,10 @@ The server serves the UI on `http://localhost:8080`.
 
 ## User Documentation Site (Docusaurus)
 
-AgentHub includes an end-user documentation site under `user-docs/`.
+AgentHub includes an end-user documentation site under `userdocs/`.
 
 ```bash
-cd user-docs
+cd userdocs
 npm install
 npm run start
 ```

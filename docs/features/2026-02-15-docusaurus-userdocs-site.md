@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a dedicated Docusaurus-based user documentation website under `user-docs/`
+Add a dedicated Docusaurus-based user documentation website under `userdocs/`
 and publish end-user guides for the core AgentHub workflow.
 
 ## Background
@@ -16,24 +16,24 @@ inspection, notifications, and troubleshooting.
 
 - `.gitignore`
 - `README.md`
-- `user-docs/package.json`
-- `user-docs/docusaurus.config.js`
-- `user-docs/sidebars.js`
-- `user-docs/src/css/custom.css`
-- `user-docs/README.md`
-- `user-docs/docs/intro.md`
-- `user-docs/docs/getting-started/installation.md`
-- `user-docs/docs/getting-started/login.md`
-- `user-docs/docs/core/create-agent.md`
-- `user-docs/docs/core/run-and-interact.md`
-- `user-docs/docs/core/view-output.md`
-- `user-docs/docs/operations/notifications.md`
-- `user-docs/docs/operations/troubleshooting.md`
+- `userdocs/package.json`
+- `userdocs/docusaurus.config.js`
+- `userdocs/sidebars.js`
+- `userdocs/src/css/custom.css`
+- `userdocs/README.md`
+- `userdocs/docs/intro.md`
+- `userdocs/docs/getting-started/installation.md`
+- `userdocs/docs/getting-started/login.md`
+- `userdocs/docs/core/create-agent.md`
+- `userdocs/docs/core/run-and-interact.md`
+- `userdocs/docs/core/view-output.md`
+- `userdocs/docs/operations/notifications.md`
+- `userdocs/docs/operations/troubleshooting.md`
 - `docs/todo.md`
 
 ## Key Decisions
 
-1. Keep user docs in a standalone `user-docs/` site to avoid mixing end-user
+1. Keep user docs in a standalone `userdocs/` site to avoid mixing end-user
    pages with engineering/internal docs in `docs/`.
 2. Use Docusaurus classic preset with `docs` only (`routeBasePath: /`) and no
    blog to keep information architecture simple.
@@ -47,7 +47,7 @@ inspection, notifications, and troubleshooting.
 ## Validation
 
 ```bash
-cd user-docs
+cd userdocs
 npm install
 npm run build
 npm run start
@@ -55,11 +55,11 @@ npm run start
 
 Expected outcomes:
 
-- Build completes and writes output to `user-docs/build/`
+- Build completes and writes output to `userdocs/build/`
 - Sidebar navigation includes all user-guide pages
 - Root route serves `intro.md` as the landing page
 
 ## Follow-ups
 
-- Add CI workflow to verify `user-docs` install/build on pull requests.
+- Add CI workflow to verify `userdocs` install/build on pull requests.
 - Define deployment target for publishing the static docs site.

@@ -1,7 +1,7 @@
 # TODO
 
-- [x] Verify Docusaurus user-docs site install/build flow in CI (see `docs/features/2026-02-15-user-docs-ci-build-check.md`).
-- [ ] Document deployment target for publishing Docusaurus `user-docs` static site (see `docs/features/2026-02-15-user-docs-ci-build-check.md`).
+- [x] Verify Docusaurus userdocs site install/build flow in CI (see `docs/features/2026-02-15-userdocs-ci-build-check.md`).
+- [ ] Document deployment target for publishing Docusaurus `userdocs` static site (see `docs/features/2026-02-15-userdocs-ci-build-check.md`).
 - [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Memoize ACP conversation row rendering (`ConversationBubble` + tool/plan/markdown bubbles) to cut repeated render work during scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).

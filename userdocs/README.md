@@ -5,7 +5,7 @@ This directory contains a Docusaurus site for end-user documentation.
 ## Local Preview
 
 ```bash
-cd user-docs
+cd userdocs
 npm install
 npm run start
 ```
@@ -13,8 +13,8 @@ npm run start
 ## Build
 
 ```bash
-cd user-docs
+cd userdocs
 npm run build
 ```
 
-The generated static site is written to `user-docs/build/`.
+The generated static site is written to `userdocs/build/`.
