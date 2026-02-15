@@ -21,6 +21,24 @@ const baseProps: AcpDebugProps = {
   onAcpSetConfig: () => {},
   onAcpCancel: () => {},
   onAcpClearSession: () => {},
+  runtimeMetrics: {
+    totalConversationItems: 0,
+    sourceConversationItems: 0,
+    renderedConversationItems: 0,
+    pendingConversationItems: 0,
+    virtualizedConversation: false,
+    stickToBottom: true,
+    averageConversationHeight: 48,
+    rawEventCount: 0,
+    toolCallCount: 0,
+    messageCount: 0,
+    markdownCacheHits: 0,
+    markdownCacheMisses: 0,
+    ansiCacheHits: 0,
+    ansiCacheMisses: 0,
+    payloadParses: 0,
+    payloadParseFailures: 0,
+  },
 };
 
 describe("AcpDebug", () => {
@@ -37,6 +55,7 @@ describe("AcpDebug", () => {
 
   it("renders debug tabs", () => {
     const html = renderToStaticMarkup(<AcpDebug {...baseProps} />);
+    expect(html).toContain("Runtime");
     expect(html).toContain("Permissions");
     expect(html).toContain("Raw Events");
   });

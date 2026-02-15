@@ -5,6 +5,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionRecord;
@@ -127,12 +128,19 @@ async fn create_agent(
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
     let _user = require_user(&headers, &state).await?;
+    let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
+    let workdir = resolve_create_agent_workdir(
+        &payload.workdir,
+        &payload.name,
+        &worktree_mode,
+        &state.default_worktree_root,
+    )?;
     let config = AgentConfig {
         name: payload.name,
-        workdir: payload.workdir,
+        workdir,
         command: payload.command,
         args: payload.args,
-        worktree_mode: parse_worktree_mode(payload.worktree_mode.as_deref()),
+        worktree_mode,
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
         code_mode: payload.code_mode.unwrap_or(true),
@@ -392,6 +400,58 @@ fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
     }
 }
 
+fn resolve_create_agent_workdir(
+    requested_workdir: &str,
+    agent_name: &str,
+    worktree_mode: &WorktreeMode,
+    default_worktree_root: &str,
+) -> Result<String, ApiError> {
+    let trimmed = requested_workdir.trim();
+    if !trimmed.is_empty() {
+        return Ok(trimmed.to_string());
+    }
+    if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
+        return Err(ApiError::bad_request("workdir is required"));
+    }
+    Ok(default_worktree_path(agent_name, default_worktree_root))
+}
+
+fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> String {
+    let root = default_worktree_root
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches('\\');
+    let name = sanitize_worktree_segment(agent_name);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let segment = format!("{name}-{}", &suffix[..8]);
+    std::path::PathBuf::from(root)
+        .join(segment)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn sanitize_worktree_segment(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in value.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_dash = false;
+            continue;
+        }
+        if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "agent".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn parse_start_actor_runtime_context(
     payload: Option<StartAgentRequest>,
 ) -> Result<Option<AcpActorSkillContext>, ApiError> {
@@ -433,11 +493,30 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Method, Request, StatusCode, header};
+    use serde_json::{Value, json};
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use tower::ServiceExt;
+    use uuid::Uuid;
+
+    use crate::acp::AcpPermissionService;
     use crate::actor_runtime::default_actor_cli_path;
+    use crate::agent::AgentManager;
+    use crate::auth::AuthService;
+    use crate::config::{AppConfig, PushConfig, WebConfig};
+    use crate::push::PushService;
+    use crate::state::AppState;
+    use crate::team::TeamManager;
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
-        parse_start_actor_runtime_context, parse_worktree_mode,
+        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
+        router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -462,6 +541,59 @@ mod tests {
             parse_worktree_mode(Some("reuse_worktree")),
             WorktreeMode::ReuseWorktree
         ));
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_uses_explicit_value() {
+        let resolved = resolve_create_agent_workdir(
+            " /tmp/work ",
+            "planner",
+            &WorktreeMode::CreateWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect("resolve workdir");
+        assert_eq!(resolved, "/tmp/work");
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_generates_default_for_create_mode() {
+        let resolved = resolve_create_agent_workdir(
+            "",
+            "Team Planner",
+            &WorktreeMode::CreateWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect("resolve default workdir");
+        assert!(resolved.starts_with("~/.agenthub/worktrees/team-planner-"));
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_rejects_blank_for_non_create_mode() {
+        let err = resolve_create_agent_workdir(
+            "",
+            "planner",
+            &WorktreeMode::ReuseWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect_err("blank workdir should be rejected");
+        let _ = err;
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_trims_mixed_edge_separators() {
+        let sanitized = sanitize_worktree_segment("_-...Planner Team...-_");
+        assert_eq!(sanitized, "planner-team");
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_collapses_repeated_internal_separators() {
+        assert_eq!(sanitize_worktree_segment("agent...name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent__name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent._-name"), "agent-name");
+        assert_eq!(
+            sanitize_worktree_segment("agent   ---   name"),
+            "agent-name"
+        );
     }
 
     #[test]
@@ -539,5 +671,322 @@ mod tests {
         }))
         .expect_err("actor_cli_path should be validated");
         let _ = err;
+    }
+
+    async fn create_test_db() -> SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true)
+            .foreign_keys(true);
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("connect sqlite")
+    }
+
+    async fn init_test_schema(db: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                password_hash TEXT,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create users");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE auth_sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create auth_sessions");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agents");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE safe_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create safe_paths");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_sessions");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                seq TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                stream TEXT NOT NULL,
+                message TEXT NOT NULL,
+                FOREIGN KEY(agent_id) REFERENCES agents(id),
+                FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_events");
+    }
+
+    async fn build_test_state() -> AppState {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        let keys_dir = std::env::temp_dir().join(format!("agenthub-api-agents-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&keys_dir).expect("create keys dir");
+        let keys_path = keys_dir.join("vapid.json");
+        let config = AppConfig {
+            web: Some(WebConfig {
+                rp_id: Some("localhost".to_string()),
+                rp_origin: Some("http://localhost:8080".to_string()),
+                rp_name: Some("AgentHub Test".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some(keys_path.to_string_lossy().to_string()),
+            }),
+            ..Default::default()
+        };
+        let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
+        let _ = std::fs::remove_dir_all(&keys_dir);
+        let auth = Arc::new(
+            AuthService::new(db.clone(), &config)
+                .await
+                .expect("create auth service"),
+        );
+        let permissions = Arc::new(AcpPermissionService::new(db.clone()));
+        let agents = Arc::new(AgentManager::new(
+            db.clone(),
+            push.clone(),
+            Vec::new(),
+            "agenthub-codex-acp".to_string(),
+            None,
+            permissions.clone(),
+            auth.clone(),
+        ));
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        AppState {
+            db,
+            agents,
+            teams,
+            push,
+            auth,
+            acp_permissions: permissions,
+            default_worktree_root: config.default_worktree_root(),
+        }
+    }
+
+    async fn create_auth_token(state: &AppState) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, 'root', NULL, ?4)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("root-{}", Uuid::new_v4()))
+        .bind("Root")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert user");
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create session token")
+    }
+
+    fn build_json_request(
+        method: Method,
+        path: &str,
+        token: Option<&str>,
+        payload: Option<Value>,
+    ) -> Request<Body> {
+        let mut builder = Request::builder().method(method).uri(path);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        match payload {
+            Some(payload) => builder
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("build json request"),
+            None => builder.body(Body::empty()).expect("build request"),
+        }
+    }
+
+    async fn decode_json_body(response: axum::response::Response) -> Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("decode response json")
+    }
+
+    #[tokio::test]
+    async fn start_route_with_actor_runtime_payload_injects_actor_envs() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir = std::env::temp_dir().join(format!("agenthub-start-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO safe_paths (path, created_at)
+            VALUES (?1, ?2)
+            "#,
+        )
+        .bind(workdir.to_string_lossy().to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+        let env_file = workdir.join("actor-runtime-env.txt");
+        let script = format!(
+            "printf '%s\\n' \"$AGENTHUB_ACTOR_RUN_ID\" > actor-runtime-env.txt; \
+             printf '%s\\n' \"$AGENTHUB_ACTOR_ID\" >> actor-runtime-env.txt; \
+             printf '%s\\n' \"$AGENTHUB_ACTOR_CHANNEL\" >> actor-runtime-env.txt; \
+             printf '%s\\n' \"$AGENTHUB_ACTOR_CLI\" >> actor-runtime-env.txt; \
+             sleep 30"
+        );
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "actor-runtime-api-agent",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", script],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent via router");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let cli_path = default_actor_cli_path().expect("resolve default cli path");
+        let start_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                Some(json!({
+                    "actor_runtime": {
+                        "run_id": "run-api-start",
+                        "actor_id": "planner",
+                        "channel": "coordination",
+                        "actor_cli_path": cli_path
+                    }
+                })),
+            ))
+            .await
+            .expect("start agent with actor runtime context");
+        assert_eq!(start_resp.status(), StatusCode::OK);
+
+        let mut wrote_env = false;
+        for _ in 0..50 {
+            if env_file.exists() {
+                wrote_env = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(wrote_env, "agent did not write actor runtime env file");
+
+        let contents = std::fs::read_to_string(&env_file).expect("read actor env file");
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(lines.len(), 4, "unexpected actor env file format");
+        assert_eq!(lines[0], "run-api-start");
+        assert_eq!(lines[1], "planner");
+        assert_eq!(lines[2], "coordination");
+        assert_eq!(
+            lines[3],
+            default_actor_cli_path().expect("resolve default cli path")
+        );
+
+        let stop_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop agent");
+        assert_eq!(stop_resp.status(), StatusCode::OK);
+
+        let _ = std::fs::remove_dir_all(&workdir);
     }
 }

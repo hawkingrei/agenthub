@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::body::{Body, to_bytes};
@@ -12,8 +13,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tower::util::ServiceExt;
 use uuid::Uuid;
 
+use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
+use crate::actor_runtime::default_actor_cli_path;
 use crate::agent::AgentManager;
+use crate::agent::WorktreeMode;
 use crate::auth::AuthService;
 use crate::config::{AppConfig, PushConfig, WebConfig};
 use crate::push::PushService;
@@ -31,7 +35,7 @@ use super::{
     start_team_run_step, submit_team_run_step,
 };
 
-async fn build_test_state() -> AppState {
+pub(crate) async fn build_test_state() -> AppState {
     let db = create_test_db().await;
     init_test_schema(&db).await;
     let keys_dir = std::env::temp_dir().join(format!("agenthub-a2a-{}", Uuid::new_v4()));
@@ -74,6 +78,7 @@ async fn build_test_state() -> AppState {
         push,
         auth,
         acp_permissions: permissions,
+        default_worktree_root: config.default_worktree_root(),
     }
 }
 
@@ -337,7 +342,7 @@ async fn auth_headers(state: &AppState) -> HeaderMap {
     headers
 }
 
-async fn create_auth_token(state: &AppState) -> String {
+pub(crate) async fn create_auth_token(state: &AppState) -> String {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
     sqlx::query(
@@ -390,3 +395,96 @@ async fn decode_json_body(response: axum::response::Response) -> Value {
 
 include!("tests_core.rs");
 include!("tests_router.rs");
+
+#[tokio::test]
+async fn start_agent_with_actor_context_injects_runtime_env_vars() {
+    let state = build_test_state().await;
+    let workdir = std::env::temp_dir().join(format!("agenthub-actor-env-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&workdir).expect("create workdir");
+    let workdir_str = workdir.to_string_lossy().to_string();
+    let now = Utc::now().timestamp();
+
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+    let agent = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: format!("actor-env-{}", Uuid::new_v4()),
+            workdir: workdir_str.clone(),
+            command: "env".to_string(),
+            args: vec![],
+            worktree_mode: WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+        })
+        .await
+        .expect("create agent");
+
+    let actor_cli_path = default_actor_cli_path().expect("resolve actor cli path");
+    let actor_context = AcpActorSkillContext {
+        run_id: "run-env-check".to_string(),
+        actor_id: "planner".to_string(),
+        default_channel: "coordination".to_string(),
+        actor_cli_path: actor_cli_path.clone(),
+    };
+
+    let session_id = state
+        .agents
+        .start_agent_with_actor_context(&agent.id, Some(actor_context))
+        .await
+        .expect("start agent with actor context");
+
+    let mut has_run_id = false;
+    let mut has_actor_id = false;
+    let mut has_channel = false;
+    let mut has_actor_cli = false;
+
+    for _ in 0..40 {
+        let events = state
+            .agents
+            .list_events_for_session(&agent.id, &session_id, 500, None)
+            .await
+            .expect("list events");
+        for event in events {
+            let line = event.message.as_str();
+            if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
+                has_run_id = true;
+            } else if line == "AGENTHUB_ACTOR_ID=planner" {
+                has_actor_id = true;
+            } else if line == "AGENTHUB_ACTOR_CHANNEL=coordination" {
+                has_channel = true;
+            } else if line.starts_with("AGENTHUB_ACTOR_CLI=") && line.ends_with(&actor_cli_path) {
+                has_actor_cli = true;
+            }
+        }
+        if has_run_id && has_actor_id && has_channel && has_actor_cli {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(
+        has_run_id,
+        "missing AGENTHUB_ACTOR_RUN_ID in process env output"
+    );
+    assert!(
+        has_actor_id,
+        "missing AGENTHUB_ACTOR_ID in process env output"
+    );
+    assert!(
+        has_channel,
+        "missing AGENTHUB_ACTOR_CHANNEL in process env output"
+    );
+    assert!(
+        has_actor_cli,
+        "missing AGENTHUB_ACTOR_CLI in process env output"
+    );
+
+    let _ = std::fs::remove_dir_all(&workdir);
+}

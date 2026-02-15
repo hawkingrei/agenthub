@@ -1055,8 +1055,8 @@ fn map_actor_mailbox_store_error(
 mod tests {
     use super::{
         RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS,
-        parse_route_header_name, parse_route_header_value, relay_timeout_ms,
-        shared_remote_relay_adapter,
+        RemoteRelaySigningValue, apply_route_signing, parse_route_header_name,
+        parse_route_header_value, relay_timeout_ms, shared_remote_relay_adapter,
     };
 
     #[test]
@@ -1088,5 +1088,37 @@ mod tests {
         let first = shared_remote_relay_adapter() as *const _;
         let second = shared_remote_relay_adapter() as *const _;
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn apply_route_signing_sets_signature_timestamp_and_message_id_headers() {
+        let client = reqwest::Client::new();
+        let request = client.post("https://example.com/relay");
+        let signed = apply_route_signing(
+            request,
+            Some(&RemoteRelaySigningValue::HmacSha256 {
+                secret: "test-secret".to_string(),
+                header: None,
+                timestamp_header: None,
+            }),
+            br#"{"payload":"x"}"#,
+            42,
+        )
+        .expect("sign request");
+        let built = signed.build().expect("build signed request");
+        let headers = built.headers();
+
+        let signature = headers
+            .get("X-AgentHub-Signature")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(signature.starts_with("hmac-sha256="));
+        assert!(headers.contains_key("X-AgentHub-Timestamp"));
+        assert_eq!(
+            headers
+                .get("X-AgentHub-Message-Id")
+                .and_then(|value| value.to_str().ok()),
+            Some("42")
+        );
     }
 }

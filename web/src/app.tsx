@@ -52,6 +52,7 @@ import { OutputHeader } from "./components/output_header";
 import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { PermissionModal } from "./components/permission_modal";
+import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import { AdminPage } from "./pages/admin_page";
@@ -70,6 +71,14 @@ import {
   registerCredentialToJson,
 } from "./webauthn";
 import { AuthState } from "./types";
+import {
+  normalizeRuntimeWorktreeRoot,
+  normalizeWorkdirInput,
+  resolveWorkdirForModeChange,
+  resolveWorkdirForModalOpen,
+} from "./worktree_defaults";
+
+const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 
 export function App() {
   const eventLimit = 200;
@@ -91,6 +100,9 @@ export function App() {
   );
   const [agentName, setAgentName] = useState("");
   const [agentWorkdir, setAgentWorkdir] = useState("");
+  const [defaultWorktreeRoot, setDefaultWorktreeRoot] = useState(
+    DEFAULT_WORKTREE_ROOT
+  );
   const [agentPresetId, setAgentPresetId] = useState<AgentPresetId>(
     DEFAULT_AGENT_PRESET_ID
   );
@@ -473,6 +485,25 @@ export function App() {
     isAgentActive,
     onLoadOlder: loadOlderEvents,
   });
+  const cacheStats = getAcpConversationCacheStats();
+  const acpRuntimeMetrics = {
+    totalConversationItems: acpConversation.conversationTotalItems,
+    sourceConversationItems: acpConversation.conversationSourceItems,
+    renderedConversationItems: acpConversation.conversationRenderedItems,
+    pendingConversationItems: acpConversation.conversationPendingCount,
+    virtualizedConversation: acpConversation.conversationVirtualized,
+    stickToBottom: acpConversation.conversationStickToBottom,
+    averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+    rawEventCount: acpView.rawEvents.length,
+    toolCallCount: acpView.toolCalls.length,
+    messageCount: acpView.messages.length,
+    markdownCacheHits: cacheStats.markdownHits,
+    markdownCacheMisses: cacheStats.markdownMisses,
+    ansiCacheHits: cacheStats.ansiHits,
+    ansiCacheMisses: cacheStats.ansiMisses,
+    payloadParses: cacheStats.payloadParses,
+    payloadParseFailures: cacheStats.payloadParseFailures,
+  };
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -586,6 +617,61 @@ export function App() {
     eventLimit,
     loadAgentEvents,
   ]);
+
+  useEffect(() => {
+    if (!token) {
+      setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      setAgentWorkdir("");
+      return;
+    }
+    api
+      .getRuntimeDefaults(token)
+      .then((defaults) => {
+        // Backend guarantees a non-empty default root; keep a defensive fallback
+        // in case of malformed responses.
+        const root = normalizeRuntimeWorktreeRoot(
+          defaults.default_worktree_root,
+          DEFAULT_WORKTREE_ROOT
+        );
+        setDefaultWorktreeRoot(root);
+        setAgentWorkdir((prev) =>
+          resolveWorkdirForModeChange(
+            prev,
+            "use_existing",
+            root,
+            DEFAULT_WORKTREE_ROOT
+          )
+        );
+      })
+      .catch((err) => console.error("Failed to get runtime defaults:", err));
+  }, [token]);
+
+  const handleWorktreeModeChange = useCallback(
+    (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
+      setWorktreeMode(nextMode);
+      setAgentWorkdir((prev) =>
+        resolveWorkdirForModeChange(
+          prev,
+          nextMode,
+          defaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    },
+    [defaultWorktreeRoot]
+  );
+
+  const openCreateAgentModal = useCallback(() => {
+    setAgentWorkdir((prev) =>
+      resolveWorkdirForModalOpen(
+        prev,
+        worktreeMode,
+        defaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      )
+    );
+    setShowCreateAgent(true);
+  }, [defaultWorktreeRoot, worktreeMode]);
 
   useEffect(() => {
     if (!token || auth?.role !== "root") return;
@@ -920,6 +1006,8 @@ export function App() {
     setAcpPermissions([]);
     setVapidInfo(null);
     setWorktreeError(null);
+    setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+    setAgentWorkdir("");
   };
 
   const onCreateAgent = async () => {
@@ -931,11 +1019,18 @@ export function App() {
     setWorktreeError(null);
     try {
       const name = agentName.trim() || "agent";
-      const workdir = agentWorkdir.trim();
+      const workdir = normalizeWorkdirInput(agentWorkdir);
+      const normalizedRoot = normalizeWorkdirInput(defaultWorktreeRoot);
+      const workdirPayload =
+        worktreeMode === "create_worktree" &&
+        normalizedRoot &&
+        workdir === normalizedRoot
+          ? ""
+          : workdir;
       const preset = getAgentPreset(agentPresetId);
       const command = preset.command.trim();
       const args = preset.args.slice();
-      if (!workdir) {
+      if (!workdirPayload && worktreeMode !== "create_worktree") {
         setError("workdir is required");
         return;
       }
@@ -945,7 +1040,7 @@ export function App() {
       }
       const agent = await api.createAgent(token, {
         name,
-        workdir,
+        workdir: workdirPayload,
         command,
         args,
         worktree_mode: worktreeMode,
@@ -1426,7 +1521,7 @@ export function App() {
             agentsCollapsed={agentsCollapsed}
             onCollapse={() => setAgentsCollapsed(true)}
             onExpand={() => setAgentsCollapsed(false)}
-            onCreateAgent={() => setShowCreateAgent(true)}
+            onCreateAgent={openCreateAgentModal}
             onSelectAgent={(id) => {
               setActiveAgent(id);
               setActiveSessionId(agentSessions[id] ?? null);
@@ -1495,6 +1590,7 @@ export function App() {
                       onAcpSetConfig,
                       onAcpCancel,
                       onAcpClearSession,
+                      runtimeMetrics: acpRuntimeMetrics,
                     },
                   }}
                 />
@@ -1529,7 +1625,7 @@ export function App() {
           agentPresetId={agentPresetId}
           setAgentPresetId={setAgentPresetId}
           worktreeMode={worktreeMode}
-          setWorktreeMode={setWorktreeMode}
+          setWorktreeMode={handleWorktreeModeChange}
           worktreeRepo={worktreeRepo}
           setWorktreeRepo={setWorktreeRepo}
           worktreeRef={worktreeRef}
@@ -1538,6 +1634,7 @@ export function App() {
           setCodeMode={setCodeMode}
           worktreeError={worktreeError}
           createBusy={createAgentBusy}
+          workdirPlaceholder={defaultWorktreeRoot}
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
         />

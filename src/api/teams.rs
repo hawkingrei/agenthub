@@ -929,4 +929,4 @@ fn ensure_acyclic_steps(steps: &[TeamStepSpec]) -> Result<(), ApiError> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
