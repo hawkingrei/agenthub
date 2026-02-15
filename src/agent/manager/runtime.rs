@@ -434,8 +434,32 @@ impl AgentManager {
                 }
                 let workdir_path = Path::new(workdir);
                 if workdir_path.exists() && !is_dir_empty(workdir_path)? {
-                    if let Some(existing_worktree) = repo_find_worktree_entry(repo, workdir).await?
-                    {
+                    let existing_worktree = match repo_find_worktree_entry(repo, workdir).await {
+                        Ok(entry) => entry,
+                        Err(err) => {
+                            let detail = serde_json::json!({
+                                "agent_id": agent.id,
+                                "mode": "create_worktree",
+                                "repo": repo,
+                                "workdir": workdir,
+                                "error": format!("worktree list failed: {err}"),
+                            })
+                            .to_string();
+                            let _ = self
+                                .auth
+                                .record_audit(
+                                    None,
+                                    None,
+                                    "worktree_create_failed",
+                                    Some(&detail),
+                                    None,
+                                    None,
+                                )
+                                .await;
+                            return Err(err);
+                        }
+                    };
+                    if let Some(existing_worktree) = existing_worktree {
                         if self
                             .is_workdir_bound_to_other_agent(&agent.id, workdir)
                             .await?

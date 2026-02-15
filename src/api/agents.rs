@@ -899,12 +899,27 @@ mod tests {
             .arg(repo_dir)
             .args(args)
             .status()
-            .expect("run git command");
+            .expect("failed to execute `git` command; ensure `git` is installed and available on PATH");
         assert!(status.success(), "git command failed: {:?}", args);
+    }
+
+    fn is_git_available() -> bool {
+        let status = StdCommand::new("git")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        matches!(status, Ok(status) if status.success())
     }
 
     #[tokio::test]
     async fn create_worktree_agent_can_start_again_after_stop() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_agent_can_start_again_after_stop: `git` is not available on PATH"
+            );
+            return;
+        }
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
@@ -1014,6 +1029,12 @@ mod tests {
 
     #[tokio::test]
     async fn create_worktree_rejects_reuse_by_other_agent() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_rejects_reuse_by_other_agent: `git` is not available on PATH"
+            );
+            return;
+        }
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
