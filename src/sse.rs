@@ -215,7 +215,253 @@ fn output_to_message(output: &AgentOutput) -> SseServerMessage {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+    };
+    use chrono::Utc;
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use tower::util::ServiceExt;
+    use uuid::Uuid;
+
+    use crate::{
+        acp::AcpPermissionService,
+        agent::{AgentOutput, OutputStream},
+        auth::AuthService,
+        config::{AppConfig, PushConfig, WebConfig},
+        push::PushService,
+        state::AppState,
+        team::TeamManager,
+    };
+
     use super::parse_agent_ids;
+
+    fn build_sse_request(path: &str) -> Request<Body> {
+        Request::builder()
+            .method(Method::GET)
+            .uri(path)
+            .body(Body::empty())
+            .expect("build sse request")
+    }
+
+    async fn create_test_db() -> SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true)
+            .foreign_keys(true);
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("connect sqlite")
+    }
+
+    async fn init_test_schema(db: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                password_hash TEXT,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create users");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE auth_sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create auth_sessions");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE devices (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                user_agent TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_login_at INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create devices");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agents");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE safe_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create safe_paths");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_sessions");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                seq TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                stream TEXT NOT NULL,
+                message TEXT NOT NULL,
+                FOREIGN KEY(agent_id) REFERENCES agents(id),
+                FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_events");
+    }
+
+    async fn build_test_state() -> AppState {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        let keys_dir = std::env::temp_dir().join(format!("agenthub-sse-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&keys_dir).expect("create keys dir");
+        let keys_path = keys_dir.join("vapid.json");
+        let config = AppConfig {
+            web: Some(WebConfig {
+                rp_id: Some("localhost".to_string()),
+                rp_origin: Some("http://localhost:8080".to_string()),
+                rp_name: Some("AgentHub Test".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some(keys_path.to_string_lossy().to_string()),
+            }),
+            ..Default::default()
+        };
+        let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
+        let _ = std::fs::remove_dir_all(&keys_dir);
+        let auth = Arc::new(
+            AuthService::new(db.clone(), &config)
+                .await
+                .expect("create auth"),
+        );
+        let permissions = Arc::new(AcpPermissionService::new(db.clone()));
+        let agents = Arc::new(crate::agent::AgentManager::new(
+            db.clone(),
+            push.clone(),
+            Vec::new(),
+            "agenthub-codex-acp".to_string(),
+            None,
+            permissions.clone(),
+            auth.clone(),
+        ));
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        AppState {
+            db,
+            agents,
+            teams,
+            push,
+            auth,
+            acp_permissions: permissions,
+            default_worktree_root: config.default_worktree_root(),
+        }
+    }
+
+    async fn create_auth_token(state: &AppState) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, 'root', NULL, ?4)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("root-{}", Uuid::new_v4()))
+        .bind("Root")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert user");
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create token")
+    }
+
+    fn sample_output(stream: OutputStream) -> AgentOutput {
+        AgentOutput {
+            event_id: 42,
+            agent_id: "agent-x".to_string(),
+            session_id: "session-x".to_string(),
+            seq: "0001".to_string(),
+            ts: 123,
+            stream,
+            message: "hello".to_string(),
+        }
+    }
 
     #[test]
     fn parse_agent_ids_dedupes_and_trims() {
@@ -227,5 +473,91 @@ mod tests {
     fn parse_agent_ids_ignores_empty_values() {
         let parsed = parse_agent_ids(" , , ");
         assert!(parsed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sse_agents_requires_valid_token() {
+        let state = build_test_state().await;
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request("/agents?ids=a&token=bad-token"))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn sse_agents_rejects_empty_ids() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!("/agents?ids=,,,&token={token}")))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn sse_agents_returns_not_found_when_no_running_agents_match() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/agents?ids=missing-agent&token={token}"
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn legacy_sse_agent_route_returns_not_found_when_agent_is_not_running() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/agents/missing-agent?token={token}"
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn output_to_message_uses_output_type_for_non_acp_streams() {
+        let msg = super::output_to_message(&sample_output(OutputStream::Stdout));
+        assert_eq!(msg.r#type, "output");
+    }
+
+    #[test]
+    fn output_to_message_uses_acp_type_for_acp_streams() {
+        let msg = super::output_to_message(&sample_output(OutputStream::Acp));
+        assert_eq!(msg.r#type, "acp");
+    }
+
+    #[tokio::test]
+    async fn output_stream_emits_events_from_forwarders() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let mut stream = std::pin::pin!(super::output_stream(vec![rx]));
+
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive first event")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
+        assert!(format!("{first:?}").contains("heartbeat"));
+
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send broadcast output");
+        let _second = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive second event")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
     }
 }
