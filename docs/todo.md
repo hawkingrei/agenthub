@@ -67,9 +67,9 @@
 - [x] Move actor mailbox state machine from `src/team/manager.rs` into `crates/agenthub-team-actor` using trait-based store/relay ports (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
 - [x] Add relay port in `agenthub-team-actor` and implement remote transport worker adapter in AgentHub (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
 - [x] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-15-a2a-team-remote-relay-network-adapter.md`).
-- [ ] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-13-team-module-file-split.md`).
+- [x] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
-- [ ] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-13-agent-manager-file-split.md`).
+- [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
