@@ -3,11 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde_json::Value;
 
 use crate::acp::AcpActorSkillContext;
 use crate::agent::AgentManager;
 
-use super::{TeamManager, TeamStepRecord, TeamStepStatus};
+use super::{TeamManager, TeamRunRecord, TeamStepRecord, TeamStepStatus};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TeamOrchestratorWorkerSettings {
@@ -29,6 +30,13 @@ pub struct TeamOrchestratorDispatchSummary {
     pub scanned: i64,
     pub dispatched: i64,
     pub failed: i64,
+}
+
+#[derive(Debug, Clone)]
+struct OrchestratorStepSpec {
+    step_key: String,
+    member_id: String,
+    depends_on: Vec<String>,
 }
 
 #[async_trait]
@@ -115,6 +123,7 @@ impl TeamOrchestratorWorker {
             if summary.dispatched as usize >= max_dispatch {
                 break;
             }
+            self.bootstrap_run_steps_if_needed(&run).await?;
             let steps = self.teams.list_steps(&run.id).await?;
             if steps.is_empty() {
                 continue;
@@ -154,6 +163,27 @@ impl TeamOrchestratorWorker {
             }
         }
         Ok(summary)
+    }
+
+    async fn bootstrap_run_steps_if_needed(&self, run: &TeamRunRecord) -> anyhow::Result<()> {
+        let existing_steps = self.teams.list_steps(&run.id).await?;
+        if !existing_steps.is_empty() {
+            return Ok(());
+        }
+        let team = self.teams.get_team(&run.team_id).await?;
+        let step_specs = parse_step_specs(&team.spec)?;
+        for step_spec in step_specs {
+            self.teams
+                .submit_step(
+                    &run.id,
+                    &step_spec.step_key,
+                    &step_spec.member_id,
+                    step_spec.depends_on,
+                    None,
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn dispatch_step(&self, run_id: &str, step: &TeamStepRecord) -> anyhow::Result<()> {
@@ -213,6 +243,68 @@ fn is_step_ready(step: &TeamStepRecord, status_by_key: &HashMap<String, TeamStep
     })
 }
 
+fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
+    let spec_obj = spec
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("team spec must be an object"))?;
+    let entrypoint = spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("spec.entrypoint is required"))?;
+
+    if let Some(steps) = spec_obj.get("steps").and_then(Value::as_array) {
+        if steps.is_empty() {
+            return Err(anyhow::anyhow!("spec.steps must not be empty"));
+        }
+        let mut out = Vec::with_capacity(steps.len());
+        for step in steps {
+            let step = step
+                .as_object()
+                .ok_or_else(|| anyhow::anyhow!("spec.steps entries must be objects"))?;
+            let step_key = step
+                .get("step_key")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("spec.steps[].step_key is required"))?
+                .to_string();
+            let member_id = step
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("spec.steps[].member_id is required"))?
+                .to_string();
+            let depends_on = step
+                .get("depends_on")
+                .and_then(Value::as_array)
+                .map(|deps| {
+                    deps.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            out.push(OrchestratorStepSpec {
+                step_key,
+                member_id,
+                depends_on,
+            });
+        }
+        return Ok(out);
+    }
+
+    Ok(vec![OrchestratorStepSpec {
+        step_key: entrypoint.to_string(),
+        member_id: entrypoint.to_string(),
+        depends_on: Vec::new(),
+    }])
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -225,7 +317,7 @@ mod tests {
 
     use super::{
         TeamMemberAgentStarter, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
-        is_step_ready,
+        is_step_ready, parse_step_specs,
     };
     use crate::acp::AcpActorSkillContext;
     use crate::team::{
@@ -274,6 +366,19 @@ mod tests {
         let step = make_step("b", &["missing"]);
         let status_by_key = HashMap::new();
         assert!(!is_step_ready(&step, &status_by_key));
+    }
+
+    #[test]
+    fn parse_step_specs_defaults_to_entrypoint_member_when_steps_omitted() {
+        let specs = parse_step_specs(&json!({
+            "entrypoint":"planner",
+            "members":[{"member_id":"planner"}]
+        }))
+        .expect("parse step specs");
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].step_key, "planner");
+        assert_eq!(specs[0].member_id, "planner");
+        assert!(specs[0].depends_on.is_empty());
     }
 
     #[derive(Debug, Clone)]
@@ -579,6 +684,69 @@ mod tests {
                 .as_deref()
                 .is_some_and(|text| text.contains("failed to start member agent"))
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_bootstraps_spec_steps_and_respects_dependencies() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-bootstrap-team".to_string(),
+                description: Some("team for orchestrator bootstrap flow".to_string()),
+                spec: json!({
+                    "entrypoint":"step_plan",
+                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}],
+                    "steps":[
+                        {"step_key":"step_plan","member_id":"planner"},
+                        {"step_key":"step_review","member_id":"reviewer","depends_on":["step_plan"]}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(&team.id, Some("ctx-bootstrap"), json!({"prompt":"go"}))
+            .await
+            .expect("create run");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let first_summary = worker.dispatch_once(10).await.expect("first dispatch");
+        assert_eq!(first_summary.dispatched, 1);
+
+        let steps_after_first = teams.list_steps(&run.id).await.expect("list steps");
+        assert_eq!(steps_after_first.len(), 2);
+        let step_plan = steps_after_first
+            .iter()
+            .find(|step| step.step_key == "step_plan")
+            .expect("find step_plan");
+        let step_review = steps_after_first
+            .iter()
+            .find(|step| step.step_key == "step_review")
+            .expect("find step_review");
+        assert_eq!(step_plan.status, TeamStepStatus::Working);
+        assert_eq!(step_review.status, TeamStepStatus::Submitted);
+
+        let _ = teams
+            .complete_step(&step_plan.id, Some(json!({"result":"planned"})))
+            .await
+            .expect("complete step_plan");
+
+        let second_summary = worker.dispatch_once(10).await.expect("second dispatch");
+        assert_eq!(second_summary.dispatched, 1);
+
+        let steps_after_second = teams.list_steps(&run.id).await.expect("list steps");
+        let step_review_after_second = steps_after_second
+            .iter()
+            .find(|step| step.step_key == "step_review")
+            .expect("find step_review");
+        assert_eq!(step_review_after_second.status, TeamStepStatus::Working);
+
+        let calls = starter.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].member_id, "planner");
+        assert_eq!(calls[1].member_id, "reviewer");
     }
 
     #[test]

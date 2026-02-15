@@ -25,6 +25,7 @@ next step is wiring a worker that actually uses it.
 
 1. Add `TeamOrchestratorWorker` with periodic tick:
    - scan active runs (`submitted` / `working` / `input_required`),
+   - bootstrap run steps from team spec when no persisted steps exist,
    - evaluate submitted steps,
    - dispatch only when every dependency step is `completed`.
 2. Dispatch strategy for a ready step:
@@ -40,8 +41,10 @@ next step is wiring a worker that actually uses it.
    without spawning real agent subprocesses.
 7. Add worker-level integration tests to verify:
    - injected actor runtime context (`run_id` / `actor_id`) at dispatch time,
-   - mailbox `send` -> `inbox` -> `ack` flow against the injected actor id,
-   - failed member startup marks step as `failed` deterministically.
+- mailbox `send` -> `inbox` -> `ack` flow against the injected actor id,
+- failed member startup marks step as `failed` deterministically.
+- spec-step bootstrap dispatch respects dependency order (`depends_on`) across
+  multiple worker ticks.
 
 ## Validation
 
