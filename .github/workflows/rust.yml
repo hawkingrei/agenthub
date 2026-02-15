@@ -20,11 +20,26 @@ jobs:
         uses: bazel-contrib/setup-bazel@0.15.0
       - name: Bazel build (Rust targets)
         run: bazel build //:agenthub //agenthub-codex-acp:agenthub_codex_acp_bin
-      - name: Bazel test (Rust targets)
+      - name: Bazel coverage (Rust targets)
         run: |
-          bazel test --test_output=errors \
+          bazel coverage --combined_report=lcov --test_output=errors \
             //:agenthub_unit_tests \
             //crates/agenthub-acp-core:agenthub_acp_core_tests \
             //crates/agenthub-acp:agenthub_acp_tests \
             //crates/agenthub-team-actor:agenthub_team_actor_tests \
             //agenthub-codex-acp:agenthub_codex_acp_tests
+      - name: Collect Rust lcov report
+        run: |
+          set -euo pipefail
+          coverage_file="$(bazel info output_path)/_coverage/_coverage_report.dat"
+          test -f "${coverage_file}"
+          cp "${coverage_file}" bazel-rust.lcov
+          wc -l bazel-rust.lcov
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: bazel-rust.lcov
+          flags: rust
+          name: rust-coverage
+          fail_ci_if_error: false
