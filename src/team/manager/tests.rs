@@ -1,12 +1,21 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use super::TeamManager;
 use super::codec::team_run_status_from_str;
 use crate::team::{
     TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig, TeamRunStatus,
     TeamStepStatus,
 };
+use axum::body::Bytes;
+use axum::extract::State;
+use axum::http::{HeaderMap, Method, StatusCode};
+use axum::routing::any;
+use axum::{Router, serve};
 use serde_json::json;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
+use tokio::sync::Mutex;
 
 async fn setup_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
@@ -135,6 +144,65 @@ async fn setup_test_db() -> SqlitePool {
     .expect("create team_actor_messages idempotency index");
 
     pool
+}
+
+#[derive(Debug, Clone)]
+struct RelayHttpCapture {
+    method: String,
+    headers: HashMap<String, String>,
+    body: serde_json::Value,
+}
+
+#[derive(Clone)]
+struct RelayHttpState {
+    captures: Arc<Mutex<Vec<RelayHttpCapture>>>,
+    status: StatusCode,
+}
+
+async fn relay_http_handler(
+    State(state): State<RelayHttpState>,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> (StatusCode, &'static str) {
+    let mut captured_headers = HashMap::new();
+    for (name, value) in &headers {
+        if let Ok(text) = value.to_str() {
+            captured_headers.insert(name.as_str().to_string(), text.to_string());
+        }
+    }
+    let captured_body = serde_json::from_slice::<serde_json::Value>(&body)
+        .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&body).to_string()));
+    state.captures.lock().await.push(RelayHttpCapture {
+        method: method.as_str().to_string(),
+        headers: captured_headers,
+        body: captured_body,
+    });
+    (state.status, "ok")
+}
+
+async fn spawn_relay_http_server(
+    status: StatusCode,
+) -> (
+    String,
+    Arc<Mutex<Vec<RelayHttpCapture>>>,
+    tokio::task::JoinHandle<()>,
+) {
+    let captures = Arc::new(Mutex::new(Vec::new()));
+    let app = Router::new()
+        .route("/relay", any(relay_http_handler))
+        .with_state(RelayHttpState {
+            captures: captures.clone(),
+            status,
+        });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind relay test server");
+    let addr = listener.local_addr().expect("relay local addr");
+    let handle = tokio::spawn(async move {
+        let _ = serve(listener, app).await;
+    });
+    (format!("http://{addr}/relay"), captures, handle)
 }
 
 #[test]
@@ -766,6 +834,7 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
 async fn remote_actor_messages_relay_success_marks_message_delivered() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
+    let (endpoint, captures, server_handle) = spawn_relay_http_server(StatusCode::OK).await;
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -794,7 +863,23 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
             "remote-reviewer",
             "coordination",
             TeamActorMessageTransport::Remote,
-            Some(json!({"endpoint":"mock://ok/remote-reviewer"})),
+            Some(json!({
+                "endpoint": endpoint,
+                "method": "POST",
+                "headers": {
+                    "x-agenthub-relay-test": "success"
+                },
+                "auth": {
+                    "type": "bearer",
+                    "token": "relay-token"
+                },
+                "signing": {
+                    "type": "hmac_sha256",
+                    "secret": "relay-signing-secret",
+                    "header": "x-agenthub-signature",
+                    "timestamp_header": "x-agenthub-timestamp"
+                }
+            })),
             json!({"text":"review this"}),
             None,
         )
@@ -828,12 +913,46 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
         .filter(|event| event.event_type == "actor_message_delivered")
         .count();
     assert_eq!(delivered_count, 1);
+
+    let captured = captures.lock().await;
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].method, "POST");
+    assert_eq!(
+        captured[0].headers.get("x-agenthub-relay-test"),
+        Some(&"success".to_string())
+    );
+    assert_eq!(
+        captured[0].headers.get("authorization"),
+        Some(&"Bearer relay-token".to_string())
+    );
+    assert!(
+        captured[0].headers.contains_key("x-agenthub-signature"),
+        "missing signature header"
+    );
+    assert!(
+        captured[0].headers.contains_key("x-agenthub-timestamp"),
+        "missing signature timestamp header"
+    );
+    assert_eq!(
+        captured[0].headers.get("x-agenthub-message-id"),
+        Some(&sent.message_id.to_string())
+    );
+    assert_eq!(captured[0].body["run_id"], run.id);
+    assert_eq!(captured[0].body["from_actor_id"], "planner");
+    assert_eq!(captured[0].body["to_actor_id"], "remote-reviewer");
+    assert_eq!(captured[0].body["payload"]["text"], "review this");
+    drop(captured);
+    server_handle.abort();
 }
 
 #[tokio::test]
 async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
+    let (retry_endpoint, retry_captures, retry_server_handle) =
+        spawn_relay_http_server(StatusCode::SERVICE_UNAVAILABLE).await;
+    let (dead_endpoint, dead_captures, dead_server_handle) =
+        spawn_relay_http_server(StatusCode::BAD_REQUEST).await;
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -862,7 +981,15 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             "remote-retry",
             "coordination",
             TeamActorMessageTransport::Remote,
-            Some(json!({"endpoint":"mock://retry/remote-retry"})),
+            Some(json!({
+                "endpoint": retry_endpoint,
+                "method": "POST",
+                "auth": {
+                    "type": "header",
+                    "name": "x-agenthub-auth",
+                    "value": "retry-secret"
+                }
+            })),
             json!({"text":"retry this"}),
             None,
         )
@@ -875,7 +1002,10 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             "remote-dead",
             "coordination",
             TeamActorMessageTransport::Remote,
-            Some(json!({"endpoint":"mock://dead/remote-dead"})),
+            Some(json!({
+                "endpoint": dead_endpoint,
+                "method": "POST"
+            })),
             json!({"text":"dead-letter this"}),
             None,
         )
@@ -953,6 +1083,107 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
         .count();
     assert_eq!(retry_event_count, 1);
     assert_eq!(dead_letter_event_count, 1);
+
+    let retry_captured = retry_captures.lock().await;
+    assert_eq!(retry_captured.len(), 1);
+    assert_eq!(
+        retry_captured[0].headers.get("x-agenthub-auth"),
+        Some(&"retry-secret".to_string())
+    );
+    assert_eq!(retry_captured[0].body["to_actor_id"], "remote-retry");
+    drop(retry_captured);
+
+    let dead_captured = dead_captures.lock().await;
+    assert_eq!(dead_captured.len(), 1);
+    assert_eq!(dead_captured[0].body["to_actor_id"], "remote-dead");
+    drop(dead_captured);
+
+    retry_server_handle.abort();
+    dead_server_handle.abort();
+}
+
+#[tokio::test]
+async fn remote_actor_messages_relay_rejects_invalid_header_values() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let (endpoint, captures, server_handle) = spawn_relay_http_server(StatusCode::OK).await;
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-relay-invalid-header-team".to_string(),
+            description: Some("team for invalid relay header validation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-relay-invalid-header"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "remote-reviewer",
+            "coordination",
+            TeamActorMessageTransport::Remote,
+            Some(json!({
+                "endpoint": endpoint,
+                "method": "POST",
+                "headers": {
+                    "x-agenthub-relay-test": "bad\nvalue"
+                }
+            })),
+            json!({"text":"review this"}),
+            None,
+        )
+        .await
+        .expect("send remote message");
+    assert_eq!(sent.status, TeamActorMessageStatus::Pending);
+
+    let relay_result = manager
+        .relay_remote_messages_once(100, 3, 30)
+        .await
+        .expect("relay remote messages");
+    assert_eq!(relay_result.scanned, 1);
+    assert_eq!(relay_result.delivered, 0);
+    assert_eq!(relay_result.retried, 0);
+    assert_eq!(relay_result.dead_lettered, 1);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT status, relay_last_error
+        FROM team_actor_messages
+        WHERE id = ?1
+        "#,
+    )
+    .bind(sent.message_id)
+    .fetch_one(&db)
+    .await
+    .expect("fetch relay row");
+    let status: String = rows.get("status");
+    let relay_last_error: Option<String> = rows.try_get("relay_last_error").ok();
+    assert_eq!(status, "dead_letter");
+    assert!(
+        relay_last_error
+            .as_deref()
+            .is_some_and(|text| text.contains("invalid")),
+        "unexpected relay error: {:?}",
+        relay_last_error
+    );
+
+    let captured = captures.lock().await;
+    assert!(captured.is_empty());
+    drop(captured);
+    server_handle.abort();
 }
 
 #[tokio::test]
@@ -1096,4 +1327,69 @@ async fn fail_step_updates_status_and_emits_event() {
             "run_failed"
         ]
     );
+}
+
+#[tokio::test]
+async fn list_active_runs_returns_non_terminal_runs_only() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "active-runs-team".to_string(),
+            description: Some("team to verify active run listing".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let submitted_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-submitted"),
+            json!({"payload":"submitted"}),
+        )
+        .await
+        .expect("create submitted run");
+
+    let canceled_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-canceled"),
+            json!({"payload":"canceled"}),
+        )
+        .await
+        .expect("create canceled run");
+    let _ = manager
+        .cancel_run(&canceled_run.id)
+        .await
+        .expect("cancel run");
+
+    let working_run = manager
+        .create_run(&team.id, Some("ctx-working"), json!({"payload":"working"}))
+        .await
+        .expect("create working run");
+    let working_step = manager
+        .submit_step(
+            &working_run.id,
+            "work",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"start"})),
+        )
+        .await
+        .expect("submit working step");
+    let _ = manager
+        .start_step(&working_step.id, Some("remote-working"))
+        .await
+        .expect("start working step");
+
+    let active_runs = manager
+        .list_active_runs(100)
+        .await
+        .expect("list active runs");
+    let active_ids: Vec<&str> = active_runs.iter().map(|run| run.id.as_str()).collect();
+    assert!(active_ids.contains(&submitted_run.id.as_str()));
+    assert!(active_ids.contains(&working_run.id.as_str()));
+    assert!(!active_ids.contains(&canceled_run.id.as_str()));
 }

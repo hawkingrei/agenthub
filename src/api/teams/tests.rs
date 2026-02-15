@@ -142,6 +142,76 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE agents (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            workdir TEXT NOT NULL,
+            command TEXT NOT NULL,
+            args TEXT NOT NULL,
+            worktree_mode TEXT NOT NULL,
+            worktree_repo TEXT,
+            worktree_ref TEXT,
+            code_mode INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create agents");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE safe_paths (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create safe_paths");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_sessions (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create agent_sessions");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            seq TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            stream TEXT NOT NULL,
+            message TEXT NOT NULL,
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create agent_events");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_definitions (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,

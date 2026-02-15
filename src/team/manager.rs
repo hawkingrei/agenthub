@@ -276,6 +276,45 @@ impl TeamManager {
         Ok(steps)
     }
 
+    pub async fn list_active_runs(&self, limit: i64) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE status IN ('submitted', 'working', 'input_required')
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut runs = Vec::with_capacity(rows.len());
+        for row in rows {
+            runs.push(parse_team_run_row(&row)?);
+        }
+        Ok(runs)
+    }
+
+    pub async fn get_agent_session_status(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let row = sqlx::query(
+            r#"
+            SELECT status
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(row.map(|row| row.get("status")))
+    }
+
     #[allow(dead_code)]
     pub async fn start_step(
         &self,

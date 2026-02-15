@@ -651,3 +651,195 @@ async fn teams_router_http_contract() {
         .expect("unsupported version request");
     assert_eq!(unsupported_version_resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn teams_router_orchestrator_converges_with_real_executor() {
+    let state = build_test_state().await;
+    let token = create_auth_token(&state).await;
+    let app = super::router(state.clone());
+
+    let workdir = std::env::temp_dir().join(format!("agenthub-team-exec-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&workdir).expect("create workdir");
+    let workdir_str = workdir.to_string_lossy().to_string();
+
+    sqlx::query(
+        r#"
+        INSERT INTO safe_paths (path, created_at)
+        VALUES (?1, ?2)
+        "#,
+    )
+    .bind(&workdir_str)
+    .bind(chrono::Utc::now().timestamp())
+    .execute(&state.db)
+    .await
+    .expect("insert safe path");
+
+    let member_agent = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: "router-orchestrator-member".to_string(),
+            workdir: workdir_str.clone(),
+            command: "/bin/sh".to_string(),
+            args: vec!["-lc".to_string(), "sleep 2".to_string()],
+            worktree_mode: crate::agent::WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: false,
+        })
+        .await
+        .expect("create member agent");
+
+    let create_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "router-orchestrator-real-executor-team",
+                "description": "router orchestrator convergence with real executor",
+                "spec": {
+                    "entrypoint":"step_run",
+                    "members":[{"member_id":member_agent.id}],
+                    "steps":[{"step_key":"step_run","member_id":member_agent.id,"depends_on":[]}]
+                }
+            })),
+        ))
+        .await
+        .expect("create team");
+    assert_eq!(create_team_resp.status(), StatusCode::OK);
+    let team = decode_json_body(create_team_resp).await;
+    let team_id = team["id"].as_str().expect("team id").to_string();
+
+    let create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id": "ctx-router-orchestrator-real-executor",
+                "input": {"prompt":"execute member agent"}
+            })),
+        ))
+        .await
+        .expect("create run");
+    assert_eq!(create_run_resp.status(), StatusCode::OK);
+    let run = decode_json_body(create_run_resp).await;
+    let run_id = run["id"].as_str().expect("run id").to_string();
+    assert_eq!(run["status"], "submitted");
+
+    let worker =
+        crate::team::TeamOrchestratorWorker::new(state.teams.clone(), state.agents.clone());
+    let first_summary = worker.dispatch_once(64).await.expect("first dispatch");
+    assert_eq!(first_summary.dispatched, 1);
+
+    let mut step_remote_task_id = None;
+    for _ in 0..20 {
+        let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
+        if let Some(step) = db_steps.first() {
+            if step.status == crate::team::TeamStepStatus::Working {
+                step_remote_task_id = step.remote_task_id.clone();
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let remote_task_id = step_remote_task_id.expect("step should reach working state");
+    assert!(!remote_task_id.is_empty());
+
+    state
+        .agents
+        .stop_agent(&member_agent.id)
+        .await
+        .expect("stop member agent");
+
+    let mut converged_failed = false;
+    let mut last_run_status = String::new();
+    for _ in 0..200 {
+        let _ = worker.dispatch_once(64).await.expect("tick dispatch");
+        let run_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("/runs/{run_id}"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("get run");
+        assert_eq!(run_resp.status(), StatusCode::OK);
+        let run_payload = decode_json_body(run_resp).await;
+        last_run_status = run_payload["status"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        if last_run_status == "failed" {
+            converged_failed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    if !converged_failed {
+        let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
+        let db_step = db_steps.first().expect("first db step");
+        let session_status = match db_step.remote_task_id.as_deref() {
+            Some(session_id) => state
+                .teams
+                .get_agent_session_status(session_id)
+                .await
+                .expect("query session status"),
+            None => None,
+        };
+        panic!(
+            "run did not converge to failed in time: run_status={}, step_status={:?}, remote_task_id={:?}, session_status={:?}",
+            last_run_status, db_step.status, db_step.remote_task_id, session_status
+        );
+    }
+
+    let steps_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/steps"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list steps");
+    assert_eq!(steps_resp.status(), StatusCode::OK);
+    let steps_payload = decode_json_body(steps_resp).await;
+    let steps = steps_payload.as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0]["status"], "failed");
+    let final_remote_task_id = steps[0]["remote_task_id"]
+        .as_str()
+        .expect("remote task id");
+    assert_eq!(final_remote_task_id, remote_task_id);
+
+    let events_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/events?limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list events");
+    assert_eq!(events_resp.status(), StatusCode::OK);
+    let events_payload = decode_json_body(events_resp).await;
+    let events = events_payload.as_array().expect("events array");
+    let event_types = events
+        .iter()
+        .filter_map(|event| event["event_type"].as_str())
+        .collect::<Vec<_>>();
+    assert!(event_types.contains(&"run_submitted"));
+    assert!(event_types.contains(&"step_submitted"));
+    assert!(event_types.contains(&"run_working"));
+    assert!(event_types.contains(&"step_working"));
+    assert!(event_types.contains(&"step_failed"));
+    assert!(event_types.contains(&"run_failed"));
+
+    let _ = std::fs::remove_dir_all(&workdir);
+}
