@@ -74,13 +74,28 @@ export function CreateAgentModal({
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
+  const [customizeCreateWorkdir, setCustomizeCreateWorkdir] = React.useState(false);
   const presets = listAgentPresets();
   const preset = getAgentPreset(agentPresetId);
   const commandSummary = formatAgentCommand(preset);
+  const isCreateWorktreeMode = worktreeMode === "create_worktree";
+  const normalizedDefaultRoot = workdirPlaceholder.trim().replace(/[\\/]+$/, "");
+  const normalizedCurrentWorkdir = agentWorkdir.trim().replace(/[\\/]+$/, "");
+  const hasCustomCreateWorkdir =
+    normalizedCurrentWorkdir.length > 0 &&
+    normalizedCurrentWorkdir !== normalizedDefaultRoot;
+  const showWorkdirInput =
+    !isCreateWorktreeMode || customizeCreateWorkdir || hasCustomCreateWorkdir;
   const presetOptions = presets.map((entry) => ({
     value: entry.id,
     label: entry.label,
   }));
+
+  React.useEffect(() => {
+    if (!isCreateWorktreeMode) {
+      setCustomizeCreateWorkdir(false);
+    }
+  }, [isCreateWorktreeMode]);
 
   return (
     <Modal
@@ -103,12 +118,32 @@ export function CreateAgentModal({
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
-          <TextInput
-            label="Workdir"
-            placeholder={workdirPlaceholder}
-            value={agentWorkdir}
-            onChange={(event) => setAgentWorkdir(event.currentTarget.value)}
-          />
+          {showWorkdirInput ? (
+            <TextInput
+              label={isCreateWorktreeMode ? "Workdir (optional override)" : "Workdir"}
+              placeholder={workdirPlaceholder}
+              value={agentWorkdir}
+              onChange={(event) => setAgentWorkdir(event.currentTarget.value)}
+            />
+          ) : (
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>
+                Workdir
+              </Text>
+              <Text size="sm" c="dimmed">
+                Auto-create under: {workdirPlaceholder}
+              </Text>
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                px={0}
+                w="fit-content"
+                onClick={() => setCustomizeCreateWorkdir(true)}
+              >
+                Customize path
+              </Button>
+            </Stack>
+          )}
           <Select
             label="Worktree mode"
             placeholder="Select worktree mode"

@@ -39,6 +39,9 @@ describe("CreateAgentModal", () => {
     const html = renderModal({ worktreeMode: "create_worktree" });
     expect(html).toContain("Worktree repo path");
     expect(html).toContain("Worktree ref");
+    expect(html).toContain("Auto-create under:");
+    expect(html).toContain("Customize path");
+    expect(html).not.toContain("Workdir (optional override)");
   });
 
   it("renders repo input only for reuse_worktree", () => {
@@ -68,5 +71,14 @@ describe("CreateAgentModal", () => {
   it("renders custom workdir placeholder", () => {
     const html = renderModal({ workdirPlaceholder: "~/.agenthub/worktrees" });
     expect(html).toContain('placeholder="~/.agenthub/worktrees"');
+  });
+
+  it("shows editable workdir input in create_worktree mode when workdir was customized", () => {
+    const html = renderModal({
+      worktreeMode: "create_worktree",
+      agentWorkdir: "/tmp/custom-agent-worktree",
+    });
+    expect(html).toContain("Workdir (optional override)");
+    expect(html).toContain('value="/tmp/custom-agent-worktree"');
   });
 });

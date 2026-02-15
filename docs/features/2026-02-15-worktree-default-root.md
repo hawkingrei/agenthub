@@ -36,6 +36,8 @@ which increased friction and could cause inconsistent behavior between clients.
    default after successful creation.
 4. Keep backend safety net: when `worktree_mode=create_worktree` and `workdir`
    is blank, generate a deterministic default path under the configured root.
+5. In Create Agent UI, `create_worktree` mode shows default-root display first
+   and keeps workdir override behind an explicit `Customize path` action.
 
 ## Validation
 
@@ -63,6 +65,8 @@ npm run test -- src/worktree_defaults.test.ts
 - Replaced silent runtime-defaults fetch failure with explicit console logging.
 - Added `src/api/settings.rs` router tests for both unauthenticated rejection and
   authenticated default-root response.
+- Updated Create Agent modal to avoid mandatory `Workdir` editing in
+  `create_worktree` mode while preserving optional override behavior.
 
 ## Follow-ups
 
