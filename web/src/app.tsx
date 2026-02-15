@@ -20,6 +20,11 @@ import {
 import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
 import {
+  deriveConnectionBadge,
+  sanitizeErrorBannerMessage,
+  type SseConnectionState,
+} from "./connection_status";
+import {
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
@@ -122,6 +127,8 @@ export function App() {
   const [joinToken, setJoinToken] = useState<string | null>(null);
   const [vapidInfo, setVapidInfo] = useState<VapidInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [networkOnline, setNetworkOnline] = useState<boolean>(getNavigatorOnline);
+  const [sseState, setSseState] = useState<SseConnectionState>("idle");
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<OutputLine[]>([]);
@@ -219,6 +226,24 @@ export function App() {
     localStorage.setItem(INPUT_HISTORY_STORAGE_KEY, JSON.stringify(inputHistory));
   }, [inputHistory]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnline = () => {
+      setNetworkOnline(true);
+    };
+    const onOffline = () => {
+      setNetworkOnline(false);
+      setSseState((prev) => (prev === "idle" ? "idle" : "reconnecting"));
+      setError("Offline. Unable to connect to server.");
+    };
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
   const handleTerminalScroll = useCallback(() => {
     const el = terminalRef.current;
     if (!el) return;
@@ -270,6 +295,17 @@ export function App() {
   }, [activeAgentRecord]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
+  const hasSseTarget = Boolean(
+    activeAgent && shouldOpenAgentSocket(activeAgentStatus)
+  );
+  const connectionBadge = useMemo(
+    () => deriveConnectionBadge(networkOnline, hasSseTarget, sseState),
+    [networkOnline, hasSseTarget, sseState]
+  );
+  const normalizedError = useMemo(
+    () => (error ? sanitizeErrorBannerMessage(error, networkOnline) : null),
+    [error, networkOnline]
+  );
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
   const canControlAcp = Boolean(activeAgent && isAgentActive);
@@ -686,11 +722,17 @@ export function App() {
   }, [activeAgentStatus]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!token || !activeAgent) {
+      setSseState("idle");
+      return;
+    }
     let cancelled = false;
     const pollState = eventPollRef.current;
     loadAgentEvents(activeAgent, activeSessionId);
-    if (!shouldOpenAgentSocket(activeAgentStatus)) return;
+    if (!shouldOpenAgentSocket(activeAgentStatus)) {
+      setSseState("idle");
+      return;
+    }
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
     const clearReconnectTimer = () => {
@@ -702,6 +744,7 @@ export function App() {
     const scheduleReconnect = () => {
       if (cancelled) return;
       clearReconnectTimer();
+      setSseState("reconnecting");
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
       reconnectTimer = window.setTimeout(() => {
@@ -711,6 +754,7 @@ export function App() {
     };
     const openSource = () => {
       if (cancelled) return;
+      setSseState((prev) => (prev === "reconnecting" ? "reconnecting" : "connecting"));
       const source = new EventSource(
         `${location.origin}/sse/agents/${encodeURIComponent(
           activeAgent
@@ -719,6 +763,8 @@ export function App() {
       sseRef.current = source;
       source.onopen = () => {
         reconnectAttempt = 0;
+        setNetworkOnline(true);
+        setSseState("connected");
         if (pollState.timer) {
           window.clearTimeout(pollState.timer);
           pollState.timer = null;
@@ -771,14 +817,18 @@ export function App() {
           }
         } catch {
           if (typeof event.data === "string") {
-            if (isInvalidTokenMessage(event.data)) {
+            const normalizedStreamError = sanitizeErrorBannerMessage(
+              event.data,
+              getNavigatorOnline()
+            );
+            if (isInvalidTokenMessage(normalizedStreamError)) {
               clearAuthAndRedirect();
               return;
             }
-            if (shouldIgnoreAgentWsError(event.data, activeAgentStatus)) {
+            if (shouldIgnoreAgentWsError(normalizedStreamError, activeAgentStatus)) {
               return;
             }
-            setError(event.data);
+            setError(normalizedStreamError);
           }
         }
       };
@@ -787,6 +837,14 @@ export function App() {
           source.close();
           return;
         }
+        const online = getNavigatorOnline();
+        setNetworkOnline(online);
+        setSseState("reconnecting");
+        setError(
+          online
+            ? "Connection unavailable (gateway response). Reconnecting..."
+            : "Offline. Unable to connect to server."
+        );
         source.close();
         sseRef.current = null;
         schedulePoll(getAdaptivePollInterval(pollState.idleCount));
@@ -845,6 +903,7 @@ export function App() {
         sseRef.current.close();
         sseRef.current = null;
       }
+      setSseState("idle");
     };
   }, [
     token,
@@ -1433,7 +1492,7 @@ export function App() {
     return (
       <AdminPage
         auth={auth}
-        error={error}
+        error={normalizedError}
         setError={setError}
         safePaths={safePaths}
         selectedSafePaths={selectedSafePaths}
@@ -1463,6 +1522,13 @@ export function App() {
         <h1>AgentHub</h1>
         {auth && (
           <div className="session">
+            <span
+              className={`session-connection ${connectionBadge.tone}`}
+              title={connectionBadge.title}
+            >
+              <span className="session-connection-dot" aria-hidden="true" />
+              <span>{connectionBadge.label}</span>
+            </span>
             <span>{auth.username}</span>
             {auth.role === "root" && (
               <a
@@ -1479,7 +1545,9 @@ export function App() {
         )}
       </header>
 
-      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+      {normalizedError && (
+        <ErrorBanner message={normalizedError} onClose={() => setError(null)} />
+      )}
 
       {!auth && (
         <section className="auth">
@@ -1693,6 +1761,11 @@ function parseApiErrorMessage(err: unknown): string | null {
     return raw;
   }
   return null;
+}
+
+function getNavigatorOnline(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine;
 }
 
 function createAnsiRenderer(): (input: string) => string {

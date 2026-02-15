@@ -166,6 +166,7 @@
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
+- [ ] Verify header network/SSE badge state transitions and Cloudflare HTML stream errors are normalized to compact connectivity messages (see `docs/features/2026-02-15-sse-connection-indicator-and-error-sanitization.md`).
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
 - [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).
