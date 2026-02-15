@@ -809,7 +809,7 @@ mod tests {
             ..Default::default()
         };
         let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
-        let _ = std::fs::remove_dir_all(&keys_dir);
+        remove_dir_best_effort(&keys_dir);
         let auth = Arc::new(
             AuthService::new(db.clone(), &config)
                 .await
@@ -834,6 +834,15 @@ mod tests {
             auth,
             acp_permissions: permissions,
             default_worktree_root: config.default_worktree_root(),
+        }
+    }
+
+    fn remove_dir_best_effort(path: &std::path::Path) {
+        if let Err(err) = std::fs::remove_dir_all(path) {
+            eprintln!(
+                "warning: failed to remove temp directory {}: {err}",
+                path.display()
+            );
         }
     }
 
@@ -899,7 +908,9 @@ mod tests {
             .arg(repo_dir)
             .args(args)
             .status()
-            .expect("failed to execute `git` command; ensure `git` is installed and available on PATH");
+            .expect(
+                "failed to execute `git` command; ensure `git` is installed and available on PATH",
+            );
         assert!(status.success(), "git command failed: {:?}", args);
     }
 
@@ -1024,7 +1035,7 @@ mod tests {
             .expect("stop create_worktree agent (second)");
         assert_eq!(stop_second.status(), StatusCode::OK);
 
-        let _ = std::fs::remove_dir_all(&base);
+        remove_dir_best_effort(&base);
     }
 
     #[tokio::test]
@@ -1156,7 +1167,7 @@ mod tests {
             "unexpected error body: {body}"
         );
 
-        let _ = std::fs::remove_dir_all(&base);
+        remove_dir_best_effort(&base);
     }
 
     #[tokio::test]
@@ -1261,6 +1272,6 @@ mod tests {
             .expect("stop agent");
         assert_eq!(stop_resp.status(), StatusCode::OK);
 
-        let _ = std::fs::remove_dir_all(&workdir);
+        remove_dir_best_effort(&workdir);
     }
 }

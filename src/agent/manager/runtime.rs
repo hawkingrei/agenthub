@@ -93,7 +93,7 @@ fn trim_ref_prefix(value: &str) -> &str {
 
 fn is_hex_sha(value: &str) -> bool {
     let len = value.len();
-    len >= 7 && len <= 40 && value.chars().all(|ch| ch.is_ascii_hexdigit())
+    len >= 7 && len <= 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn worktree_ref_matches(entry: &GitWorktreeEntry, expected_ref: &str) -> bool {
@@ -121,16 +121,20 @@ fn worktree_ref_matches(entry: &GitWorktreeEntry, expected_ref: &str) -> bool {
 }
 
 fn normalize_worktree_path(path: &str) -> String {
-    let canonical = std::fs::canonicalize(path)
+    let canonical = std::fs::canonicalize(path).or_else(|err| {
+        tracing::warn!(
+            path = %path,
+            error = %err,
+            "failed to canonicalize worktree path"
+        );
+        if Path::new(path).is_absolute() {
+            return Ok(Path::new(path).to_path_buf());
+        }
+        std::env::current_dir().map(|cwd| cwd.join(path))
+    });
+    let canonical = canonical
         .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|err| {
-            tracing::warn!(
-                path = %path,
-                error = %err,
-                "failed to canonicalize worktree path"
-            );
-            path.to_string()
-        });
+        .unwrap_or_else(|_| path.to_string());
     normalize_path(&canonical)
 }
 
@@ -383,10 +387,13 @@ impl AgentManager {
             WorktreeMode::UseExisting => Ok(()),
             WorktreeMode::ReuseWorktree => {
                 if !Path::new(workdir).exists() {
-                    let detail = format!(
-                        "agent_id={}, mode=reuse_worktree, workdir={}, error=worktree missing",
-                        agent.id, workdir
-                    );
+                    let detail = serde_json::json!({
+                        "agent_id": agent.id,
+                        "mode": "reuse_worktree",
+                        "workdir": workdir,
+                        "error": "worktree missing",
+                    })
+                    .to_string();
                     let _ = self
                         .auth
                         .record_audit(
@@ -400,10 +407,12 @@ impl AgentManager {
                         .await;
                     anyhow::bail!("worktree does not exist");
                 }
-                let detail = format!(
-                    "agent_id={}, mode=reuse_worktree, workdir={}",
-                    agent.id, workdir
-                );
+                let detail = serde_json::json!({
+                    "agent_id": agent.id,
+                    "mode": "reuse_worktree",
+                    "workdir": workdir,
+                })
+                .to_string();
                 let _ = self
                     .auth
                     .record_audit(None, None, "worktree_reuse", Some(&detail), None, None)
@@ -415,10 +424,14 @@ impl AgentManager {
                     worktree_repo.ok_or_else(|| anyhow::anyhow!("worktree_repo required"))?;
                 let ref_name = agent.worktree_ref.as_deref().unwrap_or("HEAD");
                 if let Err(err) = self.ensure_safe_path(repo).await {
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, error={}",
-                        agent.id, repo, workdir, err
-                    );
+                    let detail = serde_json::json!({
+                        "agent_id": agent.id,
+                        "mode": "create_worktree",
+                        "repo": repo,
+                        "workdir": workdir,
+                        "error": err.to_string(),
+                    })
+                    .to_string();
                     let _ = self
                         .auth
                         .record_audit(
@@ -526,10 +539,14 @@ impl AgentManager {
                             .await;
                         return Ok(());
                     }
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, error=workdir not empty",
-                        agent.id, repo, workdir
-                    );
+                    let detail = serde_json::json!({
+                        "agent_id": agent.id,
+                        "mode": "create_worktree",
+                        "repo": repo,
+                        "workdir": workdir,
+                        "error": "workdir not empty",
+                    })
+                    .to_string();
                     let _ = self
                         .auth
                         .record_audit(
@@ -554,14 +571,15 @@ impl AgentManager {
                     .await?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, ref={}, error={}",
-                        agent.id,
-                        repo,
-                        workdir,
-                        ref_name,
-                        stderr.trim()
-                    );
+                    let detail = serde_json::json!({
+                        "agent_id": agent.id,
+                        "mode": "create_worktree",
+                        "repo": repo,
+                        "workdir": workdir,
+                        "ref": ref_name,
+                        "error": stderr.trim(),
+                    })
+                    .to_string();
                     let _ = self
                         .auth
                         .record_audit(
@@ -575,10 +593,14 @@ impl AgentManager {
                         .await;
                     anyhow::bail!("git worktree add failed: {}", stderr.trim());
                 }
-                let detail = format!(
-                    "agent_id={}, mode=create_worktree, repo={}, workdir={}, ref={}",
-                    agent.id, repo, workdir, ref_name
-                );
+                let detail = serde_json::json!({
+                    "agent_id": agent.id,
+                    "mode": "create_worktree",
+                    "repo": repo,
+                    "workdir": workdir,
+                    "ref": ref_name,
+                })
+                .to_string();
                 let _ = self
                     .auth
                     .record_audit(None, None, "worktree_created", Some(&detail), None, None)
@@ -684,7 +706,7 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{GitWorktreeEntry, parse_worktree_list, worktree_ref_matches};
+    use super::{GitWorktreeEntry, is_hex_sha, parse_worktree_list, worktree_ref_matches};
 
     #[test]
     fn parse_worktree_list_extracts_entries() {
@@ -734,5 +756,12 @@ branch refs/heads/agent-a
         };
         assert!(worktree_ref_matches(&entry, "1111111"));
         assert!(!worktree_ref_matches(&entry, "2222222"));
+    }
+
+    #[test]
+    fn is_hex_sha_accepts_sha256_length() {
+        assert!(is_hex_sha(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
     }
 }
