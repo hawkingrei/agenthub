@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use agenthub_team_actor::{
@@ -170,10 +170,10 @@ impl TeamManager {
     ) -> anyhow::Result<RelayRemotePendingResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let relay = TeamRemoteRelayAdapter::new();
+        let relay = shared_remote_relay_adapter();
         let result = mailbox
             .relay_remote_pending(
-                &relay,
+                relay,
                 RelayRemotePendingCommand {
                     limit,
                     now,
@@ -196,6 +196,11 @@ impl TeamManager {
 #[derive(Clone)]
 struct TeamRemoteRelayAdapter {
     client: reqwest::Client,
+}
+
+fn shared_remote_relay_adapter() -> &'static TeamRemoteRelayAdapter {
+    static SHARED_RELAY_ADAPTER: OnceLock<TeamRemoteRelayAdapter> = OnceLock::new();
+    SHARED_RELAY_ADAPTER.get_or_init(TeamRemoteRelayAdapter::new)
 }
 
 impl TeamRemoteRelayAdapter {
@@ -1051,6 +1056,7 @@ mod tests {
     use super::{
         RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS,
         parse_route_header_name, parse_route_header_value, relay_timeout_ms,
+        shared_remote_relay_adapter,
     };
 
     #[test]
@@ -1075,5 +1081,12 @@ mod tests {
         assert!(parse_route_header_value("ok-value").is_ok());
         assert!(parse_route_header_value("bad\nvalue").is_err());
         assert!(parse_route_header_value("bad\rvalue").is_err());
+    }
+
+    #[test]
+    fn shared_remote_relay_adapter_is_reused() {
+        let first = shared_remote_relay_adapter() as *const _;
+        let second = shared_remote_relay_adapter() as *const _;
+        assert_eq!(first, second);
     }
 }

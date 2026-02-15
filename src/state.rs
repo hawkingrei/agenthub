@@ -42,7 +42,7 @@ impl AppState {
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
         agents.mark_exited_on_startup().await?;
-        TeamOrchestratorWorker::new(teams.clone(), agents.clone())
+        let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
             .spawn(TeamOrchestratorWorkerSettings::default());
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, &config).await?;

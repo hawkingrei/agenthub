@@ -36,16 +36,25 @@ After the first review hardening pass, remaining comments focused on:
 5. `dispatch_step(...)` now performs best-effort member stop when
    `start_step(...)` returns database/runtime errors (in addition to non-working
    status handling from previous patch).
-6. Relay HTTP hardening:
+6. `dispatch_once(...)` now short-circuits per-run dispatch after the first
+   failed dispatch attempt in a tick and refreshes step snapshots before exit,
+   preventing additional stale-step scheduling attempts in that tick.
+7. Relay HTTP hardening:
    - configured `reqwest::Client` builder (connect timeout, redirect limit,
      idle pool cap),
    - default timeout when route timeout is omitted (`30s`, clamped to
      `[100ms, 60s]`),
    - strict header name/value validation (reject invalid names and CR/LF in
      values).
-7. Relay HMAC signing now binds `message_id` explicitly and emits
+8. Relay HMAC signing now binds `message_id` explicitly and emits
    `X-AgentHub-Message-Id` header to help receiver-side anti-replay/idempotency
    strategies.
+9. Orchestrator worker `spawn(...)` now returns `tokio::task::JoinHandle<()>`
+   so callers can manage lifecycle explicitly (panic observation / coordinated
+   shutdown wiring in future).
+10. Remote relay adapter is now shared via process-level singleton (`OnceLock`)
+   instead of per-tick reallocation, preserving `reqwest::Client` connection
+   pool reuse.
 
 ## Validation
 
@@ -56,6 +65,7 @@ cargo test team::orchestrator::tests::dispatch_step
 cargo test team::orchestrator::tests::dispatch_once
 cargo test team::manager::mailbox::tests::
 cargo test remote_actor_messages_relay
+cargo test dispatch_once_stops_run_dispatch_after_first_failure_in_tick
 ```
 
 ## Follow-ups

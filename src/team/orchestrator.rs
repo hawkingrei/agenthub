@@ -93,7 +93,7 @@ impl TeamOrchestratorWorker {
         }
     }
 
-    pub fn spawn(self, settings: TeamOrchestratorWorkerSettings) {
+    pub fn spawn(self, settings: TeamOrchestratorWorkerSettings) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let heartbeat_interval_ticks = settings.heartbeat_interval_ticks.max(1);
             let mut idle_ticks = 0_i64;
@@ -137,7 +137,7 @@ impl TeamOrchestratorWorker {
                     }
                 }
             }
-        });
+        })
     }
 
     pub async fn dispatch_once(
@@ -179,6 +179,7 @@ impl TeamOrchestratorWorker {
                     .map(|step| (step.step_key.clone(), step.status.clone()))
                     .collect();
                 let mut dispatched_in_pass = false;
+                let mut failed_in_pass = false;
 
                 for step in &steps {
                     if summary.dispatched as usize >= max_dispatch {
@@ -207,10 +208,16 @@ impl TeamOrchestratorWorker {
                                 "team orchestrator dispatch failed: {}",
                                 err
                             );
+                            failed_in_pass = true;
+                            break;
                         }
                     }
                 }
 
+                if failed_in_pass {
+                    let _latest_steps = self.teams.list_steps(&run.id).await?;
+                    break;
+                }
                 if !dispatched_in_pass {
                     break;
                 }
@@ -1004,6 +1011,70 @@ mod tests {
                 .as_deref()
                 .is_some_and(|text| text.contains("failed to start member agent"))
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_stops_run_dispatch_after_first_failure_in_tick() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-stop-after-failure-team".to_string(),
+                description: Some("team for failure short-circuit in single tick".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"},{"member_id":"reviewer"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-stop-after-failure"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let failed_step = teams
+            .submit_step(
+                &run.id,
+                "a_plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit failing step");
+        let deferred_step = teams
+            .submit_step(
+                &run.id,
+                "b_review",
+                "reviewer",
+                Vec::new(),
+                Some(json!({"goal":"review"})),
+            )
+            .await
+            .expect("submit deferred step");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        starter.mark_fail_for("planner");
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.dispatched, 0);
+        let calls = starter.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].member_id, "planner");
+
+        let failed_step_after = teams
+            .get_step(&failed_step.id)
+            .await
+            .expect("get failed step");
+        assert_eq!(failed_step_after.status, TeamStepStatus::Failed);
+        let deferred_step_after = teams
+            .get_step(&deferred_step.id)
+            .await
+            .expect("get deferred step");
+        assert_eq!(deferred_step_after.status, TeamStepStatus::Submitted);
     }
 
     #[tokio::test]
