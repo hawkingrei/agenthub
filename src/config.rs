@@ -1,4 +1,7 @@
 use serde::Deserialize;
+use std::collections::HashSet;
+
+const DEFAULT_SAFE_PATH: &str = "~/.agenthub";
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -133,7 +136,22 @@ impl AppConfig {
     }
 
     pub fn safe_paths(&self) -> Vec<String> {
-        self.safe_paths.clone().unwrap_or_default()
+        let mut paths = Vec::new();
+        paths.push(DEFAULT_SAFE_PATH.to_string());
+        if let Some(configured_paths) = &self.safe_paths {
+            for path in configured_paths {
+                let trimmed = path.trim();
+                if !trimmed.is_empty() {
+                    paths.push(trimmed.to_string());
+                }
+            }
+        }
+
+        let mut seen = HashSet::new();
+        paths
+            .into_iter()
+            .filter(|path| seen.insert(path.clone()))
+            .collect()
     }
 
     pub fn log_path(&self) -> Option<String> {
@@ -266,5 +284,28 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
+    }
+
+    #[test]
+    fn safe_paths_includes_default_agenthub_path() {
+        let config = AppConfig::default();
+        assert_eq!(config.safe_paths(), vec!["~/.agenthub".to_string()]);
+    }
+
+    #[test]
+    fn safe_paths_merges_configured_paths_and_deduplicates() {
+        let config = AppConfig {
+            safe_paths: Some(vec![
+                " /tmp/a ".to_string(),
+                "~/.agenthub".to_string(),
+                "".to_string(),
+                "/tmp/a".to_string(),
+            ]),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.safe_paths(),
+            vec!["~/.agenthub".to_string(), "/tmp/a".to_string()]
+        );
     }
 }

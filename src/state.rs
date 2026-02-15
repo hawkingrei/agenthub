@@ -192,6 +192,30 @@ mod tests {
             .await
             .expect("count safe paths");
         let count: i64 = row.get("cnt");
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
+
+        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM safe_paths WHERE path = '~/.agenthub'")
+            .fetch_one(&db)
+            .await
+            .expect("count default safe path");
+        let default_count: i64 = row.get("cnt");
+        assert_eq!(default_count, 1);
+    }
+
+    #[tokio::test]
+    async fn seed_safe_paths_inserts_default_when_not_configured() {
+        let db = test_db().await;
+        let config = AppConfig::default();
+
+        AppState::seed_safe_paths(&db, &config)
+            .await
+            .expect("seed default safe path");
+
+        let row = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
+            .fetch_one(&db)
+            .await
+            .expect("fetch default safe path");
+        let path: String = row.get("path");
+        assert_eq!(path, "~/.agenthub");
     }
 }
