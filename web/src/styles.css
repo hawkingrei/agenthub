@@ -2546,6 +2546,11 @@ select:not([class*="mantine-"]):focus-visible {
     gap: 4px;
   }
 
+  .session-connection-dot {
+    width: 7px;
+    height: 7px;
+  }
+
   .output-meta {
     grid-column: 1 / -1;
     grid-row: 2;

@@ -20,8 +20,10 @@ import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
 import {
   deriveConnectionBadge,
+  OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
   type SseConnectionState,
+  UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 import {
   getAdaptivePollInterval,
@@ -233,11 +235,14 @@ export function App() {
     if (typeof window === "undefined") return;
     const onOnline = () => {
       setNetworkOnline(true);
+      setError((prev) =>
+        prev === OFFLINE_MESSAGE || prev === UPSTREAM_HTML_MESSAGE ? null : prev
+      );
     };
     const onOffline = () => {
       setNetworkOnline(false);
       setSseState((prev) => (prev === "idle" ? "idle" : "reconnecting"));
-      setError("Offline. Unable to connect to server.");
+      setError(OFFLINE_MESSAGE);
     };
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
@@ -406,7 +411,7 @@ export function App() {
           .find((evt) => evt.session_id)?.session_id;
         if (latestSession) {
           setAgentSessions((prev) => ({ ...prev, [id]: latestSession }));
-          if (activeAgent === id && !activeSessionId) {
+          if (activeAgentRef.current === id && !activeSessionIdRef.current) {
             setActiveSessionId(latestSession);
           }
           setEventMeta((prev) => ({
@@ -423,7 +428,10 @@ export function App() {
       }
       const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
       const nextSlice = updateOutputCacheEntry(key, ordered);
-      updateAcpOutputCacheEntry(key, ordered);
+      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+      if (acpOrdered.length > 0) {
+        updateAcpOutputCacheEntry(key, acpOrdered);
+      }
       const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
         typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
@@ -465,8 +473,6 @@ export function App() {
     }
   }, [
     token,
-    activeAgent,
-    activeSessionId,
     eventLimit,
     updateOutputCacheEntry,
     updateAcpOutputCacheEntry,
@@ -502,7 +508,9 @@ export function App() {
       setOutputs((prev) => mergeOutputs(prev, ordered));
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
       updateOutputCacheEntry(key, ordered);
-      updateAcpOutputCacheEntry(key, ordered);
+      if (acpOrdered.length > 0) {
+        updateAcpOutputCacheEntry(key, acpOrdered);
+      }
       setEventMeta((prev) => ({
         ...prev,
         [key]: {
@@ -826,12 +834,12 @@ export function App() {
                     agent.id === payload.agent_id
                       ? { ...agent, status: statusToAgentStatus(status) }
                       : agent
-                  )
+                    )
                 );
               }
+              updateAcpOutputCacheEntry(key, [line]);
             }
             updateOutputCacheEntry(key, [line]);
-            updateAcpOutputCacheEntry(key, [line]);
             const currentActive = activeAgentRef.current;
             if (payload.agent_id !== currentActive) {
               return;
@@ -847,14 +855,14 @@ export function App() {
           }
         } catch {
           if (typeof event.data === "string") {
+            if (isInvalidTokenMessage(event.data)) {
+              clearAuthAndRedirect();
+              return;
+            }
             const normalizedStreamError = sanitizeErrorBannerMessage(
               event.data,
               getNavigatorOnline()
             );
-            if (isInvalidTokenMessage(normalizedStreamError)) {
-              clearAuthAndRedirect();
-              return;
-            }
             if (
               shouldIgnoreAgentWsError(
                 normalizedStreamError,
@@ -877,8 +885,8 @@ export function App() {
         setSseState("reconnecting");
         setError(
           online
-            ? "Connection unavailable (gateway response). Reconnecting..."
-            : "Offline. Unable to connect to server."
+            ? UPSTREAM_HTML_MESSAGE
+            : OFFLINE_MESSAGE
         );
         source.close();
         sseRef.current = null;
@@ -1558,6 +1566,8 @@ export function App() {
             <span
               className={`session-connection ${connectionBadge.tone}`}
               title={connectionBadge.title}
+              role="status"
+              aria-live="polite"
             >
               <span className="session-connection-dot" aria-hidden="true" />
               <span>{connectionBadge.label}</span>

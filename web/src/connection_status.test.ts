@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveConnectionBadge,
+  OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
+  UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 
 describe("connection badge derivation", () => {
@@ -28,12 +30,18 @@ describe("connection badge derivation", () => {
     expect(badge.label).toBe("Online · SSE reconnecting");
     expect(badge.tone).toBe("warn");
   });
+
+  it("returns connecting badge while stream opens", () => {
+    const badge = deriveConnectionBadge(true, true, "connecting");
+    expect(badge.label).toBe("Online · SSE connecting");
+    expect(badge.tone).toBe("warn");
+  });
 });
 
 describe("error banner sanitization", () => {
   it("maps offline connectivity errors to a stable message", () => {
     const message = sanitizeErrorBannerMessage("failed to fetch", false);
-    expect(message).toBe("Offline. Unable to connect to server.");
+    expect(message).toBe(OFFLINE_MESSAGE);
   });
 
   it("keeps non-connectivity validation errors while offline", () => {
@@ -44,9 +52,33 @@ describe("error banner sanitization", () => {
   it("maps html gateway responses to a compact reconnect message", () => {
     const html = "<!doctype html><html><head><title>Cloudflare</title></head><body>error</body></html>";
     const message = sanitizeErrorBannerMessage(html, true);
-    expect(message).toBe(
-      "Connection unavailable (gateway response). Reconnecting..."
+    expect(message).toBe(UPSTREAM_HTML_MESSAGE);
+  });
+
+  it("does not treat non-tag substrings as html documents", () => {
+    const message = sanitizeErrorBannerMessage(
+      "error<bodyguard> is not an html page",
+      true
     );
+    expect(message).toBe("error<bodyguard> is not an html page");
+  });
+
+  it("keeps non-network business errors that mention connection", () => {
+    const message = sanitizeErrorBannerMessage(
+      "database connection pool exhausted",
+      false
+    );
+    expect(message).toBe("database connection pool exhausted");
+  });
+
+  it("returns generic request failure for empty online errors", () => {
+    const message = sanitizeErrorBannerMessage("", true);
+    expect(message).toBe("Request failed.");
+  });
+
+  it("returns offline message for whitespace-only offline errors", () => {
+    const message = sanitizeErrorBannerMessage("   \n\t  ", false);
+    expect(message).toBe(OFFLINE_MESSAGE);
   });
 
   it("truncates long plain text errors", () => {

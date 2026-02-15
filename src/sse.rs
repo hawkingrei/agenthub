@@ -107,16 +107,42 @@ fn parse_agent_ids(raw_ids: &str) -> Vec<String> {
     ids
 }
 
+const OUTPUT_STREAM_BUFFER_CAPACITY: usize = 512;
+const OUTPUT_STREAM_SEND_TIMEOUT: Duration = Duration::from_secs(2);
+
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
-    let (output_tx, output_rx) = mpsc::unbounded_channel::<AgentOutput>();
+    output_stream_with_limits(
+        output_rxs,
+        OUTPUT_STREAM_BUFFER_CAPACITY,
+        OUTPUT_STREAM_SEND_TIMEOUT,
+    )
+}
+
+fn output_stream_with_limits(
+    output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
+    buffer_capacity: usize,
+    send_timeout: Duration,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let (output_tx, output_rx) = mpsc::channel::<AgentOutput>(buffer_capacity);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (disconnect_tx, disconnect_rx) = watch::channel(false);
     let forwarders = output_rxs
         .into_iter()
-        .map(|rx| spawn_output_forwarder(rx, output_tx.clone(), shutdown_rx.clone()))
+        .map(|rx| {
+            spawn_output_forwarder(
+                rx,
+                output_tx.clone(),
+                shutdown_rx.clone(),
+                disconnect_tx.clone(),
+                send_timeout,
+                buffer_capacity,
+            )
+        })
         .collect::<Vec<_>>();
     drop(output_tx);
+    drop(disconnect_tx);
 
     let heartbeat_interval = Duration::from_secs(15);
     futures::stream::unfold(
@@ -124,14 +150,23 @@ fn output_stream(
             output_rx,
             heartbeat: tokio::time::interval(heartbeat_interval),
             shutdown_tx,
+            disconnect_rx,
             forwarders,
         },
         |mut state| async move {
             loop {
+                if *state.disconnect_rx.borrow() {
+                    return None;
+                }
                 tokio::select! {
                     _ = state.heartbeat.tick() => {
                         let event = Event::default().data("heartbeat");
                         return Some((Ok(event), state));
+                    }
+                    changed = state.disconnect_rx.changed() => {
+                        if changed.is_err() || *state.disconnect_rx.borrow() {
+                            return None;
+                        }
                     }
                     msg = state.output_rx.recv() => {
                         match msg {
@@ -151,9 +186,10 @@ fn output_stream(
 }
 
 struct OutputStreamState {
-    output_rx: mpsc::UnboundedReceiver<AgentOutput>,
+    output_rx: mpsc::Receiver<AgentOutput>,
     heartbeat: tokio::time::Interval,
     shutdown_tx: watch::Sender<bool>,
+    disconnect_rx: watch::Receiver<bool>,
     forwarders: Vec<JoinHandle<()>>,
 }
 
@@ -168,8 +204,11 @@ impl Drop for OutputStreamState {
 
 fn spawn_output_forwarder(
     mut output_rx: broadcast::Receiver<AgentOutput>,
-    output_tx: mpsc::UnboundedSender<AgentOutput>,
+    output_tx: mpsc::Sender<AgentOutput>,
     mut shutdown_rx: watch::Receiver<bool>,
+    disconnect_tx: watch::Sender<bool>,
+    send_timeout: Duration,
+    buffer_capacity: usize,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
@@ -182,8 +221,20 @@ fn spawn_output_forwarder(
                 msg = output_rx.recv() => {
                     match msg {
                         Ok(output) => {
-                            if output_tx.send(output).is_err() {
-                                break;
+                            // Bounded fan-in avoids unbounded memory growth for slow/disconnected SSE clients.
+                            // On sustained backpressure we close this SSE stream and let reconnect + DB replay catch up.
+                            match tokio::time::timeout(send_timeout, output_tx.send(output)).await {
+                                Ok(Ok(())) => {}
+                                Ok(Err(_)) => break,
+                                Err(_) => {
+                                    let _ = disconnect_tx.send(true);
+                                    tracing::warn!(
+                                        ?send_timeout,
+                                        buffer_capacity,
+                                        "sse output stream backpressure timeout; closing stream"
+                                    );
+                                    break;
+                                }
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -559,5 +610,39 @@ mod tests {
             .expect("receive second event")
             .expect("stream should not end")
             .expect("stream event should be ok");
+    }
+
+    #[tokio::test]
+    async fn output_stream_closes_after_backpressure_timeout() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let mut stream = std::pin::pin!(super::output_stream_with_limits(
+            vec![rx],
+            1,
+            std::time::Duration::from_millis(30),
+        ));
+
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive first event")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
+        assert!(format!("{first:?}").contains("heartbeat"));
+
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send first output");
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send second output");
+
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        let next = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("poll stream after backpressure");
+        assert!(
+            next.is_none(),
+            "stream should close after sustained backpressure timeout"
+        );
     }
 }

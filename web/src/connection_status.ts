@@ -10,8 +10,8 @@ export type ConnectionBadge = {
   tone: "ok" | "warn" | "bad" | "muted";
 };
 
-const OFFLINE_MESSAGE = "Offline. Unable to connect to server.";
-const UPSTREAM_HTML_MESSAGE =
+export const OFFLINE_MESSAGE = "Offline. Unable to connect to server.";
+export const UPSTREAM_HTML_MESSAGE =
   "Connection unavailable (gateway response). Reconnecting...";
 const GENERIC_REQUEST_MESSAGE = "Request failed.";
 const MAX_ERROR_TEXT_LENGTH = 240;
@@ -90,10 +90,6 @@ function normalizeErrorText(rawMessage: string): string {
 function isLikelyHtmlErrorDocument(message: string): boolean {
   const lower = message.toLowerCase();
   if (lower.startsWith("<!doctype html")) return true;
-  if (lower.startsWith("<html")) return true;
-  if (lower.includes("<body")) return true;
-  if (lower.includes("<head")) return true;
-  if (lower.includes("<title")) return true;
   if (lower.includes("</html>")) return true;
   return /<(?:html|body|head|title|script|style|meta|link)\b/i.test(message);
 }
@@ -105,7 +101,13 @@ function isLikelyConnectivityError(message: string): boolean {
     lower.includes("fetch failed") ||
     lower.includes("networkerror") ||
     lower.includes("network error") ||
-    lower.includes("connection") ||
+    lower.includes("failed to connect") ||
+    lower.includes("could not connect") ||
+    lower.includes("cannot connect") ||
+    lower.includes("connection refused") ||
+    lower.includes("connection reset") ||
+    lower.includes("connection timed out") ||
+    lower.includes("connection timeout") ||
     lower.includes("timeout") ||
     lower.includes("gateway") ||
     lower.includes("cloudflare") ||
