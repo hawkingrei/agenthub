@@ -1,13 +1,19 @@
+#[cfg(not(debug_assertions))]
 use axum::body::Body;
-use axum::http::{StatusCode, Uri, header};
+use axum::http::{StatusCode, Uri};
+#[cfg(not(debug_assertions))]
+use axum::http::header;
 use axum::response::IntoResponse;
 
+#[cfg(not(debug_assertions))]
 use rust_embed::RustEmbed;
 
+#[cfg(not(debug_assertions))]
 #[derive(RustEmbed)]
 #[folder = "web/dist"]
 struct EmbeddedWeb;
 
+#[cfg(not(debug_assertions))]
 pub async fn embedded_handler(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
@@ -28,4 +34,13 @@ pub async fn embedded_handler(uri: Uri) -> impl IntoResponse {
             .unwrap_or(header::HeaderValue::from_static("application/octet-stream")),
     );
     resp
+}
+
+#[cfg(debug_assertions)]
+pub async fn embedded_handler(_uri: Uri) -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        "embedded assets are disabled in debug builds",
+    )
+        .into_response()
 }
