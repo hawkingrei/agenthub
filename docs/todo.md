@@ -2,6 +2,7 @@
 
 - [ ] Verify new `userdocs` information architecture and cross-page navigation links after content expansion (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify newly added `userdocs` practical pages (`configuration`, `review`, `security`, `daily checklist`) align with current UI labels and runtime behavior (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
+- [ ] Verify `userdocs` build no longer reports broken `/` links and deprecation warnings after root-slug/config migration (see `docs/features/2026-02-15-userdocs-build-root-link-fix.md`).
 - [x] Verify Docusaurus userdocs site install/build flow in CI (see `docs/features/2026-02-15-userdocs-ci-build-check.md`).
 - [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
