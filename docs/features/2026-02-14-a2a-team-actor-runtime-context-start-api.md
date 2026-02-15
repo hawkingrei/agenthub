@@ -42,6 +42,8 @@ multi-run scenarios.
 cargo test parse_start_actor_runtime_context -- --nocapture
 cargo test default_actor_cli_path_returns_non_empty_value -- --nocapture
 cargo test parse_worktree_mode_ -- --nocapture
+cargo test start_agent_with_actor_context_injects_runtime_env_vars -- --nocapture
+cargo test dispatch_once_injects_actor_runtime_and_supports_inbox_ack_flow -- --nocapture
 ```
 
 ## Follow-ups
