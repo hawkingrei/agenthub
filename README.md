@@ -33,6 +33,19 @@ cargo run
 
 The server serves the UI on `http://localhost:8080`.
 
+## User Documentation Site (Docusaurus)
+
+AgentHub includes an end-user documentation site under `userdocs/`.
+
+```bash
+cd userdocs
+npm install
+npm run start
+```
+
+The Docusaurus dev server will print a local preview URL (default:
+`http://localhost:3000`).
+
 ## Configuration
 
 AgentHub reads configuration from a `config.toml` file. Example:

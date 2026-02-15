@@ -1,0 +1,39 @@
+name: User Docs
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "userdocs/**"
+      - ".github/workflows/userdocs.yml"
+      - "README.md"
+      - "docs/features/*userdocs*.md"
+      - "docs/todo.md"
+  pull_request:
+    paths:
+      - "userdocs/**"
+      - ".github/workflows/userdocs.yml"
+      - "README.md"
+      - "docs/features/*userdocs*.md"
+      - "docs/todo.md"
+  workflow_dispatch:
+
+jobs:
+  userdocs:
+    name: User Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: userdocs/package-lock.json
+      - name: Install
+        run: npm ci
+        working-directory: userdocs
+      - name: Build
+        run: npm run build
+        working-directory: userdocs
