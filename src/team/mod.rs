@@ -1,4 +1,5 @@
 mod manager;
+mod orchestrator;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -8,6 +9,7 @@ pub use agenthub_team_actor::{
     ActorMessageTransport as TeamActorMessageTransport,
 };
 pub use manager::{TeamManager, TeamRemoteRelayWorkerSettings};
+pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamDefinitionConfig {

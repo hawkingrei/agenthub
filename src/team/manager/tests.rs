@@ -1097,3 +1097,68 @@ async fn fail_step_updates_status_and_emits_event() {
         ]
     );
 }
+
+#[tokio::test]
+async fn list_active_runs_returns_non_terminal_runs_only() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "active-runs-team".to_string(),
+            description: Some("team to verify active run listing".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let submitted_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-submitted"),
+            json!({"payload":"submitted"}),
+        )
+        .await
+        .expect("create submitted run");
+
+    let canceled_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-canceled"),
+            json!({"payload":"canceled"}),
+        )
+        .await
+        .expect("create canceled run");
+    let _ = manager
+        .cancel_run(&canceled_run.id)
+        .await
+        .expect("cancel run");
+
+    let working_run = manager
+        .create_run(&team.id, Some("ctx-working"), json!({"payload":"working"}))
+        .await
+        .expect("create working run");
+    let working_step = manager
+        .submit_step(
+            &working_run.id,
+            "work",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"start"})),
+        )
+        .await
+        .expect("submit working step");
+    let _ = manager
+        .start_step(&working_step.id, Some("remote-working"))
+        .await
+        .expect("start working step");
+
+    let active_runs = manager
+        .list_active_runs(100)
+        .await
+        .expect("list active runs");
+    let active_ids: Vec<&str> = active_runs.iter().map(|run| run.id.as_str()).collect();
+    assert!(active_ids.contains(&submitted_run.id.as_str()));
+    assert!(active_ids.contains(&working_run.id.as_str()));
+    assert!(!active_ids.contains(&canceled_run.id.as_str()));
+}

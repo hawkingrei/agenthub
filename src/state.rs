@@ -7,7 +7,10 @@ use crate::acp::AcpPermissionService;
 use crate::agent::AgentManager;
 use crate::auth::AuthService;
 use crate::push::PushService;
-use crate::team::{TeamManager, TeamRemoteRelayWorkerSettings};
+use crate::team::{
+    TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
+    TeamRemoteRelayWorkerSettings,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -39,6 +42,8 @@ impl AppState {
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
         agents.mark_exited_on_startup().await?;
+        TeamOrchestratorWorker::new(teams.clone(), agents.clone())
+            .spawn(TeamOrchestratorWorkerSettings::default());
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, &config).await?;
         Ok(Self {
