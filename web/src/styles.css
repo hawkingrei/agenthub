@@ -2203,6 +2203,7 @@ select:not([class*="mantine-"]):focus-visible {
 
   .acp-debug {
     gap: 8px;
+    padding-right: 2px;
   }
 
   .acp-debug-tabs {
@@ -2290,6 +2291,56 @@ select:not([class*="mantine-"]):focus-visible {
     right: 12px;
   }
 
+  .acp-bubble {
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+
+  .acp-text {
+    font-size: 13px;
+    line-height: 1.58;
+  }
+
+  .acp-text > * + * {
+    margin-top: 8px;
+  }
+
+  .acp-text ul,
+  .acp-text ol {
+    padding-left: 16px;
+  }
+
+  .acp-tool-fold summary {
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .acp-tool-fold summary .acp-tool-title {
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .acp-tool-fold summary .acp-tool-status {
+    margin-top: 1px;
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  .acp-subfold > summary {
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .acp-subfold-preview {
+    max-width: min(68vw, 320px);
+    font-size: 10px;
+  }
+
+  .acp-payload-card {
+    border-radius: 8px;
+    padding: 6px;
+  }
+
   .acp-payload-row {
     grid-template-columns: minmax(70px, 110px) minmax(0, 1fr);
     gap: 6px;
@@ -2298,6 +2349,35 @@ select:not([class*="mantine-"]):focus-visible {
   .acp-payload-scalar,
   .acp-payload-text {
     font-size: 11px;
+  }
+
+  .acp-payload-markdown {
+    font-size: 12px;
+    line-height: 1.52;
+  }
+
+  .acp-diff-view {
+    padding: 6px;
+    font-size: 11px;
+  }
+
+  .acp-diff-line {
+    padding: 0 2px;
+  }
+
+  .acp-runtime-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 6px;
+  }
+
+  .acp-runtime-card {
+    padding: 6px 8px;
+  }
+
+  .acp-commands li,
+  .acp-debug li {
+    padding: 8px;
+    margin-bottom: 8px;
   }
 }
 
@@ -2423,6 +2503,19 @@ select:not([class*="mantine-"]):focus-visible {
     max-width: 42vw;
   }
 
+  .acp-text {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .acp-tool-fold summary .acp-tool-title {
+    font-size: 11px;
+  }
+
+  .acp-subfold-preview {
+    max-width: 58vw;
+  }
+
   .acp-payload-row {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -2430,5 +2523,9 @@ select:not([class*="mantine-"]):focus-visible {
 
   .acp-payload-row dt {
     font-size: 11px;
+  }
+
+  .acp-diff-view {
+    font-size: 10.5px;
   }
 }
