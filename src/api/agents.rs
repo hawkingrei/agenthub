@@ -428,21 +428,20 @@ fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> Strin
 
 fn sanitize_worktree_segment(value: &str) -> String {
     let mut out = String::new();
-    let mut last_dash = false;
+    let mut last_separator = false;
     for ch in value.trim().chars() {
         if ch.is_ascii_alphanumeric() {
             out.push(ch.to_ascii_lowercase());
-            last_dash = false;
+            last_separator = false;
             continue;
         }
-        if matches!(ch, '-' | '_' | '.') {
-            out.push(ch);
-            last_dash = false;
-            continue;
-        }
-        if !last_dash {
-            out.push('-');
-            last_dash = true;
+        if !last_separator {
+            if matches!(ch, '-' | '_' | '.') {
+                out.push(ch);
+            } else {
+                out.push('-');
+            }
+            last_separator = true;
         }
     }
     let trimmed = out.trim_matches(|c| c == '-' || c == '_' || c == '.');
@@ -566,6 +565,16 @@ mod tests {
     fn sanitize_worktree_segment_trims_mixed_edge_separators() {
         let sanitized = sanitize_worktree_segment("_-...Planner Team...-_");
         assert_eq!(sanitized, "planner-team");
+    }
+
+    #[test]
+    fn sanitize_worktree_segment_collapses_repeated_internal_separators() {
+        assert_eq!(sanitize_worktree_segment("agent...name"), "agent.name");
+        assert_eq!(sanitize_worktree_segment("agent__name"), "agent_name");
+        assert_eq!(
+            sanitize_worktree_segment("agent   ---   name"),
+            "agent-name"
+        );
     }
 
     #[test]
