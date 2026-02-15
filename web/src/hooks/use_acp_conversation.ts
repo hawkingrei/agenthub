@@ -67,6 +67,9 @@ type ConversationViewport = {
 
 const VIRTUALIZATION_MIN_ITEMS = 140;
 const VIRTUALIZATION_OVERSCAN = 14;
+const STICK_BOTTOM_STRICT_THRESHOLD = 4;
+const TAIL_PAYLOAD_MAX_DEPTH = 2;
+const TAIL_PAYLOAD_MAX_ENTRIES = 24;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -75,15 +78,42 @@ export function buildConversationTailKey(conversationMessages: ConversationItem[
   if (last.kind === "tool_call") {
     const contentLen = last.content?.length ?? 0;
     const terminalLen = last.terminal_output?.length ?? 0;
-    const rawInLen = last.raw_input
-      ? JSON.stringify(last.raw_input).length
-      : 0;
-    const rawOutLen = last.raw_output
-      ? JSON.stringify(last.raw_output).length
-      : 0;
+    const rawInLen = estimateTailPayloadSize(last.raw_input);
+    const rawOutLen = estimateTailPayloadSize(last.raw_output);
     return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
   }
   return `${base}:${last.text?.length ?? 0}`;
+}
+
+export function estimateTailPayloadSize(value: unknown): number {
+  return estimateTailPayloadSizeInternal(value, 0);
+}
+
+function estimateTailPayloadSizeInternal(value: unknown, depth: number): number {
+  if (value == null) return 0;
+  if (typeof value === "string") return value.length;
+  if (typeof value === "number" || typeof value === "boolean") return 8;
+  if (depth >= TAIL_PAYLOAD_MAX_DEPTH) return 16;
+  if (Array.isArray(value)) {
+    let size = value.length;
+    const limit = Math.min(TAIL_PAYLOAD_MAX_ENTRIES, value.length);
+    for (let i = 0; i < limit; i += 1) {
+      size += estimateTailPayloadSizeInternal(value[i], depth + 1);
+    }
+    return size;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    let size = entries.length * 2;
+    const limit = Math.min(TAIL_PAYLOAD_MAX_ENTRIES, entries.length);
+    for (let i = 0; i < limit; i += 1) {
+      const [key, item] = entries[i];
+      size += key.length;
+      size += estimateTailPayloadSizeInternal(item, depth + 1);
+    }
+    return size;
+  }
+  return 0;
 }
 
 export function shouldLoadOlderFromMeta(
@@ -220,6 +250,9 @@ export function useAcpConversation({
   const conversationScrollThrottleRef = useRef<ReturnType<
     typeof createRafThrottle
   > | null>(null);
+  const conversationBottomAlignThrottleRef = useRef<ReturnType<
+    typeof createRafThrottle
+  > | null>(null);
   const acpStickToBottomRef = useRef(true);
   const conversationScrollRef = useRef<{
     top: number;
@@ -338,6 +371,55 @@ export function useAcpConversation({
     setConversationPendingCount(0);
   }, [syncConversationViewport]);
 
+  const alignConversationBottomNow = useCallback(() => {
+    const el = acpConversationRef.current;
+    if (!el) return;
+    if (acpTab !== "conversation") return;
+    if (!conversationStickToBottom && !acpStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    syncConversationViewport();
+    if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      return;
+    }
+    if (isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight, STICK_BOTTOM_STRICT_THRESHOLD)) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      const node = acpConversationRef.current;
+      if (!node) return;
+      node.scrollTop = node.scrollHeight;
+      syncConversationViewport();
+      if (
+        isNearBottom(
+          node.scrollHeight,
+          node.scrollTop,
+          node.clientHeight,
+          STICK_BOTTOM_STRICT_THRESHOLD
+        )
+      ) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        const latest = acpConversationRef.current;
+        if (!latest) return;
+        latest.scrollTop = latest.scrollHeight;
+        syncConversationViewport();
+      });
+    });
+  }, [acpTab, conversationStickToBottom, syncConversationViewport]);
+
+  const scheduleConversationBottomAlign = useCallback(() => {
+    const throttle = conversationBottomAlignThrottleRef.current;
+    if (!throttle) {
+      alignConversationBottomNow();
+      return;
+    }
+    throttle.schedule();
+  }, [alignConversationBottomNow]);
+
   const handleConversationScrollNow = useCallback(() => {
     const el = acpConversationRef.current;
     if (!el) return;
@@ -407,6 +489,30 @@ export function useAcpConversation({
 
   useEffect(() => {
     if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      conversationBottomAlignThrottleRef.current = null;
+      return;
+    }
+    conversationBottomAlignThrottleRef.current = createRafThrottle(
+      alignConversationBottomNow,
+      {
+        requestAnimationFrame: window.requestAnimationFrame.bind(window),
+        cancelAnimationFrame:
+          typeof window.cancelAnimationFrame === "function"
+            ? window.cancelAnimationFrame.bind(window)
+            : undefined,
+      }
+    );
+    return () => {
+      conversationBottomAlignThrottleRef.current?.cancel();
+      conversationBottomAlignThrottleRef.current = null;
+    };
+  }, [alignConversationBottomNow]);
+
+  useEffect(() => {
+    if (
       !shouldAutoLoadConversationHistory(
         acpTab,
         activeAgent,
@@ -445,31 +551,22 @@ export function useAcpConversation({
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
-    const el = acpConversationRef.current;
-    if (!el) return;
     if (!conversationStickToBottom) return;
-    el.scrollTop = el.scrollHeight;
-    syncConversationViewport();
+    scheduleConversationBottomAlign();
   }, [
-    conversationWindow.items.length,
     acpTab,
     conversationStickToBottom,
-    syncConversationViewport,
+    conversationTailKey,
+    conversationMessages.length,
+    conversationWindow.offset,
+    scheduleConversationBottomAlign,
   ]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
-    if (!conversationStickToBottom) return;
-    const el = acpConversationRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (!shouldVirtualizeConversation) return;
     syncConversationViewport();
-  }, [conversationTailKey, acpTab, conversationStickToBottom, syncConversationViewport]);
-
-  useEffect(() => {
-    if (acpTab !== "conversation") return;
-    syncConversationViewport();
-  }, [acpTab, conversationTailKey, syncConversationViewport]);
+  }, [acpTab, conversationTailKey, shouldVirtualizeConversation, syncConversationViewport]);
 
   useEffect(() => {
     const el = acpConversationRef.current;

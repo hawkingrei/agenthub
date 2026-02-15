@@ -21,6 +21,8 @@ type AcpConversationProps = {
 
 const MARKDOWN_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
+const TOOL_PAYLOAD_PREVIEW_LIMIT = 88;
+const TOOL_PAYLOAD_MAX_NESTED_DEPTH = 2;
 
 const markdownHtmlCache = new Map<string, string>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
@@ -238,6 +240,23 @@ const ToolCallBubble = React.memo(
     const [open, setOpen] = React.useState(isLive);
     const wasLiveRef = React.useRef(isLive);
     const callHint = deriveToolCallHint(msg.title, msg.raw_input, msg.content);
+    const inputPayload = React.useMemo(
+      () => normalizeToolPayload(msg.raw_input),
+      [msg.raw_input]
+    );
+    const outputPayload = React.useMemo(
+      () => normalizeToolPayload(msg.raw_output),
+      [msg.raw_output]
+    );
+    const inputPreview = React.useMemo(
+      () => summarizeToolPayload(inputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
+      [inputPayload]
+    );
+    const outputPreview = React.useMemo(
+      () => summarizeToolPayload(outputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
+      [outputPayload]
+    );
+    const statusLabel = formatToolCallStatus(msg.status);
 
     React.useEffect(() => {
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
@@ -260,7 +279,7 @@ const ToolCallBubble = React.memo(
               {callHint ? ` · ${callHint}` : ""}
             </span>
             {msg.status && (
-              <span className="acp-tool-status">{msg.status}</span>
+              <span className="acp-tool-status">{statusLabel}</span>
             )}
           </summary>
           {msg.content && (
@@ -269,31 +288,28 @@ const ToolCallBubble = React.memo(
               preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
               defaultOpen={isLive}
             >
-              <div className="acp-text">
-                <pre>{unescapeLineBreaks(msg.content)}</pre>
-              </div>
+              <ToolTextContent
+                text={unescapeLineBreaks(msg.content)}
+                markdownClassName="acp-payload-markdown"
+              />
             </FoldSection>
           )}
-          {msg.raw_input && (
+          {hasToolPayload(inputPayload) && (
             <FoldSection
               label="Input"
-              preview={formatConversationPreview(formatToolCallPayload(msg.raw_input), 88)}
+              preview={inputPreview}
               defaultOpen={false}
             >
-              <pre className="acp-content">
-                {formatToolCallPayload(msg.raw_input)}
-              </pre>
+              <ToolPayloadView payload={inputPayload} />
             </FoldSection>
           )}
-          {msg.raw_output && (
+          {hasToolPayload(outputPayload) && (
             <FoldSection
               label="Output"
-              preview={formatConversationPreview(formatToolCallPayload(msg.raw_output), 88)}
+              preview={outputPreview}
               defaultOpen={!isLive}
             >
-              <pre className="acp-content">
-                {formatToolCallPayload(msg.raw_output)}
-              </pre>
+              <ToolPayloadView payload={outputPayload} />
             </FoldSection>
           )}
           {msg.terminal_output && (
@@ -521,10 +537,302 @@ function unescapeLineBreaks(text: string): string {
     .replace(/\\r/g, "\n");
 }
 
-function formatToolCallPayload(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return unescapeLineBreaks(value);
-  return unescapeLineBreaks(JSON.stringify(value, null, 2));
+type NormalizedToolPayload =
+  | { kind: "empty" }
+  | { kind: "text"; text: string }
+  | { kind: "json"; value: unknown };
+
+function normalizeToolPayload(value: unknown): NormalizedToolPayload {
+  if (value == null) return { kind: "empty" };
+  if (typeof value === "string") {
+    const text = unescapeLineBreaks(value).trim();
+    if (!text) return { kind: "empty" };
+    const parsed = parseJsonLikeString(text);
+    if (parsed !== undefined) {
+      return { kind: "json", value: parsed };
+    }
+    return { kind: "text", text };
+  }
+  return { kind: "json", value };
+}
+
+function parseJsonLikeString(value: string): unknown | undefined {
+  const trimmed = value.trim();
+  if (
+    !(
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    )
+  ) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function hasToolPayload(payload: NormalizedToolPayload): boolean {
+  return payload.kind !== "empty";
+}
+
+function summarizeToolPayload(payload: NormalizedToolPayload, limit: number): string {
+  if (payload.kind === "empty") return "";
+  if (payload.kind === "text") return formatConversationPreview(payload.text, limit);
+  return formatConversationPreview(summarizePayloadValue(payload.value), limit);
+}
+
+function summarizePayloadValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 120);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "Array(0)";
+    const sample = value
+      .slice(0, 3)
+      .map((item) => summarizeScalarValue(item))
+      .filter((item) => item.length > 0)
+      .join(", ");
+    return sample ? `Array(${value.length}) · ${sample}` : `Array(${value.length})`;
+  }
+  if (isPlainObject(value)) {
+    const preferredKeys = [
+      "q",
+      "query",
+      "cmd",
+      "command",
+      "path",
+      "url",
+      "goal",
+      "target",
+      "tool",
+      "fn",
+    ];
+    const entries = Object.entries(value);
+    const picked = preferredKeys
+      .filter((key) => key in value)
+      .slice(0, 3)
+      .map((key) => `${key}=${summarizeScalarValue((value as Record<string, unknown>)[key])}`)
+      .filter((pair) => !pair.endsWith("="));
+    if (picked.length > 0) return picked.join(" · ");
+    const generic = entries
+      .slice(0, 3)
+      .map(([key, item]) => `${key}=${summarizeScalarValue(item)}`)
+      .filter((pair) => !pair.endsWith("="));
+    if (generic.length > 0) return generic.join(" · ");
+    return `Object(${entries.length})`;
+  }
+  return String(value);
+}
+
+function summarizeScalarValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 48);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (isPlainObject(value)) return `Object(${Object.keys(value).length})`;
+  return "";
+}
+
+function formatToolCallStatus(status?: string): string {
+  if (!status) return "";
+  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "in_progress") return "In Progress";
+  if (normalized === "completed") return "Completed";
+  if (normalized === "failed") return "Failed";
+  if (normalized === "pending") return "Pending";
+  if (normalized === "running") return "Running";
+  if (normalized === "cancelled" || normalized === "canceled") return "Cancelled";
+  if (normalized === "interrupted") return "Interrupted";
+  if (normalized === "stopped") return "Stopped";
+  return status;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value == null) return false;
+  if (Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
+  if (payload.kind === "empty") return null;
+  if (payload.kind === "text") {
+    return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+  }
+  return (
+    <div className="acp-payload-card">
+      {renderPayloadValue(payload.value, 0)}
+    </div>
+  );
+}
+
+function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
+  if (value == null) {
+    return <span className="acp-payload-scalar muted">null</span>;
+  }
+  if (typeof value === "string") {
+    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName="acp-payload-markdown" />;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return <span className="acp-payload-scalar">{String(value)}</span>;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="acp-payload-scalar muted">[]</span>;
+    const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
+    if (allScalar) {
+      return (
+        <span className="acp-payload-scalar">
+          {value.map((item) => summarizeScalarValue(item)).join(", ")}
+        </span>
+      );
+    }
+    return (
+      <ol className="acp-payload-list">
+        {value.map((item, index) => (
+          <li key={index}>
+            {renderNestedPayloadValue(item, depth + 1)}
+          </li>
+        ))}
+      </ol>
+    );
+  }
+  if (isPlainObject(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return <span className="acp-payload-scalar muted">{"{}"}</span>;
+    return (
+      <dl className="acp-payload-grid">
+        {entries.map(([key, item]) => (
+          <div className="acp-payload-row" key={key}>
+            <dt>{key}</dt>
+            <dd>{renderNestedPayloadValue(item, depth + 1)}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+  return <span className="acp-payload-scalar">{String(value)}</span>;
+}
+
+function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
+  const isStructured = Array.isArray(value) || isPlainObject(value);
+  if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
+    return <span className="acp-payload-scalar">{summarizePayloadValue(value)}</span>;
+  }
+  if (isStructured) {
+    return (
+      <details className="acp-payload-nested">
+        <summary>{summarizePayloadValue(value)}</summary>
+        <div className="acp-payload-nested-body">
+          {renderPayloadValue(value, depth)}
+        </div>
+      </details>
+    );
+  }
+  return renderPayloadValue(value, depth);
+}
+
+function ToolTextContent({
+  text,
+  markdownClassName,
+}: {
+  text: string;
+  markdownClassName?: string;
+}) {
+  if (shouldRenderDiffText(text)) {
+    return <ToolDiffView text={text} />;
+  }
+  if (shouldRenderMarkdownText(text)) {
+    return (
+      <div
+        className={`acp-text ${markdownClassName ?? ""}`.trim()}
+        dangerouslySetInnerHTML={{ __html: renderMarkdownCached(text) }}
+      />
+    );
+  }
+  const asciiLike = shouldPreserveAsciiText(text);
+  const className = asciiLike
+    ? "acp-content acp-payload-text acp-payload-ascii"
+    : "acp-content acp-payload-text";
+  return (
+    <pre className={className}>
+      {text}
+    </pre>
+  );
+}
+
+function shouldRenderMarkdownText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("```")) return true;
+  if (/`[^`\n]+`/.test(trimmed)) return true;
+  return false;
+}
+
+function shouldRenderDiffText(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || !normalized.includes("\n")) return false;
+  if (/^diff --git\s+/m.test(normalized)) return true;
+  if (/^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.test(normalized)) return true;
+  if (/^---\s+/m.test(normalized) && /^\+\+\+\s+/m.test(normalized)) return true;
+  const lines = normalized.split("\n");
+  let add = 0;
+  let remove = 0;
+  for (const line of lines) {
+    if (line.startsWith("+++")) continue;
+    if (line.startsWith("---")) continue;
+    if (line.startsWith("+")) add += 1;
+    if (line.startsWith("-")) remove += 1;
+  }
+  return add > 0 && remove > 0;
+}
+
+function shouldPreserveAsciiText(text: string): boolean {
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return false;
+  let symbolicLines = 0;
+  for (const line of lines) {
+    const compact = line.replace(/\s+/g, "");
+    if (compact.length < 3) continue;
+    const symbolCount = compact.replace(/[a-zA-Z0-9]/g, "").length;
+    if (symbolCount < 2) continue;
+    if (symbolCount / compact.length >= 0.35) symbolicLines += 1;
+  }
+  return symbolicLines >= Math.min(2, lines.length);
+}
+
+type DiffLineKind = "meta" | "hunk" | "add" | "remove" | "context";
+
+function classifyDiffLine(line: string): DiffLineKind {
+  if (line.startsWith("@@")) return "hunk";
+  if (line.startsWith("+") && !line.startsWith("+++")) return "add";
+  if (line.startsWith("-") && !line.startsWith("---")) return "remove";
+  if (
+    line.startsWith("diff --git") ||
+    line.startsWith("index ") ||
+    line.startsWith("--- ") ||
+    line.startsWith("+++ ")
+  ) {
+    return "meta";
+  }
+  return "context";
+}
+
+function ToolDiffView({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <pre className="acp-content acp-diff-view">
+      {lines.map((line, index) => {
+        const kind = classifyDiffLine(line);
+        return (
+          <span className={`acp-diff-line ${kind}`} key={`${index}-${line}`}>
+            {line.length > 0 ? line : " "}
+          </span>
+        );
+      })}
+    </pre>
+  );
 }
 
 function getConversationItemKey(msg: ConversationItem, fallback: number): string {

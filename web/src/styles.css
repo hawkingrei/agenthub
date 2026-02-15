@@ -1629,6 +1629,137 @@ select:not([class*="mantine-"]):focus-visible {
   max-width: min(64vw, 520px);
 }
 
+.acp-payload-card {
+  border: 1px solid #d7e6da;
+  border-radius: 10px;
+  background: #f6fbf7;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.acp-payload-grid {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.acp-payload-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.acp-payload-row dt {
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  color: #2b4f3e;
+  word-break: break-word;
+}
+
+.acp-payload-row dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.acp-payload-scalar {
+  display: inline-block;
+  max-width: 100%;
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  color: #1e2a22;
+  word-break: break-word;
+}
+
+.acp-payload-scalar.muted {
+  color: #5f6f66;
+}
+
+.acp-payload-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: "Source Code Pro", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.acp-payload-ascii {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.acp-payload-markdown {
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.acp-payload-markdown pre {
+  margin: 0;
+}
+
+.acp-payload-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.acp-payload-list > li {
+  margin: 0;
+  min-width: 0;
+}
+
+.acp-payload-nested > summary {
+  cursor: pointer;
+  font-family: "Source Code Pro", monospace;
+  font-size: 11px;
+  color: #476253;
+}
+
+.acp-payload-nested-body {
+  margin-top: 6px;
+}
+
+.acp-diff-view {
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #d9e4dd;
+  background: #f7fbf8;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.45;
+}
+
+.acp-diff-line {
+  display: block;
+  padding: 0 4px;
+}
+
+.acp-diff-line.meta {
+  color: #355946;
+  background: rgba(53, 89, 70, 0.08);
+}
+
+.acp-diff-line.hunk {
+  color: #4d4f91;
+  background: rgba(77, 79, 145, 0.12);
+}
+
+.acp-diff-line.add {
+  color: #1f6a38;
+  background: rgba(45, 153, 82, 0.14);
+}
+
+.acp-diff-line.remove {
+  color: #8a1d2d;
+  background: rgba(196, 38, 73, 0.12);
+}
+
+.acp-diff-line.context {
+  color: #2f3a33;
+}
+
 .acp-plan-card {
   border: 1px solid #efd9a9;
   border-radius: 10px;
@@ -2078,6 +2209,16 @@ select:not([class*="mantine-"]):focus-visible {
     height: 30px;
     right: 12px;
   }
+
+  .acp-payload-row {
+    grid-template-columns: minmax(70px, 110px) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .acp-payload-scalar,
+  .acp-payload-text {
+    font-size: 11px;
+  }
 }
 
 .admin-grid {
@@ -2200,5 +2341,14 @@ select:not([class*="mantine-"]):focus-visible {
 
   .acp-subtitle {
     max-width: 42vw;
+  }
+
+  .acp-payload-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .acp-payload-row dt {
+    font-size: 11px;
   }
 }
