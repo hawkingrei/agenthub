@@ -26,6 +26,10 @@ use super::codec::{
 };
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
+const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
+const RELAY_TIMEOUT_MIN_MS: u64 = 100;
+const RELAY_TIMEOUT_MAX_MS: u64 = 60_000;
+
 #[derive(Debug, Clone, Copy)]
 pub struct TeamRemoteRelayWorkerSettings {
     pub poll_interval_secs: i64,
@@ -196,9 +200,21 @@ struct TeamRemoteRelayAdapter {
 
 impl TeamRemoteRelayAdapter {
     fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
+        let client = reqwest::Client::builder()
+            .pool_max_idle_per_host(32)
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .danger_accept_invalid_certs(false)
+            .build()
+            .unwrap_or_else(|err| {
+                tracing::warn!(
+                    "build relay client failed, fallback to default client: {}",
+                    err
+                );
+                reqwest::Client::new()
+            });
+        Self { client }
     }
 }
 
@@ -268,12 +284,17 @@ impl ActorMessageRelay for TeamRemoteRelayAdapter {
             .request(method, url)
             .header(header::CONTENT_TYPE, "application/json")
             .body(payload_bytes.clone());
-        if let Some(timeout_ms) = route.route.timeout_ms {
-            request = request.timeout(Duration::from_millis(timeout_ms.clamp(100, 60_000)));
-        }
+        request = request.timeout(Duration::from_millis(relay_timeout_ms(
+            route.route.timeout_ms,
+        )));
         request = apply_route_headers(request, &route.route.headers)?;
         request = apply_route_auth(request, route.route.auth.as_ref())?;
-        request = apply_route_signing(request, route.route.signing.as_ref(), &payload_bytes)?;
+        request = apply_route_signing(
+            request,
+            route.route.signing.as_ref(),
+            &payload_bytes,
+            message.message_id,
+        )?;
 
         let response = request.send().await.map_err(|err| {
             if err.is_builder() {
@@ -373,20 +394,56 @@ fn parse_route_method(
     ))
 }
 
+fn relay_timeout_ms(timeout_ms: Option<u64>) -> u64 {
+    timeout_ms
+        .unwrap_or(RELAY_DEFAULT_TIMEOUT_MS)
+        .clamp(RELAY_TIMEOUT_MIN_MS, RELAY_TIMEOUT_MAX_MS)
+}
+
+fn parse_route_header_name(
+    name: &str,
+) -> Result<header::HeaderName, ActorRelayError<TeamRemoteRelayError>> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(ActorRelayError::permanent(
+            TeamRemoteRelayError::InvalidRoute(
+                "route.headers contains empty header name".to_string(),
+            ),
+        ));
+    }
+    header::HeaderName::from_bytes(trimmed.as_bytes()).map_err(|_| {
+        ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(format!(
+            "route.headers contains invalid header name '{}'",
+            trimmed
+        )))
+    })
+}
+
+fn parse_route_header_value(
+    value: &str,
+) -> Result<header::HeaderValue, ActorRelayError<TeamRemoteRelayError>> {
+    if value.chars().any(|ch| ch == '\r' || ch == '\n') {
+        return Err(ActorRelayError::permanent(
+            TeamRemoteRelayError::InvalidRoute(
+                "route.headers contains invalid control characters in header value".to_string(),
+            ),
+        ));
+    }
+    header::HeaderValue::from_str(value).map_err(|_| {
+        ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(
+            "route.headers contains invalid header value".to_string(),
+        ))
+    })
+}
+
 fn apply_route_headers(
     mut request: reqwest::RequestBuilder,
     headers: &HashMap<String, String>,
 ) -> Result<reqwest::RequestBuilder, ActorRelayError<TeamRemoteRelayError>> {
     for (name, value) in headers {
-        let key = name.trim();
-        if key.is_empty() {
-            return Err(ActorRelayError::permanent(
-                TeamRemoteRelayError::InvalidRoute(
-                    "route.headers contains empty header name".to_string(),
-                ),
-            ));
-        }
-        request = request.header(key, value);
+        let key = parse_route_header_name(name)?;
+        let parsed = parse_route_header_value(value)?;
+        request = request.header(key, parsed);
     }
     Ok(request)
 }
@@ -409,13 +466,11 @@ fn apply_route_auth(
             request = request.bearer_auth(token);
         }
         RemoteRelayAuthValue::Header { name, value } => {
-            let name = name.trim();
-            if name.is_empty() {
-                return Err(ActorRelayError::permanent(
-                    TeamRemoteRelayError::InvalidAuth,
-                ));
-            }
-            request = request.header(name, value);
+            let header_name = header::HeaderName::from_bytes(name.trim().as_bytes())
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidAuth))?;
+            let header_value = parse_route_header_value(value)
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidAuth))?;
+            request = request.header(header_name, header_value);
         }
         RemoteRelayAuthValue::Basic { username, password } => {
             if username.trim().is_empty() {
@@ -433,6 +488,7 @@ fn apply_route_signing(
     mut request: reqwest::RequestBuilder,
     signing: Option<&RemoteRelaySigningValue>,
     payload_bytes: &[u8],
+    message_id: i64,
 ) -> Result<reqwest::RequestBuilder, ActorRelayError<TeamRemoteRelayError>> {
     let Some(signing) = signing else {
         return Ok(request);
@@ -453,6 +509,9 @@ fn apply_route_signing(
             let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
                 .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidSigning))?;
             let timestamp = Utc::now().timestamp().to_string();
+            let message_id_text = message_id.to_string();
+            mac.update(message_id_text.as_bytes());
+            mac.update(b".");
             mac.update(timestamp.as_bytes());
             mac.update(b".");
             mac.update(payload_bytes);
@@ -467,8 +526,16 @@ fn apply_route_signing(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .unwrap_or("X-AgentHub-Timestamp");
-            request = request.header(header_name, format!("hmac-sha256={signature}"));
-            request = request.header(ts_header_name, timestamp);
+            let msg_id_header_name = "X-AgentHub-Message-Id";
+            let signature_header = parse_route_header_name(header_name)
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidSigning))?;
+            let timestamp_header = parse_route_header_name(ts_header_name)
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidSigning))?;
+            let message_id_header = parse_route_header_name(msg_id_header_name)
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidSigning))?;
+            request = request.header(signature_header, format!("hmac-sha256={signature}"));
+            request = request.header(timestamp_header, timestamp);
+            request = request.header(message_id_header, message_id_text);
         }
     }
     Ok(request)
@@ -976,5 +1043,37 @@ fn map_actor_mailbox_store_error(
                 anyhow::Error::new(SqlActorMailboxStoreError::IdempotencyConflict)
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS,
+        parse_route_header_name, parse_route_header_value, relay_timeout_ms,
+    };
+
+    #[test]
+    fn relay_timeout_ms_defaults_and_clamps() {
+        assert_eq!(relay_timeout_ms(None), RELAY_DEFAULT_TIMEOUT_MS);
+        assert_eq!(relay_timeout_ms(Some(1)), RELAY_TIMEOUT_MIN_MS);
+        assert_eq!(
+            relay_timeout_ms(Some(RELAY_TIMEOUT_MAX_MS + 1000)),
+            RELAY_TIMEOUT_MAX_MS
+        );
+    }
+
+    #[test]
+    fn parse_route_header_name_rejects_empty_and_invalid() {
+        assert!(parse_route_header_name(" ").is_err());
+        assert!(parse_route_header_name("bad space").is_err());
+        assert!(parse_route_header_name("x-agenthub-header").is_ok());
+    }
+
+    #[test]
+    fn parse_route_header_value_rejects_control_chars() {
+        assert!(parse_route_header_value("ok-value").is_ok());
+        assert!(parse_route_header_value("bad\nvalue").is_err());
+        assert!(parse_route_header_value("bad\rvalue").is_err());
     }
 }

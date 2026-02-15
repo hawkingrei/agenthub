@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -144,43 +145,63 @@ impl TeamOrchestratorWorker {
             if steps.is_empty() {
                 continue;
             }
-            self.reconcile_working_steps(&run.id, &steps, &mut summary)
+            let reconciled = self
+                .reconcile_working_steps(&run.id, &steps, &mut summary)
                 .await?;
-            steps = self.teams.list_steps(&run.id).await?;
-            if steps.is_empty() {
-                continue;
+            if reconciled {
+                steps = self.teams.list_steps(&run.id).await?;
+                if steps.is_empty() {
+                    continue;
+                }
             }
-            let status_by_key: HashMap<String, TeamStepStatus> = steps
-                .iter()
-                .map(|step| (step.step_key.clone(), step.status.clone()))
-                .collect();
 
-            for step in steps {
+            loop {
                 if summary.dispatched as usize >= max_dispatch {
                     break;
                 }
-                if step.status != TeamStepStatus::Submitted {
-                    continue;
-                }
-                summary.scanned += 1;
-                if !is_step_ready(&step, &status_by_key) {
-                    continue;
-                }
-                match self.dispatch_step(&run.id, &step).await {
-                    Ok(()) => {
-                        summary.dispatched += 1;
+                let status_by_key: HashMap<String, TeamStepStatus> = steps
+                    .iter()
+                    .map(|step| (step.step_key.clone(), step.status.clone()))
+                    .collect();
+                let mut dispatched_in_pass = false;
+
+                for step in &steps {
+                    if summary.dispatched as usize >= max_dispatch {
+                        break;
                     }
-                    Err(err) => {
-                        summary.failed += 1;
-                        tracing::warn!(
-                            run_id = %run.id,
-                            step_id = %step.id,
-                            step_key = %step.step_key,
-                            member_id = %step.member_id,
-                            "team orchestrator dispatch failed: {}",
-                            err
-                        );
+                    if step.status != TeamStepStatus::Submitted {
+                        continue;
                     }
+                    summary.scanned += 1;
+                    if !is_step_ready(step, &status_by_key) {
+                        continue;
+                    }
+                    match self.dispatch_step(&run.id, step).await {
+                        Ok(()) => {
+                            summary.dispatched += 1;
+                            dispatched_in_pass = true;
+                            break;
+                        }
+                        Err(err) => {
+                            summary.failed += 1;
+                            tracing::warn!(
+                                run_id = %run.id,
+                                step_id = %step.id,
+                                step_key = %step.step_key,
+                                member_id = %step.member_id,
+                                "team orchestrator dispatch failed: {}",
+                                err
+                            );
+                        }
+                    }
+                }
+
+                if !dispatched_in_pass {
+                    break;
+                }
+                steps = self.teams.list_steps(&run.id).await?;
+                if steps.is_empty() {
+                    break;
                 }
             }
         }
@@ -192,7 +213,8 @@ impl TeamOrchestratorWorker {
         run_id: &str,
         steps: &[TeamStepRecord],
         summary: &mut TeamOrchestratorDispatchSummary,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
+        let mut changed = false;
         for step in steps {
             if !matches!(
                 step.status,
@@ -212,6 +234,7 @@ impl TeamOrchestratorWorker {
                 let completed = self.teams.complete_step(&step.id, None).await?;
                 if completed.status == TeamStepStatus::Completed {
                     summary.reconciled_completed += 1;
+                    changed = true;
                     tracing::debug!(
                         run_id = %run_id,
                         step_id = %completed.id,
@@ -231,6 +254,7 @@ impl TeamOrchestratorWorker {
                 let failed = self.teams.fail_step(&step.id, &err_text).await?;
                 if failed.status == TeamStepStatus::Failed {
                     summary.reconciled_failed += 1;
+                    changed = true;
                     tracing::debug!(
                         run_id = %run_id,
                         step_id = %failed.id,
@@ -242,7 +266,7 @@ impl TeamOrchestratorWorker {
                 }
             }
         }
-        Ok(())
+        Ok(changed)
     }
 
     async fn bootstrap_run_steps_if_needed(&self, run: &TeamRunRecord) -> anyhow::Result<()> {
@@ -261,7 +285,13 @@ impl TeamOrchestratorWorker {
                     step_spec.depends_on,
                     None,
                 )
-                .await?;
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to bootstrap step '{}' for run '{}'",
+                        step_spec.step_key, run.id
+                    )
+                })?;
         }
         Ok(())
     }
@@ -295,7 +325,24 @@ impl TeamOrchestratorWorker {
                 return Err(err.context(err_text));
             }
         };
-        let started = self.teams.start_step(&step.id, Some(&session_id)).await?;
+        let started = match self.teams.start_step(&step.id, Some(&session_id)).await {
+            Ok(started) => started,
+            Err(err) => {
+                if let Err(stop_err) = self.agent_starter.stop_member_agent(&step.member_id).await {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        step_id = %step.id,
+                        member_id = %step.member_id,
+                        "team orchestrator failed to stop member agent after start_step error: {}",
+                        stop_err
+                    );
+                }
+                return Err(err.context(format!(
+                    "failed to start step '{}' for run '{}'",
+                    step.step_key, run_id
+                )));
+            }
+        };
         if started.status != TeamStepStatus::Working {
             if let Err(err) = self.agent_starter.stop_member_agent(&step.member_id).await {
                 tracing::warn!(
@@ -350,6 +397,7 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
             return Err(anyhow::anyhow!("spec.steps must not be empty"));
         }
         let mut out = Vec::with_capacity(steps.len());
+        let mut step_keys = HashSet::with_capacity(steps.len());
         for step in steps {
             let step = step
                 .as_object()
@@ -361,6 +409,12 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow::anyhow!("spec.steps[].step_key is required"))?
                 .to_string();
+            if !step_keys.insert(step_key.clone()) {
+                return Err(anyhow::anyhow!(
+                    "spec.steps contains duplicated step_key '{}'",
+                    step_key
+                ));
+            }
             let member_id = step
                 .get("member_id")
                 .and_then(Value::as_str)
@@ -386,6 +440,24 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
                 depends_on,
             });
         }
+        if !step_keys.contains(entrypoint) {
+            return Err(anyhow::anyhow!(
+                "spec.entrypoint '{}' must exist in spec.steps[].step_key",
+                entrypoint
+            ));
+        }
+        for step in &out {
+            for dep in &step.depends_on {
+                if !step_keys.contains(dep) {
+                    return Err(anyhow::anyhow!(
+                        "spec.steps dependency '{}' referenced by '{}' does not exist",
+                        dep,
+                        step.step_key
+                    ));
+                }
+            }
+        }
+        ensure_acyclic_step_specs(&out)?;
         return Ok(out);
     }
 
@@ -394,6 +466,64 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
         member_id: entrypoint.to_string(),
         depends_on: Vec::new(),
     }])
+}
+
+fn ensure_acyclic_step_specs(step_specs: &[OrchestratorStepSpec]) -> anyhow::Result<()> {
+    let by_key: HashMap<&str, &OrchestratorStepSpec> = step_specs
+        .iter()
+        .map(|step| (step.step_key.as_str(), step))
+        .collect();
+    let mut permanent = HashSet::with_capacity(step_specs.len());
+    let mut temporary = HashSet::with_capacity(step_specs.len());
+    let mut stack = Vec::new();
+    for step in step_specs {
+        if permanent.contains(step.step_key.as_str()) {
+            continue;
+        }
+        detect_cycle_dfs(
+            step.step_key.as_str(),
+            &by_key,
+            &mut permanent,
+            &mut temporary,
+            &mut stack,
+        )?;
+    }
+    Ok(())
+}
+
+fn detect_cycle_dfs<'a>(
+    current: &'a str,
+    by_key: &HashMap<&'a str, &'a OrchestratorStepSpec>,
+    permanent: &mut HashSet<&'a str>,
+    temporary: &mut HashSet<&'a str>,
+    stack: &mut Vec<&'a str>,
+) -> anyhow::Result<()> {
+    if permanent.contains(current) {
+        return Ok(());
+    }
+    if !temporary.insert(current) {
+        let start = stack.iter().position(|item| *item == current).unwrap_or(0);
+        let mut cycle = stack[start..].to_vec();
+        cycle.push(current);
+        return Err(anyhow::anyhow!(
+            "spec.steps contains dependency cycle: {}",
+            cycle.join(" -> ")
+        ));
+    }
+
+    stack.push(current);
+    let step = by_key
+        .get(current)
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("missing step spec for '{}'", current))?;
+    for dep in &step.depends_on {
+        detect_cycle_dfs(dep.as_str(), by_key, permanent, temporary, stack)?;
+    }
+    stack.pop();
+
+    temporary.remove(current);
+    permanent.insert(current);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -470,6 +600,53 @@ mod tests {
         assert_eq!(specs[0].step_key, "planner");
         assert_eq!(specs[0].member_id, "planner");
         assert!(specs[0].depends_on.is_empty());
+    }
+
+    #[test]
+    fn parse_step_specs_rejects_missing_dependency() {
+        let err = parse_step_specs(&json!({
+            "entrypoint":"step_plan",
+            "steps":[
+                {"step_key":"step_plan","member_id":"planner","depends_on":["missing_step"]}
+            ]
+        }))
+        .expect_err("missing dependency should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("does not exist"),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn parse_step_specs_rejects_dependency_cycle() {
+        let err = parse_step_specs(&json!({
+            "entrypoint":"a",
+            "steps":[
+                {"step_key":"a","member_id":"planner","depends_on":["c"]},
+                {"step_key":"b","member_id":"reviewer","depends_on":["a"]},
+                {"step_key":"c","member_id":"writer","depends_on":["b"]}
+            ]
+        }))
+        .expect_err("cyclic dependency should be rejected");
+        let message = err.to_string();
+        assert!(message.contains("cycle"), "unexpected error: {message}");
+    }
+
+    #[test]
+    fn parse_step_specs_rejects_entrypoint_not_in_steps() {
+        let err = parse_step_specs(&json!({
+            "entrypoint":"not_present",
+            "steps":[
+                {"step_key":"step_plan","member_id":"planner"}
+            ]
+        }))
+        .expect_err("entrypoint should be part of steps");
+        let message = err.to_string();
+        assert!(
+            message.contains("spec.entrypoint"),
+            "unexpected error: {message}"
+        );
     }
 
     #[test]
@@ -855,6 +1032,56 @@ mod tests {
         assert!(
             message.contains("transitioned"),
             "unexpected dispatch error: {message}"
+        );
+        assert_eq!(starter.calls().len(), 1);
+        assert_eq!(starter.stop_calls(), vec!["planner".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn dispatch_step_stops_member_when_start_step_returns_error() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-start-step-error-team".to_string(),
+                description: Some("team for dispatch start_step error handling".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-start-step-error"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        sqlx::query("DROP TABLE team_steps")
+            .execute(&db)
+            .await
+            .expect("drop team_steps to force start_step error");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let err = worker
+            .dispatch_step(&run.id, &step)
+            .await
+            .expect_err("dispatch step should fail when start_step returns error");
+        let message = err.to_string();
+        assert!(
+            message.contains("failed to start step"),
+            "unexpected error: {message}"
         );
         assert_eq!(starter.calls().len(), 1);
         assert_eq!(starter.stop_calls(), vec!["planner".to_string()]);

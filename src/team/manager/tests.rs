@@ -933,6 +933,10 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
         captured[0].headers.contains_key("x-agenthub-timestamp"),
         "missing signature timestamp header"
     );
+    assert_eq!(
+        captured[0].headers.get("x-agenthub-message-id"),
+        Some(&sent.message_id.to_string())
+    );
     assert_eq!(captured[0].body["run_id"], run.id);
     assert_eq!(captured[0].body["from_actor_id"], "planner");
     assert_eq!(captured[0].body["to_actor_id"], "remote-reviewer");
@@ -1096,6 +1100,90 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
 
     retry_server_handle.abort();
     dead_server_handle.abort();
+}
+
+#[tokio::test]
+async fn remote_actor_messages_relay_rejects_invalid_header_values() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let (endpoint, captures, server_handle) = spawn_relay_http_server(StatusCode::OK).await;
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-relay-invalid-header-team".to_string(),
+            description: Some("team for invalid relay header validation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-relay-invalid-header"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = manager
+        .send_actor_message(
+            &run.id,
+            "planner",
+            "remote-reviewer",
+            "coordination",
+            TeamActorMessageTransport::Remote,
+            Some(json!({
+                "endpoint": endpoint,
+                "method": "POST",
+                "headers": {
+                    "x-agenthub-relay-test": "bad\nvalue"
+                }
+            })),
+            json!({"text":"review this"}),
+            None,
+        )
+        .await
+        .expect("send remote message");
+    assert_eq!(sent.status, TeamActorMessageStatus::Pending);
+
+    let relay_result = manager
+        .relay_remote_messages_once(100, 3, 30)
+        .await
+        .expect("relay remote messages");
+    assert_eq!(relay_result.scanned, 1);
+    assert_eq!(relay_result.delivered, 0);
+    assert_eq!(relay_result.retried, 0);
+    assert_eq!(relay_result.dead_lettered, 1);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT status, relay_last_error
+        FROM team_actor_messages
+        WHERE id = ?1
+        "#,
+    )
+    .bind(sent.message_id)
+    .fetch_one(&db)
+    .await
+    .expect("fetch relay row");
+    let status: String = rows.get("status");
+    let relay_last_error: Option<String> = rows.try_get("relay_last_error").ok();
+    assert_eq!(status, "dead_letter");
+    assert!(
+        relay_last_error
+            .as_deref()
+            .is_some_and(|text| text.contains("invalid")),
+        "unexpected relay error: {:?}",
+        relay_last_error
+    );
+
+    let captured = captures.lock().await;
+    assert!(captured.is_empty());
+    drop(captured);
+    server_handle.abort();
 }
 
 #[tokio::test]
