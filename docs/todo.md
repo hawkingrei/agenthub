@@ -66,7 +66,7 @@
 - [x] Implement remote mailbox relay worker (`transport=remote`) with delivery retry/dead-letter policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
 - [x] Move actor mailbox state machine from `src/team/manager.rs` into `crates/agenthub-team-actor` using trait-based store/relay ports (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
 - [x] Add relay port in `agenthub-team-actor` and implement remote transport worker adapter in AgentHub (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
-- [ ] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [x] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-15-a2a-team-remote-relay-network-adapter.md`).
 - [ ] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-13-team-module-file-split.md`).
 - [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
 - [ ] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-13-agent-manager-file-split.md`).

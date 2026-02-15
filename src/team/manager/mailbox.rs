@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,8 +9,13 @@ use agenthub_team_actor::{
     RelayRemotePendingResult, SendActorMessageCommand, actor_message_fingerprint,
 };
 use async_trait::async_trait;
+use base64::encode_config;
 use chrono::Utc;
+use hmac::{Hmac, Mac};
+use reqwest::{Method, Url, header};
+use serde::Deserialize;
 use serde_json::Value;
+use sha2::Sha256;
 use sqlx::{Row, Sqlite, SqlitePool};
 use thiserror::Error;
 
@@ -160,7 +166,7 @@ impl TeamManager {
     ) -> anyhow::Result<RelayRemotePendingResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let relay = TeamRemoteRelayAdapter;
+        let relay = TeamRemoteRelayAdapter::new();
         let result = mailbox
             .relay_remote_pending(
                 &relay,
@@ -183,19 +189,43 @@ impl TeamManager {
     }
 }
 
-#[derive(Clone, Copy)]
-struct TeamRemoteRelayAdapter;
+#[derive(Clone)]
+struct TeamRemoteRelayAdapter {
+    client: reqwest::Client,
+}
+
+impl TeamRemoteRelayAdapter {
+    fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 enum TeamRemoteRelayError {
+    #[error("route is required for remote relay")]
+    MissingRoute,
     #[error("route.endpoint is required for remote relay")]
     MissingEndpoint,
-    #[error("simulated retryable relay failure for endpoint {0}")]
-    SimulatedRetryable(String),
-    #[error("simulated permanent relay failure for endpoint {0}")]
-    SimulatedPermanent(String),
-    #[error("relay adapter is not configured for endpoint {0}")]
-    UnconfiguredEndpoint(String),
+    #[error("route.endpoint must be a valid http/https URL")]
+    InvalidEndpoint,
+    #[error("route.method is invalid or not supported: {0}")]
+    UnsupportedMethod(String),
+    #[error("route.auth is invalid")]
+    InvalidAuth,
+    #[error("route.signing is invalid")]
+    InvalidSigning,
+    #[error("route payload is invalid: {0}")]
+    InvalidRoute(String),
+    #[error("request build failed: {0}")]
+    RequestBuild(String),
+    #[error("relay request failed: {0}")]
+    RequestTransport(String),
+    #[error("relay got retryable response status={status} body={body}")]
+    RetryableHttpResponse { status: u16, body: String },
+    #[error("relay got permanent response status={status} body={body}")]
+    PermanentHttpResponse { status: u16, body: String },
 }
 
 #[async_trait]
@@ -206,34 +236,256 @@ impl ActorMessageRelay for TeamRemoteRelayAdapter {
         &self,
         message: &TeamActorMessageRecord,
     ) -> Result<(), ActorRelayError<Self::Error>> {
-        let endpoint = message
-            .route
-            .as_ref()
-            .and_then(|route| route.get("endpoint"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| ActorRelayError::permanent(TeamRemoteRelayError::MissingEndpoint))?;
+        let route = parse_remote_route(
+            message
+                .route
+                .as_ref()
+                .ok_or_else(|| ActorRelayError::permanent(TeamRemoteRelayError::MissingRoute))?,
+        )?;
 
-        // Deterministic mock endpoints keep relay policy tests stable without network calls.
-        if endpoint.starts_with("mock://ok") {
+        let endpoint = route.route.endpoint.trim().to_string();
+        if endpoint.is_empty() {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::MissingEndpoint,
+            ));
+        }
+        let url = Url::parse(&endpoint)
+            .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidEndpoint))?;
+        if !(url.scheme() == "http" || url.scheme() == "https") {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidEndpoint,
+            ));
+        }
+
+        let method = parse_route_method(route.route.method.as_deref())?;
+        let envelope = build_remote_relay_envelope(message);
+        let payload_bytes = serde_json::to_vec(&envelope).map_err(|err| {
+            ActorRelayError::permanent(TeamRemoteRelayError::RequestBuild(err.to_string()))
+        })?;
+
+        let mut request = self
+            .client
+            .request(method, url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(payload_bytes.clone());
+        if let Some(timeout_ms) = route.route.timeout_ms {
+            request = request.timeout(Duration::from_millis(timeout_ms.clamp(100, 60_000)));
+        }
+        request = apply_route_headers(request, &route.route.headers)?;
+        request = apply_route_auth(request, route.route.auth.as_ref())?;
+        request = apply_route_signing(request, route.route.signing.as_ref(), &payload_bytes)?;
+
+        let response = request.send().await.map_err(|err| {
+            if err.is_builder() {
+                return ActorRelayError::permanent(TeamRemoteRelayError::RequestBuild(
+                    err.to_string(),
+                ));
+            }
+            ActorRelayError::retryable(TeamRemoteRelayError::RequestTransport(err.to_string()))
+        })?;
+
+        let status = response.status();
+        if status.is_success() {
             return Ok(());
         }
-        if endpoint.starts_with("mock://retry") {
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<body-read-error>".to_string());
+        let body_preview = body.chars().take(256).collect::<String>();
+        if status.as_u16() == 429 || status.is_server_error() {
             return Err(ActorRelayError::retryable(
-                TeamRemoteRelayError::SimulatedRetryable(endpoint.to_string()),
+                TeamRemoteRelayError::RetryableHttpResponse {
+                    status: status.as_u16(),
+                    body: body_preview,
+                },
             ));
         }
-        if endpoint.starts_with("mock://dead") {
-            return Err(ActorRelayError::permanent(
-                TeamRemoteRelayError::SimulatedPermanent(endpoint.to_string()),
-            ));
-        }
-
-        Err(ActorRelayError::retryable(
-            TeamRemoteRelayError::UnconfiguredEndpoint(endpoint.to_string()),
+        Err(ActorRelayError::permanent(
+            TeamRemoteRelayError::PermanentHttpResponse {
+                status: status.as_u16(),
+                body: body_preview,
+            },
         ))
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteRelayRouteValue {
+    endpoint: String,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    headers: HashMap<String, String>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    auth: Option<RemoteRelayAuthValue>,
+    #[serde(default)]
+    signing: Option<RemoteRelaySigningValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum RemoteRelayAuthValue {
+    Bearer { token: String },
+    Header { name: String, value: String },
+    Basic { username: String, password: String },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum RemoteRelaySigningValue {
+    HmacSha256 {
+        secret: String,
+        #[serde(default)]
+        header: Option<String>,
+        #[serde(default)]
+        timestamp_header: Option<String>,
+    },
+}
+
+struct ParsedRemoteRelayRoute {
+    route: RemoteRelayRouteValue,
+}
+
+fn parse_remote_route(
+    route: &Value,
+) -> Result<ParsedRemoteRelayRoute, ActorRelayError<TeamRemoteRelayError>> {
+    let parsed = serde_json::from_value::<RemoteRelayRouteValue>(route.clone()).map_err(|err| {
+        ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(err.to_string()))
+    })?;
+    Ok(ParsedRemoteRelayRoute { route: parsed })
+}
+
+fn parse_route_method(
+    method: Option<&str>,
+) -> Result<Method, ActorRelayError<TeamRemoteRelayError>> {
+    let raw = method.unwrap_or("POST").trim();
+    let parsed = Method::from_bytes(raw.as_bytes()).map_err(|_| {
+        ActorRelayError::permanent(TeamRemoteRelayError::UnsupportedMethod(raw.to_string()))
+    })?;
+    if matches!(parsed, Method::POST | Method::PUT | Method::PATCH) {
+        return Ok(parsed);
+    }
+    Err(ActorRelayError::permanent(
+        TeamRemoteRelayError::UnsupportedMethod(raw.to_string()),
+    ))
+}
+
+fn apply_route_headers(
+    mut request: reqwest::RequestBuilder,
+    headers: &HashMap<String, String>,
+) -> Result<reqwest::RequestBuilder, ActorRelayError<TeamRemoteRelayError>> {
+    for (name, value) in headers {
+        let key = name.trim();
+        if key.is_empty() {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidRoute(
+                    "route.headers contains empty header name".to_string(),
+                ),
+            ));
+        }
+        request = request.header(key, value);
+    }
+    Ok(request)
+}
+
+fn apply_route_auth(
+    mut request: reqwest::RequestBuilder,
+    auth: Option<&RemoteRelayAuthValue>,
+) -> Result<reqwest::RequestBuilder, ActorRelayError<TeamRemoteRelayError>> {
+    let Some(auth) = auth else {
+        return Ok(request);
+    };
+    match auth {
+        RemoteRelayAuthValue::Bearer { token } => {
+            let token = token.trim();
+            if token.is_empty() {
+                return Err(ActorRelayError::permanent(
+                    TeamRemoteRelayError::InvalidAuth,
+                ));
+            }
+            request = request.bearer_auth(token);
+        }
+        RemoteRelayAuthValue::Header { name, value } => {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(ActorRelayError::permanent(
+                    TeamRemoteRelayError::InvalidAuth,
+                ));
+            }
+            request = request.header(name, value);
+        }
+        RemoteRelayAuthValue::Basic { username, password } => {
+            if username.trim().is_empty() {
+                return Err(ActorRelayError::permanent(
+                    TeamRemoteRelayError::InvalidAuth,
+                ));
+            }
+            request = request.basic_auth(username, Some(password));
+        }
+    }
+    Ok(request)
+}
+
+fn apply_route_signing(
+    mut request: reqwest::RequestBuilder,
+    signing: Option<&RemoteRelaySigningValue>,
+    payload_bytes: &[u8],
+) -> Result<reqwest::RequestBuilder, ActorRelayError<TeamRemoteRelayError>> {
+    let Some(signing) = signing else {
+        return Ok(request);
+    };
+    match signing {
+        RemoteRelaySigningValue::HmacSha256 {
+            secret,
+            header,
+            timestamp_header,
+        } => {
+            let secret = secret.trim();
+            if secret.is_empty() {
+                return Err(ActorRelayError::permanent(
+                    TeamRemoteRelayError::InvalidSigning,
+                ));
+            }
+            type HmacSha256 = Hmac<Sha256>;
+            let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+                .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidSigning))?;
+            let timestamp = Utc::now().timestamp().to_string();
+            mac.update(timestamp.as_bytes());
+            mac.update(b".");
+            mac.update(payload_bytes);
+            let signature = encode_config(mac.finalize().into_bytes(), base64::STANDARD);
+            let header_name = header
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("X-AgentHub-Signature");
+            let ts_header_name = timestamp_header
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("X-AgentHub-Timestamp");
+            request = request.header(header_name, format!("hmac-sha256={signature}"));
+            request = request.header(ts_header_name, timestamp);
+        }
+    }
+    Ok(request)
+}
+
+fn build_remote_relay_envelope(message: &TeamActorMessageRecord) -> Value {
+    serde_json::json!({
+        "schema_version": 1,
+        "message_id": message.message_id,
+        "run_id": &message.run_id,
+        "from_actor_id": &message.from_actor_id,
+        "to_actor_id": &message.to_actor_id,
+        "channel": &message.channel,
+        "transport": message.transport.as_str(),
+        "created_at": message.created_at,
+        "payload": &message.payload,
+    })
 }
 
 #[derive(Clone)]
