@@ -10,9 +10,46 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use super::codec::{is_acp_message, is_dir_empty, stream_to_str};
-use super::{AgentHandle, AgentManager};
+use super::{AgentHandle, AgentManager, normalize_path};
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
 use crate::push::PushService;
+
+async fn repo_contains_worktree_path(repo: &str, workdir: &str) -> anyhow::Result<bool> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("worktree")
+        .arg("list")
+        .arg("--porcelain")
+        .output()
+        .await?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let reason = stderr.trim();
+        if reason.is_empty() {
+            anyhow::bail!("git worktree list failed");
+        }
+        anyhow::bail!("git worktree list failed: {reason}");
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(worktree_list_contains_path(&stdout, workdir))
+}
+
+fn worktree_list_contains_path(stdout: &str, workdir: &str) -> bool {
+    let target = normalize_worktree_path(workdir);
+    stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .map(normalize_worktree_path)
+        .any(|candidate| candidate == target)
+}
+
+fn normalize_worktree_path(path: &str) -> String {
+    let canonical = std::fs::canonicalize(path)
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string());
+    normalize_path(&canonical)
+}
 
 impl AgentManager {
     pub(super) async fn emit_run_status(
@@ -313,6 +350,17 @@ impl AgentManager {
                 }
                 let workdir_path = Path::new(workdir);
                 if workdir_path.exists() && !is_dir_empty(workdir_path)? {
+                    if repo_contains_worktree_path(repo, workdir).await? {
+                        let detail = format!(
+                            "agent_id={}, mode=create_worktree, repo={}, workdir={}, source=existing_worktree",
+                            agent.id, repo, workdir
+                        );
+                        let _ = self
+                            .auth
+                            .record_audit(None, None, "worktree_reuse", Some(&detail), None, None)
+                            .await;
+                        return Ok(());
+                    }
                     let detail = format!(
                         "agent_id={}, mode=create_worktree, repo={}, workdir={}, error=workdir not empty",
                         agent.id, repo, workdir
@@ -447,5 +495,40 @@ impl AgentManager {
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::worktree_list_contains_path;
+
+    #[test]
+    fn worktree_list_contains_path_matches_normalized_paths() {
+        let stdout = r#"
+worktree /tmp/repo
+HEAD 0000000000000000000000000000000000000000
+branch refs/heads/main
+
+worktree /tmp/repo/worktrees/agent-a
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/agent-a
+"#;
+        assert!(worktree_list_contains_path(
+            stdout,
+            "/tmp/repo/worktrees/agent-a/",
+        ));
+    }
+
+    #[test]
+    fn worktree_list_contains_path_rejects_unknown_paths() {
+        let stdout = r#"
+worktree /tmp/repo
+HEAD 0000000000000000000000000000000000000000
+branch refs/heads/main
+"#;
+        assert!(!worktree_list_contains_path(
+            stdout,
+            "/tmp/repo/worktrees/missing",
+        ));
     }
 }
