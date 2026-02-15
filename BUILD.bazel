@@ -38,6 +38,7 @@ workspace_shell_test(
     name = "rust_test",
     tool = "//:bazel/ci/rust_test.sh",
     data = [":workspace_sources"],
+    timeout = "long",
 )
 
 workspace_shell_test(

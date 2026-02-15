@@ -106,6 +106,7 @@
 - [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
 - [x] Canonicalize default actor CLI path so Bazel/macOS path aliases (`/var` vs `/private/var`) do not break actor-runtime API tests (see `docs/features/2026-02-15-bazel-actor-cli-path-canonicalization.md`).
 - [x] Make local Bazel shell wrappers resolve `npm`/`cargo` on macOS and fallback to writable Cargo home so `bazel build //...` works without custom env flags (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
+- [x] Raise Bazel `rust_test` timeout to `long` so CI does not fail at 300s while tests are still progressing (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).

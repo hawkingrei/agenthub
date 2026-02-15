@@ -20,6 +20,7 @@ fail with permission errors.
 
 ## Scope
 
+- `BUILD.bazel`
 - `bazel/ci/web_build.sh`
 - `bazel/ci/web_test.sh`
 - `bazel/ci/rust_build.sh`
@@ -40,11 +41,19 @@ fail with permission errors.
    - if detected `CARGO_HOME` is not writable, auto-fallback to a temp dir in
      `${TMPDIR:-/tmp}` so Rust build/test can proceed inside restricted action
      sandboxes.
+4. Set Bazel target timeout for `//:rust_test` to `long` in `BUILD.bazel`:
+   - CI showed Rust tests completing around 298s; default 300s timeout caused
+     flaky timeout failures even when all test cases were passing.
 
 ## Validation
 
 ```bash
 USE_BAZEL_VERSION=9.0.0 bazel --output_user_root=/tmp/agenthub-bazel-root-check6 build --repository_cache=/tmp/agenthub-bazel-repo-cache-check6 --disk_cache=/tmp/agenthub-bazel-disk-cache-check6 //...
+USE_BAZEL_VERSION=9.0.0 bazel --output_user_root=/tmp/agenthub-bazel-root-ci-timeout-fix test --repository_cache=/tmp/agenthub-bazel-repo-cache-ci-timeout-fix --disk_cache=/tmp/agenthub-bazel-disk-cache-ci-timeout-fix --test_output=errors //:ci_tests
 ```
 
-Observed result: `INFO: Build completed successfully` with `Found 6 targets`.
+Observed results:
+
+- `bazel build //...`: `INFO: Build completed successfully` (`Found 6 targets`)
+- `bazel test //:ci_tests`: `2 tests pass` with `//:rust_test` completing in
+  ~298s (no timeout)
