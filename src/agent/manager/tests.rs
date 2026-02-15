@@ -1,8 +1,9 @@
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
-    acp_provider_for_agent_with_binary, default_actor_cli_path, expand_tilde, is_path_allowed,
-    normalize_path, status_from_str, status_to_str, stream_from_str, stream_to_str,
+    acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
+    status_from_str, status_to_str, stream_from_str, stream_to_str,
 };
+use crate::actor_runtime::default_actor_cli_path;
 use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -109,6 +110,6 @@ fn acp_provider_for_agent_requires_expected_args() {
 
 #[test]
 fn default_actor_cli_path_returns_non_empty_value() {
-    let path = default_actor_cli_path();
+    let path = default_actor_cli_path().expect("resolve default actor cli path");
     assert!(!path.trim().is_empty());
 }

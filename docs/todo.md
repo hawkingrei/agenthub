@@ -54,6 +54,10 @@
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
 - [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
 - [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Harden `actor_runtime.actor_cli_path` with strict default-binary allow-list validation and shared normalization helpers across API/agent/orchestrator (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Prevent actor-context starts from silently reusing already-running sessions; return conflict semantics for HTTP start requests (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Treat orchestrator dispatch as failed when `start_step` does not enter `working`, with best-effort member stop cleanup (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [ ] Verify concurrent manual step mutations do not leave orphan member sessions when orchestrator dispatch races step-state transitions (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
 - [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).

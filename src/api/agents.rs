@@ -8,10 +8,15 @@ use serde::Deserialize;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionRecord;
+use crate::actor_runtime::{
+    DEFAULT_ACTOR_CHANNEL, default_actor_cli_path, normalize_actor_cli_path,
+};
 use crate::agent::{AgentConfig, AgentRecord, WorktreeMode};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
+
+const ACTOR_CONTEXT_RUNNING_CONFLICT: &str = "cannot start with new actor context";
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
@@ -164,10 +169,20 @@ async fn start_agent(
     let _user = require_user(&headers, &state).await?;
     let actor_context = parse_start_actor_runtime_context(payload.map(|Json(body)| body))?;
     let session_id = if let Some(actor_context) = actor_context {
-        state
+        match state
             .agents
             .start_agent_with_actor_context(&agent_id, Some(actor_context))
-            .await?
+            .await
+        {
+            Ok(session_id) => session_id,
+            Err(err) => {
+                let message = err.to_string();
+                if message.contains(ACTOR_CONTEXT_RUNNING_CONFLICT) {
+                    return Err(ApiError::conflict(&message));
+                }
+                return Err(err.into());
+            }
+        }
     } else {
         state.agents.start_agent(&agent_id).await?
     };
@@ -377,13 +392,6 @@ fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
     }
 }
 
-fn default_actor_cli_path() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.into_os_string().into_string().ok())
-        .unwrap_or_else(|| "agenthub".to_string())
-}
-
 fn parse_start_actor_runtime_context(
     payload: Option<StartAgentRequest>,
 ) -> Result<Option<AcpActorSkillContext>, ApiError> {
@@ -407,15 +415,13 @@ fn parse_start_actor_runtime_context(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("default")
+        .unwrap_or(DEFAULT_ACTOR_CHANNEL)
         .to_string();
-    let actor_cli_path = actor_runtime
-        .actor_cli_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(default_actor_cli_path);
+    let actor_cli_path = match actor_runtime.actor_cli_path.as_deref() {
+        Some(path) => normalize_actor_cli_path(Some(path))
+            .map_err(|err| ApiError::bad_request(err.to_string().as_str()))?,
+        None => default_actor_cli_path()?,
+    };
 
     Ok(Some(AcpActorSkillContext {
         run_id: run_id.to_string(),
@@ -427,6 +433,8 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use crate::actor_runtime::default_actor_cli_path;
+
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
         parse_start_actor_runtime_context, parse_worktree_mode,
@@ -458,12 +466,13 @@ mod tests {
 
     #[test]
     fn parse_start_actor_runtime_context_accepts_valid_payload() {
+        let default_cli = default_actor_cli_path().expect("default actor cli path");
         let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: "run-7".to_string(),
                 actor_id: "planner".to_string(),
                 channel: Some("coordination".to_string()),
-                actor_cli_path: Some("/tmp/agenthub".to_string()),
+                actor_cli_path: Some(default_cli.clone()),
             }),
         }))
         .expect("parse actor runtime context")
@@ -471,7 +480,7 @@ mod tests {
         assert_eq!(context.run_id, "run-7");
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.default_channel, "coordination");
-        assert_eq!(context.actor_cli_path, "/tmp/agenthub");
+        assert_eq!(context.actor_cli_path, default_cli);
     }
 
     #[test]
@@ -487,7 +496,10 @@ mod tests {
         .expect("parse actor runtime context")
         .expect("context");
         assert_eq!(context.default_channel, "default");
-        assert!(!context.actor_cli_path.trim().is_empty());
+        assert_eq!(
+            context.actor_cli_path,
+            default_actor_cli_path().expect("default actor cli path")
+        );
     }
 
     #[test]
@@ -513,5 +525,19 @@ mod tests {
         }))
         .expect_err("actor_id should be required");
         let _ = actor_id_err;
+    }
+
+    #[test]
+    fn parse_start_actor_runtime_context_rejects_untrusted_actor_cli_path() {
+        let err = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: "run-10".to_string(),
+                actor_id: "planner".to_string(),
+                channel: None,
+                actor_cli_path: Some("/tmp/not-allowed-agenthub".to_string()),
+            }),
+        }))
+        .expect_err("actor_cli_path should be validated");
+        let _ = err;
     }
 }

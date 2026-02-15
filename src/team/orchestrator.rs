@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::acp::AcpActorSkillContext;
+use crate::actor_runtime::{DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::agent::AgentManager;
 
 use super::{TeamManager, TeamRunRecord, TeamStepRecord, TeamStepStatus};
@@ -48,6 +49,8 @@ pub trait TeamMemberAgentStarter: Send + Sync {
         member_id: &str,
         actor_context: AcpActorSkillContext,
     ) -> anyhow::Result<String>;
+
+    async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()>;
 }
 
 #[async_trait]
@@ -59,6 +62,10 @@ impl TeamMemberAgentStarter for AgentManager {
     ) -> anyhow::Result<String> {
         self.start_agent_with_actor_context(member_id, Some(actor_context))
             .await
+    }
+
+    async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()> {
+        self.stop_agent(member_id).await
     }
 }
 
@@ -94,6 +101,7 @@ impl TeamOrchestratorWorker {
                 match self.dispatch_once(settings.max_dispatch_per_tick).await {
                     Ok(summary) => {
                         if summary.scanned > 0
+                            || summary.dispatched > 0
                             || summary.failed > 0
                             || summary.reconciled_completed > 0
                             || summary.reconciled_failed > 0
@@ -262,8 +270,8 @@ impl TeamOrchestratorWorker {
         let actor_context = AcpActorSkillContext {
             run_id: run_id.to_string(),
             actor_id: step.member_id.clone(),
-            default_channel: "default".to_string(),
-            actor_cli_path: default_actor_cli_path(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+            actor_cli_path: default_actor_cli_path()?,
         };
         let start_result = self
             .agent_starter
@@ -289,22 +297,29 @@ impl TeamOrchestratorWorker {
         };
         let started = self.teams.start_step(&step.id, Some(&session_id)).await?;
         if started.status != TeamStepStatus::Working {
-            tracing::debug!(
+            if let Err(err) = self.agent_starter.stop_member_agent(&step.member_id).await {
+                tracing::warn!(
+                    run_id = %run_id,
+                    step_id = %started.id,
+                    member_id = %step.member_id,
+                    "team orchestrator failed to stop member agent after non-working step start: {}",
+                    err
+                );
+            }
+            tracing::warn!(
                 run_id = %run_id,
                 step_id = %started.id,
                 status = ?started.status,
                 "team orchestrator skip non-working start result"
             );
+            return Err(anyhow::anyhow!(
+                "step '{}' transitioned to '{:?}' while dispatching",
+                started.step_key,
+                started.status
+            ));
         }
         Ok(())
     }
-}
-
-fn default_actor_cli_path() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.into_os_string().into_string().ok())
-        .unwrap_or_else(|| "agenthub".to_string())
 }
 
 fn is_step_ready(step: &TeamStepRecord, status_by_key: &HashMap<String, TeamStepStatus>) -> bool {
@@ -475,6 +490,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct FakeAgentStarter {
         calls: Arc<Mutex<Vec<FakeStartCall>>>,
+        stop_calls: Arc<Mutex<Vec<String>>>,
         fail_members: Arc<Mutex<HashSet<String>>>,
     }
 
@@ -488,6 +504,10 @@ mod tests {
 
         fn calls(&self) -> Vec<FakeStartCall> {
             self.calls.lock().expect("lock calls").clone()
+        }
+
+        fn stop_calls(&self) -> Vec<String> {
+            self.stop_calls.lock().expect("lock stop_calls").clone()
         }
     }
 
@@ -511,6 +531,14 @@ mod tests {
                 return Err(anyhow::anyhow!("forced starter failure for {}", member_id));
             }
             Ok(format!("session-{member_id}"))
+        }
+
+        async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()> {
+            self.stop_calls
+                .lock()
+                .expect("lock stop_calls")
+                .push(member_id.to_string());
+            Ok(())
         }
     }
 
@@ -784,6 +812,52 @@ mod tests {
                 .as_deref()
                 .is_some_and(|text| text.contains("failed to start member agent"))
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_step_returns_error_and_stops_member_when_step_is_not_working() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-non-working-start-team".to_string(),
+                description: Some("team for dispatch non-working start result".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(&team.id, Some("ctx-non-working"), json!({"prompt":"go"}))
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        let _ = teams
+            .fail_step(&step.id, "forced terminal state before dispatch")
+            .await
+            .expect("fail step before dispatch");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let err = worker
+            .dispatch_step(&run.id, &step)
+            .await
+            .expect_err("dispatch step should fail when start_step does not enter working");
+        let message = err.to_string();
+        assert!(
+            message.contains("transitioned"),
+            "unexpected dispatch error: {message}"
+        );
+        assert_eq!(starter.calls().len(), 1);
+        assert_eq!(starter.stop_calls(), vec!["planner".to_string()]);
     }
 
     #[tokio::test]

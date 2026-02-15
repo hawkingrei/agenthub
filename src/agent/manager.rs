@@ -26,6 +26,7 @@ use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths,
     spawn_acp_session,
 };
+use crate::actor_runtime::normalize_actor_context;
 use crate::auth::AuthService;
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
@@ -50,13 +51,6 @@ const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
-
-fn default_actor_cli_path() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.into_os_string().into_string().ok())
-        .unwrap_or_else(|| "agenthub".to_string())
-}
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -466,6 +460,12 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
         if let Some(session_id) = self.get_running_session_id(agent_id).await {
+            if actor_context.is_some() {
+                return Err(anyhow::anyhow!(
+                    "agent already running with session '{}'; cannot start with new actor context",
+                    session_id
+                ));
+            }
             return Ok(session_id);
         }
         self.reserve_agent_start(agent_id).await?;
@@ -481,20 +481,7 @@ impl AgentManager {
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
-        let actor_context = actor_context.map(|context| AcpActorSkillContext {
-            run_id: context.run_id,
-            actor_id: context.actor_id,
-            default_channel: if context.default_channel.trim().is_empty() {
-                "default".to_string()
-            } else {
-                context.default_channel
-            },
-            actor_cli_path: if context.actor_cli_path.trim().is_empty() {
-                default_actor_cli_path()
-            } else {
-                context.actor_cli_path
-            },
-        });
+        let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let workdir = expand_tilde(&agent.workdir);
         let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
         if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
