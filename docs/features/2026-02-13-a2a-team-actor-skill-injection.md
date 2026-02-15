@@ -48,7 +48,7 @@ cargo test -p agenthub-acp
 
 ## Follow-ups
 
-- Replace global env-based actor context with scheduler-provided per-step runtime
-  context.
+- Replaced by explicit start-time actor context payload in
+  `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`.
 - Actor send idempotency defaults and duplicate-delivery controls are implemented
   in `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`.

@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 mod acp;
 mod actor_cli;
+mod actor_runtime;
 mod agent;
 mod api;
 mod auth;

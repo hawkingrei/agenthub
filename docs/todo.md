@@ -52,20 +52,36 @@
 - [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
 - [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
 - [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
-- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `AGENTHUB_ACTOR_RUN_ID` is configured (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
-- [ ] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-13-a2a-team-actor-skill-injection.md`).
-- [ ] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
-- [ ] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
-- [ ] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
-- [ ] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
-- [ ] Verify orchestrator worker loop handles `/input_required` and `/resume` transitions with idempotent retries (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
+- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Harden `actor_runtime.actor_cli_path` with strict default-binary allow-list validation and shared normalization helpers across API/agent/orchestrator (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Prevent actor-context starts from silently reusing already-running sessions; return conflict semantics for HTTP start requests (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Treat orchestrator dispatch as failed when `start_step` does not enter `working`, with best-effort member stop cleanup (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Validate `spec.steps` dependencies and reject cycles/missing step references before orchestrator bootstrap submits tasks (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Improve orchestrator dispatch loop to refresh step state after successful dispatch passes and avoid stale in-tick scheduling decisions (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Refresh and short-circuit per-run dispatch after failed dispatch attempts to avoid stale-step retries in the same worker tick (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add idle-tick heartbeat logging for orchestrator worker to improve operational liveness visibility without noisy per-tick logs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Return `JoinHandle` from orchestrator worker spawn path so caller can wire lifecycle management and panic observation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Harden relay route header parsing with strict header name/value validation and reject CR/LF control characters in values (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add relay timeout default/clamping and explicit HTTP client transport limits for remote mailbox delivery (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Reuse remote relay adapter (`OnceLock`) across worker ticks to preserve HTTP connection pooling and reduce repeated client allocation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [ ] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Reconcile orchestrator `working` steps from `agent_sessions` terminal status (`completed`/`failed`/`cancelled`/`exited`) for single-node run convergence (see `docs/features/2026-02-15-a2a-team-orchestrator-session-reconcile.md`).
+- [x] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-15-a2a-team-orchestrator-http-e2e-and-input-resume.md`).
+- [x] Verify orchestrator worker loop handles `/input_required` and `/resume` transitions with idempotent retries (see `docs/features/2026-02-15-a2a-team-orchestrator-http-e2e-and-input-resume.md`).
 - [x] Implement remote mailbox relay worker (`transport=remote`) with delivery retry/dead-letter policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
 - [x] Move actor mailbox state machine from `src/team/manager.rs` into `crates/agenthub-team-actor` using trait-based store/relay ports (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
 - [x] Add relay port in `agenthub-team-actor` and implement remote transport worker adapter in AgentHub (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
-- [ ] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
-- [ ] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-13-team-module-file-split.md`).
+- [x] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-15-a2a-team-remote-relay-network-adapter.md`).
+- [x] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
-- [ ] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-13-agent-manager-file-split.md`).
+- [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
