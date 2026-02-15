@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  isDefaultWorkdirValue,
   normalizeRuntimeWorktreeRoot,
   resolveWorkdirForCreateModal,
+  resolveWorkdirForModalOpen,
+  resolveWorkdirForModeChange,
   resolveWorkdirForRuntimeDefaults,
   shouldApplyDefaultWorkdir,
 } from "./worktree_defaults";
@@ -50,5 +53,73 @@ describe("worktree defaults helpers", () => {
       resolveWorkdirForCreateModal("/tmp/custom", "/srv/default-worktrees", DEFAULT_ROOT)
     ).toBe("/tmp/custom");
   });
-});
 
+  it("treats both fallback and runtime root as default values", () => {
+    expect(
+      isDefaultWorkdirValue("~/.agenthub/worktrees/", "/srv/default-worktrees", DEFAULT_ROOT)
+    ).toBe(true);
+    expect(isDefaultWorkdirValue("/srv/default-worktrees", "/srv/default-worktrees", DEFAULT_ROOT)).toBe(
+      true
+    );
+    expect(isDefaultWorkdirValue("/tmp/custom", "/srv/default-worktrees", DEFAULT_ROOT)).toBe(
+      false
+    );
+  });
+
+  it("clears default workdir when switching to use_existing mode", () => {
+    expect(
+      resolveWorkdirForModeChange(
+        "/srv/default-worktrees",
+        "use_existing",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("");
+    expect(
+      resolveWorkdirForModeChange(
+        "/tmp/custom",
+        "use_existing",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("/tmp/custom");
+  });
+
+  it("fills runtime root only in create_worktree mode changes", () => {
+    expect(
+      resolveWorkdirForModeChange(
+        "",
+        "create_worktree",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("/srv/default-worktrees");
+    expect(
+      resolveWorkdirForModeChange(
+        "",
+        "reuse_worktree",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("");
+  });
+
+  it("clears default-like values on modal open for use_existing mode", () => {
+    expect(
+      resolveWorkdirForModalOpen(
+        "/srv/default-worktrees",
+        "use_existing",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("");
+    expect(
+      resolveWorkdirForModalOpen(
+        "/tmp/custom",
+        "use_existing",
+        "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("/tmp/custom");
+  });
+});

@@ -38,6 +38,8 @@ which increased friction and could cause inconsistent behavior between clients.
    is blank, generate a deterministic default path under the configured root.
 5. In Create Agent UI, `create_worktree` mode shows default-root display first
    and keeps workdir override behind an explicit `Customize path` action.
+6. `use_existing` mode should not auto-fill workdir with default root; only
+   user-provided paths remain in the input.
 
 ## Validation
 
@@ -50,6 +52,7 @@ cargo test runtime_defaults_returns_configured_worktree_root -- --nocapture
 cd web
 npm run test -- src/create_agent_modal.test.tsx
 npm run test -- src/worktree_defaults.test.ts
+npm run build
 ```
 
 ## Review Follow-up
@@ -67,6 +70,8 @@ npm run test -- src/worktree_defaults.test.ts
   authenticated default-root response.
 - Updated Create Agent modal to avoid mandatory `Workdir` editing in
   `create_worktree` mode while preserving optional override behavior.
+- Updated modal-open + mode-switch workdir resolution so `use_existing` no
+  longer receives default-root autofill.
 
 ## Follow-ups
 

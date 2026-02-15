@@ -72,8 +72,8 @@ import {
 import { AuthState } from "./types";
 import {
   normalizeRuntimeWorktreeRoot,
-  resolveWorkdirForCreateModal,
-  resolveWorkdirForRuntimeDefaults,
+  resolveWorkdirForModeChange,
+  resolveWorkdirForModalOpen,
 } from "./worktree_defaults";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
@@ -612,22 +612,43 @@ export function App() {
         );
         setDefaultWorktreeRoot(root);
         setAgentWorkdir((prev) =>
-          resolveWorkdirForRuntimeDefaults(prev, root, DEFAULT_WORKTREE_ROOT)
+          resolveWorkdirForModeChange(
+            prev,
+            "use_existing",
+            root,
+            DEFAULT_WORKTREE_ROOT
+          )
         );
       })
       .catch((err) => console.error("Failed to get runtime defaults:", err));
   }, [token]);
 
+  const handleWorktreeModeChange = useCallback(
+    (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
+      setWorktreeMode(nextMode);
+      setAgentWorkdir((prev) =>
+        resolveWorkdirForModeChange(
+          prev,
+          nextMode,
+          defaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    },
+    [defaultWorktreeRoot]
+  );
+
   const openCreateAgentModal = useCallback(() => {
     setAgentWorkdir((prev) =>
-      resolveWorkdirForCreateModal(
+      resolveWorkdirForModalOpen(
         prev,
+        worktreeMode,
         defaultWorktreeRoot,
         DEFAULT_WORKTREE_ROOT
       )
     );
     setShowCreateAgent(true);
-  }, [defaultWorktreeRoot]);
+  }, [defaultWorktreeRoot, worktreeMode]);
 
   useEffect(() => {
     if (!token || auth?.role !== "root") return;
@@ -1017,7 +1038,7 @@ export function App() {
         setError(`Start failed: ${msg}`);
       }
       setAgentName("");
-      setAgentWorkdir(defaultWorktreeRoot);
+      setAgentWorkdir("");
       setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
@@ -1581,7 +1602,7 @@ export function App() {
           agentPresetId={agentPresetId}
           setAgentPresetId={setAgentPresetId}
           worktreeMode={worktreeMode}
-          setWorktreeMode={setWorktreeMode}
+          setWorktreeMode={handleWorktreeModeChange}
           worktreeRepo={worktreeRepo}
           setWorktreeRepo={setWorktreeRepo}
           worktreeRef={worktreeRef}
