@@ -57,6 +57,17 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain('href="https://github.com/hawkingrei/agenthub/pull/2"');
   });
 
+  it("skips whitelist autolink preprocessing for very large markdown inputs", () => {
+    const prefix = "x".repeat(130_000);
+    const html = renderMarkdown(
+      `${prefix}\nhttps://github.com/hawkingrei/agenthub/pull/1233`
+    );
+    expect(html).toContain("https://github.com/hawkingrei/agenthub/pull/1233");
+    expect(html).not.toContain(
+      'href="https://github.com/hawkingrei/agenthub/pull/1233"'
+    );
+  });
+
   it("keeps soft line breaks without hard <br>", () => {
     const html = renderMarkdown("line one\nline two");
     expect(html).toContain("line one");

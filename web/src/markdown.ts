@@ -4,6 +4,7 @@ import hljs from "highlight.js";
 const GITHUB_PULL_URL_PATTERN =
   /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/pull\/\d+(?:[/?#][^\s<>"']*)?$/;
 const URL_CANDIDATE_PATTERN = /https:\/\/[^\s<>()]+/g;
+const AUTOLINK_MAX_INPUT_LENGTH = 120_000;
 
 export function escapeHtml(input: string): string {
   return input
@@ -142,7 +143,15 @@ function autoLinkWhitelistedUrls(input: string): string {
 
 export function renderMarkdown(input: string): string {
   const stripped = input.replace(/cite[^]+/g, "").replace(/[]/g, "");
-  return getMarkdownRenderer().render(autoLinkWhitelistedUrls(stripped));
+  try {
+    const prepared =
+      stripped.length > AUTOLINK_MAX_INPUT_LENGTH
+        ? stripped
+        : autoLinkWhitelistedUrls(stripped);
+    return getMarkdownRenderer().render(prepared);
+  } catch {
+    return `<p>${escapeHtml(stripped)}</p>`;
+  }
 }
 
 let markdownRenderer: MarkdownIt | null = null;
