@@ -9,4 +9,7 @@ web/.vite
 web/coverage
 web/test-results
 web/playwright-report
+user-docs/node_modules
+user-docs/build
+user-docs/.docusaurus
 .info/
