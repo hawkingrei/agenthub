@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDefaultWorkdirValue,
   normalizeRuntimeWorktreeRoot,
+  normalizeWorkdirInput,
   resolveWorkdirForCreateModal,
   resolveWorkdirForModalOpen,
   resolveWorkdirForModeChange,
@@ -15,6 +16,13 @@ describe("worktree defaults helpers", () => {
   it("normalizes runtime root and falls back when blank", () => {
     expect(normalizeRuntimeWorktreeRoot(" /custom/root ")).toBe("/custom/root");
     expect(normalizeRuntimeWorktreeRoot("   ")).toBe(DEFAULT_ROOT);
+  });
+
+  it("normalizes workdir input and keeps filesystem roots", () => {
+    expect(normalizeWorkdirInput(" /tmp/work/ ")).toBe("/tmp/work");
+    expect(normalizeWorkdirInput("/")).toBe("/");
+    expect(normalizeWorkdirInput("\\")).toBe("\\");
+    expect(normalizeWorkdirInput("   ")).toBe("");
   });
 
   it("detects when workdir should be replaced by default", () => {

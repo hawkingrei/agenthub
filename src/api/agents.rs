@@ -423,28 +423,28 @@ fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> Strin
         .trim_end_matches('\\');
     let name = sanitize_worktree_segment(agent_name);
     let suffix = Uuid::new_v4().simple().to_string();
-    format!("{root}/{name}-{}", &suffix[..8])
+    let segment = format!("{name}-{}", &suffix[..8]);
+    std::path::PathBuf::from(root)
+        .join(segment)
+        .to_string_lossy()
+        .to_string()
 }
 
 fn sanitize_worktree_segment(value: &str) -> String {
     let mut out = String::new();
-    let mut last_separator = false;
+    let mut last_dash = false;
     for ch in value.trim().chars() {
         if ch.is_ascii_alphanumeric() {
             out.push(ch.to_ascii_lowercase());
-            last_separator = false;
+            last_dash = false;
             continue;
         }
-        if !last_separator {
-            if matches!(ch, '-' | '_' | '.') {
-                out.push(ch);
-            } else {
-                out.push('-');
-            }
-            last_separator = true;
+        if !last_dash {
+            out.push('-');
+            last_dash = true;
         }
     }
-    let trimmed = out.trim_matches(|c| c == '-' || c == '_' || c == '.');
+    let trimmed = out.trim_matches('-');
     if trimmed.is_empty() {
         "agent".to_string()
     } else {
@@ -569,8 +569,9 @@ mod tests {
 
     #[test]
     fn sanitize_worktree_segment_collapses_repeated_internal_separators() {
-        assert_eq!(sanitize_worktree_segment("agent...name"), "agent.name");
-        assert_eq!(sanitize_worktree_segment("agent__name"), "agent_name");
+        assert_eq!(sanitize_worktree_segment("agent...name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent__name"), "agent-name");
+        assert_eq!(sanitize_worktree_segment("agent._-name"), "agent-name");
         assert_eq!(
             sanitize_worktree_segment("agent   ---   name"),
             "agent-name"

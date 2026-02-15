@@ -1,16 +1,22 @@
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 type WorktreeMode = "use_existing" | "create_worktree" | "reuse_worktree";
 
+export function normalizeWorkdirInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const stripped = trimmed.replace(/[\\/]+$/, "");
+  return stripped || trimmed;
+}
+
 function normalizePathForCompare(value: string): string {
-  return value.trim().replace(/[\\/]+$/, "");
+  return normalizeWorkdirInput(value);
 }
 
 export function normalizeRuntimeWorktreeRoot(
   value: string,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
-  const trimmed = value.trim();
-  return trimmed || fallback;
+  return normalizeWorkdirInput(value) || fallback;
 }
 
 export function shouldApplyDefaultWorkdir(

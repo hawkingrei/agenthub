@@ -72,6 +72,7 @@ import {
 import { AuthState } from "./types";
 import {
   normalizeRuntimeWorktreeRoot,
+  normalizeWorkdirInput,
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
 } from "./worktree_defaults";
@@ -606,6 +607,8 @@ export function App() {
     api
       .getRuntimeDefaults(token)
       .then((defaults) => {
+        // Backend guarantees a non-empty default root; keep a defensive fallback
+        // in case of malformed responses.
         const root = normalizeRuntimeWorktreeRoot(
           defaults.default_worktree_root,
           DEFAULT_WORKTREE_ROOT
@@ -996,13 +999,12 @@ export function App() {
     setWorktreeError(null);
     try {
       const name = agentName.trim() || "agent";
-      const workdir = agentWorkdir.trim();
-      const normalizedRoot = defaultWorktreeRoot.trim().replace(/[\\/]+$/, "");
-      const normalizedWorkdir = workdir.replace(/[\\/]+$/, "");
+      const workdir = normalizeWorkdirInput(agentWorkdir);
+      const normalizedRoot = normalizeWorkdirInput(defaultWorktreeRoot);
       const workdirPayload =
         worktreeMode === "create_worktree" &&
         normalizedRoot &&
-        normalizedWorkdir === normalizedRoot
+        workdir === normalizedRoot
           ? ""
           : workdir;
       const preset = getAgentPreset(agentPresetId);
