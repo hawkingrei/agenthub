@@ -26,6 +26,8 @@ Three regressions were observed in ACP conversation UI:
 - Replace `dangerouslySetInnerHTML` for tool call terminal rendering with a safe parser that only recognizes ANSI `<span style>` tags and renders them as React nodes.
 - Add `100dvh` support and safe-area padding/offset handling for mobile viewport alignment.
 - Stack ACP header controls on narrow screens to prevent action bar overflow.
+- Add explicit render and CSS guard coverage for markdown list/table/code
+  output in ACP conversation view.
 
 ## Validation
 
@@ -38,6 +40,7 @@ npm run test
   - `src/acp_conversation.test.ts`
   - `src/acp_conversation_render.test.tsx`
   - `src/conversation.test.ts`
+  - markdown list/table/code assertions in `src/acp_conversation_render.test.tsx`
 
 ```bash
 cargo test --test web_assets
@@ -47,3 +50,4 @@ cargo test --test web_assets
   - mobile `100dvh` support
   - admin list style scoping
   - mobile ACP header stacking rule
+  - ACP markdown typography/list/table/code style contracts

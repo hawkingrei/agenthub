@@ -1,18 +1,88 @@
 # TODO
 
-- [ ] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
-- [ ] Verify ACP markdown typography and list/table/code rendering in conversation view on desktop and mobile (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
+- [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Memoize ACP conversation row rendering (`ConversationBubble` + tool/plan/markdown bubbles) to cut repeated render work during scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Guard ACP conversation virtual-slice/freeze state against blank-window rendering when stale viewport/freeze state occurs; recover without requiring manual `Jump to bottom` (see `docs/features/2026-02-14-acp-conversation-blank-window-guard.md`).
+- [x] Add IME-safe keyboard guards for input history recall (`nativeEvent.isComposing`/keyCode `229`) with unit coverage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Add unit-level verification for reusable `requestAnimationFrame` throttle dedupe/cancel behavior in ACP conversation scroll path (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Close input history menu on typing, arrow-history navigation, `Escape`, and outside click for keyboard/mouse accessibility (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Add input history privacy guard to avoid persisting obvious secret-like commands in localStorage (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Move ACP `Interrupt` control into input dock top row and colocate with `History` actions (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Increase unit coverage for input dock interaction branches and ACP tab interaction callbacks (`input_dock.tsx`, `acp_panel.tsx`) (see `docs/features/2026-02-14-input-dock-interrupt-relocation.md`).
+- [x] Increase unit coverage for `use_acp_conversation` by extracting deterministic helper decisions into pure functions and testing branch-heavy paths (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
+- [x] Refactor `InputDock` into stable flow rows (`input-row` + `input-editor-row`) and remove absolute-position action overlay to prevent tablet overlap (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep input editor and `Send` in one row and enlarge `Send` tap target for touch-friendly interaction (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Left-align `Interrupt` and `History` chips in input action row for stable control placement across breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify input dock command history menu close hooks and arrow-key recall guards for desktop/mobile IME via unit tests (`input_dock_keyboard.test.ts`) (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Verify input dock `Interrupt + History` row tap ergonomics on mobile viewport via Playwright system-Chrome assertions (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify iPad portrait/landscape viewports no longer show `Interrupt` overlapping textarea and action chips keep stable tap targets via Playwright (`input_dock_layout.e2e.ts`) (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Verify one-row `input + Send` layout contract and touch target sizing (`input_dock_render.test.tsx`, `tests/web_assets.rs`) across tablet/mobile breakpoints (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Keep `jump-bottom` outside `input-editor-row` to avoid fixed-position element conflicting with editor grid flow (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Replace `input-send-button` sizing `!important` overrides with higher-specificity selectors for maintainable mobile/desktop sizing (see `docs/features/2026-02-14-input-dock-tablet-overlay-fix.md`).
+- [x] Gate optional Playwright `system-chrome` project behind `PLAYWRIGHT_SYSTEM_CHROME=1` so default E2E runs stay Chromium-only and CI-safe (see `docs/features/2026-02-10-playwright-e2e.md`).
+- [ ] Verify `use_acp_conversation` helper extraction keeps scroll restoration and jump-badge behavior unchanged across long sessions (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
+- [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify mobile workspace alignment with safe-area insets and ACP header action wrapping (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
+- [x] Compact ACP top tabs (`Conversation`/`Debug`) and debug sub-tabs on mobile breakpoints to reduce oversized tab cards (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
+- [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
+- [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify Bazel CI workflow and local `bazel build //:ci_build` + `bazel test //:ci_tests` behavior on clean environments (see `docs/features/2026-02-14-bazel-build-test-integration.md`).
 - [ ] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
 - [ ] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
+- [ ] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
 - [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify Kimi preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `acp/session/clear` defaults provider based on agent command when omitted (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
+- [ ] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
+- [ ] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
+- [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
+- [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
+- [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
+- [x] Define cross-field Team spec constraints (entrypoint/member/step graph) for scheduler phase.
+- [x] Add Team spec compatibility versioning (`spec_version`) and migration checks before scheduler rollout.
+- [x] Implement team step lifecycle persistence and event emission (`submitted` -> `working` -> terminal states) for scheduler bootstrap.
+- [x] Add scheduler-facing run status convergence rules (`working` -> `completed`/`failed`) based on step graph outcomes (see `docs/features/2026-02-13-a2a-team-run-status-convergence.md`).
+- [x] Expose scheduler-facing team step lifecycle API/service bridge for orchestrator integration (see `docs/features/2026-02-13-a2a-team-step-lifecycle-bridge.md`).
+- [x] Add scheduler-facing `input_required` / `resume` step transitions for human-in-the-loop coordination (see `docs/features/2026-02-13-a2a-team-input-required-resume.md`).
+- [x] Add actor-model mailbox APIs for Team runs (`send`/`inbox`/`ack`) with local and remote transport contracts (see `docs/features/2026-02-13-a2a-team-actor-mailbox.md`).
+- [x] Split actor message domain types into `crates/agenthub-team-actor` for local/remote transport reuse (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
+- [ ] Verify ACP startup injects actor runtime skill and actor CLI env wiring when `/api/agents/:id/start` includes `actor_runtime` context payload (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Replace env-based actor runtime context with scheduler-provided per-run/per-step actor context (see `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`).
+- [x] Harden `actor_runtime.actor_cli_path` with strict default-binary allow-list validation and shared normalization helpers across API/agent/orchestrator (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Prevent actor-context starts from silently reusing already-running sessions; return conflict semantics for HTTP start requests (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Treat orchestrator dispatch as failed when `start_step` does not enter `working`, with best-effort member stop cleanup (see `docs/features/2026-02-15-a2a-team-review-hardening.md`).
+- [x] Validate `spec.steps` dependencies and reject cycles/missing step references before orchestrator bootstrap submits tasks (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Improve orchestrator dispatch loop to refresh step state after successful dispatch passes and avoid stale in-tick scheduling decisions (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Refresh and short-circuit per-run dispatch after failed dispatch attempts to avoid stale-step retries in the same worker tick (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add idle-tick heartbeat logging for orchestrator worker to improve operational liveness visibility without noisy per-tick logs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Return `JoinHandle` from orchestrator worker spawn path so caller can wire lifecycle management and panic observation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Harden relay route header parsing with strict header name/value validation and reject CR/LF control characters in values (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Add relay timeout default/clamping and explicit HTTP client transport limits for remote mailbox delivery (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Reuse remote relay adapter (`OnceLock`) across worker ticks to preserve HTTP connection pooling and reduce repeated client allocation (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [ ] Add remote relay receiver-side replay protection guidance (timestamp skew + dedupe by message id/idempotency key) and reference implementation docs (see `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`).
+- [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Reconcile orchestrator `working` steps from `agent_sessions` terminal status (`completed`/`failed`/`cancelled`/`exited`) for single-node run convergence (see `docs/features/2026-02-15-a2a-team-orchestrator-session-reconcile.md`).
+- [x] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
+- [x] Verify orchestrator worker loop drives `/api/teams/runs/:run_id/steps` lifecycle bridge end-to-end with real executors (see `docs/features/2026-02-15-a2a-team-orchestrator-http-e2e-and-input-resume.md`).
+- [x] Verify orchestrator worker loop handles `/input_required` and `/resume` transitions with idempotent retries (see `docs/features/2026-02-15-a2a-team-orchestrator-http-e2e-and-input-resume.md`).
+- [x] Implement remote mailbox relay worker (`transport=remote`) with delivery retry/dead-letter policy (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [x] Move actor mailbox state machine from `src/team/manager.rs` into `crates/agenthub-team-actor` using trait-based store/relay ports (see `docs/features/2026-02-13-a2a-team-actor-crate-split.md`).
+- [x] Add relay port in `agenthub-team-actor` and implement remote transport worker adapter in AgentHub (see `docs/features/2026-02-13-a2a-team-remote-relay-worker.md`).
+- [x] Replace mock route endpoint relay adapter with real network delivery adapter and auth/signing policy (see `docs/features/2026-02-15-a2a-team-remote-relay-network-adapter.md`).
+- [x] Verify `team/manager` and `api/teams` file split under CI full test pipeline (`cargo test --all`) to guard module-boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
+- [x] Split `agent/manager` into submodules and keep each file under 1000 lines for maintainability (see `docs/features/2026-02-13-agent-manager-file-split.md`).
+- [x] Verify `agent/manager` module split under CI full test pipeline (`cargo test --all`) to guard runtime boundary regressions (see `docs/features/2026-02-15-module-split-full-test-verification.md`).
 - [ ] Verify Create Agent submit guard prevents duplicate agents and shows loading state (see `docs/features/2026-02-10-create-agent-submit-guard.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).

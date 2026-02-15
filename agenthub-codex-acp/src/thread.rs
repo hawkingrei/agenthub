@@ -1353,17 +1353,19 @@ struct ParseCommandToolCall {
 fn map_tool_output_content(contents: Vec<Value>) -> Vec<ToolCallContent> {
     contents
         .into_iter()
-        .filter_map(|content| match serde_json::from_value::<ContentBlock>(content.clone()) {
-            Ok(block) => Some(ToolCallContent::Content(Content::new(block))),
-            Err(err) => {
-                warn!(
-                    ?err,
-                    raw = ?content,
-                    "Failed to deserialize tool output content block"
-                );
-                None
-            }
-        })
+        .filter_map(
+            |content| match serde_json::from_value::<ContentBlock>(content.clone()) {
+                Ok(block) => Some(ToolCallContent::Content(Content::new(block))),
+                Err(err) => {
+                    warn!(
+                        ?err,
+                        raw = ?content,
+                        "Failed to deserialize tool output content block"
+                    );
+                    None
+                }
+            },
+        )
         .collect()
 }
 
@@ -2413,11 +2415,7 @@ impl<A: Auth> ThreadActor<A> {
                 .await;
 
             let options = vec![
-                PermissionOption::new(
-                    "allow_always",
-                    "Always",
-                    PermissionOptionKind::AllowAlways,
-                ),
+                PermissionOption::new("allow_always", "Always", PermissionOptionKind::AllowAlways),
                 PermissionOption::new("allow_once", "Allow once", PermissionOptionKind::AllowOnce),
                 PermissionOption::new("reject_once", "Reject", PermissionOptionKind::RejectOnce),
             ];

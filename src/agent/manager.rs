@@ -1,24 +1,35 @@
+mod codec;
+mod runtime;
+
+#[cfg(test)]
+mod tests;
+
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast};
 use uuid::Uuid;
 
-use super::{
-    AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
+#[cfg(test)]
+use self::codec::acp_provider_for_agent_with_binary;
+use self::codec::{
+    expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
+    stream_to_str, worktree_mode_from_opt, worktree_mode_to_str,
 };
+use super::{AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream};
 use crate::acp::{
-    AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths, spawn_acp_session,
+    AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths,
+    spawn_acp_session,
 };
-use agent_client_protocol::Implementation;
+use crate::actor_runtime::normalize_actor_context;
 use crate::auth::AuthService;
 use crate::push::PushService;
+use agent_client_protocol::Implementation;
 
 #[derive(Clone)]
 pub struct AgentManager {
@@ -36,6 +47,10 @@ pub struct AgentManager {
 const ACP_PROVIDER_CODEX: &str = "codex";
 const ACP_PROVIDER_GEMINI: &str = "gemini";
 const ACP_PROVIDER_KIMI: &str = "kimi";
+const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
+const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
+const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
+const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -436,18 +451,37 @@ impl AgentManager {
     }
 
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
+        self.start_agent_with_actor_context(agent_id, None).await
+    }
+
+    pub async fn start_agent_with_actor_context(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
         if let Some(session_id) = self.get_running_session_id(agent_id).await {
+            if actor_context.is_some() {
+                return Err(anyhow::anyhow!(
+                    "agent already running with session '{}'; cannot start with new actor context",
+                    session_id
+                ));
+            }
             return Ok(session_id);
         }
         self.reserve_agent_start(agent_id).await?;
-        let result = self.start_agent_inner(agent_id).await;
+        let result = self.start_agent_inner(agent_id, actor_context).await;
         self.release_agent_start(agent_id).await;
         result
     }
 
-    async fn start_agent_inner(&self, agent_id: &str) -> anyhow::Result<String> {
+    async fn start_agent_inner(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
+        let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let workdir = expand_tilde(&agent.workdir);
         let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
         if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
@@ -499,6 +533,12 @@ impl AgentManager {
             .stderr(Stdio::piped());
         for (key, value) in &self.proxy_env {
             command.env(key, value);
+        }
+        if let Some(context) = actor_context.as_ref() {
+            command.env(ACTOR_RUNTIME_RUN_ID_ENV, &context.run_id);
+            command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
+            command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
+            command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
         }
 
         let mut child = match command.spawn() {
@@ -565,9 +605,7 @@ impl AgentManager {
         }
 
         let input = if let Some(provider) = acp_provider {
-            let resume_session_id = self
-                .get_persistent_session(&agent.id, provider)
-                .await?;
+            let resume_session_id = self.get_persistent_session(&agent.id, provider).await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -617,6 +655,7 @@ impl AgentManager {
                 stdout,
                 stdin,
                 safe_paths,
+                actor_context.clone(),
             )
             .await
             {
@@ -979,757 +1018,5 @@ impl AgentManager {
             AgentInput::Acp(acp) => Ok(acp.clone()),
             _ => Err(anyhow::anyhow!("agent is not acp")),
         }
-    }
-
-    async fn emit_run_status(
-        &self,
-        output_tx: broadcast::Sender<AgentOutput>,
-        agent_id: String,
-        session_id: String,
-        status: &str,
-    ) {
-        let message = serde_json::json!({
-            "type": "run_status",
-            "status": status,
-            "session_id": session_id,
-        })
-        .to_string();
-        let seq = Uuid::now_v7().to_string();
-        let ts = Utc::now().timestamp();
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(&agent_id)
-        .bind(&session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message.clone())
-        .execute(&self.db)
-        .await;
-        let Ok(result) = result else {
-            tracing::error!("emit_run_status: failed to persist event");
-            return;
-        };
-        let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
-            agent_id: agent_id.clone(),
-            session_id: session_id.clone(),
-            seq: seq.clone(),
-            ts,
-            stream: OutputStream::Acp,
-            message: message.clone(),
-        };
-        let _ = output_tx.send(output);
-    }
-
-    async fn spawn_output_reader<R>(
-        &self,
-        agent_id: String,
-        session_id: String,
-        stream: OutputStream,
-        reader: R,
-        output_tx: broadcast::Sender<AgentOutput>,
-    ) where
-        R: tokio::io::AsyncRead + Unpin + Send + 'static,
-    {
-        let db = self.db.clone();
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let is_acp = is_acp_message(&line);
-                let stream = if is_acp {
-                    OutputStream::Acp
-                } else {
-                    stream.clone()
-                };
-                let seq = Uuid::now_v7().to_string();
-                let ts = Utc::now().timestamp();
-                let stream_name = stream_to_str(&stream);
-                let result = sqlx::query(
-                    r#"
-                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    "#,
-                )
-                .bind(&agent_id)
-                .bind(&session_id)
-                .bind(&seq)
-                .bind(ts)
-                .bind(stream_name)
-                .bind(&line)
-                .execute(&db)
-                .await;
-                let Ok(result) = result else {
-                    tracing::error!("spawn_output_reader: failed to persist event");
-                    continue;
-                };
-                let output = AgentOutput {
-                    event_id: result.last_insert_rowid(),
-                    agent_id: agent_id.clone(),
-                    session_id: session_id.clone(),
-                    seq: seq.clone(),
-                    ts,
-                    stream: stream.clone(),
-                    message: line.clone(),
-                };
-                let _ = output_tx.send(output);
-            }
-        });
-    }
-
-    async fn spawn_exit_watcher(&self, agent_id: String, session_id: String) {
-        let db = self.db.clone();
-        let inner = self.inner.clone();
-        let push = self.push.clone();
-        let agent_id_clone = agent_id.clone();
-        tokio::spawn(async move {
-            let child = {
-                let guard = inner.read().await;
-                guard.get(&agent_id).map(|h| h.child.clone())
-            };
-
-            if let Some(child_mutex) = child {
-                let success = {
-                    let mut child_guard = child_mutex.lock().await;
-                    let child = match child_guard.as_mut() {
-                        Some(child) => child,
-                        None => return,
-                    };
-                    match child.wait().await {
-                        Ok(status) => status.success(),
-                        Err(_) => false,
-                    }
-                };
-                Self::finalize_process_exit(
-                    &db,
-                    &inner,
-                    &push,
-                    &agent_id_clone,
-                    &session_id,
-                    success,
-                )
-                .await;
-            }
-        });
-    }
-
-    async fn finalize_process_exit(
-        db: &SqlitePool,
-        inner: &Arc<RwLock<HashMap<String, AgentHandle>>>,
-        push: &Arc<PushService>,
-        agent_id: &str,
-        session_id: &str,
-        success: bool,
-    ) {
-        let row = sqlx::query(
-            r#"
-            SELECT ended_at FROM agent_sessions WHERE id = ?1
-            "#,
-        )
-        .bind(session_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
-        let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
-        if ended_at.is_some() {
-            let mut guard = inner.write().await;
-            guard.remove(agent_id);
-            return;
-        }
-
-        let now = Utc::now().timestamp();
-        let state = if success { "completed" } else { "failed" };
-        let status = if success { "stopped" } else { "failed" };
-        let _ = sqlx::query(
-            r#"
-            UPDATE agent_sessions
-            SET status = ?1, ended_at = ?2
-            WHERE id = ?3
-            "#,
-        )
-        .bind(state)
-        .bind(now)
-        .bind(session_id)
-        .execute(db)
-        .await;
-
-        let _ = sqlx::query(
-            r#"
-            UPDATE agents
-            SET status = ?1, updated_at = ?2
-            WHERE id = ?3
-            "#,
-        )
-        .bind(status)
-        .bind(now)
-        .bind(agent_id)
-        .execute(db)
-        .await;
-
-        let seq = Uuid::now_v7().to_string();
-        let ts = Utc::now().timestamp();
-        let message = serde_json::json!({
-            "type": "run_status",
-            "status": state,
-            "session_id": session_id,
-        })
-        .to_string();
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(agent_id)
-        .bind(session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message.clone())
-        .execute(db)
-        .await;
-
-        let Ok(result) = result else {
-            tracing::error!("finalize_process_exit: failed to persist event");
-            let mut guard = inner.write().await;
-            guard.remove(agent_id);
-            return;
-        };
-
-        let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
-            agent_id: agent_id.to_string(),
-            session_id: session_id.to_string(),
-            seq,
-            ts,
-            stream: OutputStream::Acp,
-            message,
-        };
-        if let Some(handle) = inner.read().await.get(agent_id) {
-            let _ = handle.output_tx.send(output);
-        }
-
-        let _ = push.notify_agent_completed(agent_id, session_id).await;
-        let mut guard = inner.write().await;
-        guard.remove(agent_id);
-    }
-
-    async fn prepare_worktree_with_paths(
-        &self,
-        agent: &AgentRecord,
-        workdir: &str,
-        worktree_repo: Option<&str>,
-    ) -> anyhow::Result<()> {
-        match agent.worktree_mode {
-            WorktreeMode::UseExisting => Ok(()),
-            WorktreeMode::ReuseWorktree => {
-                if !Path::new(workdir).exists() {
-                    let detail = format!(
-                        "agent_id={}, mode=reuse_worktree, workdir={}, error=worktree missing",
-                        agent.id, workdir
-                    );
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_reuse_missing",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    anyhow::bail!("worktree does not exist");
-                }
-                let detail = format!(
-                    "agent_id={}, mode=reuse_worktree, workdir={}",
-                    agent.id, workdir
-                );
-                let _ = self
-                    .auth
-                    .record_audit(None, None, "worktree_reuse", Some(&detail), None, None)
-                    .await;
-                Ok(())
-            }
-            WorktreeMode::CreateWorktree => {
-                let repo =
-                    worktree_repo.ok_or_else(|| anyhow::anyhow!("worktree_repo required"))?;
-                if let Err(err) = self.ensure_safe_path(repo).await {
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, error={}",
-                        agent.id, repo, workdir, err
-                    );
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_create_failed",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    return Err(err);
-                }
-                let workdir_path = Path::new(workdir);
-                if workdir_path.exists() && !is_dir_empty(workdir_path)? {
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, error=workdir not empty",
-                        agent.id, repo, workdir
-                    );
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_create_failed",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    anyhow::bail!("workdir is not empty");
-                }
-                let ref_name = agent.worktree_ref.as_deref().unwrap_or("HEAD");
-                let output = Command::new("git")
-                    .arg("-C")
-                    .arg(repo)
-                    .arg("worktree")
-                    .arg("add")
-                    .arg(workdir)
-                    .arg(ref_name)
-                    .output()
-                    .await?;
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    let detail = format!(
-                        "agent_id={}, mode=create_worktree, repo={}, workdir={}, ref={}, error={}",
-                        agent.id,
-                        repo,
-                        workdir,
-                        ref_name,
-                        stderr.trim()
-                    );
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_create_failed",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    anyhow::bail!("git worktree add failed: {}", stderr.trim());
-                }
-                let detail = format!(
-                    "agent_id={}, mode=create_worktree, repo={}, workdir={}, ref={}",
-                    agent.id, repo, workdir, ref_name
-                );
-                let _ = self
-                    .auth
-                    .record_audit(None, None, "worktree_created", Some(&detail), None, None)
-                    .await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn set_code_mode(&self, agent_id: &str, code_mode: bool) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            UPDATE agents
-            SET code_mode = ?1, updated_at = ?2
-            WHERE id = ?3
-            "#,
-        )
-        .bind(if code_mode { 1 } else { 0 })
-        .bind(now)
-        .bind(agent_id)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn mark_exited_on_startup(&self) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        let _ = sqlx::query(
-            r#"
-            UPDATE agent_sessions
-            SET status = 'exited', ended_at = ?1
-            WHERE status = 'running' AND ended_at IS NULL
-            "#,
-        )
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-
-        let _ = sqlx::query(
-            r#"
-            UPDATE agents
-            SET status = 'exited', updated_at = ?1
-            WHERE status = 'running'
-            "#,
-        )
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
-        let mut guard = self.inner.write().await;
-        guard.remove(agent_id);
-        drop(guard);
-        let mut tx = self.db.begin().await?;
-        sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM agents WHERE id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
-        Ok(())
-    }
-}
-
-fn status_to_str(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Created => "created",
-        AgentStatus::Running => "running",
-        AgentStatus::Stopped => "stopped",
-        AgentStatus::Exited => "exited",
-        AgentStatus::Failed => "failed",
-    }
-}
-
-fn status_from_str(status: &str) -> AgentStatus {
-    match status {
-        "running" => AgentStatus::Running,
-        "stopped" => AgentStatus::Stopped,
-        "exited" => AgentStatus::Exited,
-        "failed" => AgentStatus::Failed,
-        _ => AgentStatus::Created,
-    }
-}
-
-fn stream_to_str(stream: &OutputStream) -> &'static str {
-    match stream {
-        OutputStream::Stdout => "stdout",
-        OutputStream::Stderr => "stderr",
-        OutputStream::System => "system",
-        OutputStream::Acp => "acp",
-    }
-}
-
-fn stream_from_str(stream: &str) -> OutputStream {
-    match stream {
-        "stdout" => OutputStream::Stdout,
-        "stderr" => OutputStream::Stderr,
-        "acp" => OutputStream::Acp,
-        _ => OutputStream::System,
-    }
-}
-
-fn worktree_mode_to_str(mode: &WorktreeMode) -> &'static str {
-    match mode {
-        WorktreeMode::UseExisting => "use_existing",
-        WorktreeMode::CreateWorktree => "create_worktree",
-        WorktreeMode::ReuseWorktree => "reuse_worktree",
-    }
-}
-
-fn worktree_mode_from_opt(mode: Option<String>) -> WorktreeMode {
-    match mode.as_deref() {
-        Some("create_worktree") => WorktreeMode::CreateWorktree,
-        Some("reuse_worktree") => WorktreeMode::ReuseWorktree,
-        _ => WorktreeMode::UseExisting,
-    }
-}
-
-fn is_dir_empty(path: &Path) -> anyhow::Result<bool> {
-    if !path.exists() {
-        return Ok(true);
-    }
-    let mut entries = std::fs::read_dir(path)?;
-    Ok(entries.next().is_none())
-}
-
-fn is_acp_message(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    if !trimmed.starts_with('{') {
-        return false;
-    }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
-        return false;
-    };
-    let Some(obj) = value.as_object() else {
-        return false;
-    };
-    let Some(ty) = obj.get("type").and_then(|v| v.as_str()) else {
-        return false;
-    };
-    matches!(
-        ty,
-        "tool_call" | "tool_call_update" | "agent_message" | "agent_thought" | "user_message"
-    )
-}
-
-impl AgentManager {
-    pub fn acp_provider_for_agent(
-        &self,
-        command: &str,
-        args: &[String],
-    ) -> Option<&'static str> {
-        acp_provider_for_agent_with_binary(&self.codex_acp_binary, command, args)
-    }
-
-    fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {
-        if provider != Some(ACP_PROVIDER_CODEX) {
-            return command.to_string();
-        }
-        let configured = &self.codex_acp_binary;
-        if configured == command {
-            return command.to_string();
-        }
-        let configured_path = Path::new(configured);
-        if configured_path.is_absolute() || configured_path.exists() {
-            return configured.to_string();
-        }
-        command.to_string()
-    }
-}
-
-fn acp_provider_for_agent_with_binary(
-    codex_acp_binary: &str,
-    command: &str,
-    args: &[String],
-) -> Option<&'static str> {
-    let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
-    match provider {
-        ACP_PROVIDER_GEMINI => {
-            let has_flag = args.iter().any(|arg| {
-                arg == "--experimental-acp" || arg.starts_with("--experimental-acp=")
-            });
-            if has_flag {
-                Some(ACP_PROVIDER_GEMINI)
-            } else {
-                None
-            }
-        }
-        ACP_PROVIDER_KIMI => {
-            if args.iter().any(|arg| arg == "acp") {
-                Some(ACP_PROVIDER_KIMI)
-            } else {
-                None
-            }
-        }
-        _ => Some(ACP_PROVIDER_CODEX),
-    }
-}
-
-fn acp_provider_for_command_with_binary(
-    codex_acp_binary: &str,
-    command: &str,
-) -> Option<&'static str> {
-    if command == codex_acp_binary {
-        return Some(ACP_PROVIDER_CODEX);
-    }
-    let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
-    match command_name {
-        "gemini" => Some(ACP_PROVIDER_GEMINI),
-        "kimi" => Some(ACP_PROVIDER_KIMI),
-        "agenthub-codex-acp" | "codex-acp" => Some(ACP_PROVIDER_CODEX),
-        name => {
-            let target_name = Path::new(codex_acp_binary)
-                .file_name()
-                .and_then(|n| n.to_str());
-            if target_name.map_or(false, |target| name == target) {
-                Some(ACP_PROVIDER_CODEX)
-            } else {
-                None
-            }
-        }
-    }
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{}/{}", home, stripped);
-        }
-    }
-    path.to_string()
-}
-
-fn normalize_path(path: &str) -> String {
-    let mut parts = Vec::new();
-    for comp in std::path::Path::new(path).components() {
-        match comp {
-            std::path::Component::RootDir => parts.clear(),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                parts.pop();
-            }
-            std::path::Component::Normal(seg) => {
-                parts.push(seg.to_string_lossy().to_string());
-            }
-            _ => {}
-        }
-    }
-    format!("/{}", parts.join("/"))
-}
-
-fn is_path_allowed(target: &str, allowed: &str) -> bool {
-    let target = normalize_path(target);
-    let allowed = normalize_path(allowed);
-    if target == allowed {
-        return true;
-    }
-    if !target.starts_with(&allowed) {
-        return false;
-    }
-    target.chars().nth(allowed.len()) == Some('/')
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
-        acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
-        status_from_str, status_to_str, stream_from_str, stream_to_str,
-    };
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    #[test]
-    fn normalize_path_resolves_dot_and_parent() {
-        assert_eq!(normalize_path("/a/b/./c"), "/a/b/c");
-        assert_eq!(normalize_path("/a/b/../c"), "/a/c");
-        assert_eq!(normalize_path("/a/./b/../c/."), "/a/c");
-    }
-
-    #[test]
-    fn is_path_allowed_matches_exact_or_child() {
-        assert!(is_path_allowed("/home/foo", "/home/foo"));
-        assert!(is_path_allowed("/home/foo/bar", "/home/foo"));
-        assert!(is_path_allowed("/home/foo/bar/baz", "/home/foo/bar"));
-        assert!(!is_path_allowed("/home/foobar", "/home/foo"));
-        assert!(!is_path_allowed("/home/foo/../bar", "/home/foo"));
-    }
-
-    #[test]
-    fn expand_tilde_uses_home() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", "/tmp/test-home");
-        }
-        assert_eq!(expand_tilde("~"), "/tmp/test-home");
-        assert_eq!(expand_tilde("~/work"), "/tmp/test-home/work");
-        if let Some(val) = prev {
-            unsafe {
-                std::env::set_var("HOME", val);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("HOME");
-            }
-        }
-    }
-
-    #[test]
-    fn status_roundtrip() {
-        let statuses = [
-            AgentStatus::Created,
-            AgentStatus::Running,
-            AgentStatus::Stopped,
-            AgentStatus::Exited,
-            AgentStatus::Failed,
-        ];
-        for status in statuses {
-            let s = status_to_str(&status);
-            let parsed = status_from_str(s);
-            assert_eq!(status, parsed);
-        }
-    }
-
-    #[test]
-    fn stream_roundtrip() {
-        let streams = [
-            OutputStream::Stdout,
-            OutputStream::Stderr,
-            OutputStream::System,
-            OutputStream::Acp,
-        ];
-        for stream in streams {
-            let s = stream_to_str(&stream);
-            let parsed = stream_from_str(s);
-            assert_eq!(stream, parsed);
-        }
-    }
-
-    #[test]
-    fn acp_provider_for_agent_requires_expected_args() {
-        let codex_bin = "agenthub-codex-acp";
-        assert_eq!(
-            acp_provider_for_agent_with_binary(codex_bin, "gemini", &[]),
-            None
-        );
-        assert_eq!(
-            acp_provider_for_agent_with_binary(
-                codex_bin,
-                "gemini",
-                &["--experimental-acp".to_string()]
-            ),
-            Some(ACP_PROVIDER_GEMINI)
-        );
-        assert_eq!(
-            acp_provider_for_agent_with_binary(codex_bin, "kimi", &[]),
-            None
-        );
-        assert_eq!(
-            acp_provider_for_agent_with_binary(
-                codex_bin,
-                "kimi",
-                &["acp".to_string()]
-            ),
-            Some(ACP_PROVIDER_KIMI)
-        );
-        assert_eq!(
-            acp_provider_for_agent_with_binary(codex_bin, "codex-acp", &[]),
-            Some(ACP_PROVIDER_CODEX)
-        );
-        assert_eq!(
-            acp_provider_for_agent_with_binary(codex_bin, codex_bin, &[]),
-            Some(ACP_PROVIDER_CODEX)
-        );
     }
 }

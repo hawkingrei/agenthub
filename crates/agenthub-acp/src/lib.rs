@@ -1,3 +1,5 @@
+mod actor_runtime_skill;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
@@ -21,13 +23,22 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use uuid::Uuid;
 
+use actor_runtime_skill::build_actor_runtime_skill;
 use agenthub_acp_core::{
-    AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde,
-    extract_skill_name, filter_mcp_servers, parse_mcp_config, parse_skills_config,
+    AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
+    filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
 
 const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
+
+#[derive(Debug, Clone)]
+pub struct AcpActorSkillContext {
+    pub run_id: String,
+    pub actor_id: String,
+    pub default_channel: String,
+    pub actor_cli_path: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AcpStream {
@@ -66,7 +77,9 @@ impl AcpChunkState {
             self.current_chunk_index = self.current_chunk_index.saturating_add(1);
         }
         (
-            self.current_message_id.clone().unwrap_or_else(|| Uuid::new_v4().to_string()),
+            self.current_message_id
+                .clone()
+                .unwrap_or_else(|| Uuid::new_v4().to_string()),
             self.current_chunk_index,
         )
     }
@@ -179,7 +192,11 @@ fn load_mcp_servers() -> Vec<McpServer> {
     match parse_mcp_config(&contents) {
         Ok(servers) => servers,
         Err(err) => {
-            tracing::warn!("mcp config parse failed: path={} error={}", path.display(), err);
+            tracing::warn!(
+                "mcp config parse failed: path={} error={}",
+                path.display(),
+                err
+            );
             Vec::new()
         }
     }
@@ -308,11 +325,7 @@ impl Client for AcpClient {
             .collect::<Vec<_>>();
         let (request_id, response_rx) = self
             .permissions
-            .create_request(
-                &self.agent_id,
-                &self.session_id,
-                &args,
-            )
+            .create_request(&self.agent_id, &self.session_id, &args)
             .await
             .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
         self.emit_json(serde_json::json!({
@@ -447,13 +460,17 @@ pub async fn spawn_acp_session(
     stdout: ChildStdout,
     stdin: ChildStdin,
     safe_paths: Vec<String>,
+    actor_context: Option<AcpActorSkillContext>,
 ) -> anyhow::Result<AcpHandle> {
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(64);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     std::thread::spawn(move || {
         let mcp_servers = load_mcp_servers();
-        let skills = load_skills(&safe_paths);
+        let mut skills = load_skills(&safe_paths);
+        if let Some(ctx) = actor_context.as_ref() {
+            skills.push(build_actor_runtime_skill(ctx));
+        }
         let skill_blocks = build_skill_blocks(&skills);
         let skills_meta = build_skills_meta(&skills);
         let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -502,17 +519,17 @@ pub async fn spawn_acp_session(
                 }
             };
 
-            let mcp_servers =
-                filter_mcp_servers(mcp_servers, &init_response.agent_capabilities.mcp_capabilities);
+            let mcp_servers = filter_mcp_servers(
+                mcp_servers,
+                &init_response.agent_capabilities.mcp_capabilities,
+            );
 
             let cwd = PathBuf::from(&workdir);
             let mut session_id = None;
 
             if let Some(resume_id) = resume_session_id.clone() {
-                let mut request =
-                    LoadSessionRequest::new(resume_id.clone(), cwd.clone()).mcp_servers(
-                        mcp_servers.clone(),
-                    );
+                let mut request = LoadSessionRequest::new(resume_id.clone(), cwd.clone())
+                    .mcp_servers(mcp_servers.clone());
                 if let Some(meta) = skills_meta.clone() {
                     request = request.meta(meta);
                 }
@@ -528,10 +545,7 @@ pub async fn spawn_acp_session(
                     }
                     Err(err) => {
                         event_sink
-                            .emit_raw(
-                                AcpStream::System,
-                                format!("acp load_session failed: {err}"),
-                            )
+                            .emit_raw(AcpStream::System, format!("acp load_session failed: {err}"))
                             .await;
                     }
                 }
@@ -564,10 +578,7 @@ pub async fn spawn_acp_session(
                         let request = PromptRequest::new(session_id.clone(), blocks);
                         if let Err(err) = conn.prompt(request).await {
                             event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp prompt error: {err}"),
-                                )
+                                .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
                                 .await;
                         }
                     }
@@ -575,10 +586,7 @@ pub async fn spawn_acp_session(
                         let request = SetSessionModeRequest::new(session_id.clone(), mode_id);
                         if let Err(err) = conn.set_session_mode(request).await {
                             event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp set_mode error: {err}"),
-                                )
+                                .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
                                 .await;
                         }
                     }
@@ -586,10 +594,7 @@ pub async fn spawn_acp_session(
                         let request = SetSessionModelRequest::new(session_id.clone(), model_id);
                         if let Err(err) = conn.set_session_model(request).await {
                             event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp set_model error: {err}"),
-                                )
+                                .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
                                 .await;
                         }
                     }
@@ -601,10 +606,7 @@ pub async fn spawn_acp_session(
                         );
                         if let Err(err) = conn.set_session_config_option(request).await {
                             event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp set_config error: {err}"),
-                                )
+                                .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
                                 .await;
                         }
                     }
@@ -612,10 +614,7 @@ pub async fn spawn_acp_session(
                         let request = CancelNotification::new(session_id.clone());
                         if let Err(err) = conn.cancel(request).await {
                             event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp cancel error: {err}"),
-                                )
+                                .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
                                 .await;
                         }
                     }
@@ -977,8 +976,8 @@ impl AcpPermissionService {
         for row in rows {
             let options_json: String = row.get("options_json");
             let tool_call_json: Option<String> = row.try_get("tool_call_json").ok();
-            let options = serde_json::from_str::<Vec<AcpPermissionOption>>(&options_json)
-                .unwrap_or_default();
+            let options =
+                serde_json::from_str::<Vec<AcpPermissionOption>>(&options_json).unwrap_or_default();
             let tool_call = tool_call_json.and_then(|raw| serde_json::from_str(&raw).ok());
             out.push(AcpPermissionRecord {
                 id: row.get("id"),

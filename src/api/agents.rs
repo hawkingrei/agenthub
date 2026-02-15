@@ -6,11 +6,17 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionRecord;
+use crate::actor_runtime::{
+    DEFAULT_ACTOR_CHANNEL, default_actor_cli_path, normalize_actor_cli_path,
+};
 use crate::agent::{AgentConfig, AgentRecord, WorktreeMode};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
+
+const ACTOR_CONTEXT_RUNNING_CONFLICT: &str = "cannot start with new actor context";
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
@@ -27,6 +33,19 @@ pub struct CreateAgentRequest {
 #[derive(Debug, serde::Serialize)]
 pub struct StartAgentResponse {
     pub session_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct StartAgentRequest {
+    pub actor_runtime: Option<StartAgentActorRuntimeRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct StartAgentActorRuntimeRequest {
+    pub run_id: String,
+    pub actor_id: String,
+    pub channel: Option<String>,
+    pub actor_cli_path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -145,9 +164,28 @@ async fn start_agent(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(agent_id): Path<String>,
+    payload: Option<Json<StartAgentRequest>>,
 ) -> Result<Json<StartAgentResponse>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let session_id = state.agents.start_agent(&agent_id).await?;
+    let actor_context = parse_start_actor_runtime_context(payload.map(|Json(body)| body))?;
+    let session_id = if let Some(actor_context) = actor_context {
+        match state
+            .agents
+            .start_agent_with_actor_context(&agent_id, Some(actor_context))
+            .await
+        {
+            Ok(session_id) => session_id,
+            Err(err) => {
+                let message = err.to_string();
+                if message.contains(ACTOR_CONTEXT_RUNNING_CONFLICT) {
+                    return Err(ApiError::conflict(&message));
+                }
+                return Err(err.into());
+            }
+        }
+    } else {
+        state.agents.start_agent(&agent_id).await?
+    };
     Ok(Json(StartAgentResponse { session_id }))
 }
 
@@ -232,26 +270,24 @@ async fn clear_acp_session(
     let _user = require_user(&headers, &state).await?;
     let provider = match payload.provider {
         Some(provider) => provider,
-        None => {
-            match state.agents.get_agent(&agent_id).await {
-                Ok(agent) => state
-                    .agents
-                    .acp_provider_for_agent(&agent.command, &agent.args)
-                    .unwrap_or("codex")
-                    .to_string(),
-                Err(err) => {
-                    if err
-                        .downcast_ref::<sqlx::Error>()
-                        .map(|e| matches!(e, sqlx::Error::RowNotFound))
-                        .unwrap_or(false)
-                    {
-                        "codex".to_string()
-                    } else {
-                        return Err(err.into());
-                    }
+        None => match state.agents.get_agent(&agent_id).await {
+            Ok(agent) => state
+                .agents
+                .acp_provider_for_agent(&agent.command, &agent.args)
+                .unwrap_or("codex")
+                .to_string(),
+            Err(err) => {
+                if err
+                    .downcast_ref::<sqlx::Error>()
+                    .map(|e| matches!(e, sqlx::Error::RowNotFound))
+                    .unwrap_or(false)
+                {
+                    "codex".to_string()
+                } else {
+                    return Err(err.into());
                 }
             }
-        }
+        },
     };
     state
         .agents
@@ -356,9 +392,53 @@ fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
     }
 }
 
+fn parse_start_actor_runtime_context(
+    payload: Option<StartAgentRequest>,
+) -> Result<Option<AcpActorSkillContext>, ApiError> {
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let Some(actor_runtime) = payload.actor_runtime else {
+        return Ok(None);
+    };
+
+    let run_id = actor_runtime.run_id.trim();
+    if run_id.is_empty() {
+        return Err(ApiError::bad_request("actor_runtime.run_id is required"));
+    }
+    let actor_id = actor_runtime.actor_id.trim();
+    if actor_id.is_empty() {
+        return Err(ApiError::bad_request("actor_runtime.actor_id is required"));
+    }
+    let default_channel = actor_runtime
+        .channel
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_ACTOR_CHANNEL)
+        .to_string();
+    let actor_cli_path = match actor_runtime.actor_cli_path.as_deref() {
+        Some(path) => normalize_actor_cli_path(Some(path))
+            .map_err(|err| ApiError::bad_request(err.to_string().as_str()))?,
+        None => default_actor_cli_path()?,
+    };
+
+    Ok(Some(AcpActorSkillContext {
+        run_id: run_id.to_string(),
+        actor_id: actor_id.to_string(),
+        default_channel,
+        actor_cli_path,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{WorktreeMode, parse_worktree_mode};
+    use crate::actor_runtime::default_actor_cli_path;
+
+    use super::{
+        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
+        parse_start_actor_runtime_context, parse_worktree_mode,
+    };
 
     #[test]
     fn parse_worktree_mode_defaults() {
@@ -382,5 +462,82 @@ mod tests {
             parse_worktree_mode(Some("reuse_worktree")),
             WorktreeMode::ReuseWorktree
         ));
+    }
+
+    #[test]
+    fn parse_start_actor_runtime_context_accepts_valid_payload() {
+        let default_cli = default_actor_cli_path().expect("default actor cli path");
+        let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: "run-7".to_string(),
+                actor_id: "planner".to_string(),
+                channel: Some("coordination".to_string()),
+                actor_cli_path: Some(default_cli.clone()),
+            }),
+        }))
+        .expect("parse actor runtime context")
+        .expect("context");
+        assert_eq!(context.run_id, "run-7");
+        assert_eq!(context.actor_id, "planner");
+        assert_eq!(context.default_channel, "coordination");
+        assert_eq!(context.actor_cli_path, default_cli);
+    }
+
+    #[test]
+    fn parse_start_actor_runtime_context_defaults_channel_and_cli_path() {
+        let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: "run-9".to_string(),
+                actor_id: "planner".to_string(),
+                channel: None,
+                actor_cli_path: None,
+            }),
+        }))
+        .expect("parse actor runtime context")
+        .expect("context");
+        assert_eq!(context.default_channel, "default");
+        assert_eq!(
+            context.actor_cli_path,
+            default_actor_cli_path().expect("default actor cli path")
+        );
+    }
+
+    #[test]
+    fn parse_start_actor_runtime_context_rejects_blank_required_fields() {
+        let run_id_err = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: " ".to_string(),
+                actor_id: "planner".to_string(),
+                channel: None,
+                actor_cli_path: None,
+            }),
+        }))
+        .expect_err("run_id should be required");
+        let _ = run_id_err;
+
+        let actor_id_err = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: "run-2".to_string(),
+                actor_id: " ".to_string(),
+                channel: None,
+                actor_cli_path: None,
+            }),
+        }))
+        .expect_err("actor_id should be required");
+        let _ = actor_id_err;
+    }
+
+    #[test]
+    fn parse_start_actor_runtime_context_rejects_untrusted_actor_cli_path() {
+        let err = parse_start_actor_runtime_context(Some(StartAgentRequest {
+            actor_runtime: Some(StartAgentActorRuntimeRequest {
+                run_id: "run-10".to_string(),
+                actor_id: "planner".to_string(),
+                channel: None,
+                actor_cli_path: Some("/tmp/not-allowed-agenthub".to_string()),
+            }),
+        }))
+        .expect_err("actor_cli_path should be validated");
+        let _ = err;
     }
 }

@@ -106,7 +106,10 @@ pub fn build_mcp_server(name: &str, entry: &McpServerConfigJson) -> Option<McpSe
         return Some(McpServer::Http(server));
     }
 
-    tracing::warn!("mcp server skipped: name={} reason=missing command/url", name);
+    tracing::warn!(
+        "mcp server skipped: name={} reason=missing command/url",
+        name
+    );
     None
 }
 
@@ -150,7 +153,10 @@ pub fn extract_skill_name(contents: &str) -> Option<String> {
             let value = raw
                 .strip_prefix('"')
                 .and_then(|item| item.strip_suffix('"'))
-                .or_else(|| raw.strip_prefix('\'').and_then(|item| item.strip_suffix('\'')))
+                .or_else(|| {
+                    raw.strip_prefix('\'')
+                        .and_then(|item| item.strip_suffix('\''))
+                })
                 .unwrap_or(raw);
             if !value.is_empty() {
                 return Some(value.to_string());

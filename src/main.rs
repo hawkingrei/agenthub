@@ -8,6 +8,8 @@ use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 mod acp;
+mod actor_cli;
+mod actor_runtime;
 mod agent;
 mod api;
 mod auth;
@@ -16,6 +18,7 @@ mod db;
 mod push;
 mod sse;
 mod state;
+mod team;
 mod web;
 
 fn split_log_path(path: &str) -> (std::path::PathBuf, String) {
@@ -36,6 +39,10 @@ fn split_log_path(path: &str) -> (std::path::PathBuf, String) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if let Some(result) = actor_cli::maybe_run_from_args().await {
+        return result;
+    }
+
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (config, info) = config::AppConfig::load_with_info()?;
     let log_path = config.log_path();

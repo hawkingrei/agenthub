@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AcpPanel, AcpPanelProps } from "./components/acp_panel";
 import { AcpView } from "./acp";
 
@@ -22,14 +22,15 @@ const baseProps: AcpPanelProps = {
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
-  canControlAcp: true,
-  onAcpCancel: () => {},
   conversation: {
     items: [],
     windowOffset: 0,
     isFrozenView: false,
     shouldAutoCollapse: false,
     collapseCutoff: 0,
+    runStatus: null,
+    virtualTopSpacer: 0,
+    virtualBottomSpacer: 0,
     stickToBottom: true,
     pendingCount: 0,
     avgHeight: 40,
@@ -58,29 +59,21 @@ const baseProps: AcpPanelProps = {
   },
 };
 
-const renderPanel = (override: Partial<AcpView>) =>
-  renderToStaticMarkup(
-    <AcpPanel {...baseProps} acpView={{ ...baseView, ...override }} />
-  );
-
-const interruptDisabled = (html: string) =>
-  /acp-interrupt-button[^>]*disabled/.test(html);
-
-describe("AcpPanel interrupt gating", () => {
-  it("enables interrupt when a tool call is in progress without run status", () => {
-    const html = renderPanel({
-      toolCalls: [{ id: "call-1", title: "Tool", status: "in_progress" }],
-    });
-    expect(interruptDisabled(html)).toBe(false);
-  });
-
-  it("disables interrupt when run status is non-running and no tool call active", () => {
-    const html = renderPanel({
-      runStatus: { status: "completed" },
-    });
-    expect(interruptDisabled(html)).toBe(true);
-  });
-});
+function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): React.ReactElement[] {
+  if (node == null || typeof node === "string" || typeof node === "number") {
+    return out;
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) collectButtons(child, out);
+    return out;
+  }
+  if (!React.isValidElement(node)) return out;
+  if (node.type === "button") {
+    out.push(node);
+  }
+  collectButtons((node.props as { children?: React.ReactNode }).children, out);
+  return out;
+}
 
 describe("AcpPanel layout", () => {
   it("renders subtitle and tabs in header", () => {
@@ -90,5 +83,55 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("/repo/workdir");
     expect(html).toContain("Conversation");
     expect(html).toContain("Debug");
+    expect(html).not.toContain("Interrupt");
+  });
+
+  it("shows pending badge when conversation badge is enabled", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        showConversationBadge={true}
+        conversation={{ ...baseProps.conversation, pendingCount: 3 }}
+      />
+    );
+    expect(html).toContain("+3");
+  });
+
+  it("invokes tab selection callbacks for both tabs", () => {
+    const onSelectTab = vi.fn();
+    const tree = AcpPanel({
+      ...baseProps,
+      onSelectTab,
+      showConversationBadge: true,
+      conversation: { ...baseProps.conversation, pendingCount: 1 },
+    });
+    const buttons = collectButtons(tree);
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    const conversationButton = buttons.find(
+      (btn) =>
+        typeof btn.props.className === "string" &&
+        btn.props.className.includes("tab")
+    );
+    const debugButton = buttons.find(
+      (btn) =>
+        typeof btn.props.className === "string" &&
+        btn.props.className.includes("tab") &&
+        JSON.stringify(btn.props.children).includes("Debug")
+    );
+    expect(conversationButton).toBeDefined();
+    expect(debugButton).toBeDefined();
+    conversationButton?.props.onClick?.();
+    debugButton?.props.onClick?.();
+    expect(onSelectTab).toHaveBeenNthCalledWith(1, "conversation");
+    expect(onSelectTab).toHaveBeenNthCalledWith(2, "debug");
+  });
+
+  it("renders debug view when acpTab is debug", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel {...baseProps} acpTab="debug" />
+    );
+    expect(html).toContain("Session");
+    expect(html).toContain("Permissions");
+    expect(html).toContain("Raw");
   });
 });

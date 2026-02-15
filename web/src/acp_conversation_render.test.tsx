@@ -15,6 +15,9 @@ function renderConversation(
       isFrozenView={false}
       shouldAutoCollapse={false}
       collapseCutoff={0}
+      runStatus={null}
+      virtualTopSpacer={0}
+      virtualBottomSpacer={0}
       stickToBottom={true}
       pendingCount={0}
       avgHeight={40}
@@ -159,6 +162,26 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("Plan:");
   });
 
+  it("renders plan entries as a structured plan card", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_plan",
+        text: "1. analyze\n2. implement",
+        plan_entries: [
+          { content: "analyze", status: "completed", priority: "high" },
+          { content: "implement", status: "in_progress" },
+        ],
+        event_id: 2,
+      },
+    ]);
+
+    expect(html).toContain("acp-plan-card");
+    expect(html).toContain("1/2 completed");
+    expect(html).toContain("analyze");
+    expect(html).toContain("implement");
+    expect(html).toContain("in_progress");
+  });
+
   it("renders markdown bubbles and pending spacer", () => {
     const html = renderConversation(
       [
@@ -184,5 +207,38 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("plain user text");
     expect(html).toContain("acp-conversation-spacer");
     expect(html).toContain("height:120px");
+  });
+
+  it("renders markdown list, table, and code blocks in conversation bubbles", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_message",
+        text: [
+          "- item a",
+          "- item b",
+          "",
+          "| col | value |",
+          "| --- | --- |",
+          "| k1 | v1 |",
+          "",
+          "Inline `code` sample.",
+          "",
+          "```ts",
+          "const n = 1;",
+          "```",
+        ].join("\n"),
+        event_id: 10,
+      },
+    ]);
+
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>item a</li>");
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th>col</th>");
+    expect(html).toContain("<td>v1</td>");
+    expect(html).toContain("<code>code</code>");
+    expect(html).toContain("<pre class=\"hljs\"><code>");
+    expect(html).toContain("hljs-keyword\">const</span>");
+    expect(html).toContain("hljs-number\">1</span>");
   });
 });

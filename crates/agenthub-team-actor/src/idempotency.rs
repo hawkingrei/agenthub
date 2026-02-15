@@ -1,0 +1,154 @@
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+pub fn actor_message_fingerprint(
+    run_id: &str,
+    from_actor_id: &str,
+    to_actor_id: &str,
+    channel: &str,
+    transport: &str,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    let route_canonical = route
+        .map(canonical_json)
+        .unwrap_or_else(|| "null".to_string());
+    let payload_canonical = canonical_json(payload);
+
+    let mut hasher = Sha256::new();
+    hasher.update("actor-message-fingerprint:v1");
+    push_component(&mut hasher, run_id);
+    push_component(&mut hasher, from_actor_id);
+    push_component(&mut hasher, to_actor_id);
+    push_component(&mut hasher, channel);
+    push_component(&mut hasher, transport);
+    push_component(&mut hasher, &route_canonical);
+    push_component(&mut hasher, &payload_canonical);
+    format!("{:x}", hasher.finalize())
+}
+
+pub fn build_default_actor_message_idempotency_key(
+    run_id: &str,
+    from_actor_id: &str,
+    to_actor_id: &str,
+    channel: &str,
+    transport: &str,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    format!(
+        "auto:v1:{}",
+        actor_message_fingerprint(
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route,
+            payload
+        )
+    )
+}
+
+pub fn canonical_json(value: &Value) -> String {
+    let mut out = String::new();
+    write_canonical_json(value, &mut out);
+    out
+}
+
+fn push_component(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.as_bytes());
+    hasher.update([0_u8]);
+}
+
+fn write_canonical_json(value: &Value, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(v) => {
+            if *v {
+                out.push_str("true");
+            } else {
+                out.push_str("false");
+            }
+        }
+        Value::Number(number) => out.push_str(&number.to_string()),
+        Value::String(s) => {
+            out.push_str(&serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string()))
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (idx, item) in items.iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                write_canonical_json(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            out.push('{');
+            let mut entries = map.iter().collect::<Vec<_>>();
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            for (idx, (key, value)) in entries.iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".to_string()));
+                out.push(':');
+                write_canonical_json(value, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn canonical_json_sorts_object_keys_recursively() {
+        let value = json!({
+            "b": 2,
+            "a": {
+                "y": [3, 1],
+                "x": true
+            }
+        });
+        assert_eq!(
+            canonical_json(&value),
+            r#"{"a":{"x":true,"y":[3,1]},"b":2}"#
+        );
+    }
+
+    #[test]
+    fn default_idempotency_key_is_stable_for_equivalent_payloads() {
+        let route_a = json!({"endpoint":"https://a.example","meta":{"b":2,"a":1}});
+        let route_b = json!({"meta":{"a":1,"b":2},"endpoint":"https://a.example"});
+        let payload_a = json!({"text":"hello","data":{"k2":"v2","k1":"v1"}});
+        let payload_b = json!({"data":{"k1":"v1","k2":"v2"},"text":"hello"});
+
+        let key_a = build_default_actor_message_idempotency_key(
+            "run-1",
+            "planner",
+            "reviewer",
+            "coordination",
+            "local",
+            Some(&route_a),
+            &payload_a,
+        );
+        let key_b = build_default_actor_message_idempotency_key(
+            "run-1",
+            "planner",
+            "reviewer",
+            "coordination",
+            "local",
+            Some(&route_b),
+            &payload_b,
+        );
+        assert_eq!(key_a, key_b);
+        assert!(key_a.starts_with("auto:v1:"));
+    }
+}

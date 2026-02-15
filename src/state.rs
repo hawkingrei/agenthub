@@ -7,11 +7,16 @@ use crate::acp::AcpPermissionService;
 use crate::agent::AgentManager;
 use crate::auth::AuthService;
 use crate::push::PushService;
+use crate::team::{
+    TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
+    TeamRemoteRelayWorkerSettings,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
     pub agents: Arc<AgentManager>,
+    pub teams: Arc<TeamManager>,
     pub push: Arc<PushService>,
     pub auth: Arc<AuthService>,
     pub acp_permissions: Arc<AcpPermissionService>,
@@ -32,12 +37,19 @@ impl AppState {
             acp_permissions.clone(),
             auth.clone(),
         ));
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        teams
+            .clone()
+            .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
         agents.mark_exited_on_startup().await?;
+        let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
+            .spawn(TeamOrchestratorWorkerSettings::default());
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, &config).await?;
         Ok(Self {
             db,
             agents,
+            teams,
             push,
             auth,
             acp_permissions,
@@ -90,5 +102,93 @@ impl AppState {
             .await;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppState;
+    use crate::config::AppConfig;
+    use sqlx::Row;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    async fn test_db() -> sqlx::SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                password_hash TEXT,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create users table");
+        sqlx::query(
+            r#"
+            CREATE TABLE safe_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create safe_paths table");
+        pool
+    }
+
+    #[tokio::test]
+    async fn ensure_root_inserts_once() {
+        let db = test_db().await;
+        AppState::ensure_root(&db).await.expect("ensure root first");
+        AppState::ensure_root(&db)
+            .await
+            .expect("ensure root second should be no-op");
+
+        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM users WHERE role = 'root'")
+            .fetch_one(&db)
+            .await
+            .expect("count root users");
+        let count: i64 = row.get("cnt");
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn seed_safe_paths_inserts_distinct_paths() {
+        let db = test_db().await;
+        let config = AppConfig {
+            safe_paths: Some(vec![
+                "/tmp/a".to_string(),
+                "/tmp/b".to_string(),
+                "/tmp/a".to_string(),
+            ]),
+            ..Default::default()
+        };
+
+        AppState::seed_safe_paths(&db, &config)
+            .await
+            .expect("seed safe paths");
+
+        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM safe_paths")
+            .fetch_one(&db)
+            .await
+            .expect("count safe paths");
+        let count: i64 = row.get("cnt");
+        assert_eq!(count, 2);
     }
 }

@@ -1,5 +1,11 @@
 [workspace]
-members = [".", "agenthub-codex-acp", "crates/agenthub-acp-core", "crates/agenthub-acp"]
+members = [
+    ".",
+    "agenthub-codex-acp",
+    "crates/agenthub-acp-core",
+    "crates/agenthub-acp",
+    "crates/agenthub-team-actor",
+]
 
 [patch.crates-io]
 tokio-tungstenite = { git = "https://github.com/JakkuSakura/tokio-tungstenite", branch = "proxy-support" }
@@ -40,5 +46,12 @@ jwt-simple = "0.11"
 mime_guess = "2"
 rust-embed = "8"
 async-trait = "0.1"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.10"
 agenthub-acp = { path = "crates/agenthub-acp" }
+agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
