@@ -2,7 +2,7 @@
 
 ## Summary
 
-Pin Rust to a single version (`1.88.0`) across Bazel, rustup toolchain files,
+Pin Rust to a single version (`1.93.1`) across Bazel, rustup toolchain files,
 and CI setup actions to avoid drift between local builds and CI.
 
 ## Background
@@ -25,7 +25,7 @@ This can introduce non-deterministic behavior when dependencies raise MSRV.
 
 ## Key Decisions
 
-1. Use Rust `1.88.0` as the workspace baseline.
+1. Use Rust `1.93.1` as the workspace baseline.
 2. Keep CI setup actions pinned to the same version instead of `stable`.
 3. Keep Bazel and rustup toolchains aligned to reduce "works locally but fails
    in CI" version skew.
@@ -39,7 +39,7 @@ bazel build //...
 bazel test //...
 ```
 
-Expected: Rust tooling reports `1.88.0` for workspace commands, and CI does not
+Expected: Rust tooling reports `1.93.1` for workspace commands, and CI does not
 float to a newer `stable` unexpectedly.
 
 ## Follow-ups

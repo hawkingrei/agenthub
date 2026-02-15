@@ -26,8 +26,8 @@ for `external/.../time-macros-0.2.26`.
 
 ## Key Decisions
 
-1. Bump `rust.toolchain.versions` from `1.85.0` to `1.88.0` (minimum required
-   by current dependency graph).
+1. Bump `rust.toolchain.versions` from `1.85.0` to `1.93.1` (new workspace
+   baseline, and safely above current dependency MSRV).
 2. Keep dependency set unchanged; resolve the failure at toolchain layer first.
 
 ## Validation
