@@ -12,13 +12,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
-      - name: Bazel build
-        run: bazel build //...
-      - name: Bazel test
-        run: bazel test --test_output=errors //...
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci
+        working-directory: web
+      - name: Lint
+        run: npm run lint
+        working-directory: web
+      - name: Test with coverage
+        run: npm run test:coverage
+        working-directory: web
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: web/coverage/lcov.info
+          flags: web
+          name: web-coverage
+          fail_ci_if_error: false
+      - name: Build
+        run: npm run build
+        working-directory: web

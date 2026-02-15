@@ -7,7 +7,7 @@ on:
 
 jobs:
   rust:
-    name: Rust
+    name: Rust (Bazel Targets)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,7 +18,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
-      - name: Bazel build
-        run: bazel build //...
-      - name: Bazel test
-        run: bazel test --test_output=errors //...
+      - name: Bazel build (Rust targets)
+        run: bazel build //:agenthub //agenthub-codex-acp:agenthub_codex_acp_bin
+      - name: Bazel test (Rust targets)
+        run: |
+          bazel test --test_output=errors \
+            //:agenthub_unit_tests \
+            //crates/agenthub-acp-core:agenthub_acp_core_tests \
+            //crates/agenthub-acp:agenthub_acp_tests \
+            //crates/agenthub-team-actor:agenthub_team_actor_tests \
+            //agenthub-codex-acp:agenthub_codex_acp_tests
