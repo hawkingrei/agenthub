@@ -886,6 +886,13 @@ mod tests {
         serde_json::from_slice(&bytes).expect("decode response json")
     }
 
+    async fn decode_text_body(response: axum::response::Response) -> String {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        String::from_utf8(bytes.to_vec()).expect("decode response text")
+    }
+
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
         let status = StdCommand::new("git")
             .arg("-C")
@@ -1001,6 +1008,132 @@ mod tests {
             .await
             .expect("stop create_worktree agent (second)");
         assert_eq!(stop_second.status(), StatusCode::OK);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn create_worktree_rejects_reuse_by_other_agent() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let first_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-owner",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create owner agent");
+        assert_eq!(first_create.status(), StatusCode::OK);
+        let first_agent = decode_json_body(first_create).await;
+        let first_id = first_agent["id"].as_str().expect("first agent id");
+
+        let first_start = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{first_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start owner agent");
+        assert_eq!(first_start.status(), StatusCode::OK);
+
+        let first_stop = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{first_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop owner agent");
+        assert_eq!(first_stop.status(), StatusCode::OK);
+
+        let second_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-attacker",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create second agent");
+        assert_eq!(second_create.status(), StatusCode::OK);
+        let second_agent = decode_json_body(second_create).await;
+        let second_id = second_agent["id"].as_str().expect("second agent id");
+
+        let second_start = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{second_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start second agent");
+        assert_eq!(second_start.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = decode_text_body(second_start).await;
+        assert!(
+            body.contains("existing worktree belongs to another agent"),
+            "unexpected error body: {body}"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }

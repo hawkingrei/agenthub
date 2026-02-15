@@ -28,12 +28,20 @@ their already-created worktree paths, so the next start failed with
    a valid reuse path and continue start flow.
 4. Add a router-level regression test to cover repeated
    `start -> stop -> start` for a `create_worktree` agent.
+5. Harden reuse safety: reject reuse when the same workdir is already bound to
+   another agent record.
+6. Validate existing worktree ref against configured `worktree_ref` (except
+   `HEAD` which intentionally allows current head semantics).
+7. Serialize reuse audit details as JSON text to avoid log field injection from
+   untrusted path strings.
 
 ## Validation
 
 ```bash
 cargo test create_worktree_agent_can_start_again_after_stop -- --nocapture
-cargo test worktree_list_contains_path_ -- --nocapture
+cargo test create_worktree_rejects_reuse_by_other_agent -- --nocapture
+cargo test parse_worktree_list_extracts_entries -- --nocapture
+cargo test worktree_ref_matches_ -- --nocapture
 cargo test start_route_with_actor_runtime_payload_injects_actor_envs -- --nocapture
 cargo test --all
 ```

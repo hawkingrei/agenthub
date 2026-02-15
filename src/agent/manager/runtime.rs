@@ -14,7 +14,17 @@ use super::{AgentHandle, AgentManager, normalize_path};
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
 use crate::push::PushService;
 
-async fn repo_contains_worktree_path(repo: &str, workdir: &str) -> anyhow::Result<bool> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitWorktreeEntry {
+    path: String,
+    head: Option<String>,
+    branch: Option<String>,
+}
+
+async fn repo_find_worktree_entry(
+    repo: &str,
+    workdir: &str,
+) -> anyhow::Result<Option<GitWorktreeEntry>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -32,22 +42,95 @@ async fn repo_contains_worktree_path(repo: &str, workdir: &str) -> anyhow::Resul
         anyhow::bail!("git worktree list failed: {reason}");
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(worktree_list_contains_path(&stdout, workdir))
+    let target = normalize_worktree_path(workdir);
+    Ok(parse_worktree_list(&stdout)
+        .into_iter()
+        .find(|entry| normalize_worktree_path(&entry.path) == target))
 }
 
-fn worktree_list_contains_path(stdout: &str, workdir: &str) -> bool {
-    let target = normalize_worktree_path(workdir);
-    stdout
-        .lines()
-        .filter_map(|line| line.strip_prefix("worktree "))
-        .map(normalize_worktree_path)
-        .any(|candidate| candidate == target)
+fn parse_worktree_list(stdout: &str) -> Vec<GitWorktreeEntry> {
+    let mut entries = Vec::new();
+    let mut current: Option<GitWorktreeEntry> = None;
+    for line in stdout.lines() {
+        if line.is_empty() {
+            if let Some(entry) = current.take() {
+                entries.push(entry);
+            }
+            continue;
+        }
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if let Some(entry) = current.take() {
+                entries.push(entry);
+            }
+            current = Some(GitWorktreeEntry {
+                path: path.to_string(),
+                head: None,
+                branch: None,
+            });
+            continue;
+        }
+        if let Some(head) = line.strip_prefix("HEAD ") {
+            if let Some(entry) = current.as_mut() {
+                entry.head = Some(head.to_string());
+            }
+            continue;
+        }
+        if let Some(branch) = line.strip_prefix("branch ") {
+            if let Some(entry) = current.as_mut() {
+                entry.branch = Some(branch.to_string());
+            }
+        }
+    }
+    if let Some(entry) = current.take() {
+        entries.push(entry);
+    }
+    entries
+}
+
+fn trim_ref_prefix(value: &str) -> &str {
+    value.strip_prefix("refs/heads/").unwrap_or(value)
+}
+
+fn is_hex_sha(value: &str) -> bool {
+    let len = value.len();
+    len >= 7 && len <= 40 && value.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn worktree_ref_matches(entry: &GitWorktreeEntry, expected_ref: &str) -> bool {
+    let expected = expected_ref.trim();
+    if expected.eq_ignore_ascii_case("HEAD") {
+        return true;
+    }
+
+    let expected_branch = trim_ref_prefix(expected);
+    if !expected_branch.is_empty() {
+        if let Some(branch) = entry.branch.as_deref() {
+            if trim_ref_prefix(branch) == expected_branch {
+                return true;
+            }
+        }
+    }
+
+    if is_hex_sha(expected) {
+        if let Some(head) = entry.head.as_deref() {
+            return head.starts_with(expected);
+        }
+    }
+
+    false
 }
 
 fn normalize_worktree_path(path: &str) -> String {
     let canonical = std::fs::canonicalize(path)
         .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|_| path.to_string());
+        .unwrap_or_else(|err| {
+            tracing::warn!(
+                path = %path,
+                error = %err,
+                "failed to canonicalize worktree path"
+            );
+            path.to_string()
+        });
     normalize_path(&canonical)
 }
 
@@ -330,6 +413,7 @@ impl AgentManager {
             WorktreeMode::CreateWorktree => {
                 let repo =
                     worktree_repo.ok_or_else(|| anyhow::anyhow!("worktree_repo required"))?;
+                let ref_name = agent.worktree_ref.as_deref().unwrap_or("HEAD");
                 if let Err(err) = self.ensure_safe_path(repo).await {
                     let detail = format!(
                         "agent_id={}, mode=create_worktree, repo={}, workdir={}, error={}",
@@ -350,11 +434,68 @@ impl AgentManager {
                 }
                 let workdir_path = Path::new(workdir);
                 if workdir_path.exists() && !is_dir_empty(workdir_path)? {
-                    if repo_contains_worktree_path(repo, workdir).await? {
-                        let detail = format!(
-                            "agent_id={}, mode=create_worktree, repo={}, workdir={}, source=existing_worktree",
-                            agent.id, repo, workdir
-                        );
+                    if let Some(existing_worktree) = repo_find_worktree_entry(repo, workdir).await?
+                    {
+                        if self
+                            .is_workdir_bound_to_other_agent(&agent.id, workdir)
+                            .await?
+                        {
+                            let detail = serde_json::json!({
+                                "agent_id": agent.id,
+                                "mode": "create_worktree",
+                                "repo": repo,
+                                "workdir": workdir,
+                                "error": "workdir belongs to another agent",
+                            })
+                            .to_string();
+                            let _ = self
+                                .auth
+                                .record_audit(
+                                    None,
+                                    None,
+                                    "worktree_create_failed",
+                                    Some(&detail),
+                                    None,
+                                    None,
+                                )
+                                .await;
+                            anyhow::bail!("existing worktree belongs to another agent");
+                        }
+
+                        if !worktree_ref_matches(&existing_worktree, ref_name) {
+                            let detail = serde_json::json!({
+                                "agent_id": agent.id,
+                                "mode": "create_worktree",
+                                "repo": repo,
+                                "workdir": workdir,
+                                "configured_ref": ref_name,
+                                "existing_branch": existing_worktree.branch,
+                                "existing_head": existing_worktree.head,
+                                "error": "worktree ref mismatch",
+                            })
+                            .to_string();
+                            let _ = self
+                                .auth
+                                .record_audit(
+                                    None,
+                                    None,
+                                    "worktree_create_failed",
+                                    Some(&detail),
+                                    None,
+                                    None,
+                                )
+                                .await;
+                            anyhow::bail!("existing worktree ref mismatch");
+                        }
+
+                        let detail = serde_json::json!({
+                            "agent_id": agent.id,
+                            "mode": "create_worktree",
+                            "repo": repo,
+                            "workdir": workdir,
+                            "source": "existing_worktree",
+                        })
+                        .to_string();
                         let _ = self
                             .auth
                             .record_audit(None, None, "worktree_reuse", Some(&detail), None, None)
@@ -378,7 +519,6 @@ impl AgentManager {
                         .await;
                     anyhow::bail!("workdir is not empty");
                 }
-                let ref_name = agent.worktree_ref.as_deref().unwrap_or("HEAD");
                 let output = Command::new("git")
                     .arg("-C")
                     .arg(repo)
@@ -422,6 +562,26 @@ impl AgentManager {
                 Ok(())
             }
         }
+    }
+
+    async fn is_workdir_bound_to_other_agent(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+    ) -> anyhow::Result<bool> {
+        let row = sqlx::query(
+            r#"
+            SELECT id
+            FROM agents
+            WHERE workdir = ?1 AND id != ?2
+            LIMIT 1
+            "#,
+        )
+        .bind(workdir)
+        .bind(agent_id)
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.is_some())
     }
 
     pub async fn set_code_mode(&self, agent_id: &str, code_mode: bool) -> anyhow::Result<()> {
@@ -500,10 +660,10 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
-    use super::worktree_list_contains_path;
+    use super::{GitWorktreeEntry, parse_worktree_list, worktree_ref_matches};
 
     #[test]
-    fn worktree_list_contains_path_matches_normalized_paths() {
+    fn parse_worktree_list_extracts_entries() {
         let stdout = r#"
 worktree /tmp/repo
 HEAD 0000000000000000000000000000000000000000
@@ -513,22 +673,42 @@ worktree /tmp/repo/worktrees/agent-a
 HEAD 1111111111111111111111111111111111111111
 branch refs/heads/agent-a
 "#;
-        assert!(worktree_list_contains_path(
-            stdout,
-            "/tmp/repo/worktrees/agent-a/",
-        ));
+        let entries = parse_worktree_list(stdout);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[1].path, "/tmp/repo/worktrees/agent-a");
+        assert_eq!(entries[1].branch.as_deref(), Some("refs/heads/agent-a"));
     }
 
     #[test]
-    fn worktree_list_contains_path_rejects_unknown_paths() {
-        let stdout = r#"
-worktree /tmp/repo
-HEAD 0000000000000000000000000000000000000000
-branch refs/heads/main
-"#;
-        assert!(!worktree_list_contains_path(
-            stdout,
-            "/tmp/repo/worktrees/missing",
-        ));
+    fn worktree_ref_matches_accepts_head() {
+        let entry = GitWorktreeEntry {
+            path: "/tmp/repo/worktrees/agent-a".to_string(),
+            head: Some("1111111111111111111111111111111111111111".to_string()),
+            branch: Some("refs/heads/agent-a".to_string()),
+        };
+        assert!(worktree_ref_matches(&entry, "HEAD"));
+    }
+
+    #[test]
+    fn worktree_ref_matches_accepts_matching_branch() {
+        let entry = GitWorktreeEntry {
+            path: "/tmp/repo/worktrees/agent-a".to_string(),
+            head: Some("1111111111111111111111111111111111111111".to_string()),
+            branch: Some("refs/heads/agent-a".to_string()),
+        };
+        assert!(worktree_ref_matches(&entry, "refs/heads/agent-a"));
+        assert!(worktree_ref_matches(&entry, "agent-a"));
+        assert!(!worktree_ref_matches(&entry, "agent-b"));
+    }
+
+    #[test]
+    fn worktree_ref_matches_accepts_matching_commit_prefix() {
+        let entry = GitWorktreeEntry {
+            path: "/tmp/repo/worktrees/agent-a".to_string(),
+            head: Some("1111111111111111111111111111111111111111".to_string()),
+            branch: None,
+        };
+        assert!(worktree_ref_matches(&entry, "1111111"));
+        assert!(!worktree_ref_matches(&entry, "2222222"));
     }
 }
