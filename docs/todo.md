@@ -57,6 +57,7 @@
 - [x] Wire orchestrator worker loop step execution to start member agents with per-step `actor_runtime` context (`run_id`, `actor_id`, optional `channel`) in backend service loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Bootstrap orchestrator worker step queue from team spec DAG when runs have no persisted steps, then dispatch ready steps by dependency order (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - [x] Verify orchestrator-driven member start path injects actor runtime context and supports end-to-end inbox/ack flow (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+- [x] Reconcile orchestrator `working` steps from `agent_sessions` terminal status (`completed`/`failed`/`cancelled`/`exited`) for single-node run convergence (see `docs/features/2026-02-15-a2a-team-orchestrator-session-reconcile.md`).
 - [x] Verify `POST /api/teams/runs/:run_id/messages/send` idempotency dedupes mailbox rows and `actor_message_sent` events for orchestrator retries (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
 - [x] Verify actor CLI default send auto-generates stable idempotency keys and `--allow-duplicate` bypasses dedupe when repeated delivery is required (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).
 - [x] Verify `messages/send` returns `409 conflict` when reusing the same idempotency key with a changed payload/route (see `docs/features/2026-02-14-a2a-team-actor-idempotent-send.md`).

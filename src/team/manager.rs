@@ -297,6 +297,24 @@ impl TeamManager {
         Ok(runs)
     }
 
+    pub async fn get_agent_session_status(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let row = sqlx::query(
+            r#"
+            SELECT status
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(row.map(|row| row.get("status")))
+    }
+
     #[allow(dead_code)]
     pub async fn start_step(
         &self,

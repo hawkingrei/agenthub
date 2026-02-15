@@ -30,6 +30,8 @@ pub struct TeamOrchestratorDispatchSummary {
     pub scanned: i64,
     pub dispatched: i64,
     pub failed: i64,
+    pub reconciled_completed: i64,
+    pub reconciled_failed: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -91,11 +93,17 @@ impl TeamOrchestratorWorker {
                 ticker.tick().await;
                 match self.dispatch_once(settings.max_dispatch_per_tick).await {
                     Ok(summary) => {
-                        if summary.scanned > 0 || summary.failed > 0 {
+                        if summary.scanned > 0
+                            || summary.failed > 0
+                            || summary.reconciled_completed > 0
+                            || summary.reconciled_failed > 0
+                        {
                             tracing::debug!(
                                 scanned = summary.scanned,
                                 dispatched = summary.dispatched,
                                 failed = summary.failed,
+                                reconciled_completed = summary.reconciled_completed,
+                                reconciled_failed = summary.reconciled_failed,
                                 "team orchestrator tick"
                             );
                         }
@@ -124,7 +132,13 @@ impl TeamOrchestratorWorker {
                 break;
             }
             self.bootstrap_run_steps_if_needed(&run).await?;
-            let steps = self.teams.list_steps(&run.id).await?;
+            let mut steps = self.teams.list_steps(&run.id).await?;
+            if steps.is_empty() {
+                continue;
+            }
+            self.reconcile_working_steps(&run.id, &steps, &mut summary)
+                .await?;
+            steps = self.teams.list_steps(&run.id).await?;
             if steps.is_empty() {
                 continue;
             }
@@ -163,6 +177,61 @@ impl TeamOrchestratorWorker {
             }
         }
         Ok(summary)
+    }
+
+    async fn reconcile_working_steps(
+        &self,
+        run_id: &str,
+        steps: &[TeamStepRecord],
+        summary: &mut TeamOrchestratorDispatchSummary,
+    ) -> anyhow::Result<()> {
+        for step in steps {
+            if step.status != TeamStepStatus::Working {
+                continue;
+            }
+            let Some(session_id) = step.remote_task_id.as_deref() else {
+                continue;
+            };
+            let Some(session_status) = self.teams.get_agent_session_status(session_id).await?
+            else {
+                continue;
+            };
+
+            if session_status == "completed" {
+                let completed = self.teams.complete_step(&step.id, None).await?;
+                if completed.status == TeamStepStatus::Completed {
+                    summary.reconciled_completed += 1;
+                    tracing::debug!(
+                        run_id = %run_id,
+                        step_id = %completed.id,
+                        step_key = %completed.step_key,
+                        session_id = %session_id,
+                        "team orchestrator reconciled completed step from agent session status"
+                    );
+                }
+                continue;
+            }
+
+            if is_terminal_failure_session_status(&session_status) {
+                let err_text = format!(
+                    "orchestrator observed terminal agent session '{}' with status '{}'",
+                    session_id, session_status
+                );
+                let failed = self.teams.fail_step(&step.id, &err_text).await?;
+                if failed.status == TeamStepStatus::Failed {
+                    summary.reconciled_failed += 1;
+                    tracing::debug!(
+                        run_id = %run_id,
+                        step_id = %failed.id,
+                        step_key = %failed.step_key,
+                        session_id = %session_id,
+                        session_status = %session_status,
+                        "team orchestrator reconciled failed step from agent session status"
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn bootstrap_run_steps_if_needed(&self, run: &TeamRunRecord) -> anyhow::Result<()> {
@@ -243,6 +312,10 @@ fn is_step_ready(step: &TeamStepRecord, status_by_key: &HashMap<String, TeamStep
     })
 }
 
+fn is_terminal_failure_session_status(status: &str) -> bool {
+    matches!(status, "failed" | "cancelled" | "exited")
+}
+
 fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
     let spec_obj = spec
         .as_object()
@@ -317,7 +390,7 @@ mod tests {
 
     use super::{
         TeamMemberAgentStarter, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
-        is_step_ready, parse_step_specs,
+        is_step_ready, is_terminal_failure_session_status, parse_step_specs,
     };
     use crate::acp::AcpActorSkillContext;
     use crate::team::{
@@ -379,6 +452,15 @@ mod tests {
         assert_eq!(specs[0].step_key, "planner");
         assert_eq!(specs[0].member_id, "planner");
         assert!(specs[0].depends_on.is_empty());
+    }
+
+    #[test]
+    fn terminal_failure_session_status_detection_matches_expected_values() {
+        assert!(is_terminal_failure_session_status("failed"));
+        assert!(is_terminal_failure_session_status("cancelled"));
+        assert!(is_terminal_failure_session_status("exited"));
+        assert!(!is_terminal_failure_session_status("running"));
+        assert!(!is_terminal_failure_session_status("completed"));
     }
 
     #[derive(Debug, Clone)]
@@ -554,6 +636,21 @@ mod tests {
         .execute(&pool)
         .await
         .expect("create team_actor_messages idempotency index");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create agent_sessions");
 
         pool
     }
@@ -747,6 +844,136 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].member_id, "planner");
         assert_eq!(calls[1].member_id, "reviewer");
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_reconciles_working_step_from_completed_session() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-reconcile-complete-team".to_string(),
+                description: Some("team for orchestrator reconcile completion".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-reconcile-complete"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        let _ = teams
+            .start_step(&step.id, Some("session-complete"))
+            .await
+            .expect("start step");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, 1, 2)
+            "#,
+        )
+        .bind("session-complete")
+        .bind("planner")
+        .bind("completed")
+        .execute(&db)
+        .await
+        .expect("insert completed agent session");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+
+        assert_eq!(summary.dispatched, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.reconciled_completed, 1);
+        assert_eq!(summary.reconciled_failed, 0);
+        assert!(starter.calls().is_empty());
+
+        let completed_step = teams.get_step(&step.id).await.expect("get completed step");
+        assert_eq!(completed_step.status, TeamStepStatus::Completed);
+        let completed_run = teams.get_run(&run.id).await.expect("get completed run");
+        assert_eq!(completed_run.status, crate::team::TeamRunStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_reconciles_working_step_from_failed_session() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db.clone()));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-reconcile-fail-team".to_string(),
+                description: Some("team for orchestrator reconcile failure".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            })
+            .await
+            .expect("create team");
+        let run = teams
+            .create_run(&team.id, Some("ctx-reconcile-fail"), json!({"prompt":"go"}))
+            .await
+            .expect("create run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"plan"})),
+            )
+            .await
+            .expect("submit step");
+        let _ = teams
+            .start_step(&step.id, Some("session-failed"))
+            .await
+            .expect("start step");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, 1, 2)
+            "#,
+        )
+        .bind("session-failed")
+        .bind("planner")
+        .bind("failed")
+        .execute(&db)
+        .await
+        .expect("insert failed agent session");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+
+        assert_eq!(summary.dispatched, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.reconciled_completed, 0);
+        assert_eq!(summary.reconciled_failed, 1);
+        assert!(starter.calls().is_empty());
+
+        let failed_step = teams.get_step(&step.id).await.expect("get failed step");
+        assert_eq!(failed_step.status, TeamStepStatus::Failed);
+        assert!(
+            failed_step
+                .error_text
+                .as_deref()
+                .is_some_and(|text| text.contains("session-failed"))
+        );
+        let failed_run = teams.get_run(&run.id).await.expect("get failed run");
+        assert_eq!(failed_run.status, crate::team::TeamRunStatus::Failed);
     }
 
     #[test]
