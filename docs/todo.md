@@ -24,12 +24,16 @@
 - [ ] Verify `use_acp_conversation` helper extraction keeps scroll restoration and jump-badge behavior unchanged across long sessions (see `docs/features/2026-02-14-use-acp-conversation-coverage.md`).
 - [ ] Verify ACP conversation render caches and `requestAnimationFrame` scroll throttling improve long-session interaction latency (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [ ] Verify ACP memoized conversation rows reduce React commit count and scripting time on long-session scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
+- [ ] Verify ACP conversation stick-to-bottom remains stable under bursty tool-call/message updates and does not require manual jump-to-bottom recovery (see `docs/features/2026-02-15-acp-conversation-stick-bottom-hardening.md`).
 - [x] Verify ACP markdown typography and list/table/code rendering in conversation view with render tests + CSS guards (`acp_conversation_render.test.tsx`, `tests/web_assets.rs`) (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [ ] Verify mobile workspace alignment with safe-area insets and ACP header action wrapping (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [x] Compact ACP top tabs (`Conversation`/`Debug`) and debug sub-tabs on mobile breakpoints to reduce oversized tab cards (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
+- [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
+- [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
+- [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
 - [x] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
 - [x] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
 - [x] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
@@ -127,6 +131,7 @@
 - [ ] Review new unit tests for event cursor ordering and conversation freeze logic, expand coverage if regressions appear (see `docs/features/2026-02-08-test-coverage-update.md`).
 - [ ] Verify markdown sanitization tests and agent list keyboard navigation after review fixes (see `docs/features/2026-02-08-review-fixes.md`).
 - [ ] Verify markdown-it rendering and syntax highlighting on mobile and long ACP replies (see `docs/features/2026-02-08-markdown-renderer.md`).
+- [ ] Verify markdown whitelist auto-link only converts approved bare URLs (GitHub pull URLs) and keeps non-whitelist URLs as plain text in conversation output (see `docs/features/2026-02-15-markdown-whitelist-autolink.md`).
 - [ ] Verify ACP markdown typography (line height and letter spacing) on desktop and mobile (see `docs/features/2026-02-08-markdown-renderer.md`).
 - [ ] Verify ACP details caret indicator renders for tool calls and thinking folds (see `docs/features/2026-02-08-acp-details-caret.md`).
 - [ ] Verify ACP chunk ordering metadata fixes token-level stream ordering under SSE/polling (see `docs/features/2026-02-08-acp-chunk-ordering.md`).

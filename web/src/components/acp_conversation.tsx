@@ -21,6 +21,15 @@ type AcpConversationProps = {
 
 const MARKDOWN_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
+const TOOL_PAYLOAD_PREVIEW_LIMIT = 88;
+const TOOL_PAYLOAD_MAX_NESTED_DEPTH = 2;
+const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>(["turnid"]);
+const TOOL_TEXT_INITIAL_LINES = 120;
+const TOOL_TEXT_LINE_CHUNK = 220;
+const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
+const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
+const TOOL_PAYLOAD_INITIAL_ITEMS = 24;
+const TOOL_PAYLOAD_ITEM_CHUNK = 48;
 
 const markdownHtmlCache = new Map<string, string>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
@@ -28,12 +37,16 @@ let markdownCacheHitCount = 0;
 let markdownCacheMissCount = 0;
 let ansiCacheHitCount = 0;
 let ansiCacheMissCount = 0;
+let payloadParseCount = 0;
+let payloadParseFailureCount = 0;
 
 type CacheStats = {
   markdownHits: number;
   markdownMisses: number;
   ansiHits: number;
   ansiMisses: number;
+  payloadParses: number;
+  payloadParseFailures: number;
 };
 
 export function resetAcpConversationCaches(): void {
@@ -43,6 +56,8 @@ export function resetAcpConversationCaches(): void {
   markdownCacheMissCount = 0;
   ansiCacheHitCount = 0;
   ansiCacheMissCount = 0;
+  payloadParseCount = 0;
+  payloadParseFailureCount = 0;
 }
 
 export function getAcpConversationCacheStats(): CacheStats {
@@ -51,6 +66,8 @@ export function getAcpConversationCacheStats(): CacheStats {
     markdownMisses: markdownCacheMissCount,
     ansiHits: ansiCacheHitCount,
     ansiMisses: ansiCacheMissCount,
+    payloadParses: payloadParseCount,
+    payloadParseFailures: payloadParseFailureCount,
   };
 }
 
@@ -238,6 +255,23 @@ const ToolCallBubble = React.memo(
     const [open, setOpen] = React.useState(isLive);
     const wasLiveRef = React.useRef(isLive);
     const callHint = deriveToolCallHint(msg.title, msg.raw_input, msg.content);
+    const inputPayload = React.useMemo(
+      () => normalizeToolPayload(msg.raw_input),
+      [msg.raw_input]
+    );
+    const outputPayload = React.useMemo(
+      () => normalizeToolPayload(msg.raw_output),
+      [msg.raw_output]
+    );
+    const inputPreview = React.useMemo(
+      () => summarizeToolPayload(inputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
+      [inputPayload]
+    );
+    const outputPreview = React.useMemo(
+      () => summarizeToolPayload(outputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
+      [outputPayload]
+    );
+    const statusLabel = formatToolCallStatus(msg.status);
 
     React.useEffect(() => {
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
@@ -260,7 +294,7 @@ const ToolCallBubble = React.memo(
               {callHint ? ` · ${callHint}` : ""}
             </span>
             {msg.status && (
-              <span className="acp-tool-status">{msg.status}</span>
+              <span className="acp-tool-status">{statusLabel}</span>
             )}
           </summary>
           {msg.content && (
@@ -268,32 +302,32 @@ const ToolCallBubble = React.memo(
               label="Content"
               preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
               defaultOpen={isLive}
+              lazyRender={true}
             >
-              <div className="acp-text">
-                <pre>{unescapeLineBreaks(msg.content)}</pre>
-              </div>
+              <ToolTextContent
+                text={unescapeLineBreaks(msg.content)}
+                markdownClassName="acp-payload-markdown"
+              />
             </FoldSection>
           )}
-          {msg.raw_input && (
+          {hasToolPayload(inputPayload) && (
             <FoldSection
               label="Input"
-              preview={formatConversationPreview(formatToolCallPayload(msg.raw_input), 88)}
+              preview={inputPreview}
               defaultOpen={false}
+              lazyRender={true}
             >
-              <pre className="acp-content">
-                {formatToolCallPayload(msg.raw_input)}
-              </pre>
+              <ToolPayloadView payload={inputPayload} />
             </FoldSection>
           )}
-          {msg.raw_output && (
+          {hasToolPayload(outputPayload) && (
             <FoldSection
               label="Output"
-              preview={formatConversationPreview(formatToolCallPayload(msg.raw_output), 88)}
+              preview={outputPreview}
               defaultOpen={!isLive}
+              lazyRender={true}
             >
-              <pre className="acp-content">
-                {formatToolCallPayload(msg.raw_output)}
-              </pre>
+              <ToolPayloadView payload={outputPayload} />
             </FoldSection>
           )}
           {msg.terminal_output && (
@@ -301,12 +335,12 @@ const ToolCallBubble = React.memo(
               label="Terminal"
               preview={formatConversationPreview(unescapeLineBreaks(msg.terminal_output), 88)}
               defaultOpen={isLive}
+              lazyRender={true}
             >
-              <pre className="acp-content">
-                {renderAnsiTerminalOutput(
-                  ansi(unescapeLineBreaks(msg.terminal_output))
-                )}
-              </pre>
+              <TerminalOutputView
+                text={unescapeLineBreaks(msg.terminal_output)}
+                ansi={ansi}
+              />
             </FoldSection>
           )}
         </details>
@@ -428,17 +462,37 @@ type FoldSectionProps = {
   label: string;
   preview: string;
   defaultOpen: boolean;
+  lazyRender?: boolean;
   children: React.ReactNode;
 };
 
-function FoldSection({ label, preview, defaultOpen, children }: FoldSectionProps) {
+function FoldSection({
+  label,
+  preview,
+  defaultOpen,
+  lazyRender = false,
+  children,
+}: FoldSectionProps) {
+  const [open, setOpen] = React.useState(defaultOpen);
+
+  React.useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
+
+  const shouldRenderBody = !lazyRender || open;
   return (
-    <details className="acp-subfold" open={defaultOpen}>
+    <details
+      className="acp-subfold"
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+      }}
+    >
       <summary>
         <span>{label}</span>
         {preview ? <span className="acp-subfold-preview">{preview}</span> : null}
       </summary>
-      {children}
+      {shouldRenderBody ? children : null}
     </details>
   );
 }
@@ -521,10 +575,565 @@ function unescapeLineBreaks(text: string): string {
     .replace(/\\r/g, "\n");
 }
 
-function formatToolCallPayload(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return unescapeLineBreaks(value);
-  return unescapeLineBreaks(JSON.stringify(value, null, 2));
+type NormalizedToolPayload =
+  | { kind: "empty" }
+  | { kind: "text"; text: string }
+  | { kind: "json_text"; text: string; parsed?: unknown }
+  | { kind: "json"; value: unknown };
+
+function normalizeToolPayload(value: unknown): NormalizedToolPayload {
+  if (value == null) return { kind: "empty" };
+  if (typeof value === "string") {
+    const text = unescapeLineBreaks(value).trim();
+    if (!text) return { kind: "empty" };
+    if (isJsonLikeText(text)) {
+      return {
+        kind: "json_text",
+        text,
+        parsed: parseJsonLikeString(text, true),
+      };
+    }
+    return { kind: "text", text };
+  }
+  return { kind: "json", value };
+}
+
+function isJsonLikeText(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  );
+}
+
+function parseJsonLikeString(value: string, trackStats: boolean = false): unknown | undefined {
+  const trimmed = value.trim();
+  if (!isJsonLikeText(trimmed)) return undefined;
+  if (trackStats) payloadParseCount += 1;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    if (trackStats) payloadParseFailureCount += 1;
+    return undefined;
+  }
+}
+
+function hasToolPayload(payload: NormalizedToolPayload): boolean {
+  return payload.kind !== "empty";
+}
+
+function summarizeToolPayload(payload: NormalizedToolPayload, limit: number): string {
+  if (payload.kind === "empty") return "";
+  if (payload.kind === "text") return formatConversationPreview(payload.text, limit);
+  if (payload.kind === "json_text") {
+    if (payload.parsed !== undefined) {
+      return formatConversationPreview(summarizePayloadValue(payload.parsed), limit);
+    }
+    return formatConversationPreview(payload.text.replace(/\s+/g, " "), limit);
+  }
+  return formatConversationPreview(summarizePayloadValue(payload.value), limit);
+}
+
+function summarizePayloadValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 120);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "Array(0)";
+    const sample = value
+      .slice(0, 3)
+      .map((item) => summarizeScalarValue(item))
+      .filter((item) => item.length > 0)
+      .join(", ");
+    return sample ? `Array(${value.length}) · ${sample}` : `Array(${value.length})`;
+  }
+  if (isPlainObject(value)) {
+    const entries = filterPayloadEntries(value);
+    if (entries.length === 0) return "Object(0)";
+    const preferredKeys = [
+      "q",
+      "query",
+      "cmd",
+      "command",
+      "path",
+      "url",
+      "goal",
+      "target",
+      "tool",
+      "fn",
+    ];
+    const picked = preferredKeys
+      .filter((key) => entries.some(([entryKey]) => entryKey === key))
+      .slice(0, 3)
+      .map((key) => {
+        const found = entries.find(([entryKey]) => entryKey === key);
+        const resolved = found ? found[1] : undefined;
+        return `${key}=${summarizeScalarValue(resolved)}`;
+      })
+      .filter((pair) => !pair.endsWith("="));
+    if (picked.length > 0) return picked.join(" · ");
+    const generic = entries
+      .slice(0, 3)
+      .map(([key, item]) => `${key}=${summarizeScalarValue(item)}`)
+      .filter((pair) => !pair.endsWith("="));
+    if (generic.length > 0) return generic.join(" · ");
+    return `Object(${entries.length})`;
+  }
+  return String(value);
+}
+
+function summarizeScalarValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 48);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (isPlainObject(value)) return `Object(${Object.keys(value).length})`;
+  return "";
+}
+
+function formatToolCallStatus(status?: string): string {
+  if (!status) return "";
+  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "in_progress":
+      return "In Progress";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "pending":
+      return "Pending";
+    case "running":
+      return "Running";
+    case "cancelled":
+    case "canceled":
+      return "Cancelled";
+    case "interrupted":
+      return "Interrupted";
+    case "stopped":
+      return "Stopped";
+    default:
+      return status;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value == null) return false;
+  if (Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function normalizePayloadKey(key: string): string {
+  return key.toLowerCase().replace(/[_-]+/g, "");
+}
+
+function isHiddenPayloadKey(key: string): boolean {
+  return TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED.has(normalizePayloadKey(key));
+}
+
+function filterPayloadEntries(
+  value: Record<string, unknown>
+): Array<[string, unknown]> {
+  return Object.entries(value).filter(([key]) => !isHiddenPayloadKey(key));
+}
+
+function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
+  if (payload.kind === "empty") return null;
+  if (payload.kind === "text") {
+    return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+  }
+  if (payload.kind === "json_text") {
+    if (payload.parsed === undefined) {
+      return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+    }
+    return (
+      <div className="acp-payload-card">
+        {renderPayloadValue(payload.parsed, 0)}
+      </div>
+    );
+  }
+  return (
+    <div className="acp-payload-card">
+      {renderPayloadValue(payload.value, 0)}
+    </div>
+  );
+}
+
+function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
+  if (value == null) {
+    return <span className="acp-payload-scalar muted">null</span>;
+  }
+  if (typeof value === "string") {
+    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName="acp-payload-markdown" />;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return <span className="acp-payload-scalar">{String(value)}</span>;
+  }
+  if (Array.isArray(value)) {
+    return <PayloadArrayView value={value} depth={depth} />;
+  }
+  if (isPlainObject(value)) {
+    return <PayloadObjectView value={value} depth={depth} />;
+  }
+  return <span className="acp-payload-scalar">{String(value)}</span>;
+}
+
+function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number }) {
+  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+    value.length,
+    TOOL_PAYLOAD_INITIAL_ITEMS,
+    TOOL_PAYLOAD_ITEM_CHUNK
+  );
+  if (value.length === 0) return <span className="acp-payload-scalar muted">[]</span>;
+  const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
+  const visibleItems = value.slice(0, visibleCount);
+
+  if (allScalar) {
+    return (
+      <div className="acp-payload-segmented">
+        <span className="acp-payload-scalar">
+          {visibleItems.map((item) => summarizeScalarValue(item)).join(", ")}
+          {hasMore ? ` … (+${remaining} more)` : ""}
+        </span>
+        {hasMore && (
+          <SegmentedMoreFooter
+            remaining={remaining}
+            unitLabel="items"
+            onShowMore={showMore}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="acp-payload-segmented">
+      <ol className="acp-payload-list">
+        {visibleItems.map((item, index) => (
+          <li key={index}>
+            {renderNestedPayloadValue(item, depth + 1)}
+          </li>
+        ))}
+      </ol>
+      {hasMore && (
+        <SegmentedMoreFooter
+          remaining={remaining}
+          unitLabel="items"
+          onShowMore={showMore}
+        />
+      )}
+    </div>
+  );
+}
+
+function PayloadObjectView({
+  value,
+  depth,
+}: {
+  value: Record<string, unknown>;
+  depth: number;
+}) {
+  const entries = filterPayloadEntries(value);
+  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+    entries.length,
+    TOOL_PAYLOAD_INITIAL_ITEMS,
+    TOOL_PAYLOAD_ITEM_CHUNK
+  );
+  if (entries.length === 0) return <span className="acp-payload-scalar muted">{"{}"}</span>;
+  const visibleEntries = entries.slice(0, visibleCount);
+  return (
+    <div className="acp-payload-segmented">
+      <dl className="acp-payload-grid">
+        {visibleEntries.map(([key, item]) => (
+          <div className="acp-payload-row" key={key}>
+            <dt>{key}</dt>
+            <dd>{renderNestedPayloadValue(item, depth + 1)}</dd>
+          </div>
+        ))}
+      </dl>
+      {hasMore && (
+        <SegmentedMoreFooter
+          remaining={remaining}
+          unitLabel="fields"
+          onShowMore={showMore}
+        />
+      )}
+    </div>
+  );
+}
+
+function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
+  const isStructured = Array.isArray(value) || isPlainObject(value);
+  if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
+    return <span className="acp-payload-scalar">{summarizePayloadValue(value)}</span>;
+  }
+  if (isStructured) {
+    return (
+      <details className="acp-payload-nested">
+        <summary>{summarizePayloadValue(value)}</summary>
+        <div className="acp-payload-nested-body">
+          {renderPayloadValue(value, depth)}
+        </div>
+      </details>
+    );
+  }
+  return renderPayloadValue(value, depth);
+}
+
+function ToolTextContent({
+  text,
+  markdownClassName,
+}: {
+  text: string;
+  markdownClassName?: string;
+}) {
+  if (shouldRenderDiffText(text)) {
+    return <ToolDiffView text={text} />;
+  }
+  const markdownText = shouldRenderMarkdownText(text);
+  const tooLargeForMarkdown =
+    countLines(text) > TOOL_TEXT_MARKDOWN_FALLBACK_LINES ||
+    text.length > TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH;
+
+  if (markdownText && !tooLargeForMarkdown) {
+    return (
+      <div
+        className={`acp-text ${markdownClassName ?? ""}`.trim()}
+        dangerouslySetInnerHTML={{ __html: renderMarkdownCached(text) }}
+      />
+    );
+  }
+  if (markdownText && tooLargeForMarkdown) {
+    return (
+      <div className="acp-segmented-block">
+        <div className="acp-segmented-note">
+          Large markdown payload is rendered as plain text for performance.
+        </div>
+        <ToolPlainTextView text={text} asciiLike={false} />
+      </div>
+    );
+  }
+  return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
+}
+
+function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boolean }) {
+  const lines = React.useMemo(() => text.split("\n"), [text]);
+  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+    lines.length,
+    TOOL_TEXT_INITIAL_LINES,
+    TOOL_TEXT_LINE_CHUNK
+  );
+  const visibleText = React.useMemo(
+    () => lines.slice(0, visibleCount).join("\n"),
+    [lines, visibleCount]
+  );
+  const className = asciiLike
+    ? "acp-content acp-payload-text acp-payload-ascii"
+    : "acp-content acp-payload-text";
+  return (
+    <div className="acp-segmented-block">
+      <pre className={className}>{visibleText}</pre>
+      {hasMore && (
+        <SegmentedMoreFooter
+          remaining={remaining}
+          unitLabel="lines"
+          onShowMore={showMore}
+        />
+      )}
+    </div>
+  );
+}
+
+function TerminalOutputView({
+  text,
+  ansi,
+}: {
+  text: string;
+  ansi: (input: string) => string;
+}) {
+  const lines = React.useMemo(() => text.split("\n"), [text]);
+  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+    lines.length,
+    TOOL_TEXT_INITIAL_LINES,
+    TOOL_TEXT_LINE_CHUNK
+  );
+  const visibleText = React.useMemo(
+    () => lines.slice(0, visibleCount).join("\n"),
+    [lines, visibleCount]
+  );
+  const rendered = React.useMemo(
+    () => renderAnsiTerminalOutput(ansi(visibleText)),
+    [ansi, visibleText]
+  );
+  return (
+    <div className="acp-segmented-block">
+      <pre className="acp-content">{rendered}</pre>
+      {hasMore && (
+        <SegmentedMoreFooter
+          remaining={remaining}
+          unitLabel="lines"
+          onShowMore={showMore}
+        />
+      )}
+    </div>
+  );
+}
+
+function countLines(text: string): number {
+  if (!text) return 0;
+  let count = 1;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) === 10) count += 1;
+  }
+  return count;
+}
+
+function useProgressiveVisibleCount(
+  total: number,
+  initial: number,
+  step: number
+): {
+  visibleCount: number;
+  hasMore: boolean;
+  remaining: number;
+  showMore: () => void;
+} {
+  const safeInitial = Math.max(1, initial);
+  const safeStep = Math.max(1, step);
+  const [visibleCount, setVisibleCount] = React.useState(() =>
+    Math.min(total, safeInitial)
+  );
+
+  React.useEffect(() => {
+    setVisibleCount(Math.min(total, safeInitial));
+  }, [total, safeInitial]);
+
+  const showMore = React.useCallback(() => {
+    setVisibleCount((prev) => Math.min(total, prev + safeStep));
+  }, [safeStep, total]);
+
+  const hasMore = visibleCount < total;
+  return {
+    visibleCount,
+    hasMore,
+    remaining: hasMore ? total - visibleCount : 0,
+    showMore,
+  };
+}
+
+function SegmentedMoreFooter({
+  remaining,
+  unitLabel,
+  onShowMore,
+}: {
+  remaining: number;
+  unitLabel: string;
+  onShowMore: () => void;
+}) {
+  return (
+    <div className="acp-segmented-footer">
+      <span className="acp-segmented-meta">
+        {remaining} more {unitLabel}
+      </span>
+      <button
+        type="button"
+        className="acp-segmented-button"
+        onClick={onShowMore}
+        aria-label={`Show ${remaining} more ${unitLabel}`}
+      >
+        Show more
+      </button>
+    </div>
+  );
+}
+
+function shouldRenderMarkdownText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("```")) return true;
+  if (/`[^`\n]+`/.test(trimmed)) return true;
+  return false;
+}
+
+function shouldRenderDiffText(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || !normalized.includes("\n")) return false;
+  if (/^diff --git\s+/m.test(normalized)) return true;
+  if (/^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.test(normalized)) return true;
+  if (/^---\s+/m.test(normalized) && /^\+\+\+\s+/m.test(normalized)) return true;
+  const lines = normalized.split("\n");
+  let add = 0;
+  let remove = 0;
+  for (const line of lines) {
+    if (line.startsWith("+++")) continue;
+    if (line.startsWith("---")) continue;
+    if (line.startsWith("+")) add += 1;
+    if (line.startsWith("-")) remove += 1;
+  }
+  return add > 0 && remove > 0;
+}
+
+function shouldPreserveAsciiText(text: string): boolean {
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return false;
+  let symbolicLines = 0;
+  for (const line of lines) {
+    const compact = line.replace(/\s+/g, "");
+    if (compact.length < 3) continue;
+    const symbolCount = compact.replace(/[a-zA-Z0-9]/g, "").length;
+    if (symbolCount < 2) continue;
+    if (symbolCount / compact.length >= 0.35) symbolicLines += 1;
+  }
+  return symbolicLines >= Math.min(2, lines.length);
+}
+
+type DiffLineKind = "meta" | "hunk" | "add" | "remove" | "context";
+
+function classifyDiffLine(line: string): DiffLineKind {
+  if (line.startsWith("@@")) return "hunk";
+  if (line.startsWith("+") && !line.startsWith("+++")) return "add";
+  if (line.startsWith("-") && !line.startsWith("---")) return "remove";
+  if (
+    line.startsWith("diff --git") ||
+    line.startsWith("index ") ||
+    line.startsWith("--- ") ||
+    line.startsWith("+++ ")
+  ) {
+    return "meta";
+  }
+  return "context";
+}
+
+function ToolDiffView({ text }: { text: string }) {
+  const lines = React.useMemo(() => text.split("\n"), [text]);
+  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+    lines.length,
+    TOOL_TEXT_INITIAL_LINES,
+    TOOL_TEXT_LINE_CHUNK
+  );
+  const visibleLines = lines.slice(0, visibleCount);
+  return (
+    <div className="acp-segmented-block">
+      <pre className="acp-content acp-diff-view">
+        {visibleLines.map((line, index) => {
+          const kind = classifyDiffLine(line);
+          return (
+            <span className={`acp-diff-line ${kind}`} key={index}>
+              {line.length > 0 ? line : " "}
+            </span>
+          );
+        })}
+      </pre>
+      {hasMore && (
+        <SegmentedMoreFooter
+          remaining={remaining}
+          unitLabel="lines"
+          onShowMore={showMore}
+        />
+      )}
+    </div>
+  );
 }
 
 function getConversationItemKey(msg: ConversationItem, fallback: number): string {

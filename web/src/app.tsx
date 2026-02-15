@@ -52,6 +52,7 @@ import { OutputHeader } from "./components/output_header";
 import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { PermissionModal } from "./components/permission_modal";
+import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import { AdminPage } from "./pages/admin_page";
@@ -484,6 +485,25 @@ export function App() {
     isAgentActive,
     onLoadOlder: loadOlderEvents,
   });
+  const cacheStats = getAcpConversationCacheStats();
+  const acpRuntimeMetrics = {
+    totalConversationItems: acpConversation.conversationTotalItems,
+    sourceConversationItems: acpConversation.conversationSourceItems,
+    renderedConversationItems: acpConversation.conversationRenderedItems,
+    pendingConversationItems: acpConversation.conversationPendingCount,
+    virtualizedConversation: acpConversation.conversationVirtualized,
+    stickToBottom: acpConversation.conversationStickToBottom,
+    averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+    rawEventCount: acpView.rawEvents.length,
+    toolCallCount: acpView.toolCalls.length,
+    messageCount: acpView.messages.length,
+    markdownCacheHits: cacheStats.markdownHits,
+    markdownCacheMisses: cacheStats.markdownMisses,
+    ansiCacheHits: cacheStats.ansiHits,
+    ansiCacheMisses: cacheStats.ansiMisses,
+    payloadParses: cacheStats.payloadParses,
+    payloadParseFailures: cacheStats.payloadParseFailures,
+  };
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -1570,6 +1590,7 @@ export function App() {
                       onAcpSetConfig,
                       onAcpCancel,
                       onAcpClearSession,
+                      runtimeMetrics: acpRuntimeMetrics,
                     },
                   }}
                 />
