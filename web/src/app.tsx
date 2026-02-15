@@ -13,7 +13,6 @@ import { buildAcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
-  shouldOpenAgentSocket,
   sanitizeAgentError,
   isAgentActiveStatus,
 } from "./agent_ws";
@@ -82,6 +81,7 @@ import {
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
 } from "./worktree_defaults";
+import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 
@@ -210,6 +210,9 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
+  const activeAgentRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const activeAgentStatusRef = useRef<string | null>(null);
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -295,9 +298,12 @@ export function App() {
   }, [activeAgentRecord]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
-  const hasSseTarget = Boolean(
-    activeAgent && shouldOpenAgentSocket(activeAgentStatus)
+  const streamAgentIds = useMemo(() => buildSseTargetAgentIds(agents), [agents]);
+  const streamAgentIdsQuery = useMemo(
+    () => encodeSseTargetAgentIds(streamAgentIds),
+    [streamAgentIds]
   );
+  const hasSseTarget = streamAgentIds.length > 0;
   const connectionBadge = useMemo(
     () => deriveConnectionBadge(networkOnline, hasSseTarget, sseState),
     [networkOnline, hasSseTarget, sseState]
@@ -322,6 +328,16 @@ export function App() {
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
+  useEffect(() => {
+    activeAgentRef.current = activeAgent;
+  }, [activeAgent]);
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+  useEffect(() => {
+    activeAgentStatusRef.current = activeAgentStatus;
+  }, [activeAgentStatus]);
+
   useEffect(() => {
     setInputHistoryCursor(-1);
     inputHistoryDraftRef.current = "";
@@ -722,17 +738,22 @@ export function App() {
   }, [activeAgentStatus]);
 
   useEffect(() => {
-    if (!token || !activeAgent) {
+    if (!token || !activeAgent) return;
+    loadAgentEvents(activeAgent, activeSessionId);
+  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+
+  useEffect(() => {
+    if (!token) {
+      setSseState("idle");
+      return;
+    }
+    const streamTarget = streamAgentIdsQuery;
+    if (!hasSseTarget || streamTarget.length === 0) {
       setSseState("idle");
       return;
     }
     let cancelled = false;
     const pollState = eventPollRef.current;
-    loadAgentEvents(activeAgent, activeSessionId);
-    if (!shouldOpenAgentSocket(activeAgentStatus)) {
-      setSseState("idle");
-      return;
-    }
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
     const clearReconnectTimer = () => {
@@ -740,6 +761,13 @@ export function App() {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+    };
+    const pollActiveAgent = async (): Promise<boolean> => {
+      const currentActive = activeAgentRef.current;
+      if (!currentActive) return false;
+      return (
+        (await loadAgentEvents(currentActive, activeSessionIdRef.current)) === true
+      );
     };
     const scheduleReconnect = () => {
       if (cancelled) return;
@@ -756,9 +784,9 @@ export function App() {
       if (cancelled) return;
       setSseState((prev) => (prev === "reconnecting" ? "reconnecting" : "connecting"));
       const source = new EventSource(
-        `${location.origin}/sse/agents/${encodeURIComponent(
-          activeAgent
-        )}?token=${encodeURIComponent(token)}`
+        `${location.origin}/sse/agents?ids=${encodeURIComponent(
+          streamTarget
+        )}&token=${encodeURIComponent(token)}`
       );
       sseRef.current = source;
       source.onopen = () => {
@@ -777,12 +805,6 @@ export function App() {
           if (parsed.type === "output" || parsed.type === "acp") {
             const payload = parsed.payload;
             if (!isValidOutputPayload(payload)) {
-              return;
-            }
-            if (payload.agent_id !== activeAgent) {
-              return;
-            }
-            if (activeSessionId && payload.session_id !== activeSessionId) {
               return;
             }
             const line: OutputLine = {
@@ -808,11 +830,19 @@ export function App() {
                 );
               }
             }
-            setOutputs((prev) => appendOutputLine(prev, line));
             updateOutputCacheEntry(key, [line]);
+            updateAcpOutputCacheEntry(key, [line]);
+            const currentActive = activeAgentRef.current;
+            if (payload.agent_id !== currentActive) {
+              return;
+            }
+            const currentSessionId = activeSessionIdRef.current;
+            if (currentSessionId && payload.session_id !== currentSessionId) {
+              return;
+            }
+            setOutputs((prev) => appendOutputLine(prev, line));
             if (line.stream === "acp") {
               setAcpOutputs((prev) => appendOutputLine(prev, line));
-              updateAcpOutputCacheEntry(key, [line]);
             }
           }
         } catch {
@@ -825,7 +855,12 @@ export function App() {
               clearAuthAndRedirect();
               return;
             }
-            if (shouldIgnoreAgentWsError(normalizedStreamError, activeAgentStatus)) {
+            if (
+              shouldIgnoreAgentWsError(
+                normalizedStreamError,
+                activeAgentStatusRef.current
+              )
+            ) {
               return;
             }
             setError(normalizedStreamError);
@@ -872,8 +907,7 @@ export function App() {
           current != null && current.readyState === EventSource.OPEN;
         let hasNew = false;
         if (!isOpen) {
-          hasNew =
-            (await loadAgentEvents(activeAgent, activeSessionId)) === true;
+          hasNew = (await pollActiveAgent()) === true;
         } else {
           pollState.idleCount = 0;
         }
@@ -907,9 +941,8 @@ export function App() {
     };
   }, [
     token,
-    activeAgent,
-    activeSessionId,
-    activeAgentStatus,
+    hasSseTarget,
+    streamAgentIdsQuery,
     loadAgentEvents,
     updateOutputCacheEntry,
     updateAcpOutputCacheEntry,
