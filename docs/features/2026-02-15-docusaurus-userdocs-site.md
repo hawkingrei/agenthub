@@ -61,5 +61,4 @@ Expected outcomes:
 
 ## Follow-ups
 
-- Add CI workflow to verify `userdocs` install/build on pull requests.
 - Add `README` guidance for optional external hosting providers if needed.
