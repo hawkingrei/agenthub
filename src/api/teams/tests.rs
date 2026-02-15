@@ -74,6 +74,7 @@ async fn build_test_state() -> AppState {
         push,
         auth,
         acp_permissions: permissions,
+        default_worktree_root: config.default_worktree_root(),
     }
 }
 

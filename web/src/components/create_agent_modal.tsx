@@ -40,6 +40,7 @@ type CreateAgentModalProps = {
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
   createBusy: boolean;
+  workdirPlaceholder?: string;
   withinPortal?: boolean;
   onCreateAgent: () => void;
   onClose: () => void;
@@ -68,6 +69,7 @@ export function CreateAgentModal({
   setCodeMode,
   worktreeError,
   createBusy,
+  workdirPlaceholder = "Workdir",
   withinPortal = true,
   onCreateAgent,
   onClose,
@@ -103,7 +105,7 @@ export function CreateAgentModal({
           />
           <TextInput
             label="Workdir"
-            placeholder="Workdir"
+            placeholder={workdirPlaceholder}
             value={agentWorkdir}
             onChange={(event) => setAgentWorkdir(event.currentTarget.value)}
           />

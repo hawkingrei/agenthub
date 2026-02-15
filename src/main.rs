@@ -116,6 +116,10 @@ async fn main() -> anyhow::Result<()> {
         config.vapid_keys_path().display()
     );
     tracing::info!("config safe_paths: {}", config.safe_paths().len());
+    tracing::info!(
+        "config worktree.default_root: {}",
+        config.default_worktree_root()
+    );
     let state = state::AppState::init(config.clone()).await?;
 
     let api_router = api::router(state.clone());

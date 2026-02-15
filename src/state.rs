@@ -20,6 +20,7 @@ pub struct AppState {
     pub push: Arc<PushService>,
     pub auth: Arc<AuthService>,
     pub acp_permissions: Arc<AcpPermissionService>,
+    pub default_worktree_root: String,
 }
 
 impl AppState {
@@ -46,6 +47,7 @@ impl AppState {
             .spawn(TeamOrchestratorWorkerSettings::default());
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, &config).await?;
+        let default_worktree_root = config.default_worktree_root();
         Ok(Self {
             db,
             agents,
@@ -53,6 +55,7 @@ impl AppState {
             push,
             auth,
             acp_permissions,
+            default_worktree_root,
         })
     }
 

@@ -9,6 +9,7 @@ mod authz;
 mod error;
 mod join;
 mod push;
+mod settings;
 mod teams;
 
 pub fn router(state: AppState) -> Router {
@@ -18,6 +19,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/admin", admin::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))
         .nest("/join", join::router(state.clone()))
+        .nest("/settings", settings::router(state.clone()))
         .nest("/push", push::router(state))
 }
 

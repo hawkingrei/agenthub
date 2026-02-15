@@ -71,6 +71,8 @@ import {
 } from "./webauthn";
 import { AuthState } from "./types";
 
+const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
+
 export function App() {
   const eventLimit = 200;
   const maxCachedEvents = 800;
@@ -90,7 +92,10 @@ export function App() {
     () => new Set()
   );
   const [agentName, setAgentName] = useState("");
-  const [agentWorkdir, setAgentWorkdir] = useState("");
+  const [agentWorkdir, setAgentWorkdir] = useState(DEFAULT_WORKTREE_ROOT);
+  const [defaultWorktreeRoot, setDefaultWorktreeRoot] = useState(
+    DEFAULT_WORKTREE_ROOT
+  );
   const [agentPresetId, setAgentPresetId] = useState<AgentPresetId>(
     DEFAULT_AGENT_PRESET_ID
   );
@@ -588,6 +593,26 @@ export function App() {
   ]);
 
   useEffect(() => {
+    if (!token) {
+      setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      return;
+    }
+    api
+      .getRuntimeDefaults(token)
+      .then((defaults) => {
+        const root = defaults.default_worktree_root.trim() || DEFAULT_WORKTREE_ROOT;
+        setDefaultWorktreeRoot(root);
+        setAgentWorkdir((prev) => (prev.trim() ? prev : root));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const openCreateAgentModal = useCallback(() => {
+    setAgentWorkdir((prev) => (prev.trim() ? prev : defaultWorktreeRoot));
+    setShowCreateAgent(true);
+  }, [defaultWorktreeRoot]);
+
+  useEffect(() => {
     if (!token || auth?.role !== "root") return;
     api.listSafePaths(token).then(setSafePaths).catch(() => {});
     api.listDevices(token).then(setDevices).catch(() => {});
@@ -920,6 +945,8 @@ export function App() {
     setAcpPermissions([]);
     setVapidInfo(null);
     setWorktreeError(null);
+    setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+    setAgentWorkdir(DEFAULT_WORKTREE_ROOT);
   };
 
   const onCreateAgent = async () => {
@@ -932,10 +959,18 @@ export function App() {
     try {
       const name = agentName.trim() || "agent";
       const workdir = agentWorkdir.trim();
+      const normalizedRoot = defaultWorktreeRoot.trim().replace(/[\\/]+$/, "");
+      const normalizedWorkdir = workdir.replace(/[\\/]+$/, "");
+      const workdirPayload =
+        worktreeMode === "create_worktree" &&
+        normalizedRoot &&
+        normalizedWorkdir === normalizedRoot
+          ? ""
+          : workdir;
       const preset = getAgentPreset(agentPresetId);
       const command = preset.command.trim();
       const args = preset.args.slice();
-      if (!workdir) {
+      if (!workdirPayload && worktreeMode !== "create_worktree") {
         setError("workdir is required");
         return;
       }
@@ -945,7 +980,7 @@ export function App() {
       }
       const agent = await api.createAgent(token, {
         name,
-        workdir,
+        workdir: workdirPayload,
         command,
         args,
         worktree_mode: worktreeMode,
@@ -965,7 +1000,7 @@ export function App() {
         setError(`Start failed: ${msg}`);
       }
       setAgentName("");
-      setAgentWorkdir("");
+      setAgentWorkdir(defaultWorktreeRoot);
       setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
@@ -1426,7 +1461,7 @@ export function App() {
             agentsCollapsed={agentsCollapsed}
             onCollapse={() => setAgentsCollapsed(true)}
             onExpand={() => setAgentsCollapsed(false)}
-            onCreateAgent={() => setShowCreateAgent(true)}
+            onCreateAgent={openCreateAgentModal}
             onSelectAgent={(id) => {
               setActiveAgent(id);
               setActiveSessionId(agentSessions[id] ?? null);
@@ -1538,6 +1573,7 @@ export function App() {
           setCodeMode={setCodeMode}
           worktreeError={worktreeError}
           createBusy={createAgentBusy}
+          workdirPlaceholder={defaultWorktreeRoot}
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
         />

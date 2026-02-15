@@ -21,6 +21,7 @@ const baseProps = {
   setCodeMode: () => {},
   worktreeError: null as string | null,
   createBusy: false,
+  workdirPlaceholder: "Workdir",
   withinPortal: false,
   onCreateAgent: () => {},
   onClose: () => {},
@@ -62,5 +63,10 @@ describe("CreateAgentModal", () => {
   it("renders the preset command summary", () => {
     const html = renderModal({ agentPresetId: "gemini" as const });
     expect(html).toContain("Command: gemini --experimental-acp");
+  });
+
+  it("renders custom workdir placeholder", () => {
+    const html = renderModal({ workdirPlaceholder: "~/.agenthub/worktrees" });
+    expect(html).toContain('placeholder="~/.agenthub/worktrees"');
   });
 });

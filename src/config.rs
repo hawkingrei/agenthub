@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub server: Option<ServerConfig>,
     pub web: Option<WebConfig>,
     pub proxy: Option<ProxyConfig>,
+    pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
     pub push: Option<PushConfig>,
     pub safe_paths: Option<Vec<String>>,
@@ -36,6 +37,11 @@ pub struct ProxyConfig {
     pub http: Option<String>,
     pub https: Option<String>,
     pub all: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorktreeConfig {
+    pub default_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,6 +81,16 @@ pub fn config_path() -> std::path::PathBuf {
 }
 
 impl AppConfig {
+    pub fn default_worktree_root(&self) -> String {
+        self.worktree
+            .as_ref()
+            .and_then(|w| w.default_root.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("~/.agenthub/worktrees")
+            .to_string()
+    }
+
     pub fn effective_web_dir(&self) -> Option<String> {
         if cfg!(debug_assertions) {
             let dir = self
@@ -217,5 +233,38 @@ fn expand_tilde(path: &str) -> String {
         }
     } else {
         path.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, WorktreeConfig};
+
+    #[test]
+    fn default_worktree_root_uses_builtin_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
+    }
+
+    #[test]
+    fn default_worktree_root_uses_configured_value() {
+        let config = AppConfig {
+            worktree: Some(WorktreeConfig {
+                default_root: Some("/tmp/custom-worktrees".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.default_worktree_root(), "/tmp/custom-worktrees");
+    }
+
+    #[test]
+    fn default_worktree_root_trims_blank_value() {
+        let config = AppConfig {
+            worktree: Some(WorktreeConfig {
+                default_root: Some("   ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
     }
 }
