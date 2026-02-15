@@ -15,6 +15,7 @@ mod api;
 mod auth;
 mod config;
 mod db;
+mod internal;
 mod push;
 mod sse;
 mod state;
@@ -116,7 +117,20 @@ async fn main() -> anyhow::Result<()> {
         config.vapid_keys_path().display()
     );
     tracing::info!("config safe_paths: {}", config.safe_paths().len());
+    tracing::info!(
+        "config internal_grpc.enabled: {}",
+        config.internal_grpc_enabled()
+    );
+    tracing::info!(
+        "config internal_grpc.listen: {}",
+        config.internal_grpc_listen_addr()
+    );
+    tracing::info!(
+        "config internal_grpc.security.mode: {}",
+        config.internal_grpc_security_mode()
+    );
     let state = state::AppState::init(config.clone()).await?;
+    let _internal_grpc = internal::maybe_spawn_internal_grpc(state.clone(), &config).await?;
 
     let api_router = api::router(state.clone());
 
