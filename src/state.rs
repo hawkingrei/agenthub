@@ -194,10 +194,12 @@ mod tests {
         let count: i64 = row.get("cnt");
         assert_eq!(count, 3);
 
-        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM safe_paths WHERE path = '~/.agenthub'")
-            .fetch_one(&db)
-            .await
-            .expect("count default safe path");
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS cnt FROM safe_paths WHERE path = '~/.agenthub/worktrees'",
+        )
+        .fetch_one(&db)
+        .await
+        .expect("count default safe path");
         let default_count: i64 = row.get("cnt");
         assert_eq!(default_count, 1);
     }
@@ -216,6 +218,6 @@ mod tests {
             .await
             .expect("fetch default safe path");
         let path: String = row.get("path");
-        assert_eq!(path, "~/.agenthub");
+        assert_eq!(path, "~/.agenthub/worktrees");
     }
 }

@@ -1,15 +1,15 @@
-# Safe Path Default `~/.agenthub`
+# Safe Path Default `~/.agenthub/worktrees`
 
 ## Summary
 
-Ensure `~/.agenthub` is always treated as a safe path at runtime, even when
-`safe_paths` is not explicitly configured in `config.toml`.
+Ensure `~/.agenthub/worktrees` is always treated as a safe path at runtime,
+even when `safe_paths` is not explicitly configured in `config.toml`.
 
 ## Background
 
-AgentHub now defaults worktree paths under `~/.agenthub/worktrees`. Without a
-matching safe-path baseline, a fresh config may still fail safe-path checks for
-default local paths.
+AgentHub defaults create-worktree paths under `~/.agenthub/worktrees`. Without
+a matching safe-path baseline, a fresh config may fail safe-path checks for the
+default worktree location.
 
 ## Scope
 
@@ -19,7 +19,7 @@ default local paths.
 
 ## Key Decisions
 
-1. `AppConfig::safe_paths()` now always includes `~/.agenthub`.
+1. `AppConfig::safe_paths()` now always includes `~/.agenthub/worktrees`.
 2. Configured safe paths are still accepted, but blank entries are ignored and
    duplicates are removed while preserving insertion order.
 3. `AppState::seed_safe_paths()` keeps using `config.safe_paths()`, so DB seed
@@ -31,4 +31,3 @@ default local paths.
 cargo test safe_paths_ -- --nocapture
 cargo test seed_safe_paths_ -- --nocapture
 ```
-

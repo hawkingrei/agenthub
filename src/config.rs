@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashSet;
 
-const DEFAULT_SAFE_PATH: &str = "~/.agenthub";
+const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -287,9 +287,12 @@ mod tests {
     }
 
     #[test]
-    fn safe_paths_includes_default_agenthub_path() {
+    fn safe_paths_includes_default_worktrees_path() {
         let config = AppConfig::default();
-        assert_eq!(config.safe_paths(), vec!["~/.agenthub".to_string()]);
+        assert_eq!(
+            config.safe_paths(),
+            vec!["~/.agenthub/worktrees".to_string()]
+        );
     }
 
     #[test]
@@ -297,7 +300,7 @@ mod tests {
         let config = AppConfig {
             safe_paths: Some(vec![
                 " /tmp/a ".to_string(),
-                "~/.agenthub".to_string(),
+                "~/.agenthub/worktrees".to_string(),
                 "".to_string(),
                 "/tmp/a".to_string(),
             ]),
@@ -305,7 +308,7 @@ mod tests {
         };
         assert_eq!(
             config.safe_paths(),
-            vec!["~/.agenthub".to_string(), "/tmp/a".to_string()]
+            vec!["~/.agenthub/worktrees".to_string(), "/tmp/a".to_string()]
         );
     }
 }
