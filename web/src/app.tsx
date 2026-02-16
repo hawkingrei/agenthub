@@ -256,6 +256,11 @@ export function App() {
       JSON.stringify(inputHistory)
     );
   }, [inputHistory]);
+  const normalizedError = useMemo(() => {
+    if (!error) return null;
+    const message = sanitizeErrorBannerMessage(error, networkOnline);
+    return shouldHideErrorBannerMessage(message) ? null : message;
+  }, [error, networkOnline]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -438,14 +443,6 @@ export function App() {
   const connectionBadge = useMemo(
     () => deriveConnectionBadge(networkOnline, hasSseTarget, sseState),
     [networkOnline, hasSseTarget, sseState]
-  );
-  const normalizedError = useMemo(
-    () => {
-      if (!error) return null;
-      const message = sanitizeErrorBannerMessage(error, networkOnline);
-      return shouldHideErrorBannerMessage(message) ? null : message;
-    },
-    [error, networkOnline]
   );
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
