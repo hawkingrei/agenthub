@@ -203,6 +203,35 @@ export type TeamActorMessageRecord = {
   delivered_at?: number | null;
 };
 
+export type TeamMemberSnapshot = {
+  member_id: string;
+  role: string;
+  model?: string | null;
+  prompt?: string | null;
+  skills: string[];
+  pending_inbox_count: number;
+  status: string;
+  latest_step?: TeamStepRecord | null;
+  session_status?: string | null;
+};
+
+export type TeamMailboxSnapshot = {
+  pending: number;
+  delivered: number;
+  dead_letter: number;
+  recent_messages: TeamActorMessageRecord[];
+};
+
+export type TeamRunSnapshotRecord = {
+  run: TeamRunRecord;
+  team: TeamDefinitionRecord;
+  leader_member_id?: string | null;
+  members: TeamMemberSnapshot[];
+  steps: TeamStepRecord[];
+  latest_events: TeamRunEventRecord[];
+  mailbox: TeamMailboxSnapshot;
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -359,6 +388,24 @@ export const api = {
     }),
   getTeamRun: (token: string, runId: string) =>
     apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}`, token),
+  getTeamRunSnapshot: (
+    token: string,
+    runId: string,
+    payload?: { event_limit?: number; message_limit?: number }
+  ) => {
+    const params = new URLSearchParams();
+    if (payload?.event_limit != null) {
+      params.set("event_limit", String(payload.event_limit));
+    }
+    if (payload?.message_limit != null) {
+      params.set("message_limit", String(payload.message_limit));
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<TeamRunSnapshotRecord>(
+      `/api/teams/runs/${runId}/snapshot${suffix}`,
+      token
+    );
+  },
   cancelTeamRun: (token: string, runId: string) =>
     apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/cancel`, token, {
       method: "POST",

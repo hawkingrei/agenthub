@@ -74,6 +74,10 @@ async fn teams_api_rejects_invalid_spec() {
         json!({"entrypoint":"step-a","members":[{"member_id":"planner"}],"steps":[{"step_key":"step-a","member_id":"planner","depends_on":["step-b"]},{"step_key":"step-b","member_id":"planner","depends_on":["step-a"]}]}),
         json!({"spec_version":"1","entrypoint":"planner","members":[{"member_id":"planner"}]}),
         json!({"spec_version":2,"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        json!({"entrypoint":"planner","leader_member_id":"missing","members":[{"member_id":"planner"}]}),
+        json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"captain"}]}),
+        json!({"entrypoint":"planner","members":[{"member_id":"planner","skills":["a","a"]}]}),
+        json!({"entrypoint":"planner","leader_member_id":"leader","members":[{"member_id":"planner"},{"member_id":"leader"}]}),
     ];
     for (index, spec) in invalid_specs.into_iter().enumerate() {
         let err = create_team(
@@ -1256,4 +1260,187 @@ async fn team_run_messages_api_supports_idempotency_key() {
         invalid_idempotency_err.into_response().status(),
         StatusCode::BAD_REQUEST
     );
+}
+
+#[tokio::test]
+async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "snapshot-team".to_string(),
+            description: Some("team snapshot coverage".to_string()),
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "model":"gpt-5",
+                        "prompt":"Lead the plan",
+                        "skills":["planning","review"]
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "model":"gpt-4.1",
+                        "prompt":"Execute tasks",
+                        "skills":["coding"]
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create snapshot team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-snapshot".to_string()),
+            input: Some(json!({"goal":"ship feature"})),
+        }),
+    )
+    .await
+    .expect("create snapshot run");
+
+    let Json(step) = submit_team_run_step(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SubmitTeamRunStepRequest {
+            step_key: "plan-step".to_string(),
+            member_id: "leader-agent".to_string(),
+            depends_on: Some(vec![]),
+            input: Some(json!({"task":"plan"})),
+        }),
+    )
+    .await
+    .expect("submit snapshot step");
+
+    let Json(_started) = start_team_run_step(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), step.id.clone())),
+        Json(StartTeamRunStepRequest {
+            remote_task_id: Some("session-leader-1".to_string()),
+        }),
+    )
+    .await
+    .expect("start snapshot step");
+
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+        "#,
+    )
+    .bind("leader-agent")
+    .bind("leader-agent")
+    .bind("/tmp")
+    .bind("/bin/sh")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("running")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert leader agent row");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at)
+        VALUES (?1, ?2, ?3, ?4)
+        "#,
+    )
+    .bind("session-leader-1")
+    .bind("leader-agent")
+    .bind("working")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert agent session for snapshot");
+
+    let Json(_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "leader-agent".to_string(),
+            to_actor_id: "worker-agent".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"kind":"assign","text":"implement"}),
+            idempotency_key: Some("snapshot-msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send snapshot message");
+
+    let Json(snapshot) = get_team_run_snapshot(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get team run snapshot");
+
+    assert_eq!(snapshot.run.id, run.id);
+    assert_eq!(snapshot.team.id, team.id);
+    assert_eq!(
+        snapshot.leader_member_id.as_deref(),
+        Some("leader-agent")
+    );
+    assert_eq!(snapshot.members.len(), 2);
+    assert!(snapshot.latest_events.len() >= 3);
+    assert_eq!(snapshot.mailbox.pending, 1);
+    assert_eq!(snapshot.mailbox.delivered, 0);
+    assert_eq!(snapshot.mailbox.dead_letter, 0);
+    assert_eq!(snapshot.mailbox.recent_messages.len(), 1);
+
+    let leader = snapshot
+        .members
+        .iter()
+        .find(|member| member.member_id == "leader-agent")
+        .expect("find leader");
+    assert_eq!(leader.role, "leader");
+    assert_eq!(leader.model.as_deref(), Some("gpt-5"));
+    assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
+    assert_eq!(leader.skills, vec!["planning".to_string(), "review".to_string()]);
+    assert_eq!(leader.pending_inbox_count, 0);
+    assert_eq!(leader.status, "working");
+    assert_eq!(leader.session_status.as_deref(), Some("working"));
+    assert_eq!(
+        leader
+            .latest_step
+            .as_ref()
+            .and_then(|step| step.remote_task_id.as_deref()),
+        Some("session-leader-1")
+    );
+
+    let worker = snapshot
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-agent")
+        .expect("find worker");
+    assert_eq!(worker.role, "worker");
+    assert_eq!(worker.model.as_deref(), Some("gpt-4.1"));
+    assert_eq!(worker.pending_inbox_count, 1);
+    assert_eq!(worker.status, "idle");
+    assert!(worker.latest_step.is_none());
 }
