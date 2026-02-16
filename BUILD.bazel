@@ -11,7 +11,10 @@ rust_library(
     ),
     crate_name = "agenthub",
     crate_root = "src/lib.rs",
-    compile_data = glob(["web/dist/**"]),
+    compile_data = ["web/index.html"] + glob(
+        ["web/dist/**"],
+        allow_empty = True,
+    ),
     edition = "2024",
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [

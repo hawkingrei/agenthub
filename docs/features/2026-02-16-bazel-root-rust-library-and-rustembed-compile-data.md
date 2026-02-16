@@ -3,8 +3,8 @@
 ## Summary
 
 Refactor root Bazel Rust targets to use `rust_library` + `rust_binary` +
-`rust_test(crate=...)`, and wire `web/dist` into compile-time inputs so
-`RustEmbed` can compile under Bazel opt/test sandbox builds.
+`rust_test(crate=...)`, and make RustEmbed compile inputs resilient when
+`web/dist` is absent in CI checkout.
 
 ## Background
 
@@ -13,8 +13,8 @@ This diverged from the library-first pattern used by projects like TypeDB and
 made unit-test structure less explicit.
 
 At the same time, opt-mode Bazel tests compile with `debug_assertions = false`,
-so `#[derive(RustEmbed)]` for `web/dist` is active. In Bazel sandbox builds,
-that folder is not available unless declared as compile input.
+so `#[derive(RustEmbed)]` is active. CI checkouts do not track `web/dist`,
+which can break empty-glob evaluation and embed-folder resolution.
 
 ## Scope
 
@@ -30,8 +30,11 @@ that folder is not available unless declared as compile input.
 2. Keep `agenthub` as a thin `rust_binary` that calls `agenthub::run()`.
 3. Convert `agenthub_unit_tests` to `rust_test(crate = ":agenthub_lib")` so
    unit tests run against the library crate.
-4. Declare `compile_data = glob(["web/dist/**"])` on the root library target,
-   ensuring `RustEmbed` sees embedded assets in Bazel sandbox compilation.
+4. Switch embed root to `web/` and resolve requests by preferring `dist/*`.
+5. Declare Bazel compile inputs as:
+   - mandatory `web/index.html`
+   - optional `web/dist/**` (`allow_empty = True`)
+   so analysis and compilation both succeed when `web/dist` is missing.
 
 ## Validation
 
@@ -42,7 +45,7 @@ bazel test --test_output=errors //:agenthub_unit_tests
 
 Expected:
 
-- Root Rust targets compile in Bazel without `RustEmbed` missing-folder errors.
+- Root Rust targets compile in Bazel without empty-glob or missing embed-folder errors.
 - Root unit tests run through `rust_test(crate=...)` instead of `main.rs` crate-root tests.
 
 ## Follow-ups
