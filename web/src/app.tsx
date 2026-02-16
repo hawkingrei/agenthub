@@ -21,6 +21,7 @@ import {
   deriveConnectionBadge,
   OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
+  shouldHideErrorBannerMessage,
   type SseConnectionState,
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
@@ -197,6 +198,9 @@ export function App() {
   const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
     "conversation"
   );
+  const handleAcpTabSelect = useCallback((next: "conversation" | "debug") => {
+    setAcpTab(next);
+  }, []);
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
@@ -328,7 +332,11 @@ export function App() {
     [networkOnline, hasSseTarget, sseState]
   );
   const normalizedError = useMemo(
-    () => (error ? sanitizeErrorBannerMessage(error, networkOnline) : null),
+    () => {
+      if (!error) return null;
+      const message = sanitizeErrorBannerMessage(error, networkOnline);
+      return shouldHideErrorBannerMessage(message) ? null : message;
+    },
     [error, networkOnline]
   );
   const thinkingStartTs =
@@ -559,25 +567,6 @@ export function App() {
     isAgentActive,
     onLoadOlder: loadOlderEvents,
   });
-  const cacheStats = getAcpConversationCacheStats();
-  const acpRuntimeMetrics = {
-    totalConversationItems: acpConversation.conversationTotalItems,
-    sourceConversationItems: acpConversation.conversationSourceItems,
-    renderedConversationItems: acpConversation.conversationRenderedItems,
-    pendingConversationItems: acpConversation.conversationPendingCount,
-    virtualizedConversation: acpConversation.conversationVirtualized,
-    stickToBottom: acpConversation.conversationStickToBottom,
-    averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
-    rawEventCount: acpView.rawEvents.length,
-    toolCallCount: acpView.toolCalls.length,
-    messageCount: acpView.messages.length,
-    markdownCacheHits: cacheStats.markdownHits,
-    markdownCacheMisses: cacheStats.markdownMisses,
-    ansiCacheHits: cacheStats.ansiHits,
-    ansiCacheMisses: cacheStats.ansiMisses,
-    payloadParses: cacheStats.payloadParses,
-    payloadParseFailures: cacheStats.payloadParseFailures,
-  };
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -1193,7 +1182,7 @@ export function App() {
     }
   };
 
-  const onStartAgent = async (id: string) => {
+  const onStartAgent = useCallback(async (id: string) => {
     if (!token) return;
     setError(null);
     setWorktreeError(null);
@@ -1212,9 +1201,9 @@ export function App() {
       const hint = formatWorktreeError(err);
       setError(hint ?? message);
     }
-  };
+  }, [token, refreshAgents]);
 
-  const onStopAgent = async (id: string) => {
+  const onStopAgent = useCallback(async (id: string) => {
     if (!token) return;
     setError(null);
     setWorktreeError(null);
@@ -1225,9 +1214,9 @@ export function App() {
     } catch (err) {
       setError(String(err));
     }
-  };
+  }, [token, refreshAgents]);
 
-  const onDeleteAgent = async (id: string) => {
+  const onDeleteAgent = useCallback(async (id: string) => {
     if (!token) return;
     setError(null);
     try {
@@ -1247,9 +1236,9 @@ export function App() {
     } catch (err) {
       setError(String(err));
     }
-  };
+  }, [token, activeAgent]);
 
-  const onSetCodeMode = async (id: string, next: boolean) => {
+  const onSetCodeMode = useCallback(async (id: string, next: boolean) => {
     if (!token) return;
     setError(null);
     try {
@@ -1262,9 +1251,9 @@ export function App() {
     } catch (err) {
       setError(String(err));
     }
-  };
+  }, [token]);
 
-  const onAcpSetMode = async () => {
+  const onAcpSetMode = useCallback(async () => {
     if (!token || !activeAgent) return;
     const modeId = acpModeId.trim();
     if (!modeId) {
@@ -1277,9 +1266,9 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  };
+  }, [token, activeAgent, acpModeId]);
 
-  const onAcpSetModel = async () => {
+  const onAcpSetModel = useCallback(async () => {
     if (!token || !activeAgent) return;
     const modelId = acpModelId.trim();
     if (!modelId) {
@@ -1292,9 +1281,9 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  };
+  }, [token, activeAgent, acpModelId]);
 
-  const onAcpSetConfig = async () => {
+  const onAcpSetConfig = useCallback(async () => {
     if (!token || !activeAgent) return;
     const configId = acpConfigId.trim();
     const configValue = acpConfigValue.trim();
@@ -1308,9 +1297,9 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  };
+  }, [token, activeAgent, acpConfigId, acpConfigValue]);
 
-  const onAcpCancel = async () => {
+  const onAcpCancel = useCallback(async () => {
     if (!token || !activeAgent) return;
     setError(null);
     try {
@@ -1318,9 +1307,9 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  };
+  }, [token, activeAgent]);
 
-  const onAcpClearSession = async () => {
+  const onAcpClearSession = useCallback(async () => {
     if (!token || !activeAgent) return;
     setError(null);
     try {
@@ -1328,9 +1317,9 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  };
+  }, [token, activeAgent]);
 
-  const onSendInput = async () => {
+  const onSendInput = useCallback(async () => {
     if (!input.trim()) return;
     if (!token || !activeAgent) return;
     eventPollRef.current.boostUntil = Date.now() + 10_000;
@@ -1357,7 +1346,14 @@ export function App() {
         await refreshAgents();
       }
     }
-  };
+  }, [
+    input,
+    token,
+    activeAgent,
+    activeSessionId,
+    acpConversation.jumpToConversationBottom,
+    refreshAgents,
+  ]);
 
   const onInputChange = useCallback(
     (value: string) => {
@@ -1407,6 +1403,24 @@ export function App() {
     },
     [inputHistory]
   );
+
+  const handleCollapseAgents = useCallback(() => {
+    setAgentsCollapsed(true);
+  }, []);
+
+  const handleExpandAgents = useCallback(() => {
+    setAgentsCollapsed(false);
+  }, []);
+
+  const handleToggleAgents = useCallback(() => {
+    setAgentsCollapsed((prev) => !prev);
+  }, []);
+
+  const handleSelectAgent = useCallback((id: string) => {
+    setActiveAgent(id);
+    setActiveSessionId(agentSessions[id] ?? null);
+    setAgentsCollapsed(true);
+  }, [agentSessions]);
 
   const onRespondPermission = async (
     agentId: string,
@@ -1534,6 +1548,132 @@ export function App() {
     }
   };
 
+  const acpRuntimeMetrics = useMemo(() => {
+    const cacheStats = getAcpConversationCacheStats();
+    return {
+      totalConversationItems: acpConversation.conversationTotalItems,
+      sourceConversationItems: acpConversation.conversationSourceItems,
+      renderedConversationItems: acpConversation.conversationRenderedItems,
+      pendingConversationItems: acpConversation.conversationPendingCount,
+      virtualizedConversation: acpConversation.conversationVirtualized,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+      rawEventCount: acpView.rawEvents.length,
+      toolCallCount: acpView.toolCalls.length,
+      messageCount: acpView.messages.length,
+      markdownCacheHits: cacheStats.markdownHits,
+      markdownCacheMisses: cacheStats.markdownMisses,
+      ansiCacheHits: cacheStats.ansiHits,
+      ansiCacheMisses: cacheStats.ansiMisses,
+      payloadParses: cacheStats.payloadParses,
+      payloadParseFailures: cacheStats.payloadParseFailures,
+    };
+  }, [
+    acpConversation.conversationTotalItems,
+    acpConversation.conversationSourceItems,
+    acpConversation.conversationRenderItems,
+    acpConversation.conversationPendingCount,
+    acpConversation.conversationVirtualized,
+    acpConversation.conversationStickToBottom,
+    acpConversation.conversationAvgHeight,
+    acpView.rawEvents.length,
+    acpView.toolCalls.length,
+    acpView.messages.length,
+  ]);
+  const acpConversationProps = useMemo(
+    () => ({
+      items: acpConversation.conversationRenderItems,
+      windowOffset: acpConversation.conversationWindowOffset,
+      isFrozenView: acpConversation.isFrozenView,
+      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
+      collapseCutoff: acpConversation.collapseCutoff,
+      runStatus: acpView.runStatus?.status ?? null,
+      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
+      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      pendingCount: acpConversation.conversationPendingCount,
+      avgHeight: acpConversation.conversationAvgHeight,
+      onScroll: acpConversation.handleConversationScroll,
+      containerRef: acpConversation.acpConversationRef,
+      ansi,
+    }),
+    [
+      acpConversation.conversationRenderItems,
+      acpConversation.conversationWindowOffset,
+      acpConversation.isFrozenView,
+      acpConversation.shouldAutoCollapse,
+      acpConversation.collapseCutoff,
+      acpConversation.conversationVirtualTopSpacer,
+      acpConversation.conversationVirtualBottomSpacer,
+      acpConversation.conversationStickToBottom,
+      acpConversation.conversationPendingCount,
+      acpConversation.conversationAvgHeight,
+      acpConversation.handleConversationScroll,
+      acpConversation.acpConversationRef,
+      acpView.runStatus?.status,
+      ansi,
+    ]
+  );
+  const acpDebugProps = useMemo(
+    () => ({
+      currentMode: acpView.currentMode,
+      rawEvents: acpView.rawEvents,
+      acpPermissionHistory,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      onAcpModeIdChange: setAcpModeId,
+      onAcpModelIdChange: setAcpModelId,
+      onAcpConfigIdChange: setAcpConfigId,
+      onAcpConfigValueChange: setAcpConfigValue,
+      canControlAcp,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      runtimeMetrics: acpRuntimeMetrics,
+    }),
+    [
+      acpView.currentMode,
+      acpView.rawEvents,
+      acpPermissionHistory,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      canControlAcp,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      acpRuntimeMetrics,
+    ]
+  );
+  const acpPanelProps = useMemo(
+    () => ({
+      acpView,
+      subtitle: activeAgentRecord?.workdir ?? null,
+      acpTab,
+      onSelectTab: handleAcpTabSelect,
+      showConversationBadge: acpConversation.showConversationBadge,
+      conversation: acpConversationProps,
+      debug: acpDebugProps,
+    }),
+    [
+      acpView,
+      activeAgentRecord?.workdir,
+      acpTab,
+      handleAcpTabSelect,
+      acpConversation.showConversationBadge,
+      acpConversationProps,
+      acpDebugProps,
+    ]
+  );
+  const showInputDock = !(acpTab === "debug" && acpView.hasAcp);
+
   if (location.pathname.startsWith("/join")) {
     return <JoinPage onComplete={(next) => setAuth(next)} />;
   }
@@ -1660,14 +1800,10 @@ export function App() {
             agents={agents}
             activeAgent={activeAgent}
             agentsCollapsed={agentsCollapsed}
-            onCollapse={() => setAgentsCollapsed(true)}
-            onExpand={() => setAgentsCollapsed(false)}
+            onCollapse={handleCollapseAgents}
+            onExpand={handleExpandAgents}
             onCreateAgent={openCreateAgentModal}
-            onSelectAgent={(id) => {
-              setActiveAgent(id);
-              setActiveSessionId(agentSessions[id] ?? null);
-              setAgentsCollapsed(true);
-            }}
+            onSelectAgent={handleSelectAgent}
             onToggleCodeMode={onSetCodeMode}
             onStartAgent={onStartAgent}
             onStopAgent={onStopAgent}
@@ -1681,7 +1817,7 @@ export function App() {
               hasAcp={acpView.hasAcp}
               thinkingStartTs={thinkingStartTs}
               modelLabel={activeAgentModelLabel}
-              onToggleAgents={() => setAgentsCollapsed((prev) => !prev)}
+              onToggleAgents={handleToggleAgents}
             />
             {activeAgent ? (
               <OutputErrorBoundary>
@@ -1691,53 +1827,11 @@ export function App() {
                   isOutputLoading={isOutputLoading}
                   outputs={outputs}
                   ansi={ansi}
-                  acpPanelProps={{
-                    acpView,
-                    subtitle: activeAgentRecord?.workdir ?? null,
-                    acpTab,
-                    onSelectTab: (next) => setAcpTab(next),
-                    showConversationBadge: acpConversation.showConversationBadge,
-                    conversation: {
-                      items: acpConversation.conversationRenderItems,
-                      windowOffset: acpConversation.conversationWindowOffset,
-                      isFrozenView: acpConversation.isFrozenView,
-                      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
-                      collapseCutoff: acpConversation.collapseCutoff,
-                      runStatus: acpView.runStatus?.status ?? null,
-                      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
-                      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
-                      stickToBottom: acpConversation.conversationStickToBottom,
-                      pendingCount: acpConversation.conversationPendingCount,
-                      avgHeight: acpConversation.conversationAvgHeight,
-                      onScroll: acpConversation.handleConversationScroll,
-                      containerRef: acpConversation.acpConversationRef,
-                      ansi,
-                    },
-                    debug: {
-                      currentMode: acpView.currentMode,
-                      rawEvents: acpView.rawEvents,
-                      acpPermissionHistory,
-                      acpModeId,
-                      acpModelId,
-                      acpConfigId,
-                      acpConfigValue,
-                      onAcpModeIdChange: setAcpModeId,
-                      onAcpModelIdChange: setAcpModelId,
-                      onAcpConfigIdChange: setAcpConfigId,
-                      onAcpConfigValueChange: setAcpConfigValue,
-                      canControlAcp,
-                      onAcpSetMode,
-                      onAcpSetModel,
-                      onAcpSetConfig,
-                      onAcpCancel,
-                      onAcpClearSession,
-                      runtimeMetrics: acpRuntimeMetrics,
-                    },
-                  }}
+                  acpPanelProps={acpPanelProps}
                 />
               </OutputErrorBoundary>
             ) : null}
-            {!(acpTab === "debug" && acpView.hasAcp) && (
+            {showInputDock && (
               <InputDock
                 input={input}
                 historyCommands={inputHistory}

@@ -17,7 +17,7 @@ type AgentsPanelProps = {
   onDeleteAgent: (id: string) => void;
 };
 
-export function AgentsPanel({
+export const AgentsPanel = React.memo(function AgentsPanel({
   agents,
   activeAgent,
   agentsCollapsed,
@@ -198,4 +198,4 @@ export function AgentsPanel({
       </div>
     </>
   );
-}
+});

@@ -11,7 +11,7 @@ type OutputHeaderProps = {
   onToggleAgents: () => void;
 };
 
-export function OutputHeader({
+export const OutputHeader = React.memo(function OutputHeader({
   activeAgent,
   activeSessionId,
   agentsCollapsed,
@@ -83,4 +83,4 @@ export function OutputHeader({
       ) : null}
     </div>
   );
-}
+});

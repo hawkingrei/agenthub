@@ -83,6 +83,10 @@ export function sanitizeErrorBannerMessage(
     : compact;
 }
 
+export function shouldHideErrorBannerMessage(message: string): boolean {
+  return normalizeErrorText(message) === UPSTREAM_HTML_MESSAGE;
+}
+
 function normalizeErrorText(rawMessage: string): string {
   return rawMessage.replace(/\s+/g, " ").trim();
 }

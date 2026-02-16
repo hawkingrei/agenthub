@@ -12,7 +12,7 @@ type OutputBodyProps = {
   acpPanelProps: AcpPanelProps;
 };
 
-export function OutputBody({
+export const OutputBody = React.memo(function OutputBody({
   terminalRef,
   onTerminalScroll,
   isOutputLoading,
@@ -44,4 +44,4 @@ export function OutputBody({
       )}
     </div>
   );
-}
+});

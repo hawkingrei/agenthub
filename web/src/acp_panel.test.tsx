@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AcpPanel, AcpPanelProps } from "./components/acp_panel";
+import { AcpPanel, AcpPanelProps, AcpPanelView } from "./components/acp_panel";
 import { AcpView } from "./acp";
 
 const baseView: AcpView = {
@@ -117,7 +117,7 @@ describe("AcpPanel layout", () => {
 
   it("invokes tab selection callbacks for both tabs", () => {
     const onSelectTab = vi.fn();
-    const tree = AcpPanel({
+    const tree = AcpPanelView({
       ...baseProps,
       onSelectTab,
       showConversationBadge: true,
