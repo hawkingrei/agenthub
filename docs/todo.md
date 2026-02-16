@@ -39,6 +39,7 @@
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
 - [x] Migrate Bazel from shell-wrapper targets to native `rules_rust` targets for core Rust crates (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
 - [ ] Verify Bazel CI workflow and local `bazel build //...` + `bazel test //...` behavior on clean environments (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [x] Converge Bazel `crate_universe` manifest source to `Cargo.toml` and remove duplicated `Cargo.bazel.toml` to avoid Cargo/Bazel dependency drift (see `docs/features/2026-02-16-cargo-bazel-manifest-convergence.md`).
 - [ ] Verify Bazel CI cache restore/save behavior (`bazelisk-cache`, `repository-cache`, `disk-cache`) improves repeated run latency without remote cache secrets (see `docs/features/2026-02-16-bazel-ci-cache-without-remote.md`).
 - [ ] Extend native Bazel coverage to web build/test targets (replace remaining non-native gaps) (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
 - [x] (Superseded) Switch Rust CI coverage collection to Bazel-native `bazel coverage --combined_report=lcov` and upload `rust` flag to Codecov (see `docs/features/2026-02-15-ci-bazel-rust-coverage.md`).

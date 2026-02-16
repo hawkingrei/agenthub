@@ -14,7 +14,9 @@ The previous Bazel integration used shell wrapper targets (`workspace_shell_buil
 ## Key Decisions
 
 1. Use `rules_rust` + `crate_universe` from `MODULE.bazel` as the dependency backbone.
-2. Keep Cargo workflow intact for normal Rust development; Bazel-specific dependency graph generation is isolated via `Cargo.bazel.toml`.
+2. Keep Cargo workflow intact for normal Rust development.
+   Note: this was later converged to single-manifest mode (`Cargo.toml`) in
+   `docs/features/2026-02-16-cargo-bazel-manifest-convergence.md`.
 3. Keep `agenthub-codex-acp` in the same `crate_universe` graph and expose native Bazel targets for its library, binary, and tests.
 4. Replace `tonic::include_proto!` (OUT_DIR-based) with checked-in generated code at `src/internal/proto/agenthub.internal.v1.rs` so Bazel and Cargo both compile without dynamic proto codegen.
 5. Remove obsolete shell-wrapper scripts under `bazel/ci/` after migration.
@@ -27,7 +29,7 @@ The previous Bazel integration used shell wrapper targets (`workspace_shell_buil
 - `crates/agenthub-acp/BUILD.bazel`
 - `crates/agenthub-team-actor/BUILD.bazel`
 - `agenthub-codex-acp/BUILD.bazel`
-- `Cargo.bazel.toml`
+- `Cargo.bazel.toml` (historical; later removed during manifest convergence)
 - `src/internal/mod.rs`
 - `src/internal/proto/agenthub.internal.v1.rs`
 - `Cargo.toml`
