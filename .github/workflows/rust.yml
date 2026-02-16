@@ -34,6 +34,8 @@ jobs:
       - name: Build web dist
         run: npm run build
         working-directory: web
+      - name: Verify internal protobuf codegen
+        run: ./scripts/check_team_proto_codegen.sh
       - name: Generate Rust coverage report
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - name: Upload coverage reports to Codecov

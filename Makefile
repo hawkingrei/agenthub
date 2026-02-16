@@ -1,4 +1,4 @@
-.PHONY: build-web run run-web build test lint lint-web
+.PHONY: build-web run run-web build test lint lint-web proto-check
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
@@ -22,6 +22,9 @@ lint-web:
 	cd web && npm run lint
 
 lint: lint-web
+
+proto-check:
+	./scripts/check_team_proto_codegen.sh
 
 
 reset:
