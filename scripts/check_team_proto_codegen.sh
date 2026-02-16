@@ -44,7 +44,10 @@ file_mtime() {
   if stat -c '%Y' "${file_path}" >/dev/null 2>&1; then
     stat -c '%Y' "${file_path}"
   else
-    stat -f '%m' "${file_path}"
+    stat -f '%m' "${file_path}" 2>/dev/null || {
+      echo "error: failed to get mtime for ${file_path}" >&2
+      return 1
+    }
   fi
 }
 
