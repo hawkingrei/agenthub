@@ -376,20 +376,19 @@ async fn respond_permission(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let _ = agent_id;
-    let fallback_outcome = match payload.outcome.as_deref() {
-        Some("cancelled") | None => agent_client_protocol::RequestPermissionOutcome::Cancelled,
-        Some(_other) => {
-            return Err(ApiError::bad_request(
-                "unsupported outcome, expected 'cancelled'",
-            ));
-        }
-    };
     let outcome = if let Some(option_id) = payload.option_id.as_ref() {
         agent_client_protocol::RequestPermissionOutcome::Selected(
             agent_client_protocol::SelectedPermissionOutcome::new(option_id.clone()),
         )
     } else {
-        fallback_outcome
+        match payload.outcome.as_deref() {
+            Some("cancelled") | None => agent_client_protocol::RequestPermissionOutcome::Cancelled,
+            Some(_other) => {
+                return Err(ApiError::bad_request(
+                    "unsupported outcome, expected 'cancelled'",
+                ));
+            }
+        }
     };
     state
         .acp_permissions
