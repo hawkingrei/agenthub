@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -5,9 +6,37 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn styles_css_path() -> PathBuf {
+    let repo_candidate = repo_root().join("web/src/styles.css");
+    if repo_candidate.exists() {
+        return repo_candidate;
+    }
+
+    if let Ok(test_srcdir) = env::var("TEST_SRCDIR") {
+        let mut candidates = Vec::new();
+        if let Ok(test_workspace) = env::var("TEST_WORKSPACE") {
+            candidates.push(
+                PathBuf::from(&test_srcdir)
+                    .join(test_workspace)
+                    .join("web/src/styles.css"),
+            );
+        }
+        candidates.push(PathBuf::from(&test_srcdir).join("_main/web/src/styles.css"));
+        candidates.push(PathBuf::from(&test_srcdir).join("agenthub/web/src/styles.css"));
+
+        for path in candidates {
+            if path.exists() {
+                return path;
+            }
+        }
+    }
+
+    panic!("styles.css path not found in repo root or Bazel runfiles");
+}
+
 #[test]
 fn styles_keep_acp_conversation_scoped() {
-    let path = repo_root().join("web/src/styles.css");
+    let path = styles_css_path();
     let css = fs::read_to_string(&path).expect("styles.css should be readable");
     assert!(
         css.contains(".acp-conversation"),

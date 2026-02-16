@@ -1,4 +1,5 @@
 .PHONY: build-web run run-web build test lint lint-web proto-check
+.PHONY: bazel-rust bazel-ci
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
@@ -22,6 +23,14 @@ lint-web:
 	cd web && npm run lint
 
 lint: lint-web
+
+bazel-rust:
+	bazel build //...
+	bazel test //...
+
+bazel-ci:
+	bazel build //...
+	bazel test //...
 
 proto-check:
 	./scripts/check_team_proto_codegen.sh

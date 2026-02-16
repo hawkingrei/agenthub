@@ -41,10 +41,18 @@
 - [x] Switch ACP mobile tab sizing from fixed pixel values to fluid adaptive `clamp(...)` sizing across narrow viewport widths (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify ACP compact mobile tab sizing and tap comfort on real iOS/Android devices (see `docs/features/2026-02-14-acp-mobile-tab-compact.md`).
 - [ ] Verify tool call terminal output keeps ANSI styling and escapes raw HTML payloads after review hardening (see `docs/features/2026-02-13-acp-ui-fold-markdown-mobile.md`).
+- [x] Migrate Bazel from shell-wrapper targets to native `rules_rust` targets for core Rust crates (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [ ] Verify Bazel CI workflow and local `bazel build //...` + `bazel test //...` behavior on clean environments (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [x] Converge Bazel `crate_universe` manifest source to `Cargo.toml` and remove duplicated `Cargo.bazel.toml` to avoid Cargo/Bazel dependency drift (see `docs/features/2026-02-16-cargo-bazel-manifest-convergence.md`).
+- [ ] Verify Bazel CI cache restore/save behavior (`bazelisk-cache`, `repository-cache`, `disk-cache`) improves repeated run latency without remote cache secrets (see `docs/features/2026-02-16-bazel-ci-cache-without-remote.md`).
+- [ ] Extend native Bazel coverage to web build/test targets (replace remaining non-native gaps) (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
+- [x] (Superseded) Switch Rust CI coverage collection to Bazel-native `bazel coverage --combined_report=lcov` and upload `rust` flag to Codecov (see `docs/features/2026-02-15-ci-bazel-rust-coverage.md`).
+- [x] Split Rust/Bazel CI responsibility: Rust workflow runs Cargo check + cargo-llvm-cov and Bazel workflow keeps Bazel build/test; upload Rust coverage with `rust-cargo` Codecov flag (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
+- [ ] Verify Cargo-generated Rust lcov report (`rust-cargo.lcov`) remains stable on CI across PR and main branch runs (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
 - [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
 - [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
 - [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
-- [x] Verify Rust Codecov upload appears with the `rust` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-rust-coverage.md`).
+- [x] Verify Rust Codecov upload appears with the `rust-cargo` flag on push and pull request runs (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
 - [x] Verify Web Codecov upload appears with the `web` flag on push and pull request runs (see `docs/features/2026-02-13-codecov-web-coverage.md`).
 - [x] Verify Codecov patch coverage reflects new DB/Team/API/Actor mailbox tests from the hardening pass (see `docs/features/2026-02-13-codecov-coverage-hardening.md`).
 - [ ] Verify Gemini preset event streaming and session clearing (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
@@ -119,6 +127,16 @@
 - [ ] Verify `create_worktree` agents can restart after process reboot without failing `workdir is not empty` when the target path is already a valid git worktree for the configured repo (see `docs/features/2026-02-15-create-worktree-restart-reuse.md`).
 - [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
 - [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
+- [x] Canonicalize default actor CLI path so Bazel/macOS path aliases (`/var` vs `/private/var`) do not break actor-runtime API tests (see `docs/features/2026-02-15-bazel-actor-cli-path-canonicalization.md`).
+- [x] Make local Bazel shell wrappers resolve `npm`/`cargo` on macOS and fallback to writable Cargo home so `bazel build //...` works without custom env flags (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
+- [x] Raise Bazel `rust_test` timeout to `long` so CI does not fail at 300s while tests are still progressing (see `docs/features/2026-02-15-bazel-shell-wrapper-local-toolchain-paths.md`).
+- [x] Bump Bazel Rust toolchain to `1.93.1` to satisfy `time-macros 0.2.26` MSRV and fix CI unstable-feature compile failures (see `docs/features/2026-02-15-bazel-rust-toolchain-time-macros-msrv.md`).
+- [x] Pin Rust version to `1.93.1` across rustup files and CI workflows to keep Bazel/Cargo/CI toolchains consistent (see `docs/features/2026-02-15-rust-version-pinning-unified.md`).
+- [x] Guard `RustEmbed` web embedding behind non-debug cfg so Bazel debug/test builds do not fail when `web/dist` is absent (see `docs/features/2026-02-15-bazel-debug-rust-embed-web-dist-guard.md`).
+- [x] Fix post-merge CI compatibility: declare `agenthub-codex-acp` markdown prompt files as Bazel compile inputs and relax proto codegen check to tracked-file parity mode (see `docs/features/2026-02-16-bazel-codex-md-and-proto-check-compat.md`).
+- [x] Fix Bazel `web_assets_test` sandbox path resolution by reading `styles.css` from runfiles and declaring CSS test data explicitly (see `docs/features/2026-02-16-bazel-web-assets-test-runfiles.md`).
+- [x] Align root Bazel Rust targets to typedb-style `rust_library` + `rust_test(crate=...)` and pass `web/dist` as compile data so `RustEmbed` works in opt/test sandbox builds (see `docs/features/2026-02-16-bazel-root-rust-library-and-rustembed-compile-data.md`).
+- [ ] Unify Cargo/Bazel proto generation dependency stack and re-enable Rust CI `Verify internal protobuf codegen` step (see `docs/features/2026-02-16-bazel-codex-md-and-proto-check-compat.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).

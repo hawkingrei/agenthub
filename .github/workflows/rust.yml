@@ -7,7 +7,7 @@ on:
 
 jobs:
   rust:
-    name: Rust
+    name: Rust (Cargo)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,34 +15,22 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install LLVM tools
-        run: rustup component add llvm-tools-preview
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: web/package-lock.json
-      - name: Install web deps
-        run: npm ci
-        working-directory: web
-      - name: Build web dist
-        run: npm run build
-        working-directory: web
-      - name: Verify internal protobuf codegen
-        run: ./scripts/check_team_proto_codegen.sh
-      - name: Generate Rust coverage report
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        uses: dtolnay/rust-toolchain@1.93.1
+      - name: Setup Rust coverage tool
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+      - name: Cargo check (workspace)
+        run: cargo check --workspace --locked
+      - name: Cargo test coverage (workspace)
+        run: |
+          cargo llvm-cov --workspace --locked --lcov --output-path rust-cargo.lcov
+          wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: lcov.info
-          flags: rust
-          name: rust-coverage
+          files: rust-cargo.lcov
+          flags: rust-cargo
+          name: rust-cargo-coverage
           fail_ci_if_error: false

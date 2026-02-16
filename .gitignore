@@ -7,6 +7,9 @@ web/node_modules
 web/dist
 web/.vite
 web/coverage
+bazel-*
+.bazelrc.user
+MODULE.bazel.lock
 web/test-results
 web/playwright-report
 userdocs/node_modules

@@ -19,12 +19,6 @@ if [[ ! -f web/dist/index.html ]]; then
   placeholder_created=1
 fi
 
-if git -c core.fsmonitor=false ls-files | grep -qE 'agenthub\.internal\.v1\.rs$'; then
-  echo "checked-in generated protobuf rust files are not allowed"
-  echo "please remove tracked generated files and rely on build-time codegen"
-  exit 1
-fi
-
 echo "running cargo check to trigger protobuf code generation"
 cargo check --locked --quiet
 
@@ -71,6 +65,17 @@ if ! grep -q 'pub struct SendActorMessageRequest' "${latest_generated}"; then
   echo "generated file missing SendActorMessageRequest message"
   echo "file: ${latest_generated}"
   exit 1
+fi
+
+tracked_generated="src/internal/proto/agenthub.internal.v1.rs"
+if [[ -f "${tracked_generated}" ]]; then
+  if ! cmp -s "${tracked_generated}" "${latest_generated}"; then
+    echo "tracked proto file is out of date: ${tracked_generated}"
+    echo "latest generated file: ${latest_generated}"
+    echo "please refresh tracked proto output to match current codegen"
+    exit 1
+  fi
+  echo "tracked proto file is up to date: ${tracked_generated}"
 fi
 
 echo "protobuf codegen check passed: ${latest_generated}"

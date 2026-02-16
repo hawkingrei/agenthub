@@ -1,0 +1,55 @@
+load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "agenthub_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "agenthub",
+    crate_root = "src/lib.rs",
+    compile_data = ["web/index.html"] + glob(
+        ["web/dist/**"],
+        allow_empty = True,
+    ),
+    edition = "2024",
+    aliases = aliases(),
+    deps = all_crate_deps(normal = True) + [
+        "//crates/agenthub-acp:agenthub_acp",
+        "//crates/agenthub-team-actor:agenthub_team_actor",
+    ],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
+rust_test(
+    name = "agenthub_unit_tests",
+    crate = ":agenthub_lib",
+    edition = "2024",
+    aliases = aliases(
+        proc_macro_dev = True,
+        normal_dev = True,
+    ),
+    deps = all_crate_deps(normal_dev = True),
+    proc_macro_deps = all_crate_deps(proc_macro_dev = True),
+    timeout = "long",
+)
+
+rust_binary(
+    name = "agenthub",
+    srcs = ["src/main.rs"],
+    edition = "2024",
+    aliases = aliases(),
+    deps = all_crate_deps(normal = True) + [":agenthub_lib"],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
+rust_test(
+    name = "web_assets_test",
+    srcs = ["tests/web_assets.rs"],
+    data = ["web/src/styles.css"],
+    crate_root = "tests/web_assets.rs",
+    edition = "2024",
+)

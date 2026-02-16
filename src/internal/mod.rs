@@ -21,7 +21,10 @@ pub mod proto {
     pub mod agenthub {
         pub mod internal {
             pub mod v1 {
-                tonic::include_proto!("agenthub.internal.v1");
+                include!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/src/internal/proto/agenthub.internal.v1.rs"
+                ));
             }
         }
     }
