@@ -5,6 +5,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
@@ -31,6 +32,8 @@ use agenthub_acp_core::{
 
 const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
+const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
+const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct AcpActorSkillContext {
@@ -420,6 +423,27 @@ pub struct AcpHandle {
     tx: mpsc::Sender<AcpCommand>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AcpSendError {
+    ChannelClosed,
+    Timeout(Duration),
+}
+
+impl std::fmt::Display for AcpSendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AcpSendError::ChannelClosed => write!(f, "acp command channel closed"),
+            AcpSendError::Timeout(duration) => write!(
+                f,
+                "acp command queue is backpressured; timed out after {}ms",
+                duration.as_millis()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AcpSendError {}
+
 impl AcpHandle {
     pub async fn prompt(&self, input: String) -> anyhow::Result<()> {
         self.send(AcpCommand::Prompt(input)).await
@@ -442,10 +466,22 @@ impl AcpHandle {
     }
 
     async fn send(&self, cmd: AcpCommand) -> anyhow::Result<()> {
-        self.tx
-            .send(cmd)
-            .await
-            .map_err(|_| anyhow::anyhow!("acp command channel closed"))
+        self.send_with_timeout(cmd, ACP_COMMAND_SEND_TIMEOUT).await
+    }
+
+    async fn send_with_timeout(&self, cmd: AcpCommand, timeout: Duration) -> anyhow::Result<()> {
+        match tokio::time::timeout(timeout, self.tx.send(cmd)).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(anyhow::Error::new(AcpSendError::ChannelClosed)),
+            Err(_) => {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    timeout_ms = timeout.as_millis(),
+                    "acp command send timed out due to backpressure"
+                );
+                Err(anyhow::Error::new(AcpSendError::Timeout(timeout)))
+            }
+        }
     }
 }
 
@@ -462,7 +498,7 @@ pub async fn spawn_acp_session(
     safe_paths: Vec<String>,
     actor_context: Option<AcpActorSkillContext>,
 ) -> anyhow::Result<AcpHandle> {
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(64);
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     std::thread::spawn(move || {
@@ -994,5 +1030,58 @@ impl AcpPermissionService {
             });
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AcpCommand, AcpHandle, AcpSendError};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn acp_handle_send_times_out_when_channel_is_backpressured() {
+        let (tx, _rx) = mpsc::channel::<AcpCommand>(1);
+        tx.try_send(AcpCommand::Cancel).expect("fill queue");
+        let handle = AcpHandle {
+            session_id: "session-backpressure".to_string(),
+            tx,
+        };
+
+        let err = handle
+            .send_with_timeout(AcpCommand::Cancel, Duration::from_millis(25))
+            .await
+            .expect_err("send should timeout when queue is full");
+        let typed = err
+            .downcast_ref::<AcpSendError>()
+            .expect("error should be AcpSendError");
+        assert_eq!(*typed, AcpSendError::Timeout(Duration::from_millis(25)));
+        assert!(
+            err.to_string().contains("backpressured"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_handle_send_returns_closed_when_receiver_dropped() {
+        let (tx, rx) = mpsc::channel::<AcpCommand>(1);
+        drop(rx);
+        let handle = AcpHandle {
+            session_id: "session-closed".to_string(),
+            tx,
+        };
+
+        let err = handle
+            .send_with_timeout(AcpCommand::Cancel, Duration::from_millis(25))
+            .await
+            .expect_err("send should fail when channel receiver is dropped");
+        let typed = err
+            .downcast_ref::<AcpSendError>()
+            .expect("error should be AcpSendError");
+        assert_eq!(*typed, AcpSendError::ChannelClosed);
+        assert!(
+            err.to_string().contains("channel closed"),
+            "unexpected error: {err}"
+        );
     }
 }
