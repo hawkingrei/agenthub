@@ -1571,6 +1571,7 @@ export function App() {
     acpConversation.conversationTotalItems,
     acpConversation.conversationSourceItems,
     acpConversation.conversationRenderedItems,
+    acpConversation.conversationRenderItems,
     acpConversation.conversationPendingCount,
     acpConversation.conversationVirtualized,
     acpConversation.conversationStickToBottom,

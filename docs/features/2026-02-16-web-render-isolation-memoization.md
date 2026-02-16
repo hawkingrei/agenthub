@@ -57,6 +57,10 @@ change.
      those `useMemo` blocks run;
    - avoid TDZ (`Cannot access 'onAcpSetMode' before initialization`) causing a
      blank initial app shell.
+7. Keep ACP debug runtime metrics fresh while preserving memoization:
+   - include `acpConversation.conversationRenderItems` in
+     `acpRuntimeMetrics` dependencies so cache hit/miss counters are refreshed
+     when rendered conversation slices change.
 
 ## Validation
 
