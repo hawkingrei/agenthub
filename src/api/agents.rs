@@ -384,7 +384,7 @@ async fn respond_permission(
             ));
         }
     };
-    let outcome = if let Some(option_id) = payload.option_id.clone() {
+    let outcome = if let Some(option_id) = payload.option_id.as_ref() {
         agent_client_protocol::RequestPermissionOutcome::Selected(
             agent_client_protocol::SelectedPermissionOutcome::new(option_id.clone()),
         )
