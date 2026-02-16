@@ -17,7 +17,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.1
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          external-cache: false
+          disk-cache: ${{ github.workflow }}
       - name: Bazel build
         run: bazel build //...
       - name: Bazel test
