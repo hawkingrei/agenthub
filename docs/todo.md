@@ -123,6 +123,7 @@
 - [x] Guard `RustEmbed` web embedding behind non-debug cfg so Bazel debug/test builds do not fail when `web/dist` is absent (see `docs/features/2026-02-15-bazel-debug-rust-embed-web-dist-guard.md`).
 - [x] Fix post-merge CI compatibility: declare `agenthub-codex-acp` markdown prompt files as Bazel compile inputs and relax proto codegen check to tracked-file parity mode (see `docs/features/2026-02-16-bazel-codex-md-and-proto-check-compat.md`).
 - [x] Fix Bazel `web_assets_test` sandbox path resolution by reading `styles.css` from runfiles and declaring CSS test data explicitly (see `docs/features/2026-02-16-bazel-web-assets-test-runfiles.md`).
+- [x] Align root Bazel Rust targets to typedb-style `rust_library` + `rust_test(crate=...)` and pass `web/dist` as compile data so `RustEmbed` works in opt/test sandbox builds (see `docs/features/2026-02-16-bazel-root-rust-library-and-rustembed-compile-data.md`).
 - [ ] Unify Cargo/Bazel proto generation dependency stack and re-enable Rust CI `Verify internal protobuf codegen` step (see `docs/features/2026-02-16-bazel-codex-md-and-proto-check-compat.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
