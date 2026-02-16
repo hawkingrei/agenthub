@@ -31,6 +31,7 @@ Typical causes:
 ## No Output or Stale Output
 
 - Re-open the session and check status in agent cards
+- Check connection badge state in header (`connected` / `connecting` / `reconnecting`)
 - Switch to Debug/Raw output tabs for transport-level events
 - Verify server process is still alive
 
@@ -39,6 +40,8 @@ Recovery action:
 1. Keep the current failed session for evidence
 2. Create a fresh session with the same prompt
 3. Compare behavior and isolate environment differences
+
+See also: [Connection Status and Recovery](../advanced/connection-status-and-recovery.md)
 
 ## Worktree Problems
 
@@ -51,3 +54,4 @@ Recovery action:
 1. Keep the session for audit and replay
 2. Create a fresh run with a clean workdir/worktree
 3. Replay the prompt sequence in smaller steps
+4. If issue persists, verify deployment checklist and runtime config consistency

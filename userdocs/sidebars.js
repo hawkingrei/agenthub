@@ -31,6 +31,24 @@ const sidebars = {
     },
     {
       type: 'category',
+      label: 'Deployment',
+      items: [
+        'deployment/overview-and-topology',
+        'deployment/production-checklist',
+        'deployment/vercel-static-userdocs',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Advanced Usage',
+      items: [
+        'advanced/team-workbench',
+        'advanced/openapi-and-automation',
+        'advanced/connection-status-and-recovery',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Operations',
       items: [
         'operations/daily-operations-checklist',

@@ -1,6 +1,7 @@
 # TODO
 
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
+- [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).
 - [ ] Verify storage quota guard in real browser: when `localStorage` is near/full, output cache persistence degrades gracefully and app actions (send/login/join) no longer surface uncaught `QuotaExceededError` (see `docs/features/2026-02-16-storage-quota-guard.md`).
 - [ ] Verify web render isolation optimization reduces unnecessary re-renders for `AgentsPanel`/`OutputHeader`/`OutputBody` while typing in input dock, and confirm ACP interactions still behave identically (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
 - [ ] Verify ACP debug runtime metrics refresh cache hit/miss counters when conversation rendered window changes (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
