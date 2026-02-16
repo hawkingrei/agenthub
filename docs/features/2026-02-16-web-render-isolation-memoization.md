@@ -61,6 +61,11 @@ change.
    - include `acpConversation.conversationRenderItems` in
      `acpRuntimeMetrics` dependencies so cache hit/miss counters are refreshed
      when rendered conversation slices change.
+8. Remove redundant memo dependencies:
+   - drop `acpConversation.conversationRenderedItems` from
+     `acpRuntimeMetrics` dependencies because it is derived from
+     `conversationRenderItems.length` and already covered by
+     `conversationRenderItems` reference changes.
 
 ## Validation
 
