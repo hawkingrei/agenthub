@@ -103,6 +103,22 @@ async fn teams_router_http_contract() {
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
 
+    let snapshot_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/snapshot?event_limit=100&message_limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get run snapshot via router");
+    assert_eq!(snapshot_resp.status(), StatusCode::OK);
+    let snapshot = decode_json_body(snapshot_resp).await;
+    assert_eq!(snapshot["run"]["id"], run_id);
+    assert_eq!(snapshot["mailbox"]["pending"], Value::from(0));
+    assert_eq!(snapshot["members"][0]["member_id"], "planner");
+
     let list_runs_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -777,12 +793,11 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let mut step_remote_task_id = None;
     for _ in 0..20 {
         let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
-        if let Some(step) = db_steps.first() {
-            if step.status == crate::team::TeamStepStatus::Working {
+        if let Some(step) = db_steps.first()
+            && step.status == crate::team::TeamStepStatus::Working {
                 step_remote_task_id = step.remote_task_id.clone();
                 break;
             }
-        }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     let remote_task_id = step_remote_task_id.expect("step should reach working state");

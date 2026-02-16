@@ -4,6 +4,7 @@
 - [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
 - [ ] Verify ACP Debug permission history copy-to-clipboard action works across desktop/mobile browsers with clipboard API fallback behavior (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
 - [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
+- [ ] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
 - [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).
 - [ ] Verify local toolchain bootstrap from `rust-toolchain.toml` installs required components (`rustc`, `cargo`, `std`, `rustfmt`, `clippy`) on clean machines without manual `rustup component add` (see `docs/features/2026-02-16-rust-toolchain-components-local-compile.md`).
@@ -72,6 +73,8 @@
 - [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
 - [ ] Verify Team Workbench UI (`/teams`) create/run/step/message interaction flow end-to-end in a real browser (see `docs/features/2026-02-16-team-workbench-ui.md`).
+- [ ] Verify Team create flow supports structured leader/worker config (`leader_member_id`, per-member `model`/`prompt`/`skills`) and generated spec remains compatible with run bootstrap/orchestrator dispatch (see `docs/features/2026-02-16-team-snapshot-member-console.md`).
+- [ ] Verify Team run snapshot API (`GET /api/teams/runs/:run_id/snapshot`) and `/teams` Overview/Mailbox/Member Console tabs stay consistent under active run updates (see `docs/features/2026-02-16-team-snapshot-member-console.md`).
 - [ ] Verify Team run list API (`GET /api/teams/:id/runs`) pagination/filter behavior in staging with real run volumes (see `docs/features/2026-02-16-team-runs-list-api.md`).
 - [ ] Verify OpenAPI discovery endpoints (`/api/openapi.json`, `/api/openapi/docs`) auth behavior and docs-page token fetch flow in a real browser (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
 - [ ] Refactor `web/src/pages/team_page.tsx` into smaller feature-focused components (`TeamSidebar`, `RunPanel`, tab subviews) and a reducer-based state model for maintainability (see `docs/features/2026-02-16-team-workbench-ui.md`).

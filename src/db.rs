@@ -11,13 +11,9 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
 }
 
 async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
-    let pool = try_connect(db_path).await.map_err(|err| {
-        anyhow::anyhow!(
-            "failed to open db at {}: {}",
-            db_path.display(),
-            err.to_string()
-        )
-    })?;
+    let pool = try_connect(db_path)
+        .await
+        .map_err(|err| anyhow::anyhow!("failed to open db at {}: {}", db_path.display(), err))?;
 
     sqlx::query(
         r#"
@@ -599,10 +595,10 @@ fn ensure_sqlite_path(db_path: &std::path::Path) -> anyhow::Result<()> {
 }
 
 fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     Ok(())
 }

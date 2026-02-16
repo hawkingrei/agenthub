@@ -157,10 +157,10 @@ fn load_or_create_vapid_keys(path: &std::path::Path) -> anyhow::Result<VapidKeys
         }
         return Ok(parsed);
     }
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     let keys = generate_vapid_keys()?;
     let payload = serde_json::to_string_pretty(&keys)?;

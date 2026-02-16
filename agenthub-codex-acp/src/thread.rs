@@ -297,7 +297,7 @@ enum SubmissionState {
     /// Loading custom prompts from the project
     CustomPrompts(CustomPromptsState),
     /// User prompts + some slash commands like /init or /review
-    Prompt(PromptState),
+    Prompt(Box<PromptState>),
     /// Subtask, like /compact
     Task(TaskState),
 }
@@ -2386,11 +2386,11 @@ impl<A: Auth> ThreadActor<A> {
 
         let state = match op {
             Op::Compact | Op::Undo => SubmissionState::Task(TaskState::new(response_tx)),
-            _ => SubmissionState::Prompt(PromptState::new(
+            _ => SubmissionState::Prompt(Box::new(PromptState::new(
                 self.thread.clone(),
                 response_tx,
                 submission_id.clone(),
-            )),
+            ))),
         };
 
         self.submissions.insert(submission_id, state);

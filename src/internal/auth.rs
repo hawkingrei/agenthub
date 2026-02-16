@@ -67,21 +67,21 @@ impl InternalPrincipal {
 
 #[derive(Debug, Clone, Copy)]
 pub enum InternalAction {
-    TeamMessageSend,
-    TeamInboxList,
-    TeamMessageAck,
-    TeamStepTransition,
-    TeamNodeIssue,
+    MessageSend,
+    InboxList,
+    MessageAck,
+    StepTransition,
+    NodeIssue,
 }
 
 impl InternalAction {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::TeamMessageSend => "team:message:send",
-            Self::TeamInboxList => "team:inbox:list",
-            Self::TeamMessageAck => "team:message:ack",
-            Self::TeamStepTransition => "team:step:transition",
-            Self::TeamNodeIssue => "team:node:issue",
+            Self::MessageSend => "team:message:send",
+            Self::InboxList => "team:inbox:list",
+            Self::MessageAck => "team:message:ack",
+            Self::StepTransition => "team:step:transition",
+            Self::NodeIssue => "team:node:issue",
         }
     }
 }
@@ -289,7 +289,7 @@ mod tests {
         let principal = authz.authenticate(&metadata).expect("authenticate");
         assert_eq!(principal.role, InternalRole::Worker);
         authz
-            .ensure_permission(&principal, InternalAction::TeamMessageSend)
+            .ensure_permission(&principal, InternalAction::MessageSend)
             .expect("has send permission");
         authz
             .ensure_worker_actor(&principal, "worker-1", "from_actor_id")
@@ -320,7 +320,7 @@ mod tests {
         );
         let principal = authz.authenticate(&metadata).expect("authenticate");
         let err = authz
-            .ensure_permission(&principal, InternalAction::TeamStepTransition)
+            .ensure_permission(&principal, InternalAction::StepTransition)
             .expect_err("missing permission");
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
     }
@@ -358,8 +358,8 @@ mod tests {
                 Some("worker-a"),
                 Some("run-a"),
                 vec![
-                    InternalAction::TeamMessageSend.as_str().to_string(),
-                    InternalAction::TeamInboxList.as_str().to_string(),
+                    InternalAction::MessageSend.as_str().to_string(),
+                    InternalAction::InboxList.as_str().to_string(),
                 ],
                 600,
             )
@@ -375,7 +375,7 @@ mod tests {
         assert_eq!(principal.actor_id.as_deref(), Some("worker-a"));
         assert_eq!(principal.run_id.as_deref(), Some("run-a"));
         authz
-            .ensure_permission(&principal, InternalAction::TeamMessageSend)
+            .ensure_permission(&principal, InternalAction::MessageSend)
             .expect("send permission exists");
     }
 }

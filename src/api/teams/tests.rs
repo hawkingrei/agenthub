@@ -28,11 +28,11 @@ use super::{
     AckTeamRunMessageRequest, CompleteTeamRunStepRequest, CreateTeamRequest, CreateTeamRunRequest,
     FailTeamRunStepRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
     ResumeTeamRunStepRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
-    StartTeamRunStepRequest, SubmitTeamRunStepRequest, ack_team_run_message, cancel_team_run,
-    complete_team_run_step, create_team, create_team_run, fail_team_run_step, get_team,
-    get_team_run, list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
-    list_teams, resume_team_run_step, send_team_run_message, set_team_run_step_input_required,
-    start_team_run_step, submit_team_run_step,
+    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
+    cancel_team_run, complete_team_run_step, create_team, create_team_run, fail_team_run_step,
+    get_team, get_team_run, get_team_run_snapshot, list_team_run_events, list_team_run_inbox,
+    list_team_run_steps, list_team_runs, list_teams, resume_team_run_step, send_team_run_message,
+    set_team_run_step_input_required, start_team_run_step, submit_team_run_step,
 };
 
 pub(crate) async fn build_test_state() -> AppState {
@@ -359,12 +359,11 @@ pub(crate) async fn create_auth_token(state: &AppState) -> String {
     .await
     .expect("insert user");
 
-    let token = state
+    state
         .auth
         .create_session(&user_id)
         .await
-        .expect("create token");
-    token
+        .expect("create token")
 }
 
 fn build_json_request(

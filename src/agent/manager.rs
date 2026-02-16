@@ -23,8 +23,8 @@ use self::codec::{
 };
 use super::{AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream};
 use crate::acp::{
-    AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink, load_safe_paths,
-    spawn_acp_session,
+    AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink,
+    SpawnAcpSessionRequest, load_safe_paths, spawn_acp_session,
 };
 use crate::actor_runtime::normalize_actor_context;
 use crate::auth::AuthService;
@@ -597,12 +597,8 @@ impl AgentManager {
             return Err(err.into());
         }
 
-        if let Err(err) = self
-            .update_agent_status(&agent.id, AgentStatus::Running)
-            .await
-        {
-            return Err(err);
-        }
+        self.update_agent_status(&agent.id, AgentStatus::Running)
+            .await?;
 
         let input = if let Some(provider) = acp_provider {
             let resume_session_id = self.get_persistent_session(&agent.id, provider).await?;
@@ -644,19 +640,19 @@ impl AgentManager {
                 session_id.clone(),
             ));
             let client_info = Implementation::new("agenthub", env!("CARGO_PKG_VERSION"));
-            let handle = match spawn_acp_session(
+            let handle = match spawn_acp_session(SpawnAcpSessionRequest {
                 event_sink,
-                self.permissions.clone(),
-                agent.id.clone(),
-                session_id.clone(),
+                permissions: self.permissions.clone(),
+                agent_id: agent.id.clone(),
+                agent_session_id: session_id.clone(),
                 resume_session_id,
-                workdir.clone(),
+                workdir: workdir.clone(),
                 client_info,
                 stdout,
                 stdin,
                 safe_paths,
-                actor_context.clone(),
-            )
+                actor_context: actor_context.clone(),
+            })
             .await
             {
                 Ok(handle) => handle,
@@ -677,15 +673,15 @@ impl AgentManager {
                 tracing::error!("persist acp session failed: {}", err);
             }
             if provider == ACP_PROVIDER_CODEX {
-                if let Some(mode_id) = self.acp_default_mode.as_deref() {
-                    if let Err(err) = handle.set_mode(mode_id.to_string()).await {
-                        tracing::warn!(
-                            "set acp default mode failed: agent_id={}, mode_id={}, error={}",
-                            agent.id,
-                            mode_id,
-                            err
-                        );
-                    }
+                if let Some(mode_id) = self.acp_default_mode.as_deref()
+                    && let Err(err) = handle.set_mode(mode_id.to_string()).await
+                {
+                    tracing::warn!(
+                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                        agent.id,
+                        mode_id,
+                        err
+                    );
                 }
             } else if self.acp_default_mode.is_some() {
                 tracing::debug!(
@@ -711,17 +707,15 @@ impl AgentManager {
             guard.insert(agent.id.clone(), handle);
         }
 
-        if !is_acp {
-            if let Some(stdout) = stdout {
-                self.spawn_output_reader(
-                    agent.id.clone(),
-                    session_id.clone(),
-                    OutputStream::Stdout,
-                    stdout,
-                    output_tx.clone(),
-                )
-                .await;
-            }
+        if !is_acp && let Some(stdout) = stdout {
+            self.spawn_output_reader(
+                agent.id.clone(),
+                session_id.clone(),
+                OutputStream::Stdout,
+                stdout,
+                output_tx.clone(),
+            )
+            .await;
         }
 
         if let Some(stderr) = stderr {

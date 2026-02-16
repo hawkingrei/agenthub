@@ -307,6 +307,37 @@ section {
   width: 100%;
 }
 
+.mode-switch {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mode-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d0d6dd;
+  border-radius: 999px;
+  padding: 4px 10px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3a4654;
+  background: #f8fafc;
+}
+
+.mode-tag:hover {
+  border-color: #7f95ad;
+  color: #1f2c3d;
+}
+
+.mode-tag.active {
+  border-color: #1b3a57;
+  background: #1b3a57;
+  color: #fff;
+}
+
 .agents-rail-metric {
   display: grid;
   gap: 2px;
