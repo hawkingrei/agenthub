@@ -103,6 +103,34 @@ async fn teams_router_http_contract() {
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
 
+    let list_runs_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/runs?limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list runs via router");
+    assert_eq!(list_runs_resp.status(), StatusCode::OK);
+    let listed_runs = decode_json_body(list_runs_resp).await;
+    let listed_runs = listed_runs.as_array().expect("runs array");
+    assert_eq!(listed_runs.len(), 1);
+    assert_eq!(listed_runs[0]["id"], run_id);
+
+    let invalid_status_runs_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/runs?status=invalid"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("invalid runs status request");
+    assert_eq!(invalid_status_runs_resp.status(), StatusCode::BAD_REQUEST);
+
     let cancel_run_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -618,6 +646,18 @@ async fn teams_router_http_contract() {
         .await
         .expect("missing team request");
     assert_eq!(missing_team_resp.status(), StatusCode::NOT_FOUND);
+
+    let missing_team_list_runs_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/missing-team/runs",
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("missing team list runs request");
+    assert_eq!(missing_team_list_runs_resp.status(), StatusCode::NOT_FOUND);
 
     let missing_run_resp = app
         .clone()

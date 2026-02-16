@@ -6,7 +6,7 @@ mod tests;
 
 use chrono::Utc;
 use serde_json::Value;
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, SqlitePool};
 use uuid::Uuid;
 
 pub use mailbox::TeamRemoteRelayWorkerSettings;
@@ -289,6 +289,41 @@ impl TeamManager {
         .bind(limit.max(1))
         .fetch_all(&self.db)
         .await?;
+
+        let mut runs = Vec::with_capacity(rows.len());
+        for row in rows {
+            runs.push(parse_team_run_row(&row)?);
+        }
+        Ok(runs)
+    }
+
+    pub async fn list_runs(
+        &self,
+        team_id: &str,
+        limit: i64,
+        status: Option<&str>,
+        before_created_at: Option<i64>,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let limit = limit.max(1);
+        let mut builder = QueryBuilder::<sqlx::Sqlite>::new(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE team_id = "#,
+        );
+        builder.push_bind(team_id);
+        if let Some(status) = status {
+            builder.push(" AND status = ");
+            builder.push_bind(status);
+        }
+        if let Some(before_created_at) = before_created_at {
+            builder.push(" AND created_at < ");
+            builder.push_bind(before_created_at);
+        }
+        builder.push(" ORDER BY created_at DESC, id DESC LIMIT ");
+        builder.push_bind(limit);
+
+        let rows = builder.build().fetch_all(&self.db).await?;
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {

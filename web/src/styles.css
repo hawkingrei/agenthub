@@ -2525,6 +2525,158 @@ select:not([class*="mantine-"]):focus-visible {
   padding: 4px 8px;
 }
 
+.teams-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.teams-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.teams-form,
+.teams-run-create,
+.teams-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teams-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.teams-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.team-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid #d8d8d8;
+  background: #f7f7f7;
+  color: #1c1c1c;
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.team-item.active {
+  border-color: #161616;
+  background: #161616;
+  color: #fff;
+}
+
+.team-item .team-name {
+  font-weight: 600;
+}
+
+.team-item .team-id,
+.team-item .team-status {
+  font-size: 12px;
+  opacity: 0.88;
+}
+
+.teams-run-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.teams-event-list,
+.teams-step-list,
+.teams-message-list {
+  max-height: 420px;
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teams-event-list li,
+.teams-step-list li,
+.teams-message-list li {
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.teams-event-head,
+.teams-step-head,
+.teams-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.teams-step-grid,
+.teams-message-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.teams-step-panel,
+.teams-message-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #ececec;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfcfc;
+}
+
+.teams-step-panel select,
+.teams-message-panel select,
+.teams-step-panel input,
+.teams-message-panel input,
+.teams-step-panel textarea,
+.teams-message-panel textarea,
+.teams-form input,
+.teams-form textarea,
+.teams-run-create input,
+.teams-run-create textarea {
+  width: 100%;
+}
+
+.teams-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.muted {
+  color: #6f6f6f;
+}
+
 @media (max-width: 600px) {
   header {
     flex-direction: row;
@@ -2605,5 +2757,9 @@ select:not([class*="mantine-"]):focus-visible {
 
   .acp-diff-view {
     font-size: 10.5px;
+  }
+
+  .teams-layout {
+    grid-template-columns: 1fr;
   }
 }

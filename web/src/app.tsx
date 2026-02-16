@@ -68,6 +68,7 @@ import {
 import { AdminPage } from "./pages/admin_page";
 import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { JoinPage } from "./pages/join_page";
+import { TeamPage } from "./pages/team_page";
 import { ensurePushSubscription } from "./push";
 import {
   INPUT_HISTORY_STORAGE_KEY,
@@ -1571,6 +1572,13 @@ export function App() {
     );
   }
 
+  if (location.pathname.startsWith("/teams")) {
+    if (!auth || !token) {
+      return <AuthRequired />;
+    }
+    return <TeamPage auth={auth} token={token} onLogout={onLogout} />;
+  }
+
   return (
     <div className="app">
       <header>
@@ -1587,6 +1595,14 @@ export function App() {
               <span>{connectionBadge.label}</span>
             </span>
             <span>{auth.username}</span>
+            <a
+              className="icon-button"
+              href="/teams"
+              title="Teams"
+              aria-label="Teams"
+            >
+              <i className="bi bi-diagram-3" aria-hidden="true" />
+            </a>
             {auth.role === "root" && (
               <a
                 className="icon-button"

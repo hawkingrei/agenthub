@@ -1393,3 +1393,66 @@ async fn list_active_runs_returns_non_terminal_runs_only() {
     assert!(active_ids.contains(&working_run.id.as_str()));
     assert!(!active_ids.contains(&canceled_run.id.as_str()));
 }
+
+#[tokio::test]
+async fn list_runs_supports_status_filter_and_cursor() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "list-runs-team".to_string(),
+            description: Some("team to verify run listing".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let first_run = manager
+        .create_run(&team.id, Some("ctx-list-runs-1"), json!({"seq": 1}))
+        .await
+        .expect("create first run");
+    let second_run = manager
+        .create_run(&team.id, Some("ctx-list-runs-2"), json!({"seq": 2}))
+        .await
+        .expect("create second run");
+    let _ = manager
+        .cancel_run(&first_run.id)
+        .await
+        .expect("cancel first run");
+
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(100_i64)
+        .bind(&first_run.id)
+        .execute(&db)
+        .await
+        .expect("set first run created_at");
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(200_i64)
+        .bind(&second_run.id)
+        .execute(&db)
+        .await
+        .expect("set second run created_at");
+
+    let all_runs = manager
+        .list_runs(&team.id, 100, None, None)
+        .await
+        .expect("list all runs");
+    assert_eq!(all_runs.len(), 2);
+    assert_eq!(all_runs[0].id, second_run.id);
+    assert_eq!(all_runs[1].id, first_run.id);
+
+    let canceled_runs = manager
+        .list_runs(&team.id, 100, Some("canceled"), None)
+        .await
+        .expect("list canceled runs");
+    assert_eq!(canceled_runs.len(), 1);
+    assert_eq!(canceled_runs[0].id, first_run.id);
+
+    let cursor_runs = manager
+        .list_runs(&team.id, 100, None, Some(200))
+        .await
+        .expect("list runs with cursor");
+    assert_eq!(cursor_runs.len(), 1);
+    assert_eq!(cursor_runs[0].id, first_run.id);
+}
