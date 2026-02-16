@@ -13,7 +13,7 @@ type AcpPanelProps = {
   debug: AcpDebugProps;
 };
 
-export function AcpPanel({
+function AcpPanelView({
   subtitle,
   acpTab,
   onSelectTab,
@@ -53,4 +53,7 @@ export function AcpPanel({
   );
 }
 
+export const AcpPanel = React.memo(AcpPanelView);
+
 export type { AcpPanelProps };
+export { AcpPanelView };

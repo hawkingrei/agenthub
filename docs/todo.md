@@ -1,6 +1,7 @@
 # TODO
 
 - [ ] Verify storage quota guard in real browser: when `localStorage` is near/full, output cache persistence degrades gracefully and app actions (send/login/join) no longer surface uncaught `QuotaExceededError` (see `docs/features/2026-02-16-storage-quota-guard.md`).
+- [ ] Verify web render isolation optimization reduces unnecessary re-renders for `AgentsPanel`/`OutputHeader`/`OutputBody` while typing in input dock, and confirm ACP interactions still behave identically (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
 - [ ] Verify `scripts/check_team_proto_codegen.sh` fails fast when `team.proto` generated symbols drift and when generated protobuf Rust files are accidentally tracked (see `docs/features/2026-02-15-team-proto-codegen-check.md`).
 - [ ] Verify new `userdocs` information architecture and cross-page navigation links after content expansion (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify newly added `userdocs` practical pages (`configuration`, `review`, `security`, `daily checklist`) align with current UI labels and runtime behavior (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
