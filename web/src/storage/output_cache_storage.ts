@@ -2,6 +2,10 @@ import { OutputLine } from "../output_cache";
 import { compareEventOrder } from "../seq_order";
 
 const STORAGE_KEY = "agenthub_output_cache_v2";
+const FALLBACK_EVENTS_TIER1 = 80;
+const FALLBACK_SESSIONS_TIER1 = 20;
+const FALLBACK_EVENTS_TIER2 = 40;
+const FALLBACK_SESSIONS_TIER2 = 10;
 
 type StoredOutputCache = {
   v: number;
@@ -58,18 +62,18 @@ export function saveOutputCaches(
     { events: maxEvents, sessions: maxSessions, dropAcp: false },
     { events: maxEvents, sessions: maxSessions, dropAcp: true },
     {
-      events: Math.min(maxEvents, 80),
-      sessions: Math.min(maxSessions, 20),
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER1),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER1),
       dropAcp: false,
     },
     {
-      events: Math.min(maxEvents, 80),
-      sessions: Math.min(maxSessions, 20),
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER1),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER1),
       dropAcp: true,
     },
     {
-      events: Math.min(maxEvents, 40),
-      sessions: Math.min(maxSessions, 10),
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER2),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER2),
       dropAcp: true,
     },
   ];

@@ -97,7 +97,13 @@ export function App() {
   const maxCachedSessions = 40;
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = getLocalStorageItemSafe("agenthub_auth");
-    return raw ? (JSON.parse(raw) as AuthState) : null;
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as AuthState;
+    } catch {
+      removeLocalStorageItemSafe("agenthub_auth");
+      return null;
+    }
   });
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
