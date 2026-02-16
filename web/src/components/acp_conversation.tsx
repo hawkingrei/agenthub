@@ -14,6 +14,7 @@ type AcpConversationProps = {
   stickToBottom: boolean;
   pendingCount: number;
   avgHeight: number;
+  focusedToolCallId?: string | null;
   onScroll: () => void;
   containerRef: React.RefObject<HTMLDivElement>;
   ansi: (input: string) => string;
@@ -98,6 +99,7 @@ export function AcpConversation({
   stickToBottom,
   pendingCount,
   avgHeight,
+  focusedToolCallId,
   onScroll,
   containerRef,
   ansi,
@@ -114,17 +116,27 @@ export function AcpConversation({
         {items.map((msg, idx) => {
           const globalIndex = windowOffset + idx;
           const key = getConversationItemKey(msg, globalIndex);
+          const isFocusedToolCall =
+            focusedToolCallId != null &&
+            msg.kind === "tool_call" &&
+            msg.id === focusedToolCallId;
           return (
-            <ConversationBubble
+            <div
               key={key}
-              msg={msg}
-              globalIndex={globalIndex}
-              shouldAutoCollapse={shouldAutoCollapse}
-              collapseCutoff={collapseCutoff}
-              isFrozenView={isFrozenView}
-              runStatus={runStatus}
-              ansi={ansi}
-            />
+              className={`acp-conversation-item${isFocusedToolCall ? " is-focused" : ""}`}
+              data-conversation-item-key={key}
+              data-tool-call-id={msg.kind === "tool_call" ? msg.id : undefined}
+            >
+              <ConversationBubble
+                msg={msg}
+                globalIndex={globalIndex}
+                shouldAutoCollapse={shouldAutoCollapse}
+                collapseCutoff={collapseCutoff}
+                isFrozenView={isFrozenView}
+                runStatus={runStatus}
+                ansi={ansi}
+              />
+            </div>
           );
         })}
         {virtualBottomSpacer > 0 && (

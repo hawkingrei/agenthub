@@ -1,5 +1,11 @@
 # TODO
 
+- [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
+- [ ] Verify web Codecov patch gate remains above threshold after additional `app.tsx`/ACP interaction changes; keep targeted branch tests in `app.permission_scope`, `acp_debug.interaction`, and `use_acp_conversation.interaction` up to date (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
+- [ ] Verify newly added jsdom interaction tests for ACP debug copy/jump and app viewport sync stay stable in CI runners (no localStorage/env-specific flakes) (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
+- [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
+- [ ] Verify ACP Debug permission history copy-to-clipboard action works across desktop/mobile browsers with clipboard API fallback behavior (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
+- [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
 - [ ] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
 - [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).

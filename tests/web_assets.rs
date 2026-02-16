@@ -74,13 +74,27 @@ fn styles_keep_acp_conversation_scoped() {
         css.contains(".terminal {\n  font-family: \"Source Code Pro\", monospace;\n  background: #0e1116;\n  color: #c7d0df;\n  padding: 12px;\n  border-radius: 8px;\n  min-height: 220px;\n  overflow: auto;\n  white-space: pre-wrap;\n  min-height: 0;\n  height: 100%;\n}"),
         "terminal output should be scrollable inside output body"
     );
+    assert!(css.contains("body {"), "body styles should exist");
     assert!(
-        css.contains("body {\n  margin: 0;\n  min-height: 100vh;\n  height: 100vh;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n}"),
-        "body should be fixed height with overflow hidden"
+        css.contains("max-width: var(--agenthub-vw, 100vw);"),
+        "body should clamp max width to runtime viewport width"
     );
     assert!(
-        css.contains(".app {\n  width: 100%;\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: 100vh;\n  height: 100vh;\n  overflow: auto;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n}"),
-        "app should be fixed height with overflow auto"
+        css.contains("min-height: var(--agenthub-vh, 100vh);"),
+        "body should use runtime viewport height"
+    );
+    assert!(
+        css.contains("overflow: hidden;"),
+        "body should hide outer overflow"
+    );
+    assert!(css.contains(".app {"), "app styles should exist");
+    assert!(
+        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);"),
+        "app should clamp width to runtime viewport width"
+    );
+    assert!(
+        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: hidden;"),
+        "app should keep fixed-height scroll container behavior"
     );
     assert!(
         css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 8px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n}"),
@@ -109,6 +123,10 @@ fn styles_keep_acp_conversation_scoped() {
     assert!(
         css.contains("@supports (height: 100dvh)"),
         "styles.css should use dynamic viewport height fallback for mobile browsers"
+    );
+    assert!(
+        css.contains("top: var(--agenthub-workspace-top, calc(56px + env(safe-area-inset-top, 0px)));"),
+        "mobile workspace drawer should anchor to computed workspace top"
     );
     assert!(
         css.contains(".admin .card li:not([class*=\"mantine-\"])"),

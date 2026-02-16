@@ -41,8 +41,12 @@ type AcpDebugProps = {
   onAcpSetConfig: () => void;
   onAcpCancel: () => void;
   onAcpClearSession: () => void;
+  onJumpToPermissionHistory: (permission: AcpPermissionRecord) => void;
   runtimeMetrics: AcpRuntimeMetrics;
+  initialTab?: DebugTab;
 };
+
+const COPIED_STATE_RESET_DELAY_MS = 1600;
 
 export function AcpDebug({
   currentMode,
@@ -62,9 +66,13 @@ export function AcpDebug({
   onAcpSetConfig,
   onAcpCancel,
   onAcpClearSession,
+  onJumpToPermissionHistory,
   runtimeMetrics,
+  initialTab,
 }: AcpDebugProps) {
-  const [tab, setTab] = React.useState<DebugTab>("session");
+  const [tab, setTab] = React.useState<DebugTab>(initialTab ?? "session");
+  const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
+  const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
   const markdownTotal = runtimeMetrics.markdownCacheHits + runtimeMetrics.markdownCacheMisses;
   const ansiTotal = runtimeMetrics.ansiCacheHits + runtimeMetrics.ansiCacheMisses;
@@ -85,6 +93,31 @@ export function AcpDebug({
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [tab, rawEvents.length]);
+  React.useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current != null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopyPermission = React.useCallback(async (permission: AcpPermissionRecord) => {
+    const content = buildPermissionCopyText(permission);
+    try {
+      await copyTextToClipboard(content);
+      setCopiedPermissionId(permission.id);
+      if (copiedResetTimerRef.current != null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = window.setTimeout(() => {
+        setCopiedPermissionId((prev) => (prev === permission.id ? null : prev));
+        copiedResetTimerRef.current = null;
+      }, COPIED_STATE_RESET_DELAY_MS);
+    } catch {
+      setCopiedPermissionId(null);
+    }
+  }, []);
+
   return (
     <div className="acp-debug">
       <div className="acp-debug-tabs">
@@ -223,14 +256,50 @@ export function AcpDebug({
           {acpPermissionHistory.length === 0 && (
             <div className="empty">No permissions yet.</div>
           )}
-          {acpPermissionHistory.map((perm) => (
-            <div key={perm.id} className="acp-permission">
-              <div className="head">
-                <div className="title">{perm.permission}</div>
-                <div className="meta">{perm.status}</div>
+          {acpPermissionHistory.map((permission) => {
+            const toolCall = toPermissionToolCall(permission.tool_call);
+            const copied = copiedPermissionId === permission.id;
+            const canJump = Boolean(permission.tool_call_id?.trim());
+            return (
+              <div key={permission.id} className="acp-permission">
+                <div className="head">
+                  <button
+                    className="acp-permission-toggle"
+                    type="button"
+                    onClick={() => onJumpToPermissionHistory(permission)}
+                    disabled={!canJump}
+                  >
+                    <span className="title">
+                      {derivePermissionTitle(permission, toolCall)}
+                    </span>
+                    <span className="meta">{permission.status}</span>
+                  </button>
+                  <button
+                    className="acp-permission-copy"
+                    type="button"
+                    onClick={() => void handleCopyPermission(permission)}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="acp-permission-submeta">
+                  <span className="mono">{permission.id}</span>
+                  {permission.tool_call_id && (
+                    <span className="mono">tool_call {permission.tool_call_id}</span>
+                  )}
+                  <span>created {formatPermissionTimestamp(permission.created_at)}</span>
+                  {permission.responded_at != null && (
+                    <span>responded {formatPermissionTimestamp(permission.responded_at)}</span>
+                  )}
+                </div>
+                {!canJump && (
+                  <div className="acp-permission-options mono">
+                    no linked tool call in conversation
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {tab === "raw" && (
@@ -253,6 +322,81 @@ export function AcpDebug({
       )}
     </div>
   );
+}
+
+export type PermissionToolCall = {
+  title?: string;
+};
+
+function toPermissionToolCall(toolCall: unknown): PermissionToolCall | null {
+  if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) {
+    return null;
+  }
+  const candidate = toolCall as { title?: unknown };
+  return {
+    title: typeof candidate.title === "string" ? candidate.title : undefined,
+  };
+}
+
+export function derivePermissionTitle(
+  permission: AcpPermissionRecord,
+  toolCall: PermissionToolCall | null
+): string {
+  if (toolCall?.title) return toolCall.title;
+  if (permission.tool_call_id) return permission.tool_call_id;
+  return "Permission Request";
+}
+
+export function buildPermissionCopyText(permission: AcpPermissionRecord): string {
+  return JSON.stringify(
+    {
+      permission_id: permission.id,
+      agent_id: permission.agent_id,
+      session_id: permission.session_id,
+      acp_session_id: permission.acp_session_id ?? null,
+      tool_call_id: permission.tool_call_id ?? null,
+      status: permission.status,
+      selected_option_id: permission.selected_option_id ?? null,
+      created_at: permission.created_at,
+      responded_at: permission.responded_at ?? null,
+      options: permission.options,
+      tool_call: permission.tool_call ?? null,
+    },
+    null,
+    2
+  );
+}
+
+function formatPermissionTimestamp(ts: number): string {
+  return new Date(ts * 1000).toLocaleString();
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  if (typeof document === "undefined") {
+    throw new Error("clipboard unavailable");
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!ok) {
+    throw new Error("clipboard write failed");
+  }
 }
 
 function RuntimeMetricCard({

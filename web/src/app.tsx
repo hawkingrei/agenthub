@@ -92,6 +92,254 @@ import {
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
+const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
+const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
+
+type PendingPermissionJumpState = {
+  toolCallId: string;
+  sessionId: string | null;
+  attempts: number;
+};
+
+type RuntimeViewportSize = {
+  height: number;
+  width: number;
+};
+
+type PermissionJumpDecision = "idle" | "wait" | "clear" | "attempt";
+
+type RuntimeEventHandler = () => void;
+
+type RuntimeEventTargetLike = {
+  addEventListener: (type: string, listener: RuntimeEventHandler) => void;
+  removeEventListener: (type: string, listener: RuntimeEventHandler) => void;
+};
+
+type RuntimeVisualViewportLike = RuntimeEventTargetLike & {
+  height?: number;
+  width?: number;
+};
+
+type RuntimeWindowLike = RuntimeEventTargetLike & {
+  innerHeight: number;
+  innerWidth: number;
+  visualViewport?: RuntimeVisualViewportLike | null;
+  requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
+  cancelAnimationFrame?: (id: number) => void;
+};
+
+type StyleVarTarget = {
+  setProperty: (name: string, value: string) => void;
+};
+
+type LayoutAnchorNodeLike = {
+  getBoundingClientRect: () => { height: number; top: number };
+};
+
+type LayoutAnchorNodes = {
+  appRoot: LayoutAnchorNodeLike | null;
+  appHeader: LayoutAnchorNodeLike | null;
+  workspace: LayoutAnchorNodeLike | null;
+};
+
+type ResizeObserverLike = {
+  observe: (target: object) => void;
+  disconnect: () => void;
+};
+
+type ResizeObserverCtorLike = new (callback: () => void) => ResizeObserverLike;
+
+export function resolveRuntimeViewportSize(
+  viewport: Pick<VisualViewport, "height" | "width"> | null | undefined,
+  innerHeight: number,
+  innerWidth: number
+): RuntimeViewportSize {
+  return {
+    height: Math.max(1, Math.round(viewport?.height ?? innerHeight)),
+    width: Math.max(1, Math.round(viewport?.width ?? innerWidth)),
+  };
+}
+
+export function shouldSyncRuntimeViewportSize(
+  previous: RuntimeViewportSize | null,
+  next: RuntimeViewportSize
+): boolean {
+  if (!previous) return true;
+  return previous.height !== next.height || previous.width !== next.width;
+}
+
+export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.round(value));
+}
+
+export function decidePermissionJump(
+  pending: PendingPermissionJumpState | null,
+  acpTab: "conversation" | "debug",
+  activeSessionId: string | null,
+  maxAttempts: number = PERMISSION_JUMP_MAX_ATTEMPTS
+): PermissionJumpDecision {
+  if (!pending) return "idle";
+  if (acpTab !== "conversation") return "wait";
+  if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
+  if (pending.attempts >= maxAttempts) return "clear";
+  return "attempt";
+}
+
+export function setupRuntimeViewportVarSync(
+  runtimeWindow: RuntimeWindowLike,
+  styleTarget: StyleVarTarget
+): () => void {
+  const viewport = runtimeWindow.visualViewport;
+  let rafId: number | null = null;
+  let previousSize: RuntimeViewportSize | null = null;
+  const syncViewportSizeNow = () => {
+    const nextSize = resolveRuntimeViewportSize(
+      viewport,
+      runtimeWindow.innerHeight,
+      runtimeWindow.innerWidth
+    );
+    if (!shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
+      return;
+    }
+    previousSize = nextSize;
+    styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
+    styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
+  };
+  const scheduleSyncViewportSize = () => {
+    if (
+      typeof runtimeWindow.requestAnimationFrame !== "function" ||
+      typeof runtimeWindow.cancelAnimationFrame !== "function"
+    ) {
+      syncViewportSizeNow();
+      return;
+    }
+    if (rafId != null) return;
+    rafId = runtimeWindow.requestAnimationFrame(() => {
+      rafId = null;
+      syncViewportSizeNow();
+    });
+  };
+  syncViewportSizeNow();
+  runtimeWindow.addEventListener("resize", scheduleSyncViewportSize);
+  runtimeWindow.addEventListener("orientationchange", scheduleSyncViewportSize);
+  viewport?.addEventListener("resize", scheduleSyncViewportSize);
+  viewport?.addEventListener("scroll", scheduleSyncViewportSize);
+  return () => {
+    if (
+      rafId != null &&
+      typeof runtimeWindow.cancelAnimationFrame === "function"
+    ) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    runtimeWindow.removeEventListener("resize", scheduleSyncViewportSize);
+    runtimeWindow.removeEventListener("orientationchange", scheduleSyncViewportSize);
+    viewport?.removeEventListener("resize", scheduleSyncViewportSize);
+    viewport?.removeEventListener("scroll", scheduleSyncViewportSize);
+  };
+}
+
+export function setupLayoutAnchorVarSync(
+  runtimeWindow: RuntimeWindowLike,
+  styleTarget: StyleVarTarget,
+  nodes: LayoutAnchorNodes,
+  resizeObserverCtor?: ResizeObserverCtorLike
+): () => void {
+  const syncLayoutAnchors = () => {
+    const headerHeight = toNonNegativeRoundedPx(
+      nodes.appHeader?.getBoundingClientRect().height
+    );
+    if (headerHeight != null) {
+      styleTarget.setProperty("--agenthub-header-height", `${headerHeight}px`);
+    }
+    const workspaceTop = toNonNegativeRoundedPx(
+      nodes.workspace?.getBoundingClientRect().top
+    );
+    if (workspaceTop != null) {
+      styleTarget.setProperty("--agenthub-workspace-top", `${workspaceTop}px`);
+    }
+  };
+  let rafId: number | null = null;
+  const scheduleSync = () => {
+    if (
+      typeof runtimeWindow.requestAnimationFrame !== "function" ||
+      typeof runtimeWindow.cancelAnimationFrame !== "function"
+    ) {
+      syncLayoutAnchors();
+      return;
+    }
+    if (rafId != null) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    rafId = runtimeWindow.requestAnimationFrame(() => {
+      rafId = null;
+      syncLayoutAnchors();
+    });
+  };
+
+  syncLayoutAnchors();
+  runtimeWindow.addEventListener("resize", scheduleSync);
+  runtimeWindow.addEventListener("orientationchange", scheduleSync);
+  const viewport = runtimeWindow.visualViewport;
+  viewport?.addEventListener("resize", scheduleSync);
+  viewport?.addEventListener("scroll", scheduleSync);
+  let observer: ResizeObserverLike | null = null;
+  if (resizeObserverCtor) {
+    observer = new resizeObserverCtor(() => scheduleSync());
+    if (nodes.appRoot) observer.observe(nodes.appRoot);
+    if (nodes.appHeader) observer.observe(nodes.appHeader);
+    if (nodes.workspace) observer.observe(nodes.workspace);
+  }
+  return () => {
+    if (
+      rafId != null &&
+      typeof runtimeWindow.cancelAnimationFrame === "function"
+    ) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    runtimeWindow.removeEventListener("resize", scheduleSync);
+    runtimeWindow.removeEventListener("orientationchange", scheduleSync);
+    viewport?.removeEventListener("resize", scheduleSync);
+    viewport?.removeEventListener("scroll", scheduleSync);
+    observer?.disconnect();
+  };
+}
+
+export function schedulePermissionPollLoop(
+  delay: number,
+  pollState: { timer: number | null },
+  pollOnce: () => Promise<number>,
+  isCancelled: () => boolean,
+  scheduleTimeout: (callback: () => void, delayMs: number) => number = (callback, delayMs) =>
+    window.setTimeout(callback, delayMs),
+  clearTimeoutFn: (timerId: number) => void = (timerId) => window.clearTimeout(timerId)
+): void {
+  if (isCancelled()) return;
+  if (pollState.timer != null) {
+    clearTimeoutFn(pollState.timer);
+    pollState.timer = null;
+  }
+  pollState.timer = scheduleTimeout(async () => {
+    if (isCancelled()) {
+      pollState.timer = null;
+      return;
+    }
+    const pendingCount = await pollOnce();
+    if (isCancelled()) {
+      pollState.timer = null;
+      return;
+    }
+    const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
+    schedulePermissionPollLoop(
+      nextDelay,
+      pollState,
+      pollOnce,
+      isCancelled,
+      scheduleTimeout,
+      clearTimeoutFn
+    );
+  }, delay);
+}
 
 export function App() {
   const eventLimit = 200;
@@ -205,6 +453,12 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
+  const [pendingPermissionJump, setPendingPermissionJump] = useState<
+    PendingPermissionJumpState | null
+  >(null);
+  const appRootRef = useRef<HTMLDivElement | null>(null);
+  const appHeaderRef = useRef<HTMLElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const [, setThinkingTick] = useState(0);
   const createAgentBusyRef = useRef(false);
   const lastEventCursorRef = useRef<Record<string, EventCursor>>({});
@@ -248,6 +502,30 @@ export function App() {
       JSON.stringify(inputHistory)
     );
   }, [inputHistory]);
+  const normalizedError = useMemo(() => {
+    if (!error) return null;
+    const message = sanitizeErrorBannerMessage(error, networkOnline);
+    return shouldHideErrorBannerMessage(message) ? null : message;
+  }, [error, networkOnline]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    return setupRuntimeViewportVarSync(window, document.documentElement.style);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    return setupLayoutAnchorVarSync(
+      window,
+      document.documentElement.style,
+      {
+        appRoot: appRootRef.current,
+        appHeader: appHeaderRef.current,
+        workspace: workspaceRef.current,
+      },
+      typeof ResizeObserver === "undefined" ? undefined : ResizeObserver
+    );
+  }, [auth, normalizedError, agentsCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -319,6 +597,12 @@ export function App() {
       activeAgentRecord.args
     );
   }, [activeAgentRecord]);
+  const scopedAcpPermissions = useMemo(() => {
+    return filterPermissionsForAgent(acpPermissions, activeAgent);
+  }, [acpPermissions, activeAgent]);
+  const scopedAcpPermissionHistory = useMemo(() => {
+    return filterPermissionsForAgent(acpPermissionHistory, activeAgent);
+  }, [acpPermissionHistory, activeAgent]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
   const streamAgentIds = useMemo(() => buildSseTargetAgentIds(agents), [agents]);
@@ -330,14 +614,6 @@ export function App() {
   const connectionBadge = useMemo(
     () => deriveConnectionBadge(networkOnline, hasSseTarget, sseState),
     [networkOnline, hasSseTarget, sseState]
-  );
-  const normalizedError = useMemo(
-    () => {
-      if (!error) return null;
-      const message = sanitizeErrorBannerMessage(error, networkOnline);
-      return shouldHideErrorBannerMessage(message) ? null : message;
-    },
-    [error, networkOnline]
   );
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
@@ -364,6 +640,11 @@ export function App() {
   useEffect(() => {
     activeAgentStatusRef.current = activeAgentStatus;
   }, [activeAgentStatus]);
+  useEffect(() => {
+    setAcpPermissions([]);
+    setAcpPermissionHistory([]);
+    setPendingPermissionJump(null);
+  }, [activeAgent]);
 
   useEffect(() => {
     setInputHistoryCursor(-1);
@@ -976,14 +1257,18 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const requestedAgentId = activeAgent;
     const pollState = permissionPollRef.current;
     const pollOnce = async (): Promise<number> => {
       try {
-        const items = await api.listAcpPermissions(token, activeAgent, "pending");
+        const items = await api.listAcpPermissions(
+          token,
+          requestedAgentId,
+          "pending"
+        );
         if (!cancelled) {
-          setAcpPermissions((prev) =>
-            isSamePermissionList(prev, items) ? prev : items
-          );
+          if (activeAgentRef.current !== requestedAgentId) return 0;
+          setAcpPermissions((prev) => (isSamePermissionList(prev, items) ? prev : items));
         }
         return items.length;
       } catch {
@@ -992,14 +1277,12 @@ export function App() {
       }
     };
     const schedule = (delay: number) => {
-      if (pollState.timer) {
-        window.clearTimeout(pollState.timer);
-      }
-      pollState.timer = window.setTimeout(async () => {
-        const pendingCount = await pollOnce();
-        const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
-        schedule(nextDelay);
-      }, delay);
+      schedulePermissionPollLoop(
+        delay,
+        pollState,
+        pollOnce,
+        () => cancelled
+      );
     };
     schedulePermissionPollRef.current = schedule;
     schedule(0);
@@ -1026,13 +1309,13 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const requestedAgentId = activeAgent;
     const load = async () => {
       try {
-        const items = await api.listAcpPermissions(token, activeAgent);
+        const items = await api.listAcpPermissions(token, requestedAgentId);
         if (!cancelled) {
-          setAcpPermissionHistory((prev) =>
-            isSamePermissionList(prev, items) ? prev : items
-          );
+          if (activeAgentRef.current !== requestedAgentId) return;
+          setAcpPermissionHistory((prev) => (isSamePermissionList(prev, items) ? prev : items));
         }
       } catch {
         if (!cancelled) setAcpPermissionHistory([]);
@@ -1580,6 +1863,55 @@ export function App() {
     acpView.toolCalls.length,
     acpView.messages.length,
   ]);
+
+  const onJumpToPermissionHistory = useCallback(
+    (permission: AcpPermissionRecord) => {
+      const toolCallId = permission.tool_call_id?.trim();
+      if (!toolCallId) return;
+      setAcpTab("conversation");
+      const targetSessionId = permission.session_id ?? null;
+      if (targetSessionId && targetSessionId !== activeSessionId) {
+        setActiveSessionId(targetSessionId);
+      }
+      setPendingPermissionJump({
+        toolCallId,
+        sessionId: targetSessionId,
+        attempts: 0,
+      });
+    },
+    [activeSessionId]
+  );
+
+  useEffect(() => {
+    const jumpDecision = decidePermissionJump(
+      pendingPermissionJump,
+      acpTab,
+      activeSessionId
+    );
+    if (jumpDecision === "idle" || jumpDecision === "wait") return;
+    if (jumpDecision === "clear") {
+      setPendingPermissionJump(null);
+      return;
+    }
+    if (!pendingPermissionJump) return;
+    if (acpConversation.jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
+      setPendingPermissionJump(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setPendingPermissionJump((prev) => {
+        if (!prev) return prev;
+        return { ...prev, attempts: prev.attempts + 1 };
+      });
+    }, PERMISSION_JUMP_RETRY_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    pendingPermissionJump,
+    acpTab,
+    activeSessionId,
+    acpConversation.jumpToConversationToolCall,
+  ]);
+
   const acpConversationProps = useMemo(
     () => ({
       items: acpConversation.conversationRenderItems,
@@ -1593,6 +1925,7 @@ export function App() {
       stickToBottom: acpConversation.conversationStickToBottom,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
+      focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,
       ansi,
@@ -1608,6 +1941,7 @@ export function App() {
       acpConversation.conversationStickToBottom,
       acpConversation.conversationPendingCount,
       acpConversation.conversationAvgHeight,
+      acpConversation.focusedConversationToolCallId,
       acpConversation.handleConversationScroll,
       acpConversation.acpConversationRef,
       acpView.runStatus?.status,
@@ -1618,7 +1952,7 @@ export function App() {
     () => ({
       currentMode: acpView.currentMode,
       rawEvents: acpView.rawEvents,
-      acpPermissionHistory,
+      acpPermissionHistory: scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,
       acpConfigId,
@@ -1633,12 +1967,13 @@ export function App() {
       onAcpSetConfig,
       onAcpCancel,
       onAcpClearSession,
+      onJumpToPermissionHistory,
       runtimeMetrics: acpRuntimeMetrics,
     }),
     [
       acpView.currentMode,
       acpView.rawEvents,
-      acpPermissionHistory,
+      scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,
       acpConfigId,
@@ -1649,6 +1984,7 @@ export function App() {
       onAcpSetConfig,
       onAcpCancel,
       onAcpClearSession,
+      onJumpToPermissionHistory,
       acpRuntimeMetrics,
     ]
   );
@@ -1720,8 +2056,8 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <header>
+    <div className="app" ref={appRootRef}>
+      <header ref={appHeaderRef}>
         <h1>AgentHub</h1>
         {auth && (
           <div className="session">
@@ -1795,6 +2131,7 @@ export function App() {
       {auth && (
         <section
           className={agentsCollapsed ? "workspace collapsed" : "workspace"}
+          ref={workspaceRef}
         >
           <AgentsPanel
             agents={agents}
@@ -1875,9 +2212,9 @@ export function App() {
         />
       )}
 
-      {auth && activeAgent && acpPermissions.length > 0 && (
+      {auth && activeAgent && scopedAcpPermissions.length > 0 && (
         <PermissionModal
-          permissions={acpPermissions}
+          permissions={scopedAcpPermissions}
           permissionBusy={permissionBusy}
           onRespond={onRespondPermission}
         />
@@ -2105,4 +2442,12 @@ function isSamePermissionList(
     }
   }
   return true;
+}
+
+export function filterPermissionsForAgent(
+  items: AcpPermissionRecord[],
+  agentId: string | null
+): AcpPermissionRecord[] {
+  if (!agentId) return [];
+  return items.filter((item) => item.agent_id === agentId);
 }

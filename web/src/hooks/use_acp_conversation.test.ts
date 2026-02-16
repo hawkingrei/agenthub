@@ -4,7 +4,10 @@ import {
   buildConversationTailKey,
   buildVirtualConversationSlice,
   deriveConversationJumpState,
+  estimateToolCallJumpTop,
   estimateTailPayloadSize,
+  findToolCallNodeById,
+  findConversationToolCallIndex,
   nextConversationViewport,
   normalizeConversationAvgHeightEstimate,
   restoreConversationScrollTop,
@@ -111,6 +114,51 @@ describe("buildConversationTailKey", () => {
     ]);
     expect(key).toContain("tool_call:8:");
     expect(key.length).toBeLessThan(120);
+  });
+});
+
+describe("findConversationToolCallIndex", () => {
+  it("returns matching tool call index", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+      { kind: "tool_call", id: "call-2", title: "Write", event_id: 3 },
+    ];
+    expect(findConversationToolCallIndex(items, "call-2")).toBe(2);
+  });
+
+  it("returns -1 when id is empty or missing", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+    ];
+    expect(findConversationToolCallIndex(items, "")).toBe(-1);
+    expect(findConversationToolCallIndex(items, "missing")).toBe(-1);
+  });
+});
+
+describe("tool call jump helpers", () => {
+  it("estimates scroll top with context lines and minimum row height", () => {
+    expect(estimateToolCallJumpTop(10, 48)).toBe(288);
+    expect(estimateToolCallJumpTop(2, 18)).toBe(0);
+  });
+
+  it("finds matching tool call node from data attribute", () => {
+    const target = {
+      getAttribute: (name: string) => (name === "data-tool-call-id" ? "call-2" : null),
+    };
+    const container = {
+      querySelectorAll: () =>
+        [
+          {
+            getAttribute: (name: string) =>
+              name === "data-tool-call-id" ? "call-1" : null,
+          },
+          target,
+        ] as unknown as NodeListOf<Element>,
+    } as unknown as ParentNode;
+    expect(findToolCallNodeById(container, "call-2")).toBe(target);
+    expect(findToolCallNodeById(container, "missing")).toBeNull();
   });
 });
 
