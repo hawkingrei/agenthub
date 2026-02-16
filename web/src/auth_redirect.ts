@@ -1,3 +1,5 @@
+import { removeLocalStorageItemSafe } from "./storage/safe_storage";
+
 export function isInvalidTokenMessage(message: string | null): boolean {
   if (!message) return false;
   const lower = message.trim().toLowerCase();
@@ -18,7 +20,7 @@ export function shouldRedirectOnAuthError(
 }
 
 export function clearAuthAndRedirect(): void {
-  localStorage.removeItem("agenthub_auth");
+  removeLocalStorageItemSafe("agenthub_auth");
   if (location.pathname === "/") {
     location.reload();
     return;

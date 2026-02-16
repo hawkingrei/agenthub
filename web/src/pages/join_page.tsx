@@ -7,6 +7,7 @@ import {
   registerCredentialToJson,
 } from "../webauthn";
 import { AuthState } from "../types";
+import { setLocalStorageItemSafe } from "../storage/safe_storage";
 
 export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void }) {
   const token = new URLSearchParams(location.search).get("token") || "";
@@ -40,7 +41,7 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
         username,
         role: "device",
       };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
+      setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       await ensurePushSubscription(finish.token);
       onComplete(next);
       location.href = "/";

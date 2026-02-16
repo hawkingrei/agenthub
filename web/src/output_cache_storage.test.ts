@@ -24,6 +24,28 @@ class MemoryStorage {
   }
 }
 
+class QuotaFailOnceStorage extends MemoryStorage {
+  private hasFailed = false;
+
+  setItem(key: string, value: string) {
+    if (!this.hasFailed) {
+      this.hasFailed = true;
+      const error = new Error("quota exceeded");
+      (error as Error & { name: string }).name = "QuotaExceededError";
+      throw error;
+    }
+    super.setItem(key, value);
+  }
+}
+
+class AlwaysQuotaStorage extends MemoryStorage {
+  setItem(_key: string, _value: string) {
+    const error = new Error("quota exceeded");
+    (error as Error & { name: string }).name = "QuotaExceededError";
+    throw error;
+  }
+}
+
 const makeLine = (
   event_id: number,
   ts: number,
@@ -145,5 +167,31 @@ describe("output cache storage", () => {
       2,
       3,
     ]);
+  });
+
+  it("retries cache persistence after a quota error", () => {
+    (globalThis as { localStorage?: unknown }).localStorage =
+      new QuotaFailOnceStorage();
+    const outputCache = {
+      "agent-1:session-1": [makeLine(1, 10)],
+    };
+    const acpOutputCache = {
+      "agent-1:session-1": [makeLine(2, 20, "acp")],
+    };
+
+    saveOutputCaches(outputCache, acpOutputCache, 10, 5);
+
+    const loaded = loadOutputCaches(10, 5);
+    expect(loaded.outputCache["agent-1:session-1"].length).toBe(1);
+  });
+
+  it("drops persisted cache when quota remains exceeded", () => {
+    (globalThis as { localStorage?: unknown }).localStorage =
+      new AlwaysQuotaStorage();
+    const outputCache = {
+      "agent-1:session-1": [makeLine(1, 10)],
+    };
+
+    expect(() => saveOutputCaches(outputCache, {}, 10, 5)).not.toThrow();
   });
 });
