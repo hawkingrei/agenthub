@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Verify local toolchain bootstrap from `rust-toolchain.toml` installs required components (`rustc`, `cargo`, `std`, `rustfmt`, `clippy`, `rust-src`) on clean machines without manual `rustup component add` (see `docs/features/2026-02-16-rust-toolchain-components-local-compile.md`).
+- [ ] Verify local toolchain bootstrap from `rust-toolchain.toml` installs required components (`rustc`, `cargo`, `std`, `rustfmt`, `clippy`) on clean machines without manual `rustup component add` (see `docs/features/2026-02-16-rust-toolchain-components-local-compile.md`).
 - [ ] Verify storage quota guard in real browser: when `localStorage` is near/full, output cache persistence degrades gracefully and app actions (send/login/join) no longer surface uncaught `QuotaExceededError` (see `docs/features/2026-02-16-storage-quota-guard.md`).
 - [ ] Verify web render isolation optimization reduces unnecessary re-renders for `AgentsPanel`/`OutputHeader`/`OutputBody` while typing in input dock, and confirm ACP interactions still behave identically (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
 - [ ] Verify ACP debug runtime metrics refresh cache hit/miss counters when conversation rendered window changes (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
