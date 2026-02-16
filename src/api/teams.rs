@@ -7,7 +7,7 @@ use axum::{
     http::HeaderMap,
     routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Error as SqlxError;
 
@@ -17,7 +17,7 @@ use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
     TeamDefinitionConfig, TeamDefinitionRecord, TeamManager, TeamRunEventRecord, TeamRunRecord,
-    TeamStepRecord,
+    TeamStepRecord, TeamStepStatus,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -48,6 +48,12 @@ pub struct ListTeamRunsQuery {
 pub struct ListTeamRunEventsQuery {
     pub limit: Option<i64>,
     pub before_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TeamRunSnapshotQuery {
+    pub event_limit: Option<i64>,
+    pub message_limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +114,38 @@ pub struct AckTeamRunMessageRequest {
     pub actor_id: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TeamRunSnapshotResponse {
+    pub run: TeamRunRecord,
+    pub team: TeamDefinitionRecord,
+    pub leader_member_id: Option<String>,
+    pub members: Vec<TeamMemberSnapshot>,
+    pub steps: Vec<TeamStepRecord>,
+    pub latest_events: Vec<TeamRunEventRecord>,
+    pub mailbox: TeamMailboxSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TeamMemberSnapshot {
+    pub member_id: String,
+    pub role: String,
+    pub model: Option<String>,
+    pub prompt: Option<String>,
+    pub skills: Vec<String>,
+    pub pending_inbox_count: i64,
+    pub status: String,
+    pub latest_step: Option<TeamStepRecord>,
+    pub session_status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TeamMailboxSnapshot {
+    pub pending: i64,
+    pub delivered: i64,
+    pub dead_letter: i64,
+    pub recent_messages: Vec<TeamActorMessageRecord>,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
@@ -115,6 +153,7 @@ pub fn router(state: AppState) -> Router {
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
+        .route("/runs/:run_id/snapshot", get(get_team_run_snapshot))
         .route("/runs/:run_id/events", get(list_team_run_events))
         .route(
             "/runs/:run_id/steps",
@@ -270,6 +309,121 @@ async fn cancel_team_run(
         .await
         .map_err(|err| map_not_found_error(err, "run not found"))?;
     Ok(Json(run))
+}
+
+async fn get_team_run_snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Query(query): Query<TeamRunSnapshotQuery>,
+) -> Result<Json<TeamRunSnapshotResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+
+    let run = state
+        .teams
+        .get_run(&run_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    let team = state
+        .teams
+        .get_team(&run.team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    validate_team_spec(&team.spec)?;
+
+    let spec_obj = team
+        .spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+
+    let steps = state
+        .teams
+        .list_steps(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    let latest_step_by_member = index_latest_steps_by_member(&steps);
+
+    let pending_counts = state
+        .teams
+        .list_actor_pending_counts_by_actor(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    let status_counts = state
+        .teams
+        .list_actor_message_status_counts(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
+
+    let event_limit = query.event_limit.unwrap_or(120).clamp(1, 500);
+    let message_limit = query.message_limit.unwrap_or(120).clamp(1, 500);
+    let latest_events = state
+        .teams
+        .list_run_events(&run_id, event_limit, None)
+        .await
+        .map_err(map_team_internal_error)?;
+    let recent_messages = state
+        .teams
+        .list_actor_messages_for_run(&run_id, message_limit)
+        .await
+        .map_err(map_team_internal_error)?;
+
+    let mut members = Vec::with_capacity(member_specs.len());
+    for member in member_specs {
+        let latest_step = latest_step_by_member
+            .get(member.member_id.as_str())
+            .cloned();
+        let session_status = if let Some(session_id) = latest_step
+            .as_ref()
+            .and_then(|step| step.remote_task_id.as_deref())
+        {
+            state
+                .teams
+                .get_agent_session_status(session_id)
+                .await
+                .map_err(map_team_internal_error)?
+        } else {
+            None
+        };
+        let status = latest_step
+            .as_ref()
+            .map(|step| step_status_to_str(&step.status).to_string())
+            .unwrap_or_else(|| "idle".to_string());
+        let role = if leader_member_id.as_deref() == Some(member.member_id.as_str()) {
+            "leader"
+        } else {
+            member.role.as_deref().unwrap_or("worker")
+        };
+        members.push(TeamMemberSnapshot {
+            member_id: member.member_id.clone(),
+            role: role.to_string(),
+            model: member.model.clone(),
+            prompt: member.prompt.clone(),
+            skills: member.skills.clone(),
+            pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
+            status,
+            latest_step,
+            session_status,
+        });
+    }
+
+    let mailbox = TeamMailboxSnapshot {
+        pending: status_counts.get("pending").copied().unwrap_or(0),
+        delivered: status_counts.get("delivered").copied().unwrap_or(0),
+        dead_letter: status_counts.get("dead_letter").copied().unwrap_or(0),
+        recent_messages,
+    };
+
+    Ok(Json(TeamRunSnapshotResponse {
+        run,
+        team,
+        leader_member_id,
+        members,
+        steps,
+        latest_events,
+        mailbox,
+    }))
 }
 
 async fn list_team_run_events(
@@ -749,6 +903,15 @@ struct TeamStepSpec {
     depends_on: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct TeamMemberSpec {
+    member_id: String,
+    role: Option<String>,
+    model: Option<String>,
+    prompt: Option<String>,
+    skills: Vec<String>,
+}
+
 fn normalize_team_spec(spec: &mut Value) -> Result<(), ApiError> {
     let spec_obj = spec
         .as_object_mut()
@@ -769,7 +932,12 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| ApiError::bad_request("spec.entrypoint is required"))?;
-    let member_ids = parse_member_ids(spec_obj.get("members"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let member_ids = member_specs
+        .iter()
+        .map(|member| member.member_id.clone())
+        .collect::<HashSet<_>>();
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
 
     if let Some(steps_value) = spec_obj.get("steps") {
         validate_steps(entrypoint, steps_value, &member_ids)?;
@@ -777,6 +945,12 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         return Err(ApiError::bad_request(
             "spec.entrypoint must reference spec.members[].member_id when spec.steps is omitted",
         ));
+    } else if let Some(leader_id) = leader_member_id.as_deref() {
+        if entrypoint != leader_id {
+            return Err(ApiError::bad_request(
+                "spec.entrypoint must equal leader_member_id when spec.steps is omitted",
+            ));
+        }
     }
 
     Ok(())
@@ -798,6 +972,14 @@ fn parse_team_spec_version(version_value: Option<&Value>) -> Result<i64, ApiErro
 }
 
 fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, ApiError> {
+    let member_specs = parse_member_specs(members_value)?;
+    Ok(member_specs
+        .into_iter()
+        .map(|member| member.member_id)
+        .collect())
+}
+
+fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpec>, ApiError> {
     let members = members_value
         .and_then(Value::as_array)
         .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
@@ -805,7 +987,8 @@ fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, Ap
         return Err(ApiError::bad_request("spec.members must not be empty"));
     }
 
-    let mut member_ids = HashSet::with_capacity(members.len());
+    let mut seen_member_ids = HashSet::with_capacity(members.len());
+    let mut out = Vec::with_capacity(members.len());
     for member in members {
         let member = member
             .as_object()
@@ -815,14 +998,160 @@ fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, Ap
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| ApiError::bad_request("spec.members[].member_id is required"))?;
-        if !member_ids.insert(member_id.to_string()) {
+            .ok_or_else(|| ApiError::bad_request("spec.members[].member_id is required"))?
+            .to_string();
+        if !seen_member_ids.insert(member_id.clone()) {
             return Err(ApiError::bad_request(
                 "spec.members[].member_id must be unique",
             ));
         }
+
+        let role = parse_optional_member_role(member.get("role"))?;
+        let model = parse_optional_member_text(member.get("model"), "model")?;
+        let prompt = parse_optional_member_text(member.get("prompt"), "prompt")?;
+        let skills = parse_optional_member_skills(member.get("skills"))?;
+
+        out.push(TeamMemberSpec {
+            member_id,
+            role,
+            model,
+            prompt,
+            skills,
+        });
     }
-    Ok(member_ids)
+    Ok(out)
+}
+
+fn parse_optional_member_text(
+    value: Option<&Value>,
+    field: &str,
+) -> Result<Option<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let raw = value.as_str().ok_or_else(|| {
+        ApiError::bad_request(&format!(
+            "spec.members[].{field} must be a non-empty string when provided"
+        ))
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(&format!(
+            "spec.members[].{field} must be a non-empty string when provided"
+        )));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn parse_optional_member_role(value: Option<&Value>) -> Result<Option<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let raw = value
+        .as_str()
+        .ok_or_else(|| ApiError::bad_request("spec.members[].role must be 'leader' or 'worker'"))?
+        .trim();
+    if raw.is_empty() {
+        return Err(ApiError::bad_request(
+            "spec.members[].role must be 'leader' or 'worker'",
+        ));
+    }
+    if raw != "leader" && raw != "worker" {
+        return Err(ApiError::bad_request(
+            "spec.members[].role must be 'leader' or 'worker'",
+        ));
+    }
+    Ok(Some(raw.to_string()))
+}
+
+fn parse_optional_member_skills(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let skills = value
+        .as_array()
+        .ok_or_else(|| ApiError::bad_request("spec.members[].skills must be an array"))?;
+    let mut out = Vec::with_capacity(skills.len());
+    let mut seen = HashSet::with_capacity(skills.len());
+    for skill in skills {
+        let skill = skill
+            .as_str()
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .ok_or_else(|| {
+                ApiError::bad_request("spec.members[].skills entries must be non-empty strings")
+            })?;
+        if !seen.insert(skill.to_string()) {
+            return Err(ApiError::bad_request(
+                "spec.members[].skills must not contain duplicates",
+            ));
+        }
+        out.push(skill.to_string());
+    }
+    Ok(out)
+}
+
+fn parse_spec_leader_member_id(
+    spec_obj: &serde_json::Map<String, Value>,
+    member_specs: &[TeamMemberSpec],
+) -> Result<Option<String>, ApiError> {
+    let member_ids = member_specs
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<HashSet<_>>();
+    let explicit_leader = match spec_obj.get("leader_member_id") {
+        None => None,
+        Some(value) => {
+            let leader = value
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    ApiError::bad_request("spec.leader_member_id must be a non-empty string")
+                })?;
+            if !member_ids.contains(leader) {
+                return Err(ApiError::bad_request(
+                    "spec.leader_member_id must reference spec.members[].member_id",
+                ));
+            }
+            Some(leader.to_string())
+        }
+    };
+
+    let member_role_leaders = member_specs
+        .iter()
+        .filter_map(|member| match member.role.as_deref() {
+            Some("leader") => Some(member.member_id.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if member_role_leaders.len() > 1 {
+        return Err(ApiError::bad_request(
+            "spec.members[].role may include at most one 'leader'",
+        ));
+    }
+
+    if let Some(explicit) = explicit_leader.as_deref() {
+        if let Some(role_leader) = member_role_leaders.first() {
+            if explicit != *role_leader {
+                return Err(ApiError::bad_request(
+                    "spec.leader_member_id must match spec.members[].role='leader'",
+                ));
+            }
+        }
+        return Ok(Some(explicit.to_string()));
+    }
+
+    if let Some(role_leader) = member_role_leaders.first() {
+        return Ok(Some((*role_leader).to_string()));
+    }
+
+    let entrypoint_member = spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| member_ids.contains(value));
+    Ok(entrypoint_member.map(str::to_string))
 }
 
 fn validate_steps(
@@ -972,6 +1301,45 @@ fn ensure_acyclic_steps(steps: &[TeamStepSpec]) -> Result<(), ApiError> {
         Err(ApiError::bad_request(
             "spec.steps must form an acyclic dependency graph",
         ))
+    }
+}
+
+fn index_latest_steps_by_member(steps: &[TeamStepRecord]) -> HashMap<&str, TeamStepRecord> {
+    let mut by_member: HashMap<&str, TeamStepRecord> = HashMap::new();
+    for step in steps {
+        let key = step.member_id.as_str();
+        match by_member.get(key) {
+            None => {
+                by_member.insert(key, step.clone());
+            }
+            Some(existing) => {
+                if step_order_tuple(step) > step_order_tuple(existing) {
+                    by_member.insert(key, step.clone());
+                }
+            }
+        }
+    }
+    by_member
+}
+
+fn step_order_tuple(step: &TeamStepRecord) -> (i64, i64, i64) {
+    let ts = step.ended_at.or(step.started_at).unwrap_or(0);
+    let active_rank = match step.status {
+        TeamStepStatus::Working | TeamStepStatus::InputRequired => 2,
+        TeamStepStatus::Submitted => 1,
+        TeamStepStatus::Completed | TeamStepStatus::Failed | TeamStepStatus::Canceled => 0,
+    };
+    (active_rank, ts, step.attempt)
+}
+
+fn step_status_to_str(status: &TeamStepStatus) -> &'static str {
+    match status {
+        TeamStepStatus::Submitted => "submitted",
+        TeamStepStatus::Working => "working",
+        TeamStepStatus::InputRequired => "input_required",
+        TeamStepStatus::Completed => "completed",
+        TeamStepStatus::Failed => "failed",
+        TeamStepStatus::Canceled => "canceled",
     }
 }
 

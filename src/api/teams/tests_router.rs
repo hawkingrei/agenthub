@@ -103,6 +103,22 @@ async fn teams_router_http_contract() {
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
 
+    let snapshot_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/snapshot?event_limit=100&message_limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get run snapshot via router");
+    assert_eq!(snapshot_resp.status(), StatusCode::OK);
+    let snapshot = decode_json_body(snapshot_resp).await;
+    assert_eq!(snapshot["run"]["id"], run_id);
+    assert_eq!(snapshot["mailbox"]["pending"], Value::from(0));
+    assert_eq!(snapshot["members"][0]["member_id"], "planner");
+
     let list_runs_resp = app
         .clone()
         .oneshot(build_json_request(

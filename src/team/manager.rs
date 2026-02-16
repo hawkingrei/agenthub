@@ -4,6 +4,8 @@ mod mailbox;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
+
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Row, SqlitePool};
@@ -12,12 +14,12 @@ use uuid::Uuid;
 pub use mailbox::TeamRemoteRelayWorkerSettings;
 
 use self::codec::{
-    parse_run_event_row, parse_team_definition_row, parse_team_run_row, parse_team_step_row,
-    team_run_status_to_str, team_step_status_to_str,
+    parse_run_event_row, parse_team_actor_message_row, parse_team_definition_row,
+    parse_team_run_row, parse_team_step_row, team_run_status_to_str, team_step_status_to_str,
 };
 use super::{
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamStepRecord, TeamStepStatus,
+    TeamActorMessageRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord,
+    TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
 
 #[derive(Clone)]
@@ -1035,5 +1037,92 @@ impl TeamManager {
         }
         events.reverse();
         Ok(events)
+    }
+
+    pub async fn list_actor_messages_for_run(
+        &self,
+        run_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<TeamActorMessageRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                from_actor_id,
+                to_actor_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                status,
+                created_at,
+                delivered_at
+            FROM team_actor_messages
+            WHERE run_id = ?1
+            ORDER BY id DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(run_id)
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+        let mut messages = Vec::with_capacity(rows.len());
+        for row in rows {
+            messages.push(parse_team_actor_message_row(&row)?);
+        }
+        Ok(messages)
+    }
+
+    pub async fn list_actor_message_status_counts(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<HashMap<String, i64>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT status, COUNT(*) AS cnt
+            FROM team_actor_messages
+            WHERE run_id = ?1
+            GROUP BY status
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut counts = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let status: String = row.get("status");
+            let count: i64 = row.get("cnt");
+            counts.insert(status, count);
+        }
+        Ok(counts)
+    }
+
+    pub async fn list_actor_pending_counts_by_actor(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<HashMap<String, i64>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT to_actor_id, COUNT(*) AS cnt
+            FROM team_actor_messages
+            WHERE run_id = ?1
+              AND status = 'pending'
+            GROUP BY to_actor_id
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut counts = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let actor_id: String = row.get("to_actor_id");
+            let count: i64 = row.get("cnt");
+            counts.insert(actor_id, count);
+        }
+        Ok(counts)
     }
 }

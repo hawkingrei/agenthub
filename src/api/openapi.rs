@@ -146,6 +146,72 @@ fn openapi_spec() -> Value {
               "delivered_at": { "type": ["integer", "null"], "format": "int64" }
             }
           },
+          "TeamMailboxSnapshot": {
+            "type": "object",
+            "required": ["pending", "delivered", "dead_letter", "recent_messages"],
+            "properties": {
+              "pending": { "type": "integer", "format": "int64" },
+              "delivered": { "type": "integer", "format": "int64" },
+              "dead_letter": { "type": "integer", "format": "int64" },
+              "recent_messages": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TeamActorMessageRecord" }
+              }
+            }
+          },
+          "TeamMemberSnapshot": {
+            "type": "object",
+            "required": [
+              "member_id",
+              "role",
+              "skills",
+              "pending_inbox_count",
+              "status"
+            ],
+            "properties": {
+              "member_id": { "type": "string" },
+              "role": { "type": "string", "enum": ["leader", "worker"] },
+              "model": { "type": ["string", "null"] },
+              "prompt": { "type": ["string", "null"] },
+              "skills": { "type": "array", "items": { "type": "string" } },
+              "pending_inbox_count": { "type": "integer", "format": "int64" },
+              "status": { "type": "string" },
+              "latest_step": {
+                "allOf": [{ "$ref": "#/components/schemas/TeamStepRecord" }],
+                "nullable": true
+              },
+              "session_status": { "type": ["string", "null"] }
+            }
+          },
+          "TeamRunSnapshotResponse": {
+            "type": "object",
+            "required": [
+              "run",
+              "team",
+              "members",
+              "steps",
+              "latest_events",
+              "mailbox"
+            ],
+            "properties": {
+              "run": { "$ref": "#/components/schemas/TeamRunRecord" },
+              "team": { "$ref": "#/components/schemas/TeamDefinitionRecord" },
+              "leader_member_id": { "type": ["string", "null"] },
+              "members": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TeamMemberSnapshot" }
+              },
+              "steps": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TeamStepRecord" }
+              },
+              "latest_events": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TeamRunEventRecord" }
+              },
+              "mailbox": { "$ref": "#/components/schemas/TeamMailboxSnapshot" }
+            }
+          },
           "CreateTeamRequest": {
             "type": "object",
             "required": ["name", "spec"],
@@ -386,6 +452,27 @@ fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/TeamRunRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/runs/{run_id}/snapshot": {
+          "get": {
+            "tags": ["teams"],
+            "summary": "Get run snapshot",
+            "parameters": [
+              { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "event_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } },
+              { "name": "message_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Run snapshot",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamRunSnapshotResponse" }
                   }
                 }
               }
@@ -816,5 +903,6 @@ mod tests {
         let value: Value = serde_json::from_slice(&bytes).expect("decode openapi json");
         assert_eq!(value["openapi"], Value::from("3.0.3"));
         assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
+        assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     }
 }

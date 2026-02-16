@@ -69,6 +69,14 @@ export const AgentsPanel = React.memo(function AgentsPanel({
           </div>
         ) : (
           <>
+            <div className="mode-switch">
+              <a className="mode-tag active" href="/">
+                Agents
+              </a>
+              <a className="mode-tag" href="/teams">
+                Teams
+              </a>
+            </div>
             <div className="toolbar">
               <h2>Agents</h2>
               <div className="toolbar-actions">

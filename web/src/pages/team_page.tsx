@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AgentEvent,
   api,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
   TeamRunEventRecord,
   TeamRunRecord,
+  TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
 import { ErrorBanner } from "../error_banner";
@@ -16,7 +18,7 @@ type TeamPageProps = {
   onLogout: () => void;
 };
 
-type TeamTab = "events" | "steps" | "messages";
+type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
 type StepAction =
   | "start"
   | "complete"
@@ -25,15 +27,14 @@ type StepAction =
   | "resume";
 
 const EVENT_PAGE_LIMIT = 100;
-const DEFAULT_TEAM_SPEC = `{
-  "spec_version": 1,
-  "entrypoint": "planner",
-  "members": [
-    {
-      "member_id": "planner"
-    }
-  ]
-}`;
+const MEMBER_EVENT_PAGE_LIMIT = 300;
+
+type WorkerDraft = {
+  member_id: string;
+  model: string;
+  prompt: string;
+  skills: string;
+};
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
@@ -55,6 +56,61 @@ function upsertEventList(
     byId.set(event.event_id, event);
   }
   return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
+}
+
+function upsertAgentEventList(
+  prev: AgentEvent[],
+  next: AgentEvent[],
+  mode: "replace" | "prepend"
+): AgentEvent[] {
+  const merged = mode === "replace" ? [...next] : [...next, ...prev];
+  const byId = new Map<number, AgentEvent>();
+  for (const event of merged) {
+    byId.set(event.event_id, event);
+  }
+  return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
+}
+
+function buildTeamSpecFromForm(
+  leaderMemberId: string,
+  leaderModel: string,
+  leaderPrompt: string,
+  leaderSkills: string,
+  workers: WorkerDraft[]
+): unknown {
+  const leaderId = leaderMemberId.trim();
+  const normalizedWorkers = workers
+    .map((worker) => ({
+      member_id: worker.member_id.trim(),
+      model: worker.model.trim(),
+      prompt: worker.prompt.trim(),
+      skills: parseCsvList(worker.skills),
+    }))
+    .filter((worker) => worker.member_id.length > 0);
+
+  const members = [
+    {
+      member_id: leaderId,
+      role: "leader",
+      model: leaderModel.trim() || undefined,
+      prompt: leaderPrompt.trim() || undefined,
+      skills: parseCsvList(leaderSkills),
+    },
+    ...normalizedWorkers.map((worker) => ({
+      member_id: worker.member_id,
+      role: "worker",
+      model: worker.model || undefined,
+      prompt: worker.prompt || undefined,
+      skills: worker.skills,
+    })),
+  ];
+
+  return {
+    spec_version: 1,
+    entrypoint: leaderId,
+    leader_member_id: leaderId,
+    members,
+  };
 }
 
 function parseErrorMessage(err: unknown): string {
@@ -136,13 +192,21 @@ export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<TeamTab>("events");
+  const [tab, setTab] = useState<TeamTab>("overview");
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamDescription, setNewTeamDescription] = useState("");
-  const [newTeamSpec, setNewTeamSpec] = useState(DEFAULT_TEAM_SPEC);
+  const [useSpecOverride, setUseSpecOverride] = useState(false);
+  const [newTeamSpec, setNewTeamSpec] = useState("{}");
+  const [leaderMemberId, setLeaderMemberId] = useState("leader");
+  const [leaderModel, setLeaderModel] = useState("");
+  const [leaderPrompt, setLeaderPrompt] = useState("");
+  const [leaderSkills, setLeaderSkills] = useState("");
+  const [workers, setWorkers] = useState<WorkerDraft[]>([
+    { member_id: "worker-1", model: "", prompt: "", skills: "" },
+  ]);
 
   const [runContextId, setRunContextId] = useState("");
   const [runInput, setRunInput] = useState("{}");
@@ -150,6 +214,8 @@ export function TeamPage(props: TeamPageProps) {
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<TeamRunSnapshotRecord | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
 
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
@@ -185,6 +251,11 @@ export function TeamPage(props: TeamPageProps) {
   const [inboxIncludeDelivered, setInboxIncludeDelivered] = useState(false);
   const [inbox, setInbox] = useState<TeamActorMessageRecord[]>([]);
   const eventsRef = useRef<TeamRunEventRecord[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [memberEvents, setMemberEvents] = useState<AgentEvent[]>([]);
+  const [memberEventsHasMore, setMemberEventsHasMore] = useState(false);
+  const [memberEventsLoading, setMemberEventsLoading] = useState(false);
+  const memberEventsRef = useRef<AgentEvent[]>([]);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -201,7 +272,33 @@ export function TeamPage(props: TeamPageProps) {
     return runs.filter((run) => run.team_id === selectedTeamId);
   }, [runs, selectedTeamId]);
 
+  const builtTeamSpec = useMemo(
+    () =>
+      buildTeamSpecFromForm(
+        leaderMemberId,
+        leaderModel,
+        leaderPrompt,
+        leaderSkills,
+        workers
+      ),
+    [leaderMemberId, leaderModel, leaderPrompt, leaderSkills, workers]
+  );
+
+  const displayedTeamSpec = useMemo(() => {
+    if (useSpecOverride) {
+      return newTeamSpec;
+    }
+    return JSON.stringify(builtTeamSpec, null, 2);
+  }, [builtTeamSpec, newTeamSpec, useSpecOverride]);
+
+  const selectedMemberSnapshot = useMemo(
+    () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
+    [selectedMemberId, snapshot]
+  );
+
   const oldestEventId = events.length > 0 ? events[0].event_id : null;
+  const oldestMemberEventId =
+    memberEvents.length > 0 ? memberEvents[0].event_id : null;
 
   const refreshTeams = useCallback(async () => {
     setBusy("refresh-teams");
@@ -279,9 +376,30 @@ export function TeamPage(props: TeamPageProps) {
     [props.token]
   );
 
+  const refreshSnapshot = useCallback(
+    async (runId: string) => {
+      setSnapshotLoading(true);
+      try {
+        const next = await api.getTeamRunSnapshot(props.token, runId, {
+          event_limit: 200,
+          message_limit: 200,
+        });
+        setSnapshot(next);
+        return next;
+      } finally {
+        setSnapshotLoading(false);
+      }
+    },
+    [props.token]
+  );
+
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useEffect(() => {
+    memberEventsRef.current = memberEvents;
+  }, [memberEvents]);
 
   const loadInbox = useCallback(async () => {
     if (!activeRunId) return;
@@ -307,6 +425,41 @@ export function TeamPage(props: TeamPageProps) {
     props.token,
   ]);
 
+  const loadMemberEvents = useCallback(
+    async (mode: "replace" | "prepend" = "replace") => {
+      if (!selectedMemberSnapshot) {
+        setMemberEvents([]);
+        setMemberEventsHasMore(false);
+        return;
+      }
+      const memberAgentId = selectedMemberSnapshot.member_id;
+      const sessionId = selectedMemberSnapshot.latest_step?.remote_task_id ?? undefined;
+      if (!sessionId) {
+        setMemberEvents([]);
+        setMemberEventsHasMore(false);
+        return;
+      }
+
+      setMemberEventsLoading(true);
+      try {
+        const beforeId =
+          mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
+        const list = await api.listAgentEvents(
+          props.token,
+          memberAgentId,
+          MEMBER_EVENT_PAGE_LIMIT,
+          sessionId,
+          beforeId
+        );
+        setMemberEvents((prev) => upsertAgentEventList(prev, list, mode));
+        setMemberEventsHasMore(list.length >= MEMBER_EVENT_PAGE_LIMIT);
+      } finally {
+        setMemberEventsLoading(false);
+      }
+    },
+    [props.token, selectedMemberSnapshot]
+  );
+
   useEffect(() => {
     void refreshTeams();
   }, [refreshTeams]);
@@ -318,6 +471,9 @@ export function TeamPage(props: TeamPageProps) {
       setEvents([]);
       setSteps([]);
       setInbox([]);
+      setSnapshot(null);
+      setSelectedMemberId("");
+      setMemberEvents([]);
       return;
     }
     let canceled = false;
@@ -359,6 +515,9 @@ export function TeamPage(props: TeamPageProps) {
       setEvents([]);
       setSteps([]);
       setInbox([]);
+      setSnapshot(null);
+      setSelectedMemberId("");
+      setMemberEvents([]);
       return;
     }
     let canceled = false;
@@ -370,7 +529,11 @@ export function TeamPage(props: TeamPageProps) {
         if (run.team_id !== selectedTeamId) {
           setSelectedTeamId(run.team_id);
         }
-        await Promise.all([refreshSteps(activeRunId), refreshEvents(activeRunId)]);
+        await Promise.all([
+          refreshSteps(activeRunId),
+          refreshEvents(activeRunId),
+          refreshSnapshot(activeRunId),
+        ]);
       } catch (err) {
         if (!canceled) {
           setError(parseErrorMessage(err));
@@ -381,18 +544,46 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       canceled = true;
     };
-  }, [activeRunId, refreshEvents, refreshRun, refreshSteps, selectedTeamId]);
+  }, [
+    activeRunId,
+    refreshEvents,
+    refreshRun,
+    refreshSnapshot,
+    refreshSteps,
+    selectedTeamId,
+  ]);
 
   useEffect(() => {
     if (!activeRunId || !eventsAutoRefresh) return;
     const timer = window.setInterval(() => {
       void refreshRun(activeRunId).catch(() => undefined);
       void refreshEvents(activeRunId).catch(() => undefined);
+      void refreshSnapshot(activeRunId).catch(() => undefined);
     }, 4000);
     return () => {
       window.clearInterval(timer);
     };
-  }, [activeRunId, eventsAutoRefresh, refreshEvents, refreshRun]);
+  }, [activeRunId, eventsAutoRefresh, refreshEvents, refreshRun, refreshSnapshot]);
+
+  useEffect(() => {
+    if (!snapshot) {
+      setSelectedMemberId("");
+      setMemberEvents([]);
+      return;
+    }
+    setSelectedMemberId((prev) => {
+      if (prev && snapshot.members.some((member) => member.member_id === prev)) {
+        return prev;
+      }
+      return snapshot.members[0]?.member_id ?? "";
+    });
+  }, [snapshot]);
+
+  useEffect(() => {
+    void loadMemberEvents("replace").catch((err) => {
+      setError(parseErrorMessage(err));
+    });
+  }, [loadMemberEvents]);
 
   const onCreateTeam = async () => {
     const name = newTeamName.trim();
@@ -400,18 +591,32 @@ export function TeamPage(props: TeamPageProps) {
       setError("Team name is required");
       return;
     }
+    if (!useSpecOverride && !leaderMemberId.trim()) {
+      setError("Leader member_id is required");
+      return;
+    }
     setBusy("create-team");
     setError(null);
     try {
+      const specPayload = useSpecOverride
+        ? parseRequiredJson(newTeamSpec, "Team spec")
+        : builtTeamSpec;
       const created = await api.createTeam(props.token, {
         name,
         description: newTeamDescription.trim() || undefined,
-        spec: parseRequiredJson(newTeamSpec, "Team spec"),
+        spec: specPayload,
       });
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedTeamId(created.id);
       setNewTeamName("");
       setNewTeamDescription("");
+      setLeaderMemberId("leader");
+      setLeaderModel("");
+      setLeaderPrompt("");
+      setLeaderSkills("");
+      setWorkers([{ member_id: "worker-1", model: "", prompt: "", skills: "" }]);
+      setUseSpecOverride(false);
+      setNewTeamSpec("{}");
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -467,7 +672,7 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const canceled = await api.cancelTeamRun(props.token, activeRunId);
       setRuns((prev) => upsertRun(prev, canceled));
-      await refreshEvents(activeRunId);
+      await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -497,7 +702,12 @@ export function TeamPage(props: TeamPageProps) {
         depends_on: parseCsvList(stepDependsOn),
         input: parseOptionalJson(stepInput, "Step input"),
       });
-      await Promise.all([refreshRun(activeRunId), refreshSteps(activeRunId), refreshEvents(activeRunId)]);
+      await Promise.all([
+        refreshRun(activeRunId),
+        refreshSteps(activeRunId),
+        refreshEvents(activeRunId),
+        refreshSnapshot(activeRunId),
+      ]);
       setSelectedStepId(created.id);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -544,7 +754,12 @@ export function TeamPage(props: TeamPageProps) {
           input: parseOptionalJson(stepResumePayload, "Resume payload"),
         });
       }
-      await Promise.all([refreshRun(activeRunId), refreshSteps(activeRunId), refreshEvents(activeRunId)]);
+      await Promise.all([
+        refreshRun(activeRunId),
+        refreshSteps(activeRunId),
+        refreshEvents(activeRunId),
+        refreshSnapshot(activeRunId),
+      ]);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -575,7 +790,7 @@ export function TeamPage(props: TeamPageProps) {
         payload: parseRequiredJson(msgPayload, "Message payload"),
         idempotency_key: msgIdempotencyKey.trim() || undefined,
       });
-      await refreshEvents(activeRunId);
+      await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
       if (inboxActorId.trim()) {
         await loadInbox();
       }
@@ -609,12 +824,42 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     try {
       await api.ackTeamRunMessage(props.token, activeRunId, message.message_id, actorId);
-      await Promise.all([loadInbox(), refreshEvents(activeRunId)]);
+      await Promise.all([
+        loadInbox(),
+        refreshEvents(activeRunId),
+        refreshSnapshot(activeRunId),
+      ]);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
+  };
+
+  const onUpdateWorker = (
+    index: number,
+    field: keyof WorkerDraft,
+    value: string
+  ) => {
+    setWorkers((prev) =>
+      prev.map((worker, workerIndex) =>
+        workerIndex === index ? { ...worker, [field]: value } : worker
+      )
+    );
+  };
+
+  const onAddWorker = () => {
+    setWorkers((prev) => [
+      ...prev,
+      { member_id: `worker-${prev.length + 1}`, model: "", prompt: "", skills: "" },
+    ]);
+  };
+
+  const onRemoveWorker = (index: number) => {
+    setWorkers((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, workerIndex) => workerIndex !== index);
+    });
   };
 
   return (
@@ -634,6 +879,14 @@ export function TeamPage(props: TeamPageProps) {
 
       <section className="teams-layout">
         <aside className="card teams-sidebar">
+          <div className="mode-switch">
+            <a className="mode-tag" href="/">
+              Agents
+            </a>
+            <a className="mode-tag active" href="/teams">
+              Teams
+            </a>
+          </div>
           <div className="toolbar">
             <h2>Teams</h2>
             <button onClick={() => void refreshTeams()} disabled={busy === "refresh-teams"}>
@@ -653,11 +906,98 @@ export function TeamPage(props: TeamPageProps) {
               value={newTeamDescription}
               onChange={(event) => setNewTeamDescription(event.target.value)}
             />
+            <h4>Leader</h4>
+            <input
+              placeholder="leader member_id"
+              value={leaderMemberId}
+              onChange={(event) => setLeaderMemberId(event.target.value)}
+              disabled={useSpecOverride}
+            />
+            <input
+              placeholder="leader model (optional)"
+              value={leaderModel}
+              onChange={(event) => setLeaderModel(event.target.value)}
+              disabled={useSpecOverride}
+            />
+            <input
+              placeholder="leader skills (comma separated)"
+              value={leaderSkills}
+              onChange={(event) => setLeaderSkills(event.target.value)}
+              disabled={useSpecOverride}
+            />
+            <textarea
+              className="mono"
+              rows={3}
+              placeholder="leader prompt"
+              value={leaderPrompt}
+              onChange={(event) => setLeaderPrompt(event.target.value)}
+              disabled={useSpecOverride}
+            />
+
+            <div className="toolbar">
+              <h4>Workers</h4>
+              <button onClick={onAddWorker} disabled={useSpecOverride}>
+                Add Worker
+              </button>
+            </div>
+            {workers.map((worker, index) => (
+              <div key={`worker-${index}`} className="teams-worker-card">
+                <input
+                  placeholder="worker member_id"
+                  value={worker.member_id}
+                  onChange={(event) =>
+                    onUpdateWorker(index, "member_id", event.target.value)
+                  }
+                  disabled={useSpecOverride}
+                />
+                <input
+                  placeholder="worker model (optional)"
+                  value={worker.model}
+                  onChange={(event) =>
+                    onUpdateWorker(index, "model", event.target.value)
+                  }
+                  disabled={useSpecOverride}
+                />
+                <input
+                  placeholder="worker skills (comma separated)"
+                  value={worker.skills}
+                  onChange={(event) =>
+                    onUpdateWorker(index, "skills", event.target.value)
+                  }
+                  disabled={useSpecOverride}
+                />
+                <textarea
+                  className="mono"
+                  rows={2}
+                  placeholder="worker prompt"
+                  value={worker.prompt}
+                  onChange={(event) =>
+                    onUpdateWorker(index, "prompt", event.target.value)
+                  }
+                  disabled={useSpecOverride}
+                />
+                <button
+                  onClick={() => onRemoveWorker(index)}
+                  disabled={useSpecOverride || workers.length <= 1}
+                >
+                  Remove Worker
+                </button>
+              </div>
+            ))}
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={useSpecOverride}
+                onChange={(event) => setUseSpecOverride(event.target.checked)}
+              />
+              Edit spec JSON manually
+            </label>
             <textarea
               className="mono"
               rows={10}
-              value={newTeamSpec}
+              value={displayedTeamSpec}
               onChange={(event) => setNewTeamSpec(event.target.value)}
+              readOnly={!useSpecOverride}
             />
             <button onClick={onCreateTeam} disabled={busy === "create-team"}>
               Create Team
@@ -792,6 +1132,12 @@ export function TeamPage(props: TeamPageProps) {
 
                   <div className="tab-bar">
                     <button
+                      className={tab === "overview" ? "tab active" : "tab"}
+                      onClick={() => setTab("overview")}
+                    >
+                      Overview
+                    </button>
+                    <button
                       className={tab === "events" ? "tab active" : "tab"}
                       onClick={() => setTab("events")}
                     >
@@ -804,12 +1150,94 @@ export function TeamPage(props: TeamPageProps) {
                       Steps
                     </button>
                     <button
-                      className={tab === "messages" ? "tab active" : "tab"}
-                      onClick={() => setTab("messages")}
+                      className={tab === "mailbox" ? "tab active" : "tab"}
+                      onClick={() => setTab("mailbox")}
                     >
-                      Messages
+                      Mailbox
+                    </button>
+                    <button
+                      className={tab === "member_console" ? "tab active" : "tab"}
+                      onClick={() => setTab("member_console")}
+                    >
+                      Member Console
                     </button>
                   </div>
+
+                  {tab === "overview" && (
+                    <div className="card">
+                      <div className="toolbar">
+                        <h3>Team Snapshot</h3>
+                        <div className="actions">
+                          <button
+                            onClick={() => {
+                              if (!activeRunId) return;
+                              void refreshSnapshot(activeRunId).catch((err) =>
+                                setError(parseErrorMessage(err))
+                              );
+                            }}
+                            disabled={snapshotLoading}
+                          >
+                            Refresh Snapshot
+                          </button>
+                        </div>
+                      </div>
+
+                      {!snapshot && <p className="muted">No snapshot yet.</p>}
+
+                      {snapshot && (
+                        <>
+                          <div className="teams-run-meta">
+                            <span>
+                              <strong>Leader:</strong>{" "}
+                              <code>{snapshot.leader_member_id ?? "-"}</code>
+                            </span>
+                            <span>
+                              <strong>Members:</strong> {snapshot.members.length}
+                            </span>
+                            <span>
+                              <strong>Pending Mailbox:</strong> {snapshot.mailbox.pending}
+                            </span>
+                            <span>
+                              <strong>Delivered:</strong> {snapshot.mailbox.delivered}
+                            </span>
+                            <span>
+                              <strong>Dead Letter:</strong> {snapshot.mailbox.dead_letter}
+                            </span>
+                            <span>
+                              <strong>Recent Events:</strong>{" "}
+                              {snapshot.latest_events.length}
+                            </span>
+                          </div>
+
+                          <div className="teams-member-list">
+                            {snapshot.members.map((member) => (
+                              <button
+                                key={member.member_id}
+                                className={
+                                  selectedMemberId === member.member_id
+                                    ? "team-item active"
+                                    : "team-item"
+                                }
+                                onClick={() => {
+                                  setSelectedMemberId(member.member_id);
+                                  setTab("member_console");
+                                }}
+                              >
+                                <span className="team-name">
+                                  {member.member_id} ({member.role})
+                                </span>
+                                <span className="team-status">{member.status}</span>
+                                <span className="team-id mono">
+                                  model={member.model ?? "-"} pending=
+                                  {member.pending_inbox_count}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {tab === "events" && (
                     <div className="card">
@@ -1005,11 +1433,29 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   )}
 
-                  {tab === "messages" && (
+                  {tab === "mailbox" && (
                     <div className="card">
                       <div className="toolbar">
-                        <h3>Messages</h3>
+                        <h3>Mailbox</h3>
                       </div>
+
+                      {snapshot && (
+                        <div className="teams-run-meta">
+                          <span>
+                            <strong>Pending:</strong> {snapshot.mailbox.pending}
+                          </span>
+                          <span>
+                            <strong>Delivered:</strong> {snapshot.mailbox.delivered}
+                          </span>
+                          <span>
+                            <strong>Dead Letter:</strong> {snapshot.mailbox.dead_letter}
+                          </span>
+                          <span>
+                            <strong>Recent Messages:</strong>{" "}
+                            {snapshot.mailbox.recent_messages.length}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="teams-message-grid">
                         <div className="teams-message-panel">
@@ -1101,6 +1547,18 @@ export function TeamPage(props: TeamPageProps) {
                       </div>
 
                       <ul className="teams-message-list">
+                        {snapshot?.mailbox.recent_messages.map((message) => (
+                          <li key={`snapshot-${message.message_id}`}>
+                            <div className="teams-message-head">
+                              <span className="mono">#{message.message_id}</span>
+                              <span>
+                                {message.from_actor_id} → {message.to_actor_id}
+                              </span>
+                              <span>{message.status}</span>
+                            </div>
+                            <pre className="mono">{toPrettyJson(message.payload)}</pre>
+                          </li>
+                        ))}
                         {inbox.map((message) => (
                           <li key={message.message_id}>
                             <div className="teams-message-head">
@@ -1122,6 +1580,99 @@ export function TeamPage(props: TeamPageProps) {
                                 Ack
                               </button>
                             </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {tab === "member_console" && (
+                    <div className="card">
+                      <div className="toolbar">
+                        <h3>Member Console</h3>
+                        <div className="actions">
+                          <button
+                            onClick={() => void loadMemberEvents("replace")}
+                            disabled={memberEventsLoading}
+                          >
+                            Refresh
+                          </button>
+                          <button
+                            onClick={() => void loadMemberEvents("prepend")}
+                            disabled={
+                              memberEventsLoading ||
+                              !memberEventsHasMore ||
+                              oldestMemberEventId == null
+                            }
+                          >
+                            Load Older
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="form-row">
+                        <select
+                          value={selectedMemberId}
+                          onChange={(event) => setSelectedMemberId(event.target.value)}
+                        >
+                          <option value="">Select member</option>
+                          {snapshot?.members.map((member) => (
+                            <option key={member.member_id} value={member.member_id}>
+                              {member.member_id} ({member.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {selectedMemberSnapshot && (
+                        <div className="teams-step-body mono">
+                          <div>member_id: {selectedMemberSnapshot.member_id}</div>
+                          <div>role: {selectedMemberSnapshot.role}</div>
+                          <div>model: {selectedMemberSnapshot.model ?? "-"}</div>
+                          <div>status: {selectedMemberSnapshot.status}</div>
+                          <div>
+                            session_status: {selectedMemberSnapshot.session_status ?? "-"}
+                          </div>
+                          <div>
+                            remote_task_id:{" "}
+                            {selectedMemberSnapshot.latest_step?.remote_task_id ?? "-"}
+                          </div>
+                          <div>
+                            skills:{" "}
+                            {selectedMemberSnapshot.skills.length > 0
+                              ? selectedMemberSnapshot.skills.join(", ")
+                              : "-"}
+                          </div>
+                          <div>prompt: {selectedMemberSnapshot.prompt ?? "-"}</div>
+                        </div>
+                      )}
+
+                      {!selectedMemberSnapshot && (
+                        <p className="muted">Select a member to inspect output.</p>
+                      )}
+
+                      {selectedMemberSnapshot &&
+                        !selectedMemberSnapshot.latest_step?.remote_task_id && (
+                          <p className="muted">
+                            Selected member has no associated session yet.
+                          </p>
+                        )}
+
+                      {selectedMemberSnapshot &&
+                        selectedMemberSnapshot.latest_step?.remote_task_id &&
+                        memberEvents.length === 0 && (
+                          <p className="muted">No member events yet.</p>
+                        )}
+
+                      <ul className="teams-event-list">
+                        {memberEvents.map((event) => (
+                          <li key={event.event_id}>
+                            <div className="teams-event-head">
+                              <span className="mono">#{event.event_id}</span>
+                              <span>{event.stream}</span>
+                              <span>{formatTs(event.ts)}</span>
+                            </div>
+                            <pre className="mono">{event.message}</pre>
                           </li>
                         ))}
                       </ul>

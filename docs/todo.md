@@ -65,6 +65,8 @@
 - [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
 - [ ] Verify Team Workbench UI (`/teams`) create/run/step/message interaction flow end-to-end in a real browser (see `docs/features/2026-02-16-team-workbench-ui.md`).
+- [ ] Verify Team create flow supports structured leader/worker config (`leader_member_id`, per-member `model`/`prompt`/`skills`) and generated spec remains compatible with run bootstrap/orchestrator dispatch (see `docs/features/2026-02-16-team-snapshot-member-console.md`).
+- [ ] Verify Team run snapshot API (`GET /api/teams/runs/:run_id/snapshot`) and `/teams` Overview/Mailbox/Member Console tabs stay consistent under active run updates (see `docs/features/2026-02-16-team-snapshot-member-console.md`).
 - [ ] Verify Team run list API (`GET /api/teams/:id/runs`) pagination/filter behavior in staging with real run volumes (see `docs/features/2026-02-16-team-runs-list-api.md`).
 - [ ] Verify OpenAPI discovery endpoints (`/api/openapi.json`, `/api/openapi/docs`) auth behavior and docs-page token fetch flow in a real browser (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
 - [ ] Refactor `web/src/pages/team_page.tsx` into smaller feature-focused components (`TeamSidebar`, `RunPanel`, tab subviews) and a reducer-based state model for maintainability (see `docs/features/2026-02-16-team-workbench-ui.md`).
