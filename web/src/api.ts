@@ -124,6 +124,85 @@ export type RuntimeDefaults = {
   default_worktree_root: string;
 };
 
+export type TeamRunStatus =
+  | "submitted"
+  | "working"
+  | "input_required"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type TeamStepStatus =
+  | "submitted"
+  | "working"
+  | "input_required"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type TeamActorMessageTransport = "local" | "remote";
+
+export type TeamActorMessageStatus = "pending" | "delivered" | "dead_letter";
+
+export type TeamDefinitionRecord = {
+  id: string;
+  name: string;
+  description?: string | null;
+  spec: unknown;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamRunRecord = {
+  id: string;
+  team_id: string;
+  context_id: string;
+  status: TeamRunStatus;
+  input: unknown;
+  created_at: number;
+  started_at?: number | null;
+  ended_at?: number | null;
+};
+
+export type TeamRunEventRecord = {
+  event_id: number;
+  run_id: string;
+  step_id?: string | null;
+  event_type: string;
+  ts: number;
+  payload: unknown;
+};
+
+export type TeamStepRecord = {
+  id: string;
+  run_id: string;
+  step_key: string;
+  member_id: string;
+  remote_task_id?: string | null;
+  status: TeamStepStatus;
+  attempt: number;
+  depends_on: string[];
+  input?: unknown;
+  output?: unknown;
+  error_text?: string | null;
+  started_at?: number | null;
+  ended_at?: number | null;
+};
+
+export type TeamActorMessageRecord = {
+  message_id: number;
+  run_id: string;
+  from_actor_id: string;
+  to_actor_id: string;
+  channel: string;
+  transport: TeamActorMessageTransport;
+  route?: unknown;
+  payload: unknown;
+  status: TeamActorMessageStatus;
+  created_at: number;
+  delivered_at?: number | null;
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -238,6 +317,170 @@ export const api = {
       "/api/admin/join/start",
       token,
       { method: "POST" }
+    ),
+  createTeam: (
+    token: string,
+    payload: { name: string; description?: string; spec: unknown }
+  ) =>
+    apiFetch<TeamDefinitionRecord>("/api/teams", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listTeams: (token: string) =>
+    apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
+  getTeam: (token: string, id: string) =>
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token),
+  createTeamRun: (
+    token: string,
+    teamId: string,
+    payload: { context_id?: string; input?: unknown }
+  ) =>
+    apiFetch<TeamRunRecord>(`/api/teams/${teamId}/runs`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getTeamRun: (token: string, runId: string) =>
+    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}`, token),
+  cancelTeamRun: (token: string, runId: string) =>
+    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/cancel`, token, {
+      method: "POST",
+    }),
+  listTeamRunEvents: (
+    token: string,
+    runId: string,
+    limit = 200,
+    beforeId?: number
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (beforeId != null) params.set("before_id", String(beforeId));
+    return apiFetch<TeamRunEventRecord[]>(
+      `/api/teams/runs/${runId}/events?${params.toString()}`,
+      token
+    );
+  },
+  listTeamRunSteps: (token: string, runId: string) =>
+    apiFetch<TeamStepRecord[]>(`/api/teams/runs/${runId}/steps`, token),
+  submitTeamRunStep: (
+    token: string,
+    runId: string,
+    payload: {
+      step_key: string;
+      member_id: string;
+      depends_on?: string[];
+      input?: unknown;
+    }
+  ) =>
+    apiFetch<TeamStepRecord>(`/api/teams/runs/${runId}/steps`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  startTeamRunStep: (
+    token: string,
+    runId: string,
+    stepId: string,
+    payload: { remote_task_id?: string }
+  ) =>
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${runId}/steps/${stepId}/start`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  completeTeamRunStep: (
+    token: string,
+    runId: string,
+    stepId: string,
+    payload: { output?: unknown }
+  ) =>
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${runId}/steps/${stepId}/complete`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  failTeamRunStep: (
+    token: string,
+    runId: string,
+    stepId: string,
+    payload: { error_text: string }
+  ) =>
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${runId}/steps/${stepId}/fail`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  setTeamRunStepInputRequired: (
+    token: string,
+    runId: string,
+    stepId: string,
+    payload: { reason?: string; input?: unknown }
+  ) =>
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${runId}/steps/${stepId}/input_required`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  resumeTeamRunStep: (
+    token: string,
+    runId: string,
+    stepId: string,
+    payload: { input?: unknown }
+  ) =>
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${runId}/steps/${stepId}/resume`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  sendTeamRunMessage: (
+    token: string,
+    runId: string,
+    payload: {
+      from_actor_id: string;
+      to_actor_id: string;
+      channel?: string;
+      transport?: TeamActorMessageTransport;
+      route?: unknown;
+      payload: unknown;
+      idempotency_key?: string;
+    }
+  ) =>
+    apiFetch<TeamActorMessageRecord>(
+      `/api/teams/runs/${runId}/messages/send`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  listTeamRunInbox: (
+    token: string,
+    runId: string,
+    payload: {
+      actor_id: string;
+      limit?: number;
+      after_id?: number;
+      include_delivered?: boolean;
+    }
+  ) => {
+    const params = new URLSearchParams({ actor_id: payload.actor_id });
+    if (payload.limit != null) params.set("limit", String(payload.limit));
+    if (payload.after_id != null) params.set("after_id", String(payload.after_id));
+    if (payload.include_delivered != null) {
+      params.set(
+        "include_delivered",
+        payload.include_delivered ? "true" : "false"
+      );
+    }
+    return apiFetch<TeamActorMessageRecord[]>(
+      `/api/teams/runs/${runId}/messages/inbox?${params.toString()}`,
+      token
+    );
+  },
+  ackTeamRunMessage: (
+    token: string,
+    runId: string,
+    messageId: number,
+    actorId: string
+  ) =>
+    apiFetch<TeamActorMessageRecord>(
+      `/api/teams/runs/${runId}/messages/${messageId}/ack`,
+      token,
+      { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   sendInput: (token: string, id: string, input: string, message_id?: string) =>

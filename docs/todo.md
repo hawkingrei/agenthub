@@ -52,6 +52,7 @@
 - [x] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
+- [ ] Verify Team Workbench UI (`/teams`) create/run/step/message interaction flow end-to-end in a real browser (see `docs/features/2026-02-16-team-workbench-ui.md`).
 - [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
 - [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
 - [x] Define cross-field Team spec constraints (entrypoint/member/step graph) for scheduler phase.
