@@ -44,6 +44,7 @@ rust_test(
 rust_test(
     name = "web_assets_test",
     srcs = ["tests/web_assets.rs"],
+    data = ["web/src/styles.css"],
     crate_root = "tests/web_assets.rs",
     edition = "2024",
 )
