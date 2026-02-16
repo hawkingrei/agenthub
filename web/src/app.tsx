@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import QRCode from "qrcode";
 import {
   api,
   AgentRecord,
@@ -61,6 +60,11 @@ import { PermissionModal } from "./components/permission_modal";
 import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
+import {
+  getLocalStorageItemSafe,
+  removeLocalStorageItemSafe,
+  setLocalStorageItemSafe,
+} from "./storage/safe_storage";
 import { AdminPage } from "./pages/admin_page";
 import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { JoinPage } from "./pages/join_page";
@@ -92,8 +96,14 @@ export function App() {
   const maxCachedEvents = 800;
   const maxCachedSessions = 40;
   const [auth, setAuth] = useState<AuthState | null>(() => {
-    const raw = localStorage.getItem("agenthub_auth");
-    return raw ? (JSON.parse(raw) as AuthState) : null;
+    const raw = getLocalStorageItemSafe("agenthub_auth");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as AuthState;
+    } catch {
+      removeLocalStorageItemSafe("agenthub_auth");
+      return null;
+    }
   });
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -163,7 +173,7 @@ export function App() {
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
   const [inputHistory, setInputHistory] = useState<string[]>(() =>
-    parseInputHistory(localStorage.getItem(INPUT_HISTORY_STORAGE_KEY))
+    parseInputHistory(getLocalStorageItemSafe(INPUT_HISTORY_STORAGE_KEY))
   );
   const [inputHistoryCursor, setInputHistoryCursor] = useState(-1);
   const inputHistoryDraftRef = useRef("");
@@ -228,7 +238,10 @@ export function App() {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
   useEffect(() => {
-    localStorage.setItem(INPUT_HISTORY_STORAGE_KEY, JSON.stringify(inputHistory));
+    setLocalStorageItemSafe(
+      INPUT_HISTORY_STORAGE_KEY,
+      JSON.stringify(inputHistory)
+    );
   }, [inputHistory]);
 
   useEffect(() => {
@@ -703,7 +716,7 @@ export function App() {
           )
         );
       })
-      .catch((err) => console.error("Failed to get runtime defaults:", err));
+      .catch(() => undefined);
   }, [token]);
 
   const handleWorktreeModeChange = useCallback(
@@ -1063,7 +1076,7 @@ export function App() {
         username,
         role: finish.role,
       };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
+      setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
@@ -1086,7 +1099,7 @@ export function App() {
         username,
         role: finish.role,
       };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
+      setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
@@ -1095,7 +1108,7 @@ export function App() {
   };
 
   const onLogout = () => {
-    localStorage.removeItem("agenthub_auth");
+    removeLocalStorageItemSafe("agenthub_auth");
     setAuth(null);
     setAgents([]);
     setActiveAgent(null);
@@ -1425,7 +1438,8 @@ export function App() {
       setJoinPin(data.pin);
       setJoinToken(data.token);
       const url = `${location.origin}/join?token=${data.token}`;
-      const qr = await QRCode.toDataURL(url);
+      const { toDataURL } = await import("qrcode");
+      const qr = await toDataURL(url);
       setJoinQr(qr);
     } catch (err) {
       setError(String(err));

@@ -445,6 +445,28 @@ impl AgentManager {
                         .await;
                     return Err(err);
                 }
+                if let Err(err) = self.ensure_safe_path(workdir).await {
+                    let detail = serde_json::json!({
+                        "agent_id": agent.id,
+                        "mode": "create_worktree",
+                        "repo": repo,
+                        "workdir": workdir,
+                        "error": err.to_string(),
+                    })
+                    .to_string();
+                    let _ = self
+                        .auth
+                        .record_audit(
+                            None,
+                            None,
+                            "worktree_create_failed",
+                            Some(&detail),
+                            None,
+                            None,
+                        )
+                        .await;
+                    return Err(err);
+                }
                 let workdir_path = Path::new(workdir);
                 if workdir_path.exists() && !is_dir_empty(workdir_path)? {
                     let existing_worktree = match repo_find_worktree_entry(repo, workdir).await {
@@ -500,15 +522,17 @@ impl AgentManager {
                         }
 
                         if !worktree_ref_matches(&existing_worktree, ref_name) {
+                            let existing_branch = existing_worktree.branch.as_deref();
+                            let existing_head = existing_worktree.head.as_deref();
                             let detail = serde_json::json!({
                                 "agent_id": agent.id,
                                 "mode": "create_worktree",
                                 "repo": repo,
                                 "workdir": workdir,
                                 "configured_ref": ref_name,
-                                "existing_branch": existing_worktree.branch,
-                                "existing_head": existing_worktree.head,
-                                "error": "worktree ref mismatch",
+                                "existing_branch": existing_branch,
+                                "existing_head": existing_head,
+                                "action": "reuse_existing_worktree",
                             })
                             .to_string();
                             let _ = self
@@ -516,13 +540,21 @@ impl AgentManager {
                                 .record_audit(
                                     None,
                                     None,
-                                    "worktree_create_failed",
+                                    "worktree_reuse_ref_mismatch",
                                     Some(&detail),
                                     None,
                                     None,
                                 )
                                 .await;
-                            anyhow::bail!("existing worktree ref mismatch");
+                            tracing::warn!(
+                                agent_id = %agent.id,
+                                repo = %repo,
+                                workdir = %workdir,
+                                configured_ref = %ref_name,
+                                existing_branch = ?existing_branch,
+                                existing_head = ?existing_head,
+                                "existing worktree ref mismatched configured ref; reusing worktree"
+                            );
                         }
 
                         let detail = serde_json::json!({

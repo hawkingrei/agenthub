@@ -1039,6 +1039,138 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_worktree_reuses_existing_after_ref_state_changes() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_reuses_existing_after_ref_state_changes: `git` is not available on PATH"
+            );
+            return;
+        }
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let branch_name = format!("agenthub-worktree-ref-{}", Uuid::new_v4().simple());
+        let status = StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo_dir)
+            .arg("checkout")
+            .arg("-b")
+            .arg(&branch_name)
+            .status()
+            .expect("create branch for create_worktree ref");
+        assert!(
+            status.success(),
+            "git checkout -b failed for branch {branch_name}"
+        );
+        run_git(&repo_dir, &["checkout", "-"]);
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-ref-mismatch-restart",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": branch_name,
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create create_worktree agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (first)");
+        assert_eq!(start_first.status(), StatusCode::OK);
+
+        let stop_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (first)");
+        assert_eq!(stop_first.status(), StatusCode::OK);
+
+        run_git(&workdir, &["checkout", "--detach"]);
+
+        let start_second = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (second)");
+        assert_eq!(start_second.status(), StatusCode::OK);
+
+        let stop_second = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (second)");
+        assert_eq!(stop_second.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
     async fn create_worktree_rejects_reuse_by_other_agent() {
         if !is_git_available() {
             eprintln!(

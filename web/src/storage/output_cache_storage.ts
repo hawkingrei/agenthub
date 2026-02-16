@@ -2,6 +2,10 @@ import { OutputLine } from "../output_cache";
 import { compareEventOrder } from "../seq_order";
 
 const STORAGE_KEY = "agenthub_output_cache_v2";
+const FALLBACK_EVENTS_TIER1 = 80;
+const FALLBACK_SESSIONS_TIER1 = 20;
+const FALLBACK_EVENTS_TIER2 = 40;
+const FALLBACK_SESSIONS_TIER2 = 10;
 
 type StoredOutputCache = {
   v: number;
@@ -22,7 +26,12 @@ export function loadOutputCaches(
   if (typeof localStorage === "undefined") {
     return { outputCache: {}, acpOutputCache: {} };
   }
-  const raw = localStorage.getItem(STORAGE_KEY);
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return { outputCache: {}, acpOutputCache: {} };
+  }
   if (!raw) return { outputCache: {}, acpOutputCache: {} };
   try {
     const parsed = JSON.parse(raw) as StoredOutputCache;
@@ -45,17 +54,56 @@ export function saveOutputCaches(
   maxSessions: number
 ) {
   if (typeof localStorage === "undefined") return;
-  const payload: StoredOutputCache = {
-    v: 1,
-    updatedAt: Date.now(),
-    outputCache: normalizeCache(outputCache, maxEvents, maxSessions),
-    acpOutputCache: normalizeCache(acpOutputCache, maxEvents, maxSessions),
-  };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage errors (quota or permission).
+  const attempts: ReadonlyArray<{
+    events: number;
+    sessions: number;
+    dropAcp: boolean;
+  }> = [
+    { events: maxEvents, sessions: maxSessions, dropAcp: false },
+    { events: maxEvents, sessions: maxSessions, dropAcp: true },
+    {
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER1),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER1),
+      dropAcp: false,
+    },
+    {
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER1),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER1),
+      dropAcp: true,
+    },
+    {
+      events: Math.min(maxEvents, FALLBACK_EVENTS_TIER2),
+      sessions: Math.min(maxSessions, FALLBACK_SESSIONS_TIER2),
+      dropAcp: true,
+    },
+  ];
+  for (const attempt of attempts) {
+    const payload: StoredOutputCache = {
+      v: 1,
+      updatedAt: Date.now(),
+      outputCache: normalizeCache(outputCache, attempt.events, attempt.sessions),
+      acpOutputCache: attempt.dropAcp
+        ? {}
+        : normalizeCache(acpOutputCache, attempt.events, attempt.sessions),
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      return;
+    } catch (err) {
+      if (!isQuotaExceededError(err)) return;
+    }
   }
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore cleanup errors.
+  }
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: string }).name;
+  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED";
 }
 
 function normalizeCache(
