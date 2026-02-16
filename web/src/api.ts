@@ -330,6 +330,24 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token),
+  listTeamRuns: (
+    token: string,
+    teamId: string,
+    payload?: {
+      limit?: number;
+      status?: TeamRunStatus;
+      before_created_at?: number;
+    }
+  ) => {
+    const params = new URLSearchParams();
+    if (payload?.limit != null) params.set("limit", String(payload.limit));
+    if (payload?.status) params.set("status", payload.status);
+    if (payload?.before_created_at != null) {
+      params.set("before_created_at", String(payload.before_created_at));
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<TeamRunRecord[]>(`/api/teams/${teamId}/runs${suffix}`, token);
+  },
   createTeamRun: (
     token: string,
     teamId: string,

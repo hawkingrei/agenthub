@@ -26,12 +26,12 @@ use crate::team::TeamManager;
 
 use super::{
     AckTeamRunMessageRequest, CompleteTeamRunStepRequest, CreateTeamRequest, CreateTeamRunRequest,
-    FailTeamRunStepRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery,
+    FailTeamRunStepRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
     ResumeTeamRunStepRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, ack_team_run_message, cancel_team_run,
     complete_team_run_step, create_team, create_team_run, fail_team_run_step, get_team,
-    get_team_run, list_team_run_events, list_team_run_inbox, list_team_run_steps, list_teams,
-    resume_team_run_step, send_team_run_message, set_team_run_step_input_required,
+    get_team_run, list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
+    list_teams, resume_team_run_step, send_team_run_message, set_team_run_step_input_required,
     start_team_run_step, submit_team_run_step,
 };
 

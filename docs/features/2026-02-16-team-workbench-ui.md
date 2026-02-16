@@ -16,15 +16,14 @@ but there is no first-class UI to operate these flows from the web app.
   - Run event timeline refresh and older-page replay (`before_id` pagination)
   - Step submit + lifecycle transitions (`start`, `complete`, `fail`, `input_required`, `resume`)
   - Actor mailbox send/inbox/ack operations
+  - Team run list loading through `GET /api/teams/:id/runs`
 
 ## Key Decisions
 
 - Keep Team interactions in a standalone page (`web/src/pages/team_page.tsx`) to avoid coupling
   with the existing Agent workspace state machine.
-- Because there is no `list runs by team` HTTP API yet, the UI supports:
-  - creating runs,
-  - loading existing runs by `run_id`,
-  - keeping a browser-session run list for quick switching.
+- Use backend `list runs by team` API as the source of truth for run list rendering; `load by run_id`
+  remains available for fast jump-to-run workflows.
 - Keep JSON-first input UX for spec/input/payload/route to match backend contracts exactly
   and unblock debugging.
 

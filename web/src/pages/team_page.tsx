@@ -230,6 +230,18 @@ export function TeamPage(props: TeamPageProps) {
     [props.token]
   );
 
+  const refreshTeamRuns = useCallback(
+    async (teamId: string) => {
+      const list = await api.listTeamRuns(props.token, teamId, { limit: 200 });
+      setRuns((prev) => {
+        const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
+        return sortRuns([...otherTeamRuns, ...list]);
+      });
+      return list;
+    },
+    [props.token]
+  );
+
   const refreshSteps = useCallback(
     async (runId: string) => {
       const list = await api.listTeamRunSteps(props.token, runId);
@@ -302,13 +314,39 @@ export function TeamPage(props: TeamPageProps) {
       setInbox([]);
       return;
     }
+    let canceled = false;
+    const loadTeamRuns = async () => {
+      try {
+        setError(null);
+        const list = await refreshTeamRuns(selectedTeamId);
+        if (canceled) return;
+        setActiveRunId((prev) => {
+          if (prev && list.some((run) => run.id === prev)) {
+            return prev;
+          }
+          return list[0]?.id ?? null;
+        });
+      } catch (err) {
+        if (!canceled) {
+          setError(parseErrorMessage(err));
+        }
+      }
+    };
+    void loadTeamRuns();
+    return () => {
+      canceled = true;
+    };
+  }, [refreshTeamRuns, selectedTeamId]);
+
+  useEffect(() => {
+    if (!selectedTeamId) return;
     setActiveRunId((prev) => {
       if (prev && runs.some((run) => run.id === prev && run.team_id === selectedTeamId)) {
         return prev;
       }
       return runs.find((run) => run.team_id === selectedTeamId)?.id ?? null;
     });
-  }, [selectedTeamId, runs]);
+  }, [runs, selectedTeamId]);
 
   useEffect(() => {
     if (!activeRunId) {
@@ -683,7 +721,7 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
                 </div>
                 <div className="teams-run-list">
-                  <h3>Runs In This Browser Session</h3>
+                  <h3>Runs</h3>
                   {visibleRuns.length === 0 && (
                     <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
                   )}

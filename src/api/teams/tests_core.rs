@@ -335,6 +335,172 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
 }
 
 #[tokio::test]
+async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "runs-list-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(other_team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "runs-list-other-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create other team");
+
+    let Json(first_run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-runs-list-1".to_string()),
+            input: Some(json!({"seq":1})),
+        }),
+    )
+    .await
+    .expect("create first run");
+
+    let Json(second_run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-runs-list-2".to_string()),
+            input: Some(json!({"seq":2})),
+        }),
+    )
+    .await
+    .expect("create second run");
+
+    let Json(other_team_run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(other_team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-runs-list-other".to_string()),
+            input: Some(json!({"seq":3})),
+        }),
+    )
+    .await
+    .expect("create other team run");
+
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(100_i64)
+        .bind(&first_run.id)
+        .execute(&state.db)
+        .await
+        .expect("set first run created_at");
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(200_i64)
+        .bind(&second_run.id)
+        .execute(&state.db)
+        .await
+        .expect("set second run created_at");
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(300_i64)
+        .bind(&other_team_run.id)
+        .execute(&state.db)
+        .await
+        .expect("set other team run created_at");
+
+    let Json(runs) = list_team_runs(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamRunsQuery {
+            limit: Some(100),
+            status: None,
+            before_created_at: None,
+        }),
+    )
+    .await
+    .expect("list team runs");
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].id, second_run.id);
+    assert_eq!(runs[1].id, first_run.id);
+
+    let _ = cancel_team_run(State(state.clone()), headers.clone(), Path(first_run.id.clone()))
+        .await
+        .expect("cancel first run");
+
+    let Json(canceled_runs) = list_team_runs(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamRunsQuery {
+            limit: Some(100),
+            status: Some("canceled".to_string()),
+            before_created_at: None,
+        }),
+    )
+    .await
+    .expect("list canceled team runs");
+    assert_eq!(canceled_runs.len(), 1);
+    assert_eq!(canceled_runs[0].id, first_run.id);
+
+    let Json(cursor_page) = list_team_runs(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamRunsQuery {
+            limit: Some(100),
+            status: None,
+            before_created_at: Some(200),
+        }),
+    )
+    .await
+    .expect("list team runs with cursor");
+    assert_eq!(cursor_page.len(), 1);
+    assert_eq!(cursor_page[0].id, first_run.id);
+
+    let invalid_status_err = list_team_runs(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamRunsQuery {
+            limit: Some(100),
+            status: Some("invalid".to_string()),
+            before_created_at: None,
+        }),
+    )
+    .await
+    .expect_err("invalid status should fail");
+    assert_eq!(
+        invalid_status_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let missing_team_err = list_team_runs(
+        State(state),
+        headers,
+        Path("missing-team".to_string()),
+        Query(ListTeamRunsQuery {
+            limit: Some(100),
+            status: None,
+            before_created_at: None,
+        }),
+    )
+    .await
+    .expect_err("missing team should fail");
+    assert_eq!(missing_team_err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

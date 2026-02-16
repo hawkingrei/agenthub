@@ -297,6 +297,54 @@ impl TeamManager {
         Ok(runs)
     }
 
+    pub async fn list_runs(
+        &self,
+        team_id: &str,
+        limit: i64,
+        status: Option<&str>,
+        before_created_at: Option<i64>,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let limit = limit.max(1);
+        let rows = if let Some(before_created_at) = before_created_at {
+            sqlx::query(
+                r#"
+                SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+                FROM team_runs
+                WHERE team_id = ?1 AND (?2 IS NULL OR status = ?2) AND created_at < ?3
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?4
+                "#,
+            )
+            .bind(team_id)
+            .bind(status)
+            .bind(before_created_at)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+                FROM team_runs
+                WHERE team_id = ?1 AND (?2 IS NULL OR status = ?2)
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?3
+                "#,
+            )
+            .bind(team_id)
+            .bind(status)
+            .bind(limit)
+            .fetch_all(&self.db)
+            .await?
+        };
+
+        let mut runs = Vec::with_capacity(rows.len());
+        for row in rows {
+            runs.push(parse_team_run_row(&row)?);
+        }
+        Ok(runs)
+    }
+
     pub async fn get_agent_session_status(
         &self,
         session_id: &str,

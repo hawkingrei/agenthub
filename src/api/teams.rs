@@ -37,6 +37,13 @@ pub struct CreateTeamRunRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ListTeamRunsQuery {
+    pub limit: Option<i64>,
+    pub status: Option<String>,
+    pub before_created_at: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ListTeamRunEventsQuery {
     pub limit: Option<i64>,
     pub before_id: Option<i64>,
@@ -104,7 +111,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team))
-        .route("/:id/runs", post(create_team_run))
+        .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
         .route("/runs/:run_id/events", get(list_team_run_events))
@@ -212,6 +219,28 @@ async fn create_team_run(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(run))
+}
+
+async fn list_team_runs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Query(query): Query<ListTeamRunsQuery>,
+) -> Result<Json<Vec<TeamRunRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    let status = normalize_optional_run_status_filter(query.status.as_deref())?;
+    let runs = state
+        .teams
+        .list_runs(&team_id, limit, status.as_deref(), query.before_created_at)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(runs))
 }
 
 async fn get_team_run(
@@ -634,6 +663,24 @@ fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<Stri
         ));
     }
     Ok(Some(trimmed.to_string()))
+}
+
+fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    match trimmed {
+        "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" => {
+            Ok(Some(trimmed.to_string()))
+        }
+        _ => Err(ApiError::bad_request(
+            "status must be one of: submitted, working, input_required, completed, failed, canceled",
+        )),
+    }
 }
 
 async fn load_run_and_member_ids(
