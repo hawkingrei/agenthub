@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   TeamActorMessageRecord,
@@ -184,6 +184,7 @@ export function TeamPage(props: TeamPageProps) {
   const [inboxAfterId, setInboxAfterId] = useState("");
   const [inboxIncludeDelivered, setInboxIncludeDelivered] = useState(false);
   const [inbox, setInbox] = useState<TeamActorMessageRecord[]>([]);
+  const eventsRef = useRef<TeamRunEventRecord[]>([]);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -261,7 +262,8 @@ export function TeamPage(props: TeamPageProps) {
     async (runId: string, mode: "replace" | "prepend" = "replace") => {
       setEventsLoading(true);
       try {
-        const beforeId = mode === "prepend" ? oldestEventId ?? undefined : undefined;
+        const beforeId =
+          mode === "prepend" ? eventsRef.current[0]?.event_id : undefined;
         const list = await api.listTeamRunEvents(
           props.token,
           runId,
@@ -274,8 +276,12 @@ export function TeamPage(props: TeamPageProps) {
         setEventsLoading(false);
       }
     },
-    [oldestEventId, props.token]
+    [props.token]
   );
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
 
   const loadInbox = useCallback(async () => {
     if (!activeRunId) return;
