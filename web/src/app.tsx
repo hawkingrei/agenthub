@@ -21,6 +21,7 @@ import {
   deriveConnectionBadge,
   OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
+  shouldHideErrorBannerMessage,
   type SseConnectionState,
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
@@ -330,7 +331,11 @@ export function App() {
     [networkOnline, hasSseTarget, sseState]
   );
   const normalizedError = useMemo(
-    () => (error ? sanitizeErrorBannerMessage(error, networkOnline) : null),
+    () => {
+      if (!error) return null;
+      const message = sanitizeErrorBannerMessage(error, networkOnline);
+      return shouldHideErrorBannerMessage(message) ? null : message;
+    },
     [error, networkOnline]
   );
   const thinkingStartTs =

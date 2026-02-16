@@ -3,6 +3,7 @@ import {
   deriveConnectionBadge,
   OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
+  shouldHideErrorBannerMessage,
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 
@@ -85,5 +86,10 @@ describe("error banner sanitization", () => {
     const message = sanitizeErrorBannerMessage("x".repeat(300), true);
     expect(message.endsWith("...")).toBe(true);
     expect(message.length).toBeLessThanOrEqual(243);
+  });
+
+  it("marks connection unavailable message as banner-hidden", () => {
+    expect(shouldHideErrorBannerMessage(UPSTREAM_HTML_MESSAGE)).toBe(true);
+    expect(shouldHideErrorBannerMessage("workdir is required")).toBe(false);
   });
 });
