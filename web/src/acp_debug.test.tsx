@@ -21,6 +21,7 @@ const baseProps: AcpDebugProps = {
   onAcpSetConfig: () => {},
   onAcpCancel: () => {},
   onAcpClearSession: () => {},
+  onJumpToPermissionHistory: () => {},
   runtimeMetrics: {
     totalConversationItems: 0,
     sourceConversationItems: 0,

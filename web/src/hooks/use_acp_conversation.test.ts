@@ -5,6 +5,7 @@ import {
   buildVirtualConversationSlice,
   deriveConversationJumpState,
   estimateTailPayloadSize,
+  findConversationToolCallIndex,
   nextConversationViewport,
   normalizeConversationAvgHeightEstimate,
   restoreConversationScrollTop,
@@ -111,6 +112,26 @@ describe("buildConversationTailKey", () => {
     ]);
     expect(key).toContain("tool_call:8:");
     expect(key.length).toBeLessThan(120);
+  });
+});
+
+describe("findConversationToolCallIndex", () => {
+  it("returns matching tool call index", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+      { kind: "tool_call", id: "call-2", title: "Write", event_id: 3 },
+    ];
+    expect(findConversationToolCallIndex(items, "call-2")).toBe(2);
+  });
+
+  it("returns -1 when id is empty or missing", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+    ];
+    expect(findConversationToolCallIndex(items, "")).toBe(-1);
+    expect(findConversationToolCallIndex(items, "missing")).toBe(-1);
   });
 });
 

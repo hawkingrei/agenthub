@@ -75,11 +75,11 @@ fn styles_keep_acp_conversation_scoped() {
         "terminal output should be scrollable inside output body"
     );
     assert!(
-        css.contains("body {\n  margin: 0;\n  min-height: 100vh;\n  height: 100vh;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n}"),
+        css.contains("body {\n  margin: 0;\n  width: 100%;\n  max-width: 100vw;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n}"),
         "body should be fixed height with overflow hidden"
     );
     assert!(
-        css.contains(".app {\n  width: 100%;\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: 100vh;\n  height: 100vh;\n  overflow: auto;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n}"),
+        css.contains(".app {\n  width: 100%;\n  max-width: 100vw;\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: hidden;\n  display: flex;\n  flex-direction: column;\n  flex: 1;\n}"),
         "app should be fixed height with overflow auto"
     );
     assert!(
@@ -109,6 +109,10 @@ fn styles_keep_acp_conversation_scoped() {
     assert!(
         css.contains("@supports (height: 100dvh)"),
         "styles.css should use dynamic viewport height fallback for mobile browsers"
+    );
+    assert!(
+        css.contains("top: var(--agenthub-workspace-top, calc(56px + env(safe-area-inset-top, 0px)));"),
+        "mobile workspace drawer should anchor to computed workspace top"
     );
     assert!(
         css.contains(".admin .card li:not([class*=\"mantine-\"])"),

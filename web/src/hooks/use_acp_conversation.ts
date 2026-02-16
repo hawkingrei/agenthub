@@ -51,9 +51,11 @@ type UseAcpConversationResult = {
   conversationSourceItems: number;
   conversationRenderedItems: number;
   conversationVirtualized: boolean;
+  focusedConversationToolCallId: string | null;
   showConversationJump: boolean;
   showConversationBadge: boolean;
   jumpToConversationBottom: () => void;
+  jumpToConversationToolCall: (toolCallId: string) => boolean;
   handleConversationScroll: () => void;
 };
 
@@ -211,6 +213,19 @@ export function deriveConversationJumpState(
   };
 }
 
+export function findConversationToolCallIndex(
+  items: ConversationItem[],
+  toolCallId: string
+): number {
+  if (!toolCallId) return -1;
+  for (let idx = 0; idx < items.length; idx += 1) {
+    const item = items[idx];
+    if (item.kind !== "tool_call") continue;
+    if (item.id === toolCallId) return idx;
+  }
+  return -1;
+}
+
 export function buildVirtualConversationSlice(
   sourceItems: ConversationItem[],
   sourceOffset: number,
@@ -277,6 +292,7 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
+  const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
   const [conversationViewport, setConversationViewport] = useState({
     top: 0,
@@ -292,6 +308,9 @@ export function useAcpConversation({
     ConversationItem[]
   >([]);
   const [conversationPendingCount, setConversationPendingCount] = useState(0);
+  const [focusedConversationToolCallId, setFocusedConversationToolCallId] = useState<
+    string | null
+  >(null);
   const conversationMessages = useMemo<ConversationItem[]>(
     () =>
       buildConversationMessages(
@@ -370,6 +389,24 @@ export function useAcpConversation({
     };
   };
 
+  const markFocusedConversationToolCall = useCallback((toolCallId: string) => {
+    setFocusedConversationToolCallId(toolCallId);
+    if (
+      typeof window !== "undefined" &&
+      focusedToolCallResetTimerRef.current != null
+    ) {
+      window.clearTimeout(focusedToolCallResetTimerRef.current);
+      focusedToolCallResetTimerRef.current = null;
+    }
+    if (typeof window === "undefined") return;
+    focusedToolCallResetTimerRef.current = window.setTimeout(() => {
+      setFocusedConversationToolCallId((prev) =>
+        prev === toolCallId ? null : prev
+      );
+      focusedToolCallResetTimerRef.current = null;
+    }, 2500);
+  }, []);
+
   const jumpToConversationBottom = useCallback(() => {
     const el = acpConversationRef.current;
     if (!el) return;
@@ -382,7 +419,73 @@ export function useAcpConversation({
     setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
+    setFocusedConversationToolCallId(null);
   }, [syncConversationViewport]);
+
+  const jumpToConversationToolCall = useCallback(
+    (toolCallId: string): boolean => {
+      const targetId = toolCallId.trim();
+      if (!targetId) return false;
+      const targetIndex = findConversationToolCallIndex(
+        conversationMessages,
+        targetId
+      );
+      if (targetIndex < 0) return false;
+      const el = acpConversationRef.current;
+      if (!el) return false;
+
+      const estimatedTop = Math.max(
+        0,
+        Math.round((targetIndex - 4) * Math.max(24, conversationAvgHeight))
+      );
+      el.scrollTop = estimatedTop;
+      acpStickToBottomRef.current = false;
+      setConversationStickToBottom(false);
+      setConversationFrozen(false);
+      setConversationFreezeCursor(null);
+      setConversationFrozenItems([]);
+      setConversationPendingCount(0);
+      syncConversationViewport();
+      markFocusedConversationToolCall(targetId);
+
+      const scrollNodeToCenter = (node: Element | null) => {
+        if (!node || !(node instanceof HTMLElement)) return;
+        node.scrollIntoView({ block: "center", inline: "nearest" });
+        syncConversationViewport();
+      };
+      const findNodeByToolCallId = (container: HTMLDivElement) => {
+        const candidates = container.querySelectorAll("[data-tool-call-id]");
+        for (const candidate of candidates) {
+          if (candidate.getAttribute("data-tool-call-id") === targetId) {
+            return candidate;
+          }
+        }
+        return null;
+      };
+      const immediateTarget = findNodeByToolCallId(el);
+      if (immediateTarget) {
+        scrollNodeToCenter(immediateTarget);
+        return true;
+      }
+      if (
+        typeof window !== "undefined" &&
+        typeof window.requestAnimationFrame === "function"
+      ) {
+        window.requestAnimationFrame(() => {
+          const latest = acpConversationRef.current;
+          if (!latest) return;
+          scrollNodeToCenter(findNodeByToolCallId(latest));
+        });
+      }
+      return true;
+    },
+    [
+      conversationMessages,
+      conversationAvgHeight,
+      syncConversationViewport,
+      markFocusedConversationToolCall,
+    ]
+  );
 
   const alignConversationBottomNow = useCallback(() => {
     const el = acpConversationRef.current;
@@ -531,6 +634,18 @@ export function useAcpConversation({
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        focusedToolCallResetTimerRef.current != null
+      ) {
+        window.clearTimeout(focusedToolCallResetTimerRef.current);
+        focusedToolCallResetTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (
       !shouldAutoLoadConversationHistory(
         acpTab,
@@ -562,6 +677,7 @@ export function useAcpConversation({
     setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
+    setFocusedConversationToolCallId(null);
     setConversationViewport((prev) => ({
       top: 0,
       height: prev.height,
@@ -726,9 +842,11 @@ export function useAcpConversation({
     conversationSourceItems: conversationSourceItems.length,
     conversationRenderedItems: conversationRenderItems.length,
     conversationVirtualized: shouldVirtualizeConversation,
+    focusedConversationToolCallId,
     showConversationJump,
     showConversationBadge,
     jumpToConversationBottom,
+    jumpToConversationToolCall,
     handleConversationScroll,
   };
 }

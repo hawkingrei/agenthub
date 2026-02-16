@@ -41,6 +41,7 @@ type AcpDebugProps = {
   onAcpSetConfig: () => void;
   onAcpCancel: () => void;
   onAcpClearSession: () => void;
+  onJumpToPermissionHistory: (permission: AcpPermissionRecord) => void;
   runtimeMetrics: AcpRuntimeMetrics;
 };
 
@@ -62,10 +63,10 @@ export function AcpDebug({
   onAcpSetConfig,
   onAcpCancel,
   onAcpClearSession,
+  onJumpToPermissionHistory,
   runtimeMetrics,
 }: AcpDebugProps) {
   const [tab, setTab] = React.useState<DebugTab>("session");
-  const [expandedPermissionId, setExpandedPermissionId] = React.useState<string | null>(null);
   const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
   const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
@@ -88,11 +89,6 @@ export function AcpDebug({
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [tab, rawEvents.length]);
-  React.useEffect(() => {
-    if (tab !== "permissions") {
-      setExpandedPermissionId(null);
-    }
-  }, [tab]);
   React.useEffect(() => {
     return () => {
       if (copiedResetTimerRef.current != null) {
@@ -258,19 +254,16 @@ export function AcpDebug({
           )}
           {acpPermissionHistory.map((permission) => {
             const toolCall = toPermissionToolCall(permission.tool_call);
-            const isExpanded = expandedPermissionId === permission.id;
             const copied = copiedPermissionId === permission.id;
+            const canJump = Boolean(permission.tool_call_id?.trim());
             return (
               <div key={permission.id} className="acp-permission">
                 <div className="head">
                   <button
                     className="acp-permission-toggle"
                     type="button"
-                    onClick={() => {
-                      setExpandedPermissionId((prev) =>
-                        prev === permission.id ? null : permission.id
-                      );
-                    }}
+                    onClick={() => onJumpToPermissionHistory(permission)}
+                    disabled={!canJump}
                   >
                     <span className="title">
                       {derivePermissionTitle(permission, toolCall)}
@@ -287,46 +280,17 @@ export function AcpDebug({
                 </div>
                 <div className="acp-permission-submeta">
                   <span className="mono">{permission.id}</span>
+                  {permission.tool_call_id && (
+                    <span className="mono">tool_call {permission.tool_call_id}</span>
+                  )}
                   <span>created {formatPermissionTimestamp(permission.created_at)}</span>
                   {permission.responded_at != null && (
                     <span>responded {formatPermissionTimestamp(permission.responded_at)}</span>
                   )}
                 </div>
-                {isExpanded && (
-                  <div className="acp-permission-detail">
-                    <div className="acp-bubble tool_call">
-                      <details className="acp-tool-fold" open>
-                        <summary>
-                          <span className="acp-tool-title">
-                            Permission
-                            {toolCall?.title ? `: ${toolCall.title}` : ""}
-                            {permission.tool_call_id
-                              ? ` · ${permission.tool_call_id}`
-                              : ""}
-                          </span>
-                          <span className="acp-tool-status">{permission.status}</span>
-                        </summary>
-                        <div className="acp-permission-options mono">
-                          options:{" "}
-                          {permission.options
-                            .map((option) => option.option_id || option.name)
-                            .join(", ") || "-"}
-                        </div>
-                        {permission.selected_option_id && (
-                          <div className="acp-permission-options mono">
-                            selected: {permission.selected_option_id}
-                          </div>
-                        )}
-                        <details className="acp-subfold" open>
-                          <summary>
-                            <span className="label">Tool Call Payload</span>
-                          </summary>
-                          <pre className="mono">
-                            {formatUnknownForDisplay(permission.tool_call)}
-                          </pre>
-                        </details>
-                      </details>
-                    </div>
+                {!canJump && (
+                  <div className="acp-permission-options mono">
+                    no linked tool call in conversation
                   </div>
                 )}
               </div>
@@ -397,16 +361,6 @@ export function buildPermissionCopyText(permission: AcpPermissionRecord): string
     null,
     2
   );
-}
-
-function formatUnknownForDisplay(value: unknown): string {
-  if (value == null) return "null";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function formatPermissionTimestamp(ts: number): string {

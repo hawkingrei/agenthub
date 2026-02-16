@@ -58,6 +58,7 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
     onAcpSetConfig: () => {},
     onAcpCancel: () => {},
     onAcpClearSession: () => {},
+    onJumpToPermissionHistory: () => {},
     runtimeMetrics: {
       totalConversationItems: 0,
       sourceConversationItems: 0,

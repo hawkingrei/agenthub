@@ -205,6 +205,14 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
+  const [pendingPermissionJump, setPendingPermissionJump] = useState<{
+    toolCallId: string;
+    sessionId: string | null;
+    attempts: number;
+  } | null>(null);
+  const appRootRef = useRef<HTMLDivElement | null>(null);
+  const appHeaderRef = useRef<HTMLElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const [, setThinkingTick] = useState(0);
   const createAgentBusyRef = useRef(false);
   const lastEventCursorRef = useRef<Record<string, EventCursor>>({});
@@ -248,6 +256,100 @@ export function App() {
       JSON.stringify(inputHistory)
     );
   }, [inputHistory]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const syncViewportSize = () => {
+      const viewport = window.visualViewport;
+      const height = Math.max(
+        1,
+        Math.round(viewport?.height ?? window.innerHeight)
+      );
+      const width = Math.max(
+        1,
+        Math.round(viewport?.width ?? window.innerWidth)
+      );
+      root.style.setProperty("--agenthub-vh", `${height}px`);
+      root.style.setProperty("--agenthub-vw", `${width}px`);
+    };
+    syncViewportSize();
+    window.addEventListener("resize", syncViewportSize);
+    window.addEventListener("orientationchange", syncViewportSize);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", syncViewportSize);
+    viewport?.addEventListener("scroll", syncViewportSize);
+    return () => {
+      window.removeEventListener("resize", syncViewportSize);
+      window.removeEventListener("orientationchange", syncViewportSize);
+      viewport?.removeEventListener("resize", syncViewportSize);
+      viewport?.removeEventListener("scroll", syncViewportSize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const syncLayoutAnchors = () => {
+      const headerRect = appHeaderRef.current?.getBoundingClientRect();
+      if (headerRect) {
+        root.style.setProperty(
+          "--agenthub-header-height",
+          `${Math.max(0, Math.round(headerRect.height))}px`
+        );
+      }
+      const workspaceRect = workspaceRef.current?.getBoundingClientRect();
+      if (workspaceRect) {
+        root.style.setProperty(
+          "--agenthub-workspace-top",
+          `${Math.max(0, Math.round(workspaceRect.top))}px`
+        );
+      }
+    };
+    let rafId: number | null = null;
+    const scheduleSync = () => {
+      if (
+        typeof window.requestAnimationFrame !== "function" ||
+        typeof window.cancelAnimationFrame !== "function"
+      ) {
+        syncLayoutAnchors();
+        return;
+      }
+      if (rafId != null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        syncLayoutAnchors();
+      });
+    };
+    syncLayoutAnchors();
+    window.addEventListener("resize", scheduleSync);
+    window.addEventListener("orientationchange", scheduleSync);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", scheduleSync);
+    viewport?.addEventListener("scroll", scheduleSync);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => scheduleSync());
+      if (appRootRef.current) observer.observe(appRootRef.current);
+      if (appHeaderRef.current) observer.observe(appHeaderRef.current);
+      if (workspaceRef.current) observer.observe(workspaceRef.current);
+    }
+    return () => {
+      if (
+        rafId != null &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener("resize", scheduleSync);
+      window.removeEventListener("orientationchange", scheduleSync);
+      viewport?.removeEventListener("resize", scheduleSync);
+      viewport?.removeEventListener("scroll", scheduleSync);
+      observer?.disconnect();
+    };
+  }, [auth, normalizedError, agentsCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -373,6 +475,7 @@ export function App() {
   useEffect(() => {
     setAcpPermissions([]);
     setAcpPermissionHistory([]);
+    setPendingPermissionJump(null);
   }, [activeAgent]);
 
   useEffect(() => {
@@ -1594,6 +1697,56 @@ export function App() {
     acpView.toolCalls.length,
     acpView.messages.length,
   ]);
+
+  const onJumpToPermissionHistory = useCallback(
+    (permission: AcpPermissionRecord) => {
+      const toolCallId = permission.tool_call_id?.trim();
+      if (!toolCallId) return;
+      setAcpTab("conversation");
+      const targetSessionId = permission.session_id ?? null;
+      if (targetSessionId && targetSessionId !== activeSessionId) {
+        setActiveSessionId(targetSessionId);
+      }
+      setPendingPermissionJump({
+        toolCallId,
+        sessionId: targetSessionId,
+        attempts: 0,
+      });
+    },
+    [activeSessionId]
+  );
+
+  useEffect(() => {
+    if (!pendingPermissionJump) return;
+    if (acpTab !== "conversation") return;
+    if (
+      pendingPermissionJump.sessionId &&
+      activeSessionId !== pendingPermissionJump.sessionId
+    ) {
+      return;
+    }
+    if (acpConversation.jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
+      setPendingPermissionJump(null);
+      return;
+    }
+    if (pendingPermissionJump.attempts >= 24) {
+      setPendingPermissionJump(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setPendingPermissionJump((prev) => {
+        if (!prev) return prev;
+        return { ...prev, attempts: prev.attempts + 1 };
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [
+    pendingPermissionJump,
+    acpTab,
+    activeSessionId,
+    acpConversation.jumpToConversationToolCall,
+  ]);
+
   const acpConversationProps = useMemo(
     () => ({
       items: acpConversation.conversationRenderItems,
@@ -1607,6 +1760,7 @@ export function App() {
       stickToBottom: acpConversation.conversationStickToBottom,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
+      focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,
       ansi,
@@ -1622,6 +1776,7 @@ export function App() {
       acpConversation.conversationStickToBottom,
       acpConversation.conversationPendingCount,
       acpConversation.conversationAvgHeight,
+      acpConversation.focusedConversationToolCallId,
       acpConversation.handleConversationScroll,
       acpConversation.acpConversationRef,
       acpView.runStatus?.status,
@@ -1647,6 +1802,7 @@ export function App() {
       onAcpSetConfig,
       onAcpCancel,
       onAcpClearSession,
+      onJumpToPermissionHistory,
       runtimeMetrics: acpRuntimeMetrics,
     }),
     [
@@ -1663,6 +1819,7 @@ export function App() {
       onAcpSetConfig,
       onAcpCancel,
       onAcpClearSession,
+      onJumpToPermissionHistory,
       acpRuntimeMetrics,
     ]
   );
@@ -1734,8 +1891,8 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <header>
+    <div className="app" ref={appRootRef}>
+      <header ref={appHeaderRef}>
         <h1>AgentHub</h1>
         {auth && (
           <div className="session">
@@ -1809,6 +1966,7 @@ export function App() {
       {auth && (
         <section
           className={agentsCollapsed ? "workspace collapsed" : "workspace"}
+          ref={workspaceRef}
         >
           <AgentsPanel
             agents={agents}
