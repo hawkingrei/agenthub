@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify ACP Debug permission history supports click-to-expand ACP-bubble detail rendering and copy-to-clipboard action across desktop/mobile browsers (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
 - [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
 - [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).
