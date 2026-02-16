@@ -856,10 +856,7 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onRemoveWorker = (index: number) => {
-    setWorkers((prev) => {
-      if (prev.length <= 1) return prev;
-      return prev.filter((_, workerIndex) => workerIndex !== index);
-    });
+    setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
   };
 
   return (
@@ -978,12 +975,15 @@ export function TeamPage(props: TeamPageProps) {
                 />
                 <button
                   onClick={() => onRemoveWorker(index)}
-                  disabled={useSpecOverride || workers.length <= 1}
+                  disabled={useSpecOverride}
                 >
                   Remove Worker
                 </button>
               </div>
             ))}
+            {workers.length === 0 && (
+              <p className="muted">No workers configured. Team will run with leader only.</p>
+            )}
             <label className="checkbox">
               <input
                 type="checkbox"
@@ -1228,8 +1228,7 @@ export function TeamPage(props: TeamPageProps) {
                                 </span>
                                 <span className="team-status">{member.status}</span>
                                 <span className="team-id mono">
-                                  model={member.model ?? "-"} pending=
-                                  {member.pending_inbox_count}
+                                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                                 </span>
                               </button>
                             ))}
