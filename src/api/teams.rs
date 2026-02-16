@@ -23,6 +23,15 @@ use crate::team::{
 const TEAM_SPEC_VERSION_V1: i64 = 1;
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
+const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
+const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
+const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub. Plan tasks, coordinate workers via actor mailbox, \
+ack consumed messages, and produce the final synthesis.";
+const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team. Pull inbox, acknowledge assignments, execute tasks, \
+and report concise results to the leader.";
+const DEFAULT_TEAM_LEADER_SKILLS: [&str; 2] =
+    ["agenthub-actor-runtime", "team-leader-orchestrator"];
+const DEFAULT_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -918,7 +927,172 @@ fn normalize_team_spec(spec: &mut Value) -> Result<(), ApiError> {
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let version = parse_team_spec_version(spec_obj.get("spec_version"))?;
     spec_obj.insert("spec_version".to_string(), Value::from(version));
+    inject_team_spec_defaults(spec_obj)?;
     Ok(())
+}
+
+fn inject_team_spec_defaults(
+    spec_obj: &mut serde_json::Map<String, Value>,
+) -> Result<(), ApiError> {
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let member_ids = member_specs
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<HashSet<_>>();
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    if let Some(leader_id) = leader_member_id.as_deref() {
+        if !spec_obj.contains_key("leader_member_id") {
+            spec_obj.insert(
+                "leader_member_id".to_string(),
+                Value::String(leader_id.to_string()),
+            );
+        }
+    }
+
+    if let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) {
+        for member in members {
+            let Some(member_obj) = member.as_object_mut() else {
+                continue;
+            };
+            let Some(member_id) = member_obj
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+
+            let is_leader = leader_member_id.as_deref() == Some(member_id)
+                || member_obj
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    == Some("leader");
+            if is_missing_or_null(member_obj.get("prompt")) {
+                member_obj.insert(
+                    "prompt".to_string(),
+                    Value::String(if is_leader {
+                        DEFAULT_TEAM_LEADER_PROMPT.to_string()
+                    } else {
+                        DEFAULT_TEAM_WORKER_PROMPT.to_string()
+                    }),
+                );
+            }
+            if is_missing_or_null(member_obj.get("skills")) {
+                let defaults = if is_leader {
+                    DEFAULT_TEAM_LEADER_SKILLS.as_slice()
+                } else {
+                    DEFAULT_TEAM_WORKER_SKILLS.as_slice()
+                };
+                member_obj.insert(
+                    "skills".to_string(),
+                    Value::Array(
+                        defaults
+                            .iter()
+                            .map(|skill| Value::String((*skill).to_string()))
+                            .collect(),
+                    ),
+                );
+            }
+        }
+    }
+
+    let entrypoint_member_id = spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let leader_matches_entrypoint = match (leader_member_id.as_deref(), entrypoint_member_id) {
+        (Some(leader), Some(entrypoint)) => leader == entrypoint,
+        _ => true,
+    };
+    let should_generate_steps = spec_obj.get("steps").is_none()
+        && entrypoint_member_id.is_some_and(|entrypoint| member_ids.contains(entrypoint))
+        && leader_matches_entrypoint;
+
+    if should_generate_steps {
+        let leader_id = leader_member_id
+            .or_else(|| entrypoint_member_id.map(str::to_string))
+            .or_else(|| member_specs.first().map(|member| member.member_id.clone()))
+            .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
+        let worker_member_ids = member_specs
+            .iter()
+            .map(|member| member.member_id.clone())
+            .filter(|member_id| member_id != &leader_id)
+            .collect::<Vec<_>>();
+        let steps = build_default_team_steps(&leader_id, &worker_member_ids);
+        spec_obj.insert("steps".to_string(), Value::Array(steps));
+        spec_obj.insert(
+            "entrypoint".to_string(),
+            Value::String(DEFAULT_TEAM_PLAN_STEP_KEY.to_string()),
+        );
+    }
+
+    Ok(())
+}
+
+fn is_missing_or_null(value: Option<&Value>) -> bool {
+    match value {
+        None => true,
+        Some(Value::Null) => true,
+        Some(_) => false,
+    }
+}
+
+fn build_default_team_steps(leader_member_id: &str, worker_member_ids: &[String]) -> Vec<Value> {
+    let mut steps = Vec::with_capacity(worker_member_ids.len() + 2);
+    steps.push(serde_json::json!({
+        "step_key": DEFAULT_TEAM_PLAN_STEP_KEY,
+        "member_id": leader_member_id,
+        "depends_on": [],
+    }));
+    if worker_member_ids.is_empty() {
+        return steps;
+    }
+
+    let mut worker_step_keys = Vec::with_capacity(worker_member_ids.len());
+    for (index, worker_id) in worker_member_ids.iter().enumerate() {
+        let step_key = format!(
+            "worker_{}_{}",
+            index + 1,
+            sanitize_step_key_token(worker_id)
+        );
+        worker_step_keys.push(step_key.clone());
+        steps.push(serde_json::json!({
+            "step_key": step_key,
+            "member_id": worker_id,
+            "depends_on": [DEFAULT_TEAM_PLAN_STEP_KEY],
+        }));
+    }
+    steps.push(serde_json::json!({
+        "step_key": DEFAULT_TEAM_SYNTH_STEP_KEY,
+        "member_id": leader_member_id,
+        "depends_on": worker_step_keys,
+    }));
+    steps
+}
+
+fn sanitize_step_key_token(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_is_sep = false;
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_is_sep = false;
+            continue;
+        }
+        if !prev_is_sep {
+            out.push('_');
+            prev_is_sep = true;
+        }
+    }
+    let token = out.trim_matches('_');
+    if token.is_empty() {
+        "worker".to_string()
+    } else {
+        token.to_string()
+    }
 }
 
 fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
