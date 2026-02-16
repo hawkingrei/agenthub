@@ -25,10 +25,22 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub. Plan tasks, coordinate workers via actor mailbox, \
-ack consumed messages, and produce the final synthesis.";
-const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team. Pull inbox, acknowledge assignments, execute tasks, \
-and report concise results to the leader.";
+const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub.\n\
+Your job is to plan, delegate work to workers, and synthesize the final answer.\n\
+Workflow:\n\
+1. Read the run input and create a concise execution plan.\n\
+2. Use actor mailbox to assign concrete tasks to workers.\n\
+3. Pull inbox regularly and acknowledge consumed messages.\n\
+4. Merge worker outputs, resolve conflicts, and produce final deliverable.\n\
+5. If blocked, send clear follow-up questions to workers.";
+const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team.\n\
+Your job is to execute assignments from the team leader and report results.\n\
+Workflow:\n\
+1. Pull inbox and find the latest task from leader.\n\
+2. Acknowledge messages after reading.\n\
+3. Execute the task and summarize output with evidence.\n\
+4. Send the result back to leader via actor mailbox.\n\
+5. If blocked, send blocker details and a proposed next action.";
 const DEFAULT_TEAM_LEADER_SKILLS: [&str; 2] =
     ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const DEFAULT_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];

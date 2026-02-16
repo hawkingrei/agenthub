@@ -32,7 +32,7 @@ While functionally complete, it had two UX problems:
 
 ## Key Decisions
 
-- UI-only refactor: no API contract changes and no backend behavior changes.
+- No API contract changes. Backend now injects default `leader_member_id`, prompts/skills, and workflow steps when missing.
 - Stage navigation is explicit and non-blocking for review jumps, but `Next Stage` enforces minimal required inputs (`team name`, `leader member_id`).
 - Team member `member_id` in generated spec maps to existing Agent `id`; workdir/worktree still comes from Agent config and is not duplicated in Team spec.
 - Team create defaults include collaboration guidance so leader/worker can immediately use actor mailbox primitives without manual prompt bootstrapping.

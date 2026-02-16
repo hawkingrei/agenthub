@@ -150,7 +150,7 @@ function buildTeamSpecFromForm(
       member_id: worker.member_id,
       role: "worker",
       model: worker.model || undefined,
-      prompt: worker.prompt || undefined,
+      prompt: worker.prompt,
       skills: worker.skills,
     })),
   ];
@@ -907,6 +907,21 @@ export function TeamPage(props: TeamPageProps) {
     const fallbackLeaderId = agents[0]?.id ?? "";
     setLeaderMemberId(fallbackLeaderId);
   }, [agents, leaderMemberId, showCreateTeamModal]);
+
+  useEffect(() => {
+    if (!showCreateTeamModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (busy === "create-team") return;
+      event.preventDefault();
+      setShowCreateTeamModal(false);
+      setCreateTeamStage(0);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [busy, showCreateTeamModal]);
 
   const openCreateTeamModal = () => {
     setError(null);
