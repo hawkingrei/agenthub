@@ -1,6 +1,10 @@
 # TODO
 
 - [ ] Verify `scripts/check_team_proto_codegen.sh` fails fast when `team.proto` generated symbols drift and when generated protobuf Rust files are accidentally tracked (see `docs/features/2026-02-15-team-proto-codegen-check.md`).
+- [ ] Verify new `userdocs` information architecture and cross-page navigation links after content expansion (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
+- [ ] Verify newly added `userdocs` practical pages (`configuration`, `review`, `security`, `daily checklist`) align with current UI labels and runtime behavior (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
+- [ ] Verify `userdocs` build no longer reports broken `/` links and deprecation warnings after root-slug/config migration (see `docs/features/2026-02-15-userdocs-build-root-link-fix.md`).
+- [x] Verify Docusaurus userdocs site install/build flow in CI (see `docs/features/2026-02-15-userdocs-ci-build-check.md`).
 - [x] Verify tool call fold behavior auto-collapses after live status ends while still allowing manual expand/collapse (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Add virtualized ACP conversation window for non-stick mode to cap DOM render size on long sessions (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
 - [x] Memoize ACP conversation row rendering (`ConversationBubble` + tool/plan/markdown bubbles) to cut repeated render work during scroll (see `docs/features/2026-02-14-acp-search-fold-plan-history.md`).
@@ -102,6 +106,7 @@
 - [x] Verify worktree-default helper logic (`runtime defaults` + `create modal prefill`) with dedicated web unit tests to keep coverage stable (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [ ] Verify `create_worktree` agents can restart after process reboot without failing `workdir is not empty` when the target path is already a valid git worktree for the configured repo (see `docs/features/2026-02-15-create-worktree-restart-reuse.md`).
 - [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
 - [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
@@ -163,6 +168,9 @@
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
+- [ ] Verify header network/SSE badge state transitions and Cloudflare HTML stream errors are normalized to compact connectivity messages (see `docs/features/2026-02-15-sse-connection-indicator-and-error-sanitization.md`).
+- [ ] Verify bounded SSE fan-in channel behavior under burst output and slow/disconnected clients, ensuring memory does not grow unbounded and polling/history catch-up remains correct (see `docs/features/2026-02-15-sse-bounded-fan-in-and-connection-status-followups.md`).
+- [ ] Verify multi-agent SSE subscription keeps a stable single connection across active-agent switches and updates agent status in background (see `docs/features/2026-02-15-sse-multi-agent-subscription.md`).
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
 - [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).
