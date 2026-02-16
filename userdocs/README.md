@@ -1,6 +1,7 @@
 # AgentHub User Docs (Docusaurus)
 
-This directory contains a Docusaurus site for end-user documentation.
+This directory contains the end-user documentation site for AgentHub.
+It is used as a static site generator (no runtime backend required for hosting docs).
 
 ## Local Preview
 
@@ -10,11 +11,36 @@ npm install
 npm run start
 ```
 
-## Build
+Default preview URL is `http://localhost:3000`.
+
+## Build Static Site
 
 ```bash
 cd userdocs
 npm run build
 ```
 
-The generated static site is written to `userdocs/build/`.
+Static output is generated at `userdocs/build/`.
+
+## Serve Built Output Locally
+
+```bash
+cd userdocs
+npm run serve
+```
+
+## Deploy on Vercel (Static Hosting)
+
+Recommended project settings:
+
+- Root Directory: `userdocs`
+- Install Command: `npm install`
+- Build Command: `npm run build`
+- Output Directory: `build`
+
+## Content Organization
+
+- `docs/`: user-facing pages
+- `sidebars.js`: navigation structure
+- `docusaurus.config.js`: site-level config
+- `src/css/custom.css`: docs site styling

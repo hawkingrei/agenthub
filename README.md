@@ -1,55 +1,58 @@
 # AgentHub
 
-AgentHub is a single-binary service for managing and interacting with remote AI agents. It provides a web UI, ACP-based structured output rendering, and persistent sessions backed by SQLite. It also supports A2A (agent-to-agent) orchestration for multi-agent workflows.
+AgentHub is a single-binary service for managing and interacting with remote AI agents.
+It provides a Rust backend, an embedded React web UI, ACP-based structured output rendering,
+and SQLite-backed persistent sessions.
 
-## Features
+## What You Can Do
 
 - Create, start, stop, and delete agents
-- ACP event rendering (messages, tool calls, plan, commands, debug)
-- A2A orchestration for multi-agent collaboration
-- Session persistence even when the browser is closed
-- Passkey-based login with device join flow
-- Safe path enforcement and audit logging
-- Web Push notifications (VAPID management UI)
-- Embedded frontend (Vite build served by Rust)
+- Run long-lived tasks that continue after the browser tab closes
+- Inspect ACP events (messages, plans, tool calls, command output, debug stream)
+- Run multi-agent workflows with A2A team orchestration
+- Receive completion notifications in the web UI
+- Keep operational history with auditable logs and persisted session state
 
-## Requirements
+## Documentation Map
 
-- Rust (stable)
-- Node.js 20+ (for the web build)
-- Bazel / Bazelisk (optional, for Bazel-driven Rust build + test entrypoints)
+- End-user docs site: `userdocs/`
+- Internal engineering notes: `docs/features/`
+- Internal backlog / follow-ups: `docs/todo.md`
+- API payload naming conventions: `docs/api_naming.md`
 
-## Quick Start
-
-```bash
-# Build the web UI
-cd web
-npm install
-npm run build
-
-# Run the server
-cd ..
-cargo run
-```
-
-The server serves the UI on `http://localhost:8080`.
-
-## User Documentation Site (Docusaurus)
-
-AgentHub includes an end-user documentation site under `userdocs/`.
+For user-facing documentation preview/build:
 
 ```bash
 cd userdocs
 npm install
-npm run start
+npm run start   # local preview
+npm run build   # static output at userdocs/build
 ```
 
-The Docusaurus dev server will print a local preview URL (default:
-`http://localhost:3000`).
+## Requirements
+
+- Rust (stable)
+- Node.js 20+ (for web and userdocs build)
+- Bazel / Bazelisk (optional, for Bazel-driven checks)
+
+## Quick Start (Local)
+
+```bash
+# 1) Build web assets
+cd web
+npm install
+npm run build
+
+# 2) Run AgentHub
+cd ..
+cargo run
+```
+
+Default UI address: `http://localhost:8080`.
 
 ## Configuration
 
-AgentHub reads configuration from a `config.toml` file. Example:
+AgentHub reads config from `config.toml`.
 
 ```toml
 listen_addr = "0.0.0.0:8080"
@@ -60,45 +63,47 @@ safe_paths = [
 ]
 ```
 
-The database and runtime state live under `~/.agenthub/` by default.
+Runtime state (database, local artifacts) defaults to `~/.agenthub/`.
 
-## Development
+## Common Development Commands
 
 ```bash
-# Rust tests
+# Run Rust tests
 cargo test
 
-# Web tests
+# Run frontend unit tests
 cd web
-npm run test
+npm test
 
-# Bazel-driven checks
+# Lint frontend
+npm run lint
+
+# Bazel checks (optional)
+cd ..
 bazel build //...
 bazel test //...
 ```
 
-## Internal Proto Codegen
+## Internal Proto Codegen Guard
 
-`proto/internal/v1/team.proto` is compiled at build-time by `build.rs` through
-`tonic-build` and is not checked into git as generated Rust code.
+`proto/internal/v1/team.proto` is compiled via `build.rs` (`tonic-build`) at build time.
+Generated Rust protobuf sources are not checked into git.
 
 ```bash
-# verify protobuf codegen path and generated symbols
+# verify codegen consistency and tracked-file guard
 make proto-check
-
-# manual regeneration trigger (generated output under target/*/build/*/out/)
-cargo check --locked
 ```
 
-## Project Layout
+## Repository Layout
 
-```
+```text
 agenthub/
   src/                # Rust server
   web/                # Vite + React frontend
-  agenthub-codex-acp/ # ACP adapter (workspace member)
-  migrations/         # DB migrations
-  AGENTS.md
+  userdocs/           # Docusaurus user documentation site
+  agenthub-codex-acp/ # ACP adapter workspace member
+  docs/               # Internal engineering docs and change notes
+  migrations/         # SQLite migrations
 ```
 
 ## License
