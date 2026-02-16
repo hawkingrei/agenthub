@@ -121,6 +121,7 @@
 - [x] Bump Bazel Rust toolchain to `1.93.1` to satisfy `time-macros 0.2.26` MSRV and fix CI unstable-feature compile failures (see `docs/features/2026-02-15-bazel-rust-toolchain-time-macros-msrv.md`).
 - [x] Pin Rust version to `1.93.1` across rustup files and CI workflows to keep Bazel/Cargo/CI toolchains consistent (see `docs/features/2026-02-15-rust-version-pinning-unified.md`).
 - [x] Guard `RustEmbed` web embedding behind non-debug cfg so Bazel debug/test builds do not fail when `web/dist` is absent (see `docs/features/2026-02-15-bazel-debug-rust-embed-web-dist-guard.md`).
+- [x] Fix post-merge CI compatibility: declare `agenthub-codex-acp` markdown prompt files as Bazel compile inputs and relax proto codegen check to tracked-file parity mode (see `docs/features/2026-02-16-bazel-codex-md-and-proto-check-compat.md`).
 - [ ] Verify agent model tag shows model flag or provider fallback (see `docs/features/2026-02-10-agent-model-tag.md`).
 - [ ] Verify agents panel list scrolls internally without page scroll (see `docs/features/2026-02-10-agents-panel-scroll.md`).
 - [ ] Verify start handles already-running agents without stale UI state (see `docs/features/2026-02-10-agent-start-already-running.md`).

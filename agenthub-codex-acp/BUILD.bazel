@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "agenthub_codex_acp",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = glob(["src/**/*.md"]),
     crate_name = "agenthub_codex_acp",
     crate_root = "src/lib.rs",
     edition = "2024",
