@@ -451,19 +451,114 @@ export function TeamPage(props: TeamPageProps) {
     () => [leaderMemberId.trim(), ...workerAgentIds].filter((item) => item.length > 0),
     [leaderMemberId, workerAgentIds]
   );
-  const hasDuplicateMembers = useMemo(() => {
-    const set = new Set(selectedMemberIds);
-    return set.size !== selectedMemberIds.length;
+  const duplicateMemberIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const memberId of selectedMemberIds) {
+      counts.set(memberId, (counts.get(memberId) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([memberId]) => memberId);
   }, [selectedMemberIds]);
+  const hasDuplicateMembers = duplicateMemberIds.length > 0;
+  const unassignedWorkerSlots = useMemo(
+    () => workers.filter((worker) => worker.member_id.trim().length === 0).length,
+    [workers]
+  );
+  const availableWorkerAgentCount = useMemo(() => {
+    const used = new Set<string>([leaderMemberId.trim(), ...workerAgentIds]);
+    return agents.filter((agent) => !used.has(agent.id)).length;
+  }, [agents, leaderMemberId, workerAgentIds]);
+  const isMissionBriefReady = useMemo(
+    () => newTeamName.trim().length > 0,
+    [newTeamName]
+  );
+  const isLeaderForgeReady = useMemo(
+    () => leaderMemberId.trim().length > 0 && agents.some((agent) => agent.id === leaderMemberId),
+    [agents, leaderMemberId]
+  );
+  const isRecruitWorkersReady = useMemo(
+    () => !hasDuplicateMembers,
+    [hasDuplicateMembers]
+  );
+  const createStageReadiness = useMemo(
+    () =>
+      ({
+        0: isMissionBriefReady,
+        1: isLeaderForgeReady,
+        2: isRecruitWorkersReady,
+        3: true,
+      }) as Record<CreateTeamStage, boolean>,
+    [isLeaderForgeReady, isMissionBriefReady, isRecruitWorkersReady]
+  );
+  const currentStageBlockReason = useMemo(() => {
+    if (createTeamStage === 0 && !isMissionBriefReady) {
+      return "Team name is required to continue.";
+    }
+    if (createTeamStage === 1 && !isLeaderForgeReady) {
+      return "Select a valid leader agent before continuing.";
+    }
+    if (createTeamStage === 2 && !isRecruitWorkersReady) {
+      return "Resolve duplicate member assignments before continuing.";
+    }
+    return null;
+  }, [
+    createTeamStage,
+    isLeaderForgeReady,
+    isMissionBriefReady,
+    isRecruitWorkersReady,
+  ]);
   const canAdvanceCreateStage = useMemo(() => {
-    if (createTeamStage === 0) {
-      return newTeamName.trim().length > 0;
-    }
-    if (createTeamStage === 1) {
-      return leaderMemberId.trim().length > 0 && agents.some((agent) => agent.id === leaderMemberId);
-    }
-    return true;
-  }, [agents, createTeamStage, leaderMemberId, newTeamName]);
+    return createStageReadiness[createTeamStage];
+  }, [createStageReadiness, createTeamStage]);
+  const canEnterCreateStage = useCallback(
+    (target: CreateTeamStage): boolean => {
+      if (target <= createTeamStage) {
+        return true;
+      }
+      for (let index = 0; index < target; index += 1) {
+        const stage = index as CreateTeamStage;
+        if (!createStageReadiness[stage]) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [createStageReadiness, createTeamStage]
+  );
+  const questChecklist = useMemo(
+    () => [
+      {
+        key: "brief",
+        label: "Mission name set",
+        ready: isMissionBriefReady,
+      },
+      {
+        key: "leader",
+        label: "Leader selected",
+        ready: isLeaderForgeReady,
+      },
+      {
+        key: "party",
+        label: hasDuplicateMembers
+          ? "Resolve duplicate member assignments"
+          : "Party assignments are unique",
+        ready: isRecruitWorkersReady,
+      },
+      {
+        key: "launch",
+        label: useSpecOverride ? "Manual spec override enabled" : "Auto workflow ready",
+        ready: true,
+      },
+    ],
+    [
+      hasDuplicateMembers,
+      isLeaderForgeReady,
+      isMissionBriefReady,
+      isRecruitWorkersReady,
+      useSpecOverride,
+    ]
+  );
   const leaderModelOptions = useMemo(
     () => resolveTeamModelOptions(leaderModel),
     [leaderModel]
@@ -828,11 +923,26 @@ export function TeamPage(props: TeamPageProps) {
     setCreateTeamStage(0);
   };
 
+  const onSelectCreateTeamStage = (target: CreateTeamStage) => {
+    if (canEnterCreateStage(target)) {
+      setError(null);
+      setCreateTeamStage(target);
+      return;
+    }
+    setError("Complete previous stage requirements before advancing.");
+  };
+
   const goToNextCreateTeamStage = () => {
+    if (!canAdvanceCreateStage) {
+      setError(currentStageBlockReason ?? "Complete current stage requirements first.");
+      return;
+    }
+    setError(null);
     setCreateTeamStage((prev) => clampCreateTeamStage(prev + 1));
   };
 
   const goToPrevCreateTeamStage = () => {
+    setError(null);
     setCreateTeamStage((prev) => clampCreateTeamStage(prev - 1));
   };
 
@@ -1110,6 +1220,52 @@ export function TeamPage(props: TeamPageProps) {
       ]);
       const memberId = pickNextWorkerAgentId(agents, excluded);
       return [...prev, buildDefaultWorkerDraft(memberId)];
+    });
+  };
+
+  const onAddAllRemainingWorkers = () => {
+    setWorkers((prev) => {
+      const used = new Set<string>([
+        leaderMemberId.trim(),
+        ...prev
+          .map((worker) => worker.member_id.trim())
+          .filter((memberId) => memberId.length > 0),
+      ]);
+      const next = [...prev];
+      for (const agent of agents) {
+        if (used.has(agent.id)) {
+          continue;
+        }
+        used.add(agent.id);
+        next.push(buildDefaultWorkerDraft(agent.id));
+      }
+      return next;
+    });
+  };
+
+  const onResolveDuplicateWorkers = () => {
+    setWorkers((prev) => {
+      const used = new Set<string>();
+      const leaderId = leaderMemberId.trim();
+      if (leaderId) {
+        used.add(leaderId);
+      }
+      return prev.map((worker) => {
+        const memberId = worker.member_id.trim();
+        if (!memberId) {
+          return worker;
+        }
+        if (!used.has(memberId)) {
+          used.add(memberId);
+          return worker;
+        }
+        const replacement = pickNextWorkerAgentId(agents, used);
+        if (!replacement) {
+          return { ...worker, member_id: "" };
+        }
+        used.add(replacement);
+        return { ...worker, member_id: replacement };
+      });
     });
   };
 
@@ -1876,6 +2032,7 @@ export function TeamPage(props: TeamPageProps) {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
                 const isCompleted = stageIndex < createTeamStage;
+                const isLocked = !canEnterCreateStage(stageIndex);
                 return (
                   <button
                     key={title}
@@ -1884,10 +2041,18 @@ export function TeamPage(props: TeamPageProps) {
                         ? "team-create-stage active"
                         : isCompleted
                           ? "team-create-stage completed"
+                          : isLocked
+                            ? "team-create-stage locked"
                           : "team-create-stage"
                     }
-                    onClick={() => setCreateTeamStage(stageIndex)}
+                    onClick={() => onSelectCreateTeamStage(stageIndex)}
                     type="button"
+                    aria-disabled={isLocked && !isActive && !isCompleted}
+                    title={
+                      isLocked && !isActive && !isCompleted
+                        ? "Complete previous stage requirements first"
+                        : undefined
+                    }
                   >
                     <span className="team-create-stage-index">#{index + 1}</span>
                     <span className="team-create-stage-title">{title}</span>
@@ -1897,6 +2062,27 @@ export function TeamPage(props: TeamPageProps) {
             </div>
 
             <div className="modal-body">
+              <div className="team-create-checklist">
+                {questChecklist.map((item) => (
+                  <div
+                    key={item.key}
+                    className={
+                      item.ready
+                        ? "team-create-check-item ready"
+                        : "team-create-check-item pending"
+                    }
+                  >
+                    <span
+                      className="team-create-check-icon"
+                      aria-hidden="true"
+                    >
+                      {item.ready ? "✓" : "○"}
+                    </span>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+
               {createTeamStage === 0 && (
                 <div className="team-create-panel">
                   <h4>Mission Brief</h4>
@@ -1904,6 +2090,11 @@ export function TeamPage(props: TeamPageProps) {
                     Pick a team name and description first. This is the party identity shown in
                     the workbench.
                   </p>
+                  {!isMissionBriefReady && (
+                    <p className="team-create-stage-note">
+                      Team name is required before entering the next stage.
+                    </p>
+                  )}
                   <input
                     placeholder="team name"
                     value={newTeamName}
@@ -1924,6 +2115,11 @@ export function TeamPage(props: TeamPageProps) {
                     Choose the leader agent first. Its existing workdir/worktree config will be
                     reused when this team run starts.
                   </p>
+                  {!isLeaderForgeReady && hasAgents && (
+                    <p className="team-create-stage-note">
+                      Select one leader agent to continue.
+                    </p>
+                  )}
                   {!hasAgents && (
                     <p className="muted">
                       No agents available yet. Create at least one agent in `Agents` mode first.
@@ -1977,15 +2173,31 @@ export function TeamPage(props: TeamPageProps) {
                 <div className="team-create-panel">
                   <div className="toolbar">
                     <h4>Recruit Workers</h4>
-                    <button onClick={onAddWorker} disabled={useSpecOverride || !hasAgents}>
-                      Add Worker
-                    </button>
+                    <div className="toolbar-actions">
+                      <button onClick={onAddWorker} disabled={useSpecOverride || !hasAgents}>
+                        Add Worker
+                      </button>
+                      <button
+                        onClick={onAddAllRemainingWorkers}
+                        disabled={useSpecOverride || !hasAgents || availableWorkerAgentCount === 0}
+                        type="button"
+                      >
+                        Auto Fill Party
+                      </button>
+                    </div>
                   </div>
                   <p className="muted">
                     Build your party. Each worker maps to an existing agent (and reuses its
                     workdir/worktree config). Worker model/prompt/skills can still be customized
                     at team level.
                   </p>
+                  {unassignedWorkerSlots > 0 && (
+                    <p className="team-create-stage-note">
+                      {unassignedWorkerSlots} worker slot
+                      {unassignedWorkerSlots > 1 ? "s are" : " is"} currently unassigned and will
+                      be ignored unless selected.
+                    </p>
+                  )}
                   <div className="team-create-worker-grid">
                     {workers.map((worker, index) => {
                       const selectedByOthers = new Set(
@@ -2080,9 +2292,15 @@ export function TeamPage(props: TeamPageProps) {
                     <p className="muted">No workers configured. Team will run with leader only.</p>
                   )}
                   {hasDuplicateMembers && (
-                    <p className="muted">
-                      Leader and workers must reference different agents.
-                    </p>
+                    <div className="team-create-warning">
+                      <p className="muted">
+                        Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
+                        and workers must reference different agents.
+                      </p>
+                      <button onClick={onResolveDuplicateWorkers} type="button">
+                        Resolve Duplicates
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -2122,6 +2340,9 @@ export function TeamPage(props: TeamPageProps) {
             </div>
 
             <div className="modal-actions team-create-actions">
+              {!canAdvanceCreateStage && currentStageBlockReason && (
+                <span className="team-create-actions-note">{currentStageBlockReason}</span>
+              )}
               <button
                 className="ghost"
                 onClick={closeCreateTeamModal}

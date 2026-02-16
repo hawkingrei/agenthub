@@ -1351,7 +1351,7 @@ export function App() {
     token,
     activeAgent,
     activeSessionId,
-    acpConversation.jumpToConversationBottom,
+    acpConversation,
     refreshAgents,
   ]);
 
@@ -1571,7 +1571,7 @@ export function App() {
   }, [
     acpConversation.conversationTotalItems,
     acpConversation.conversationSourceItems,
-    acpConversation.conversationRenderItems,
+    acpConversation.conversationRenderedItems,
     acpConversation.conversationPendingCount,
     acpConversation.conversationVirtualized,
     acpConversation.conversationStickToBottom,
