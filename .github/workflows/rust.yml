@@ -7,7 +7,7 @@ on:
 
 jobs:
   rust:
-    name: Rust (Bazel Targets)
+    name: Rust (Cargo)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -16,30 +16,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.1
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.15.0
-      - name: Bazel build (Rust targets)
-        run: bazel build //:agenthub //agenthub-codex-acp:agenthub_codex_acp_bin
-      - name: Bazel coverage (Rust targets)
+      - name: Setup Rust coverage tool
         run: |
-          bazel coverage --combined_report=lcov --test_output=errors \
-            //:agenthub_unit_tests \
-            //crates/agenthub-acp-core:agenthub_acp_core_tests \
-            //crates/agenthub-acp:agenthub_acp_tests \
-            //crates/agenthub-team-actor:agenthub_team_actor_tests \
-            //agenthub-codex-acp:agenthub_codex_acp_tests
-      - name: Collect Rust lcov report
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+      - name: Cargo check (workspace)
+        run: cargo check --workspace --locked
+      - name: Cargo test coverage (workspace)
         run: |
-          set -euo pipefail
-          coverage_file="$(bazel info output_path)/_coverage/_coverage_report.dat"
-          test -f "${coverage_file}"
-          cp "${coverage_file}" bazel-rust.lcov
-          wc -l bazel-rust.lcov
+          cargo llvm-cov --workspace --locked --lcov --output-path rust-cargo.lcov
+          wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: bazel-rust.lcov
-          flags: rust
-          name: rust-coverage
+          files: rust-cargo.lcov
+          flags: rust-cargo
+          name: rust-cargo-coverage
           fail_ci_if_error: false
