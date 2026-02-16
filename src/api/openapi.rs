@@ -221,6 +221,35 @@ fn openapi_spec() -> Value {
               "spec": { "type": "object", "additionalProperties": true }
             }
           },
+          "AssistTeamRequest": {
+            "type": "object",
+            "required": ["brief"],
+            "properties": {
+              "brief": { "type": "string" },
+              "leader_member_id": { "type": ["string", "null"] },
+              "worker_member_ids": {
+                "type": ["array", "null"],
+                "items": { "type": "string" }
+              }
+            }
+          },
+          "AssistTeamResponse": {
+            "type": "object",
+            "required": [
+              "summary",
+              "leader_prompt",
+              "leader_skills",
+              "worker_prompt",
+              "worker_skills"
+            ],
+            "properties": {
+              "summary": { "type": "string" },
+              "leader_prompt": { "type": "string" },
+              "leader_skills": { "type": "array", "items": { "type": "string" } },
+              "worker_prompt": { "type": "string" },
+              "worker_skills": { "type": "array", "items": { "type": "string" } }
+            }
+          },
           "CreateTeamRunRequest": {
             "type": "object",
             "properties": {
@@ -292,6 +321,30 @@ fn openapi_spec() -> Value {
                 "content": {
                   "text/html": {
                     "schema": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/assist": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Generate leader/worker prompt and skill recommendations from brief",
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/AssistTeamRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Prompt and skill recommendations",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/AssistTeamResponse" }
                   }
                 }
               }
@@ -902,6 +955,7 @@ mod tests {
             .expect("read response body");
         let value: Value = serde_json::from_slice(&bytes).expect("decode openapi json");
         assert_eq!(value["openapi"], Value::from("3.0.3"));
+        assert!(value["paths"]["/api/teams/assist"].is_object());
         assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
         assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     }

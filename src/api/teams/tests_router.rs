@@ -27,6 +27,31 @@ async fn teams_router_http_contract() {
         .expect("create invalid team via router");
     assert_eq!(invalid_spec_resp.status(), StatusCode::BAD_REQUEST);
 
+    let assist_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/assist",
+            Some(&token),
+            Some(json!({
+                "brief": "Investigate flaky tests and coordinate a stable release"
+            })),
+        ))
+        .await
+        .expect("assist team via router");
+    assert_eq!(assist_resp.status(), StatusCode::OK);
+    let assisted = decode_json_body(assist_resp).await;
+    assert!(
+        assisted["leader_prompt"]
+            .as_str()
+            .is_some_and(|prompt| prompt.contains("Mission brief"))
+    );
+    assert!(
+        assisted["leader_skills"]
+            .as_array()
+            .is_some_and(|skills| !skills.is_empty())
+    );
+
     let create_team_resp = app
         .clone()
         .oneshot(build_json_request(

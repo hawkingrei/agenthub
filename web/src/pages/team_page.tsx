@@ -122,7 +122,8 @@ function buildTeamSpecFromForm(
   leaderModel: string,
   leaderPrompt: string,
   leaderSkills: string,
-  workers: WorkerDraft[]
+  workers: WorkerDraft[],
+  workspaceRoot: string
 ): unknown {
   const leaderId = leaderMemberId.trim();
   const normalizedWorkers = workers
@@ -155,13 +156,19 @@ function buildTeamSpecFromForm(
     })),
   ];
 
-  return {
+  const spec: Record<string, unknown> = {
     spec_version: 1,
     entrypoint: steps[0]?.step_key ?? leaderId,
     leader_member_id: leaderId,
     members,
     steps,
   };
+
+  const workspaceRootValue = workspaceRoot.trim();
+  if (workspaceRootValue.length > 0) {
+    spec.workspace = { root: workspaceRootValue };
+  }
+  return spec;
 }
 
 function buildDefaultWorkflowSteps(
@@ -334,6 +341,8 @@ export function TeamPage(props: TeamPageProps) {
 
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamDescription, setNewTeamDescription] = useState("");
+  const [missionBrief, setMissionBrief] = useState("");
+  const [teamWorkspaceRoot, setTeamWorkspaceRoot] = useState("");
   const [useSpecOverride, setUseSpecOverride] = useState(false);
   const [newTeamSpec, setNewTeamSpec] = useState("{}");
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
@@ -420,9 +429,17 @@ export function TeamPage(props: TeamPageProps) {
         leaderModel,
         leaderPrompt,
         leaderSkills,
-        workers
+        workers,
+        teamWorkspaceRoot
       ),
-    [leaderMemberId, leaderModel, leaderPrompt, leaderSkills, workers]
+    [
+      leaderMemberId,
+      leaderModel,
+      leaderPrompt,
+      leaderSkills,
+      teamWorkspaceRoot,
+      workers,
+    ]
   );
 
   const displayedTeamSpec = useMemo(() => {
@@ -596,6 +613,8 @@ export function TeamPage(props: TeamPageProps) {
     const firstWorkerId = pickNextWorkerAgentId(agentPool, excluded);
     setNewTeamName("");
     setNewTeamDescription("");
+    setMissionBrief("");
+    setTeamWorkspaceRoot("");
     setLeaderMemberId(leaderId);
     setLeaderModel("");
     setLeaderPrompt(DEFAULT_TEAM_LEADER_PROMPT);
@@ -994,6 +1013,42 @@ export function TeamPage(props: TeamPageProps) {
       setSelectedTeamId(created.id);
       resetTeamDraft(agents);
       closeCreateTeamModal();
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onAssistTeam = async () => {
+    const brief = missionBrief.trim();
+    if (!brief) {
+      setError("Mission brief is required");
+      return;
+    }
+    setBusy("assist-team");
+    setError(null);
+    try {
+      const workerIds = workers
+        .map((worker) => worker.member_id.trim())
+        .filter((memberId) => memberId.length > 0);
+      const assisted = await api.assistTeam(props.token, {
+        brief,
+        leader_member_id: leaderMemberId.trim() || undefined,
+        worker_member_ids: workerIds.length > 0 ? workerIds : undefined,
+      });
+      setLeaderPrompt(assisted.leader_prompt);
+      setLeaderSkills(assisted.leader_skills.join(", "));
+      setWorkers((prev) =>
+        prev.map((worker) => ({
+          ...worker,
+          prompt: assisted.worker_prompt,
+          skills: assisted.worker_skills.join(", "),
+        }))
+      );
+      if (!newTeamDescription.trim()) {
+        setNewTeamDescription(assisted.summary);
+      }
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -2110,6 +2165,22 @@ export function TeamPage(props: TeamPageProps) {
                       Team name is required before entering the next stage.
                     </p>
                   )}
+                  <textarea
+                    className="mono"
+                    rows={5}
+                    placeholder="Describe the mission in 1-3 lines. AI assist will expand this into leader/worker prompts and skill recommendations."
+                    value={missionBrief}
+                    onChange={(event) => setMissionBrief(event.target.value)}
+                  />
+                  <div className="form-row">
+                    <button
+                      onClick={onAssistTeam}
+                      disabled={busy === "assist-team"}
+                      type="button"
+                    >
+                      Generate prompts & skills
+                    </button>
+                  </div>
                   <input
                     placeholder="team name"
                     value={newTeamName}
@@ -2120,6 +2191,15 @@ export function TeamPage(props: TeamPageProps) {
                     value={newTeamDescription}
                     onChange={(event) => setNewTeamDescription(event.target.value)}
                   />
+                  <input
+                    placeholder="workspace root (optional, e.g. ~/abc)"
+                    value={teamWorkspaceRoot}
+                    onChange={(event) => setTeamWorkspaceRoot(event.target.value)}
+                  />
+                  <p className="muted">
+                    When set, Team Forge creates prompt files in `&lt;root&gt;/.agent` and isolated
+                    member workdirs in `&lt;root&gt;/worktrees`.
+                  </p>
                 </div>
               )}
 
@@ -2330,6 +2410,7 @@ export function TeamPage(props: TeamPageProps) {
                     <span>team={newTeamName.trim() || "-"}</span>
                     <span>leader={leaderMemberId.trim() || "-"}</span>
                     <span>workers={configuredWorkerCount}</span>
+                    <span>workspace={teamWorkspaceRoot.trim() || "-"}</span>
                   </div>
                   <p className="muted">
                     Default workflow is generated automatically:

@@ -125,7 +125,9 @@ fn styles_keep_acp_conversation_scoped() {
         "styles.css should use dynamic viewport height fallback for mobile browsers"
     );
     assert!(
-        css.contains("top: var(--agenthub-workspace-top, calc(56px + env(safe-area-inset-top, 0px)));"),
+        css.contains(
+            "top: var(--agenthub-workspace-top, calc(56px + env(safe-area-inset-top, 0px)));"
+        ),
         "mobile workspace drawer should anchor to computed workspace top"
     );
     assert!(

@@ -222,6 +222,14 @@ export type TeamMailboxSnapshot = {
   recent_messages: TeamActorMessageRecord[];
 };
 
+export type TeamAssistResponse = {
+  summary: string;
+  leader_prompt: string;
+  leader_skills: string[];
+  worker_prompt: string;
+  worker_skills: string[];
+};
+
 export type TeamRunSnapshotRecord = {
   run: TeamRunRecord;
   team: TeamDefinitionRecord;
@@ -352,6 +360,18 @@ export const api = {
     payload: { name: string; description?: string; spec: unknown }
   ) =>
     apiFetch<TeamDefinitionRecord>("/api/teams", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  assistTeam: (
+    token: string,
+    payload: {
+      brief: string;
+      leader_member_id?: string;
+      worker_member_ids?: string[];
+    }
+  ) =>
+    apiFetch<TeamAssistResponse>("/api/teams/assist", token, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

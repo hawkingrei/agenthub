@@ -69,6 +69,236 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
 }
 
 #[tokio::test]
+async fn teams_api_assist_generates_prompt_and_skill_recommendations() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(assisted) = assist_team(
+        State(state),
+        headers,
+        Json(AssistTeamRequest {
+            brief: "Investigate CI regression, fix flaky tests, and publish release notes"
+                .to_string(),
+            leader_member_id: None,
+            worker_member_ids: None,
+        }),
+    )
+    .await
+    .expect("assist team");
+
+    assert!(!assisted.summary.trim().is_empty());
+    assert!(assisted.leader_prompt.contains("Mission brief"));
+    assert!(assisted.worker_prompt.contains("Team-specific execution contract"));
+    assert!(
+        assisted
+            .leader_skills
+            .iter()
+            .any(|skill| skill == "incident-triage")
+    );
+    assert!(
+        assisted
+            .worker_skills
+            .iter()
+            .any(|skill| skill == "test-automation")
+    );
+}
+
+#[tokio::test]
+async fn teams_api_duplicate_name_skips_workspace_provision_side_effects() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let _ = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "duplicate-workspace-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create baseline team");
+
+    let agent_base =
+        std::env::temp_dir().join(format!("agenthub-team-agent-base-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&agent_base).expect("create agent base");
+    let agent_base_str = agent_base.to_string_lossy().to_string();
+    let workspace_root = std::env::temp_dir().join(format!("agenthub-team-workspace-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&workspace_root).expect("create workspace root");
+    let workspace_root_str = workspace_root.to_string_lossy().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&agent_base_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for agent base");
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workspace_root_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for workspace root");
+
+    let leader = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: "duplicate-workspace-leader".to_string(),
+            workdir: agent_base_str.clone(),
+            command: "sh".to_string(),
+            args: vec!["-lc".to_string(), "echo leader".to_string()],
+            worktree_mode: WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+        })
+        .await
+        .expect("create leader agent");
+
+    let err = create_team(
+        State(state.clone()),
+        headers,
+        Json(CreateTeamRequest {
+            name: "duplicate-workspace-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint": leader.id,
+                "leader_member_id": leader.id,
+                "members": [{"member_id": leader.id, "role": "leader"}],
+                "workspace": {"root": workspace_root_str}
+            }),
+        }),
+    )
+    .await
+    .expect_err("duplicate team should fail before workspace provisioning");
+    assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
+    assert!(
+        !workspace_root.join(".agent").exists(),
+        "workspace prompt directory should not be created on duplicate name"
+    );
+    assert!(
+        !workspace_root.join("worktrees").exists(),
+        "workspace worktrees directory should not be created on duplicate name"
+    );
+    let updated = state
+        .agents
+        .get_agent(&leader.id)
+        .await
+        .expect("load updated agent");
+    assert_eq!(updated.workdir, agent_base_str);
+
+    let _ = std::fs::remove_dir_all(agent_base);
+    let _ = std::fs::remove_dir_all(workspace_root);
+}
+
+#[tokio::test]
+async fn teams_api_workspace_layout_creates_prompt_files_and_isolated_workdirs() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let base = std::env::temp_dir().join(format!("agenthub-team-workspace-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&base).expect("create workspace root");
+    let base_str = base.to_string_lossy().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&base_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+    let leader = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: "leader-agent".to_string(),
+            workdir: base_str.clone(),
+            command: "sh".to_string(),
+            args: vec!["-lc".to_string(), "echo leader".to_string()],
+            worktree_mode: WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+        })
+        .await
+        .expect("create leader agent");
+    let worker = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: "worker-agent".to_string(),
+            workdir: base_str.clone(),
+            command: "sh".to_string(),
+            args: vec!["-lc".to_string(), "echo worker".to_string()],
+            worktree_mode: WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+        })
+        .await
+        .expect("create worker agent");
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers,
+        Json(CreateTeamRequest {
+            name: "workspace-layout-team".to_string(),
+            description: Some("workspace layout test".to_string()),
+            spec: json!({
+                "entrypoint": leader.id,
+                "leader_member_id": leader.id,
+                "members": [
+                    {
+                        "member_id": leader.id,
+                        "role": "leader",
+                        "prompt": "Leader custom prompt"
+                    },
+                    {
+                        "member_id": worker.id,
+                        "role": "worker",
+                        "prompt": "Worker custom prompt"
+                    }
+                ],
+                "workspace": {
+                    "root": base_str.clone()
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("create team with workspace layout");
+
+    let prompt_dir = base.join(".agent");
+    let worktrees_dir = base.join("worktrees");
+    assert!(prompt_dir.exists(), "prompt dir should be created");
+    assert!(worktrees_dir.exists(), "worktrees dir should be created");
+    assert_eq!(created.spec["workspace"]["root"], Value::from(base_str.clone()));
+
+    let members = created.spec["members"]
+        .as_array()
+        .expect("members array from created team");
+    for member in members {
+        let member_id = member["member_id"].as_str().expect("member_id");
+        let prompt_file = member["prompt_file"].as_str().expect("prompt_file");
+        let workdir = member["workdir"].as_str().expect("workdir");
+        assert!(prompt_file.starts_with(&format!("{}/.agent/", base_str)));
+        assert!(workdir.starts_with(&format!("{}/worktrees/", base_str)));
+        let prompt_content = std::fs::read_to_string(prompt_file).expect("read prompt file");
+        assert!(
+            prompt_content.contains("custom prompt"),
+            "prompt file should contain user prompt for member={member_id}"
+        );
+        let updated = state
+            .agents
+            .get_agent(member_id)
+            .await
+            .expect("load updated agent");
+        assert_eq!(updated.workdir, workdir);
+    }
+
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
 async fn teams_api_generates_default_steps_for_multi_member_team() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

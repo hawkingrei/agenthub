@@ -5,9 +5,11 @@ mod runtime;
 mod tests;
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::process::Stdio;
 use std::sync::Arc;
 
+use anyhow::Context;
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tokio::io::AsyncWriteExt;
@@ -209,6 +211,47 @@ impl AgentManager {
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })
+    }
+
+    pub async fn validate_workdir_assignment(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+    ) -> anyhow::Result<String> {
+        self.get_agent(agent_id).await?;
+        if self.get_running_session_id(agent_id).await.is_some() {
+            anyhow::bail!(
+                "agent '{}' is running; stop it before updating workdir",
+                agent_id
+            );
+        }
+        let normalized = expand_tilde(workdir);
+        self.ensure_safe_path(&normalized).await?;
+        Ok(normalized)
+    }
+
+    pub async fn assign_agent_workdir(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+    ) -> anyhow::Result<AgentRecord> {
+        let normalized = self.validate_workdir_assignment(agent_id, workdir).await?;
+        fs::create_dir_all(&normalized)
+            .with_context(|| format!("create team workdir failed: {}", normalized))?;
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET workdir = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(&normalized)
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+        self.get_agent(agent_id).await
     }
 
     pub async fn list_events(

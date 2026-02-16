@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::path::PathBuf;
 
 use agenthub_team_actor::parse_actor_transport;
 use axum::{
@@ -8,7 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::Error as SqlxError;
 
 use crate::api::authz::require_user;
@@ -50,6 +52,22 @@ pub struct CreateTeamRequest {
     pub name: String,
     pub description: Option<String>,
     pub spec: Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssistTeamRequest {
+    pub brief: String,
+    pub leader_member_id: Option<String>,
+    pub worker_member_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssistTeamResponse {
+    pub summary: String,
+    pub leader_prompt: String,
+    pub leader_skills: Vec<String>,
+    pub worker_prompt: String,
+    pub worker_skills: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,6 +187,7 @@ pub struct TeamMailboxSnapshot {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/assist", post(assist_team))
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team))
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
@@ -222,6 +241,8 @@ async fn create_team(
     let mut spec = payload.spec;
     normalize_team_spec(&mut spec)?;
     validate_team_spec(&spec)?;
+    ensure_team_name_available(&state, &name).await?;
+    apply_workspace_layout_if_requested(&state, &mut spec).await?;
     let team = state
         .teams
         .create_team(TeamDefinitionConfig {
@@ -232,6 +253,33 @@ async fn create_team(
         .await
         .map_err(map_create_team_error)?;
     Ok(Json(team))
+}
+
+async fn ensure_team_name_available(state: &AppState, team_name: &str) -> Result<(), ApiError> {
+    let teams = state.teams.list_teams().await?;
+    if teams.iter().any(|team| team.name == team_name) {
+        return Err(ApiError::conflict("team name already exists"));
+    }
+    Ok(())
+}
+
+async fn assist_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AssistTeamRequest>,
+) -> Result<Json<AssistTeamResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let brief = payload.brief.trim();
+    if brief.is_empty() {
+        return Err(ApiError::bad_request("brief is required"));
+    }
+
+    let leader_hint =
+        resolve_member_agent_hint(&state, payload.leader_member_id.as_deref()).await?;
+    let worker_hints =
+        resolve_worker_agent_hints(&state, payload.worker_member_ids.as_deref()).await?;
+    let response = build_assist_team_response(brief, leader_hint.as_deref(), &worker_hints);
+    Ok(Json(response))
 }
 
 async fn list_teams(
@@ -915,6 +963,387 @@ fn validate_message_actors(
         }
     }
     Ok(())
+}
+
+async fn resolve_member_agent_hint(
+    state: &AppState,
+    member_id: Option<&str>,
+) -> Result<Option<String>, ApiError> {
+    let Some(member_id) = member_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let agent =
+        state.agents.get_agent(member_id).await.map_err(|_| {
+            ApiError::bad_request("leader_member_id must reference an existing agent")
+        })?;
+    Ok(Some(format!("{} ({})", agent.name, agent.command)))
+}
+
+async fn resolve_worker_agent_hints(
+    state: &AppState,
+    worker_member_ids: Option<&[String]>,
+) -> Result<Vec<String>, ApiError> {
+    let Some(worker_member_ids) = worker_member_ids else {
+        return Ok(Vec::new());
+    };
+    let mut hints = Vec::with_capacity(worker_member_ids.len());
+    let mut seen = HashSet::with_capacity(worker_member_ids.len());
+    for member_id in worker_member_ids {
+        let member_id = member_id.trim();
+        if member_id.is_empty() {
+            return Err(ApiError::bad_request(
+                "worker_member_ids must contain non-empty strings",
+            ));
+        }
+        if !seen.insert(member_id.to_string()) {
+            continue;
+        }
+        let agent = state.agents.get_agent(member_id).await.map_err(|_| {
+            ApiError::bad_request("worker_member_ids must reference existing agents")
+        })?;
+        hints.push(format!("{} ({})", agent.name, agent.command));
+    }
+    Ok(hints)
+}
+
+fn build_assist_team_response(
+    brief: &str,
+    leader_hint: Option<&str>,
+    worker_hints: &[String],
+) -> AssistTeamResponse {
+    let tags = infer_brief_tags(brief);
+    let mut leader_skills = DEFAULT_TEAM_LEADER_SKILLS
+        .iter()
+        .map(|item| item.to_string())
+        .collect::<Vec<_>>();
+    let mut worker_skills = DEFAULT_TEAM_WORKER_SKILLS
+        .iter()
+        .map(|item| item.to_string())
+        .collect::<Vec<_>>();
+
+    for tag in &tags {
+        match *tag {
+            "delivery" => {
+                append_unique_skill(&mut leader_skills, "scope-decomposition");
+                append_unique_skill(&mut worker_skills, "implementation-execution");
+            }
+            "debug" => {
+                append_unique_skill(&mut leader_skills, "incident-triage");
+                append_unique_skill(&mut worker_skills, "bug-reproduction");
+                append_unique_skill(&mut worker_skills, "root-cause-analysis");
+            }
+            "test" => {
+                append_unique_skill(&mut leader_skills, "quality-gate");
+                append_unique_skill(&mut worker_skills, "test-automation");
+            }
+            "docs" => {
+                append_unique_skill(&mut leader_skills, "documentation-governance");
+                append_unique_skill(&mut worker_skills, "documentation-authoring");
+            }
+            "infra" => {
+                append_unique_skill(&mut leader_skills, "release-coordination");
+                append_unique_skill(&mut worker_skills, "deployment-operations");
+            }
+            _ => {}
+        }
+    }
+
+    let summary = summarize_brief(brief);
+    let leader_context = leader_hint
+        .map(|hint| format!("- Leader execution profile: {hint}\n"))
+        .unwrap_or_default();
+    let worker_context = if worker_hints.is_empty() {
+        String::new()
+    } else {
+        format!("- Worker pool profile: {}\n", worker_hints.join(", "))
+    };
+
+    let leader_prompt = format!(
+        "Mission brief:\n{brief}\n\n{base}\n\nTeam-specific planning contract:\n\
+        - Convert the brief into a phased plan with explicit deliverables.\n\
+        - Keep each worker assignment bounded, testable, and independently verifiable.\n\
+        - Surface risks early with rollback/safe-change options.\n\
+        - Synthesize a final answer with evidence and unresolved risks.\n\
+        {leader_context}\
+        {worker_context}",
+        brief = brief,
+        base = DEFAULT_TEAM_LEADER_PROMPT,
+        leader_context = leader_context,
+        worker_context = worker_context,
+    );
+
+    let worker_prompt = format!(
+        "Mission brief:\n{brief}\n\n{base}\n\nTeam-specific execution contract:\n\
+        - Translate assigned subtasks into concrete files/commands/tests.\n\
+        - Always return evidence (diff summary, test signal, or command output).\n\
+        - If blocked, report blocker + next best fallback quickly.\n\
+        - Prefer incremental, reviewable changes over large rewrites.\n",
+        brief = brief,
+        base = DEFAULT_TEAM_WORKER_PROMPT,
+    );
+
+    AssistTeamResponse {
+        summary,
+        leader_prompt,
+        leader_skills,
+        worker_prompt,
+        worker_skills,
+    }
+}
+
+fn summarize_brief(brief: &str) -> String {
+    const MAX_CHARS: usize = 180;
+    let normalized = brief.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAX_CHARS {
+        return normalized;
+    }
+    let mut summary = normalized.chars().take(MAX_CHARS).collect::<String>();
+    summary.push_str("...");
+    summary
+}
+
+fn infer_brief_tags(brief: &str) -> HashSet<&'static str> {
+    let lower = brief.to_ascii_lowercase();
+    let mut tags = HashSet::new();
+    if contains_any(
+        &lower,
+        &["fix", "bug", "debug", "error", "incident", "regression"],
+    ) {
+        tags.insert("debug");
+    }
+    if contains_any(
+        &lower,
+        &["test", "qa", "verification", "coverage", "assert"],
+    ) {
+        tags.insert("test");
+    }
+    if contains_any(&lower, &["doc", "readme", "guide", "spec", "design"]) {
+        tags.insert("docs");
+    }
+    if contains_any(
+        &lower,
+        &["deploy", "release", "pipeline", "bazel", "ci", "infra"],
+    ) {
+        tags.insert("infra");
+    }
+    if tags.is_empty() {
+        tags.insert("delivery");
+    }
+    tags
+}
+
+fn contains_any(content: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|keyword| content.contains(keyword))
+}
+
+fn append_unique_skill(skills: &mut Vec<String>, skill: &str) {
+    if skills.iter().any(|item| item == skill) {
+        return;
+    }
+    skills.push(skill.to_string());
+}
+
+#[derive(Debug)]
+struct WorkspaceMemberPlan {
+    member_id: String,
+    prompt: String,
+    prompt_file_display: String,
+    prompt_file_abs: PathBuf,
+    workdir_display: String,
+    workdir_abs: String,
+}
+
+async fn apply_workspace_layout_if_requested(
+    state: &AppState,
+    spec: &mut Value,
+) -> Result<(), ApiError> {
+    let spec_obj = spec
+        .as_object_mut()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let Some(workspace_root) = parse_workspace_root(spec_obj.get("workspace"))? else {
+        return Ok(());
+    };
+
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let workspace_root = workspace_root.trim_end_matches('/').to_string();
+    let prompt_dir_display = join_display_path(&workspace_root, ".agent");
+    let worktrees_dir_display = join_display_path(&workspace_root, "worktrees");
+    let root_abs = expand_tilde_path(&workspace_root);
+    let prompt_dir_abs = PathBuf::from(&root_abs).join(".agent");
+    let worktrees_dir_abs = PathBuf::from(&root_abs).join("worktrees");
+
+    let mut member_plans = Vec::with_capacity(member_specs.len());
+    for member in member_specs {
+        let role = if leader_member_id.as_deref() == Some(member.member_id.as_str()) {
+            "leader"
+        } else {
+            member.role.as_deref().unwrap_or("worker")
+        };
+        let prompt = member.prompt.unwrap_or_else(|| {
+            if role == "leader" {
+                DEFAULT_TEAM_LEADER_PROMPT.to_string()
+            } else {
+                DEFAULT_TEAM_WORKER_PROMPT.to_string()
+            }
+        });
+        let segment = sanitize_workspace_segment(&member.member_id);
+        let workdir_display = join_display_path(&worktrees_dir_display, &segment);
+        let workdir_abs = PathBuf::from(&worktrees_dir_abs)
+            .join(&segment)
+            .to_string_lossy()
+            .to_string();
+        let prompt_file_name = format!("{segment}.md");
+        let prompt_file_display = join_display_path(&prompt_dir_display, &prompt_file_name);
+        let prompt_file_abs = prompt_dir_abs.join(prompt_file_name);
+        state
+            .agents
+            .validate_workdir_assignment(&member.member_id, &workdir_abs)
+            .await
+            .map_err(|err| {
+                ApiError::bad_request(&format!(
+                    "workspace binding rejected for member '{}': {}",
+                    member.member_id, err
+                ))
+            })?;
+        member_plans.push(WorkspaceMemberPlan {
+            member_id: member.member_id,
+            prompt,
+            prompt_file_display,
+            prompt_file_abs,
+            workdir_display,
+            workdir_abs,
+        });
+    }
+
+    fs::create_dir_all(&prompt_dir_abs).map_err(|err| {
+        ApiError::bad_request(&format!(
+            "create prompt directory failed: {} ({})",
+            prompt_dir_display, err
+        ))
+    })?;
+    fs::create_dir_all(&worktrees_dir_abs).map_err(|err| {
+        ApiError::bad_request(&format!(
+            "create worktrees directory failed: {} ({})",
+            worktrees_dir_display, err
+        ))
+    })?;
+
+    for plan in &member_plans {
+        fs::write(&plan.prompt_file_abs, plan.prompt.as_bytes()).map_err(|err| {
+            ApiError::bad_request(&format!(
+                "write prompt file failed: {} ({})",
+                plan.prompt_file_display, err
+            ))
+        })?;
+        state
+            .agents
+            .assign_agent_workdir(&plan.member_id, &plan.workdir_abs)
+            .await
+            .map_err(|err| {
+                ApiError::bad_request(&format!(
+                    "assign workdir failed for member '{}': {}",
+                    plan.member_id, err
+                ))
+            })?;
+    }
+
+    if let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) {
+        for member in members {
+            let Some(member_obj) = member.as_object_mut() else {
+                continue;
+            };
+            let Some(member_id) = member_obj
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            let Some(plan) = member_plans.iter().find(|plan| plan.member_id == member_id) else {
+                continue;
+            };
+            member_obj.insert(
+                "prompt_file".to_string(),
+                Value::String(plan.prompt_file_display.clone()),
+            );
+            member_obj.insert(
+                "workdir".to_string(),
+                Value::String(plan.workdir_display.clone()),
+            );
+        }
+    }
+
+    spec_obj.insert(
+        "workspace".to_string(),
+        json!({
+            "root": workspace_root,
+            "prompt_dir": prompt_dir_display,
+            "worktrees_dir": worktrees_dir_display,
+        }),
+    );
+    Ok(())
+}
+
+fn parse_workspace_root(workspace: Option<&Value>) -> Result<Option<String>, ApiError> {
+    let Some(workspace) = workspace else {
+        return Ok(None);
+    };
+    if workspace.is_null() {
+        return Ok(None);
+    }
+    let workspace_obj = workspace
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec.workspace must be an object"))?;
+    let root = workspace_obj
+        .get("root")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::bad_request("spec.workspace.root is required"))?;
+    Ok(Some(root.to_string()))
+}
+
+fn join_display_path(root: &str, child: &str) -> String {
+    format!(
+        "{}/{}",
+        root.trim_end_matches('/'),
+        child.trim_start_matches('/')
+    )
+}
+
+fn expand_tilde_path(path: &str) -> String {
+    if path == "~" {
+        return std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+        return format!("{home}/{rest}");
+    }
+    path.to_string()
+}
+
+fn sanitize_workspace_segment(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_is_sep = false;
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_is_sep = false;
+            continue;
+        }
+        if !prev_is_sep {
+            out.push('-');
+            prev_is_sep = true;
+        }
+    }
+    let normalized = out.trim_matches('-');
+    if normalized.is_empty() {
+        "member".to_string()
+    } else {
+        normalized.to_string()
+    }
 }
 
 #[derive(Debug)]
