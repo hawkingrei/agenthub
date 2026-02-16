@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify storage quota guard in real browser: when `localStorage` is near/full, output cache persistence degrades gracefully and app actions (send/login/join) no longer surface uncaught `QuotaExceededError` (see `docs/features/2026-02-16-storage-quota-guard.md`).
+- [ ] Verify `scripts/check_team_proto_codegen.sh` fails fast when `team.proto` generated symbols drift and when generated protobuf Rust files are accidentally tracked (see `docs/features/2026-02-15-team-proto-codegen-check.md`).
 - [ ] Verify new `userdocs` information architecture and cross-page navigation links after content expansion (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify newly added `userdocs` practical pages (`configuration`, `review`, `security`, `daily checklist`) align with current UI labels and runtime behavior (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify `userdocs` build no longer reports broken `/` links and deprecation warnings after root-slug/config migration (see `docs/features/2026-02-15-userdocs-build-root-link-fix.md`).
@@ -110,6 +112,7 @@
 - [x] Verify worktree-default helper logic (`runtime defaults` + `create modal prefill`) with dedicated web unit tests to keep coverage stable (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `create_worktree` modal defaults to non-editable workdir display and exposes override only via `Customize path` (see `docs/features/2026-02-15-worktree-default-root.md`).
 - [x] Verify `use_existing` mode no longer auto-fills workdir with default root on modal open or mode switch (see `docs/features/2026-02-15-worktree-default-root.md`).
+- [ ] Verify `create_worktree` agents can restart after process reboot without failing `workdir is not empty` when the target path is already a valid git worktree for the configured repo (see `docs/features/2026-02-15-create-worktree-restart-reuse.md`).
 - [x] Verify runtime default safe paths always include `~/.agenthub/worktrees` and keep configured safe path entries deduplicated (see `docs/features/2026-02-15-safe-path-default-worktrees.md`).
 - [x] Fix Rust CI test compile failure after `AppState` default root field expansion by updating `api/agents` test state builder (see `docs/features/2026-02-15-rust-ci-appstate-default-worktree-root.md`).
 - [x] Canonicalize default actor CLI path so Bazel/macOS path aliases (`/var` vs `/private/var`) do not break actor-runtime API tests (see `docs/features/2026-02-15-bazel-actor-cli-path-canonicalization.md`).
@@ -137,6 +140,7 @@
 - [ ] Verify ACP debug layout, interrupt gating, permission debug events, and tool output logging (see `docs/features/2026-02-09-acp-debug-layout-fixes.md`).
 - [ ] Verify ACP debug raw events auto-scrolls in the Raw tab (see `docs/features/2026-02-10-acp-raw-scroll.md`).
 - [ ] Verify single-instance agent start, ACP timeout cleanup, and SQLite WAL settings (see `docs/features/2026-02-08-backend-stability-hardening.md`).
+- [ ] Verify ACP command send timeout reports backpressure quickly (without indefinite hangs) when the ACP command queue is saturated or worker-side processing stalls (see `docs/features/2026-02-16-acp-command-backpressure-timeout.md`).
 - [ ] Verify ACP output cache isolation and UI stability (see `docs/features/2026-02-07-acp-output-cache-and-polling.md`).
 - [ ] Verify admin/join flows and focus ring styling after frontend refactor (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
 - [ ] Verify agent list actions, input dock behavior, and permission modal rendering after component extraction (see `docs/features/2026-02-08-frontend-quality-refactor.md`).
@@ -177,6 +181,9 @@
 - [x] Verify SSE auto-reconnect and polling fallback after network interruption (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify polling pauses while SSE is OPEN and resumes on disconnect (see `docs/features/2026-02-08-sse-retry.md`).
 - [ ] Verify SSE headers prevent proxy buffering and caching (see `docs/features/2026-02-08-sse-streaming.md`).
+- [ ] Verify header network/SSE badge state transitions and Cloudflare HTML stream errors are normalized to compact connectivity messages (see `docs/features/2026-02-15-sse-connection-indicator-and-error-sanitization.md`).
+- [ ] Verify bounded SSE fan-in channel behavior under burst output and slow/disconnected clients, ensuring memory does not grow unbounded and polling/history catch-up remains correct (see `docs/features/2026-02-15-sse-bounded-fan-in-and-connection-status-followups.md`).
+- [ ] Verify multi-agent SSE subscription keeps a stable single connection across active-agent switches and updates agent status in background (see `docs/features/2026-02-15-sse-multi-agent-subscription.md`).
 - [ ] Verify UUIDv7 ordering and pagination across API/SSE (see `docs/features/2026-02-08-event-seq-uuidv7.md`).
 - [ ] Verify global event ordering uses `event_id` across API/SSE/polling and pagination (see `docs/features/2026-02-08-global-event-ordering.md`).
 - [ ] Verify compareEventOrder is deterministic when `event_id` or `ts` is missing (see `docs/features/2026-02-08-global-event-ordering.md`).

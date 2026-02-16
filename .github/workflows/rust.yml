@@ -18,6 +18,8 @@ jobs:
         uses: dtolnay/rust-toolchain@1.93.1
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
+      - name: Verify internal protobuf codegen
+        run: ./scripts/check_team_proto_codegen.sh
       - name: Bazel build (Rust targets)
         run: bazel build //:agenthub //agenthub-codex-acp:agenthub_codex_acp_bin
       - name: Bazel coverage (Rust targets)

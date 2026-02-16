@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import QRCode from "qrcode";
 import {
   api,
   AgentRecord,
@@ -13,12 +12,18 @@ import { buildAcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
-  shouldOpenAgentSocket,
   sanitizeAgentError,
   isAgentActiveStatus,
 } from "./agent_ws";
 import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
+import {
+  deriveConnectionBadge,
+  OFFLINE_MESSAGE,
+  sanitizeErrorBannerMessage,
+  type SseConnectionState,
+  UPSTREAM_HTML_MESSAGE,
+} from "./connection_status";
 import {
   getAdaptivePollInterval,
   EventCursor,
@@ -55,6 +60,11 @@ import { PermissionModal } from "./components/permission_modal";
 import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
+import {
+  getLocalStorageItemSafe,
+  removeLocalStorageItemSafe,
+  setLocalStorageItemSafe,
+} from "./storage/safe_storage";
 import { AdminPage } from "./pages/admin_page";
 import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { JoinPage } from "./pages/join_page";
@@ -77,6 +87,7 @@ import {
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
 } from "./worktree_defaults";
+import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 
@@ -85,8 +96,14 @@ export function App() {
   const maxCachedEvents = 800;
   const maxCachedSessions = 40;
   const [auth, setAuth] = useState<AuthState | null>(() => {
-    const raw = localStorage.getItem("agenthub_auth");
-    return raw ? (JSON.parse(raw) as AuthState) : null;
+    const raw = getLocalStorageItemSafe("agenthub_auth");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as AuthState;
+    } catch {
+      removeLocalStorageItemSafe("agenthub_auth");
+      return null;
+    }
   });
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -122,6 +139,8 @@ export function App() {
   const [joinToken, setJoinToken] = useState<string | null>(null);
   const [vapidInfo, setVapidInfo] = useState<VapidInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [networkOnline, setNetworkOnline] = useState<boolean>(getNavigatorOnline);
+  const [sseState, setSseState] = useState<SseConnectionState>("idle");
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<OutputLine[]>([]);
@@ -154,7 +173,7 @@ export function App() {
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
   const [inputHistory, setInputHistory] = useState<string[]>(() =>
-    parseInputHistory(localStorage.getItem(INPUT_HISTORY_STORAGE_KEY))
+    parseInputHistory(getLocalStorageItemSafe(INPUT_HISTORY_STORAGE_KEY))
   );
   const [inputHistoryCursor, setInputHistoryCursor] = useState(-1);
   const inputHistoryDraftRef = useRef("");
@@ -203,6 +222,9 @@ export function App() {
     null
   );
   const outputPersistTimerRef = useRef<number | null>(null);
+  const activeAgentRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const activeAgentStatusRef = useRef<string | null>(null);
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -216,8 +238,32 @@ export function App() {
     acpOutputCacheRef.current = acpOutputCache;
   }, [acpOutputCache]);
   useEffect(() => {
-    localStorage.setItem(INPUT_HISTORY_STORAGE_KEY, JSON.stringify(inputHistory));
+    setLocalStorageItemSafe(
+      INPUT_HISTORY_STORAGE_KEY,
+      JSON.stringify(inputHistory)
+    );
   }, [inputHistory]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnline = () => {
+      setNetworkOnline(true);
+      setError((prev) =>
+        prev === OFFLINE_MESSAGE || prev === UPSTREAM_HTML_MESSAGE ? null : prev
+      );
+    };
+    const onOffline = () => {
+      setNetworkOnline(false);
+      setSseState((prev) => (prev === "idle" ? "idle" : "reconnecting"));
+      setError(OFFLINE_MESSAGE);
+    };
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   const handleTerminalScroll = useCallback(() => {
     const el = terminalRef.current;
@@ -270,6 +316,20 @@ export function App() {
   }, [activeAgentRecord]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
+  const streamAgentIds = useMemo(() => buildSseTargetAgentIds(agents), [agents]);
+  const streamAgentIdsQuery = useMemo(
+    () => encodeSseTargetAgentIds(streamAgentIds),
+    [streamAgentIds]
+  );
+  const hasSseTarget = streamAgentIds.length > 0;
+  const connectionBadge = useMemo(
+    () => deriveConnectionBadge(networkOnline, hasSseTarget, sseState),
+    [networkOnline, hasSseTarget, sseState]
+  );
+  const normalizedError = useMemo(
+    () => (error ? sanitizeErrorBannerMessage(error, networkOnline) : null),
+    [error, networkOnline]
+  );
   const thinkingStartTs =
     activeAgentStatus === "running" ? acpView.thinkingStartTs : null;
   const canControlAcp = Boolean(activeAgent && isAgentActive);
@@ -286,6 +346,16 @@ export function App() {
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
 
   const token = auth?.token ?? null;
+  useEffect(() => {
+    activeAgentRef.current = activeAgent;
+  }, [activeAgent]);
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+  useEffect(() => {
+    activeAgentStatusRef.current = activeAgentStatus;
+  }, [activeAgentStatus]);
+
   useEffect(() => {
     setInputHistoryCursor(-1);
     inputHistoryDraftRef.current = "";
@@ -354,7 +424,7 @@ export function App() {
           .find((evt) => evt.session_id)?.session_id;
         if (latestSession) {
           setAgentSessions((prev) => ({ ...prev, [id]: latestSession }));
-          if (activeAgent === id && !activeSessionId) {
+          if (activeAgentRef.current === id && !activeSessionIdRef.current) {
             setActiveSessionId(latestSession);
           }
           setEventMeta((prev) => ({
@@ -371,7 +441,10 @@ export function App() {
       }
       const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
       const nextSlice = updateOutputCacheEntry(key, ordered);
-      updateAcpOutputCacheEntry(key, ordered);
+      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+      if (acpOrdered.length > 0) {
+        updateAcpOutputCacheEntry(key, acpOrdered);
+      }
       const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
         typeof oldestEvent?.event_id === "number" ? oldestEvent.event_id : null;
@@ -413,8 +486,6 @@ export function App() {
     }
   }, [
     token,
-    activeAgent,
-    activeSessionId,
     eventLimit,
     updateOutputCacheEntry,
     updateAcpOutputCacheEntry,
@@ -450,7 +521,9 @@ export function App() {
       setOutputs((prev) => mergeOutputs(prev, ordered));
       setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
       updateOutputCacheEntry(key, ordered);
-      updateAcpOutputCacheEntry(key, ordered);
+      if (acpOrdered.length > 0) {
+        updateAcpOutputCacheEntry(key, acpOrdered);
+      }
       setEventMeta((prev) => ({
         ...prev,
         [key]: {
@@ -643,7 +716,7 @@ export function App() {
           )
         );
       })
-      .catch((err) => console.error("Failed to get runtime defaults:", err));
+      .catch(() => undefined);
   }, [token]);
 
   const handleWorktreeModeChange = useCallback(
@@ -687,10 +760,21 @@ export function App() {
 
   useEffect(() => {
     if (!token || !activeAgent) return;
+    loadAgentEvents(activeAgent, activeSessionId);
+  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+
+  useEffect(() => {
+    if (!token) {
+      setSseState("idle");
+      return;
+    }
+    const streamTarget = streamAgentIdsQuery;
+    if (!hasSseTarget || streamTarget.length === 0) {
+      setSseState("idle");
+      return;
+    }
     let cancelled = false;
     const pollState = eventPollRef.current;
-    loadAgentEvents(activeAgent, activeSessionId);
-    if (!shouldOpenAgentSocket(activeAgentStatus)) return;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
     const clearReconnectTimer = () => {
@@ -699,9 +783,17 @@ export function App() {
         reconnectTimer = null;
       }
     };
+    const pollActiveAgent = async (): Promise<boolean> => {
+      const currentActive = activeAgentRef.current;
+      if (!currentActive) return false;
+      return (
+        (await loadAgentEvents(currentActive, activeSessionIdRef.current)) === true
+      );
+    };
     const scheduleReconnect = () => {
       if (cancelled) return;
       clearReconnectTimer();
+      setSseState("reconnecting");
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
       reconnectTimer = window.setTimeout(() => {
@@ -711,14 +803,17 @@ export function App() {
     };
     const openSource = () => {
       if (cancelled) return;
+      setSseState("connecting");
       const source = new EventSource(
-        `${location.origin}/sse/agents/${encodeURIComponent(
-          activeAgent
-        )}?token=${encodeURIComponent(token)}`
+        `${location.origin}/sse/agents?ids=${encodeURIComponent(
+          streamTarget
+        )}&token=${encodeURIComponent(token)}`
       );
       sseRef.current = source;
       source.onopen = () => {
         reconnectAttempt = 0;
+        setNetworkOnline(true);
+        setSseState("connected");
         if (pollState.timer) {
           window.clearTimeout(pollState.timer);
           pollState.timer = null;
@@ -731,12 +826,6 @@ export function App() {
           if (parsed.type === "output" || parsed.type === "acp") {
             const payload = parsed.payload;
             if (!isValidOutputPayload(payload)) {
-              return;
-            }
-            if (payload.agent_id !== activeAgent) {
-              return;
-            }
-            if (activeSessionId && payload.session_id !== activeSessionId) {
               return;
             }
             const line: OutputLine = {
@@ -758,15 +847,23 @@ export function App() {
                     agent.id === payload.agent_id
                       ? { ...agent, status: statusToAgentStatus(status) }
                       : agent
-                  )
+                    )
                 );
               }
+              updateAcpOutputCacheEntry(key, [line]);
+            }
+            updateOutputCacheEntry(key, [line]);
+            const currentActive = activeAgentRef.current;
+            if (payload.agent_id !== currentActive) {
+              return;
+            }
+            const currentSessionId = activeSessionIdRef.current;
+            if (currentSessionId && payload.session_id !== currentSessionId) {
+              return;
             }
             setOutputs((prev) => appendOutputLine(prev, line));
-            updateOutputCacheEntry(key, [line]);
             if (line.stream === "acp") {
               setAcpOutputs((prev) => appendOutputLine(prev, line));
-              updateAcpOutputCacheEntry(key, [line]);
             }
           }
         } catch {
@@ -775,10 +872,19 @@ export function App() {
               clearAuthAndRedirect();
               return;
             }
-            if (shouldIgnoreAgentWsError(event.data, activeAgentStatus)) {
+            const normalizedStreamError = sanitizeErrorBannerMessage(
+              event.data,
+              getNavigatorOnline()
+            );
+            if (
+              shouldIgnoreAgentWsError(
+                normalizedStreamError,
+                activeAgentStatusRef.current
+              )
+            ) {
               return;
             }
-            setError(event.data);
+            setError(normalizedStreamError);
           }
         }
       };
@@ -787,6 +893,14 @@ export function App() {
           source.close();
           return;
         }
+        const online = getNavigatorOnline();
+        setNetworkOnline(online);
+        setSseState("reconnecting");
+        setError(
+          online
+            ? UPSTREAM_HTML_MESSAGE
+            : OFFLINE_MESSAGE
+        );
         source.close();
         sseRef.current = null;
         schedulePoll(getAdaptivePollInterval(pollState.idleCount));
@@ -814,8 +928,7 @@ export function App() {
           current != null && current.readyState === EventSource.OPEN;
         let hasNew = false;
         if (!isOpen) {
-          hasNew =
-            (await loadAgentEvents(activeAgent, activeSessionId)) === true;
+          hasNew = (await pollActiveAgent()) === true;
         } else {
           pollState.idleCount = 0;
         }
@@ -845,12 +958,12 @@ export function App() {
         sseRef.current.close();
         sseRef.current = null;
       }
+      setSseState("idle");
     };
   }, [
     token,
-    activeAgent,
-    activeSessionId,
-    activeAgentStatus,
+    hasSseTarget,
+    streamAgentIdsQuery,
     loadAgentEvents,
     updateOutputCacheEntry,
     updateAcpOutputCacheEntry,
@@ -963,7 +1076,7 @@ export function App() {
         username,
         role: finish.role,
       };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
+      setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
@@ -986,7 +1099,7 @@ export function App() {
         username,
         role: finish.role,
       };
-      localStorage.setItem("agenthub_auth", JSON.stringify(next));
+      setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
@@ -995,7 +1108,7 @@ export function App() {
   };
 
   const onLogout = () => {
-    localStorage.removeItem("agenthub_auth");
+    removeLocalStorageItemSafe("agenthub_auth");
     setAuth(null);
     setAgents([]);
     setActiveAgent(null);
@@ -1325,7 +1438,8 @@ export function App() {
       setJoinPin(data.pin);
       setJoinToken(data.token);
       const url = `${location.origin}/join?token=${data.token}`;
-      const qr = await QRCode.toDataURL(url);
+      const { toDataURL } = await import("qrcode");
+      const qr = await toDataURL(url);
       setJoinQr(qr);
     } catch (err) {
       setError(String(err));
@@ -1433,7 +1547,7 @@ export function App() {
     return (
       <AdminPage
         auth={auth}
-        error={error}
+        error={normalizedError}
         setError={setError}
         safePaths={safePaths}
         selectedSafePaths={selectedSafePaths}
@@ -1463,6 +1577,15 @@ export function App() {
         <h1>AgentHub</h1>
         {auth && (
           <div className="session">
+            <span
+              className={`session-connection ${connectionBadge.tone}`}
+              title={connectionBadge.title}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="session-connection-dot" aria-hidden="true" />
+              <span>{connectionBadge.label}</span>
+            </span>
             <span>{auth.username}</span>
             {auth.role === "root" && (
               <a
@@ -1479,7 +1602,9 @@ export function App() {
         )}
       </header>
 
-      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+      {normalizedError && (
+        <ErrorBanner message={normalizedError} onClose={() => setError(null)} />
+      )}
 
       {!auth && (
         <section className="auth">
@@ -1693,6 +1818,11 @@ function parseApiErrorMessage(err: unknown): string | null {
     return raw;
   }
   return null;
+}
+
+function getNavigatorOnline(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine;
 }
 
 function createAnsiRenderer(): (input: string) => string {

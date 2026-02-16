@@ -493,6 +493,7 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command as StdCommand;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -808,7 +809,7 @@ mod tests {
             ..Default::default()
         };
         let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
-        let _ = std::fs::remove_dir_all(&keys_dir);
+        remove_dir_best_effort(&keys_dir);
         let auth = Arc::new(
             AuthService::new(db.clone(), &config)
                 .await
@@ -833,6 +834,15 @@ mod tests {
             auth,
             acp_permissions: permissions,
             default_worktree_root: config.default_worktree_root(),
+        }
+    }
+
+    fn remove_dir_best_effort(path: &std::path::Path) {
+        if let Err(err) = std::fs::remove_dir_all(path) {
+            eprintln!(
+                "warning: failed to remove temp directory {}: {err}",
+                path.display()
+            );
         }
     }
 
@@ -883,6 +893,413 @@ mod tests {
             .await
             .expect("read response body");
         serde_json::from_slice(&bytes).expect("decode response json")
+    }
+
+    async fn decode_text_body(response: axum::response::Response) -> String {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        String::from_utf8(bytes.to_vec()).expect("decode response text")
+    }
+
+    fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
+        let status = StdCommand::new("git")
+            .arg("-C")
+            .arg(repo_dir)
+            .args(args)
+            .status()
+            .expect(
+                "failed to execute `git` command; ensure `git` is installed and available on PATH",
+            );
+        assert!(status.success(), "git command failed: {:?}", args);
+    }
+
+    fn is_git_available() -> bool {
+        let status = StdCommand::new("git")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        matches!(status, Ok(status) if status.success())
+    }
+
+    #[tokio::test]
+    async fn create_worktree_agent_can_start_again_after_stop() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_agent_can_start_again_after_stop: `git` is not available on PATH"
+            );
+            return;
+        }
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-restart",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create create_worktree agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (first)");
+        assert_eq!(start_first.status(), StatusCode::OK);
+
+        let stop_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (first)");
+        assert_eq!(stop_first.status(), StatusCode::OK);
+
+        let start_second = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (second)");
+        assert_eq!(start_second.status(), StatusCode::OK);
+
+        let stop_second = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (second)");
+        assert_eq!(stop_second.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn create_worktree_reuses_existing_after_ref_state_changes() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_reuses_existing_after_ref_state_changes: `git` is not available on PATH"
+            );
+            return;
+        }
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let branch_name = format!("agenthub-worktree-ref-{}", Uuid::new_v4().simple());
+        let status = StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo_dir)
+            .arg("checkout")
+            .arg("-b")
+            .arg(&branch_name)
+            .status()
+            .expect("create branch for create_worktree ref");
+        assert!(
+            status.success(),
+            "git checkout -b failed for branch {branch_name}"
+        );
+        run_git(&repo_dir, &["checkout", "-"]);
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-ref-mismatch-restart",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": branch_name,
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create create_worktree agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (first)");
+        assert_eq!(start_first.status(), StatusCode::OK);
+
+        let stop_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (first)");
+        assert_eq!(stop_first.status(), StatusCode::OK);
+
+        run_git(&workdir, &["checkout", "--detach"]);
+
+        let start_second = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (second)");
+        assert_eq!(start_second.status(), StatusCode::OK);
+
+        let stop_second = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (second)");
+        assert_eq!(stop_second.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn create_worktree_rejects_reuse_by_other_agent() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_rejects_reuse_by_other_agent: `git` is not available on PATH"
+            );
+            return;
+        }
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let first_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-owner",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create owner agent");
+        assert_eq!(first_create.status(), StatusCode::OK);
+        let first_agent = decode_json_body(first_create).await;
+        let first_id = first_agent["id"].as_str().expect("first agent id");
+
+        let first_start = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{first_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start owner agent");
+        assert_eq!(first_start.status(), StatusCode::OK);
+
+        let first_stop = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{first_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop owner agent");
+        assert_eq!(first_stop.status(), StatusCode::OK);
+
+        let second_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-attacker",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create second agent");
+        assert_eq!(second_create.status(), StatusCode::OK);
+        let second_agent = decode_json_body(second_create).await;
+        let second_id = second_agent["id"].as_str().expect("second agent id");
+
+        let second_start = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{second_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start second agent");
+        assert_eq!(second_start.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = decode_text_body(second_start).await;
+        assert!(
+            body.contains("existing worktree belongs to another agent"),
+            "unexpected error body: {body}"
+        );
+
+        remove_dir_best_effort(&base);
     }
 
     #[tokio::test]
@@ -987,6 +1404,6 @@ mod tests {
             .expect("stop agent");
         assert_eq!(stop_resp.status(), StatusCode::OK);
 
-        let _ = std::fs::remove_dir_all(&workdir);
+        remove_dir_best_effort(&workdir);
     }
 }

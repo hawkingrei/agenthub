@@ -1,4 +1,4 @@
-.PHONY: build-web run run-web build test lint lint-web
+.PHONY: build-web run run-web build test lint lint-web proto-check
 .PHONY: bazel-rust bazel-ci
 .PHONY: reset
 
@@ -31,6 +31,9 @@ bazel-rust:
 bazel-ci:
 	bazel build //...
 	bazel test //...
+
+proto-check:
+	./scripts/check_team_proto_codegen.sh
 
 
 reset:
