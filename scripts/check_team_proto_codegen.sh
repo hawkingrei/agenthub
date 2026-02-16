@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--check" && "$1" != "--write") ]]; then
+  echo "usage: $0 [--check|--write]" >&2
+  exit 1
+fi
+mode="${1:-"--check"}"
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
@@ -68,14 +74,25 @@ if ! grep -q 'pub struct SendActorMessageRequest' "${latest_generated}"; then
 fi
 
 tracked_generated="src/internal/proto/agenthub.internal.v1.rs"
-if [[ -f "${tracked_generated}" ]]; then
-  if ! cmp -s "${tracked_generated}" "${latest_generated}"; then
-    echo "tracked proto file is out of date: ${tracked_generated}"
-    echo "latest generated file: ${latest_generated}"
-    echo "please refresh tracked proto output to match current codegen"
-    exit 1
-  fi
-  echo "tracked proto file is up to date: ${tracked_generated}"
+if [[ "${mode}" == "--write" ]]; then
+  cp "${latest_generated}" "${tracked_generated}"
+  echo "updated tracked proto file: ${tracked_generated}"
+  echo "source generated file: ${latest_generated}"
+  exit 0
 fi
 
+if [[ ! -f "${tracked_generated}" ]]; then
+  echo "tracked proto file missing: ${tracked_generated}"
+  echo "run './scripts/check_team_proto_codegen.sh --write' to regenerate"
+  exit 1
+fi
+
+if ! cmp -s "${tracked_generated}" "${latest_generated}"; then
+  echo "tracked proto file is out of date: ${tracked_generated}"
+  echo "latest generated file: ${latest_generated}"
+  echo "run './scripts/check_team_proto_codegen.sh --write' to regenerate"
+  exit 1
+fi
+
+echo "tracked proto file is up to date: ${tracked_generated}"
 echo "protobuf codegen check passed: ${latest_generated}"

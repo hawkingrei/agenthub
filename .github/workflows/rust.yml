@@ -16,6 +16,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.1
+      - name: Verify internal protobuf codegen
+        run: make proto-check
       - name: Setup Rust coverage tool
         run: |
           rustup component add llvm-tools-preview
