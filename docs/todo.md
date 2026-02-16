@@ -55,6 +55,8 @@
 - [ ] Verify Team Workbench UI (`/teams`) create/run/step/message interaction flow end-to-end in a real browser (see `docs/features/2026-02-16-team-workbench-ui.md`).
 - [ ] Verify Team run list API (`GET /api/teams/:id/runs`) pagination/filter behavior in staging with real run volumes (see `docs/features/2026-02-16-team-runs-list-api.md`).
 - [ ] Verify OpenAPI discovery endpoints (`/api/openapi.json`, `/api/openapi/docs`) auth behavior and docs-page token fetch flow in a real browser (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
+- [ ] Refactor `web/src/pages/team_page.tsx` into smaller feature-focused components (`TeamSidebar`, `RunPanel`, tab subviews) and a reducer-based state model for maintainability (see `docs/features/2026-02-16-team-workbench-ui.md`).
+- [ ] Refactor `src/api/openapi.rs` OpenAPI spec assembly into smaller helpers (`components`, `paths`) or a typed generator approach to reduce single-function complexity (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
 - [x] Add router-level HTTP tests for Team APIs to validate wire payload/status through Axum stack (see `docs/features/2026-02-13-a2a-team-phase1-api-hardening.md`).
 - [x] Add Team spec schema validation and API tests for invalid spec payloads before orchestrator wiring.
 - [x] Define cross-field Team spec constraints (entrypoint/member/step graph) for scheduler phase.
