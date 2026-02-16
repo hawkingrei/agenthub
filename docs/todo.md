@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
 - [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).
 - [ ] Verify local toolchain bootstrap from `rust-toolchain.toml` installs required components (`rustc`, `cargo`, `std`, `rustfmt`, `clippy`) on clean machines without manual `rustup component add` (see `docs/features/2026-02-16-rust-toolchain-components-local-compile.md`).

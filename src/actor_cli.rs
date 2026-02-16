@@ -1,7 +1,7 @@
 use agenthub_team_actor::{build_default_actor_message_idempotency_key, parse_actor_transport};
 use serde_json::Value;
 
-use crate::team::{TeamActorMessageTransport, TeamManager};
+use crate::team::{SendActorMessageInput, TeamActorMessageTransport, TeamManager};
 
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
@@ -74,10 +74,10 @@ fn take_required(
             return Ok(trimmed);
         }
     }
-    if let Some(env_key) = env_key {
-        if let Some(value) = normalized_env_var(env_key) {
-            return Ok(value);
-        }
+    if let Some(env_key) = env_key
+        && let Some(value) = normalized_env_var(env_key)
+    {
+        return Ok(value);
     }
     Err(anyhow::anyhow!(
         "{} is required (flag or env fallback)",
@@ -391,16 +391,16 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             idempotency_key,
         } => {
             let message = manager
-                .send_actor_message(
-                    &run_id,
-                    &from_actor_id,
-                    &to_actor_id,
-                    &channel,
+                .send_actor_message(SendActorMessageInput {
+                    run_id: &run_id,
+                    from_actor_id: &from_actor_id,
+                    to_actor_id: &to_actor_id,
+                    channel: &channel,
                     transport,
                     route,
                     payload,
-                    idempotency_key.as_deref(),
-                )
+                    idempotency_key: idempotency_key.as_deref(),
+                })
                 .await?;
             println!("{}", serde_json::to_string(&message)?);
         }
