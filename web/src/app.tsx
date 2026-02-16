@@ -711,7 +711,7 @@ export function App() {
           )
         );
       })
-      .catch((err) => console.error("Failed to get runtime defaults:", err));
+      .catch(() => undefined);
   }, [token]);
 
   const handleWorktreeModeChange = useCallback(

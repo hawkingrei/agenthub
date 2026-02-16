@@ -40,6 +40,8 @@ class QuotaFailOnceStorage extends MemoryStorage {
 
 class AlwaysQuotaStorage extends MemoryStorage {
   setItem(_key: string, _value: string) {
+    void _key;
+    void _value;
     const error = new Error("quota exceeded");
     (error as Error & { name: string }).name = "QuotaExceededError";
     throw error;
