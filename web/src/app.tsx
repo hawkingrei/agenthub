@@ -319,6 +319,12 @@ export function App() {
       activeAgentRecord.args
     );
   }, [activeAgentRecord]);
+  const scopedAcpPermissions = useMemo(() => {
+    return filterPermissionsForAgent(acpPermissions, activeAgent);
+  }, [acpPermissions, activeAgent]);
+  const scopedAcpPermissionHistory = useMemo(() => {
+    return filterPermissionsForAgent(acpPermissionHistory, activeAgent);
+  }, [acpPermissionHistory, activeAgent]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
   const streamAgentIds = useMemo(() => buildSseTargetAgentIds(agents), [agents]);
@@ -364,6 +370,10 @@ export function App() {
   useEffect(() => {
     activeAgentStatusRef.current = activeAgentStatus;
   }, [activeAgentStatus]);
+  useEffect(() => {
+    setAcpPermissions([]);
+    setAcpPermissionHistory([]);
+  }, [activeAgent]);
 
   useEffect(() => {
     setInputHistoryCursor(-1);
@@ -976,14 +986,18 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const requestedAgentId = activeAgent;
     const pollState = permissionPollRef.current;
     const pollOnce = async (): Promise<number> => {
       try {
-        const items = await api.listAcpPermissions(token, activeAgent, "pending");
+        const items = await api.listAcpPermissions(
+          token,
+          requestedAgentId,
+          "pending"
+        );
         if (!cancelled) {
-          setAcpPermissions((prev) =>
-            isSamePermissionList(prev, items) ? prev : items
-          );
+          if (activeAgentRef.current !== requestedAgentId) return 0;
+          setAcpPermissions((prev) => (isSamePermissionList(prev, items) ? prev : items));
         }
         return items.length;
       } catch {
@@ -1026,13 +1040,13 @@ export function App() {
   useEffect(() => {
     if (!token || !activeAgent) return;
     let cancelled = false;
+    const requestedAgentId = activeAgent;
     const load = async () => {
       try {
-        const items = await api.listAcpPermissions(token, activeAgent);
+        const items = await api.listAcpPermissions(token, requestedAgentId);
         if (!cancelled) {
-          setAcpPermissionHistory((prev) =>
-            isSamePermissionList(prev, items) ? prev : items
-          );
+          if (activeAgentRef.current !== requestedAgentId) return;
+          setAcpPermissionHistory((prev) => (isSamePermissionList(prev, items) ? prev : items));
         }
       } catch {
         if (!cancelled) setAcpPermissionHistory([]);
@@ -1618,7 +1632,7 @@ export function App() {
     () => ({
       currentMode: acpView.currentMode,
       rawEvents: acpView.rawEvents,
-      acpPermissionHistory,
+      acpPermissionHistory: scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,
       acpConfigId,
@@ -1638,7 +1652,7 @@ export function App() {
     [
       acpView.currentMode,
       acpView.rawEvents,
-      acpPermissionHistory,
+      scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,
       acpConfigId,
@@ -1875,9 +1889,9 @@ export function App() {
         />
       )}
 
-      {auth && activeAgent && acpPermissions.length > 0 && (
+      {auth && activeAgent && scopedAcpPermissions.length > 0 && (
         <PermissionModal
-          permissions={acpPermissions}
+          permissions={scopedAcpPermissions}
           permissionBusy={permissionBusy}
           onRespond={onRespondPermission}
         />
@@ -2105,4 +2119,12 @@ function isSamePermissionList(
     }
   }
   return true;
+}
+
+export function filterPermissionsForAgent(
+  items: AcpPermissionRecord[],
+  agentId: string | null
+): AcpPermissionRecord[] {
+  if (!agentId) return [];
+  return items.filter((item) => item.agent_id === agentId);
 }
