@@ -359,12 +359,11 @@ pub(crate) async fn create_auth_token(state: &AppState) -> String {
     .await
     .expect("insert user");
 
-    let token = state
+    state
         .auth
         .create_session(&user_id)
         .await
-        .expect("create token");
-    token
+        .expect("create token")
 }
 
 fn build_json_request(

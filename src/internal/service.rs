@@ -5,7 +5,7 @@ use serde_json::Value;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
-use crate::team::{TeamManager, TeamStepRecord, TeamStepStatus};
+use crate::team::{SendActorMessageInput, TeamManager, TeamStepRecord, TeamStepStatus};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
@@ -72,7 +72,7 @@ impl TeamInternalControl for TeamInternalControlService {
     ) -> Result<Response<SendActorMessageResponse>, Status> {
         let principal = self.authz.authenticate(request.metadata())?;
         self.authz
-            .ensure_permission(&principal, InternalAction::TeamMessageSend)?;
+            .ensure_permission(&principal, InternalAction::MessageSend)?;
         let payload = request.into_inner();
 
         let run_id = required_field(&payload.run_id, "run_id")?;
@@ -93,16 +93,16 @@ impl TeamInternalControl for TeamInternalControlService {
         let message = self
             .state
             .teams
-            .send_actor_message(
+            .send_actor_message(SendActorMessageInput {
                 run_id,
                 from_actor_id,
                 to_actor_id,
                 channel,
                 transport,
                 route,
-                payload_json,
+                payload: payload_json,
                 idempotency_key,
-            )
+            })
             .await
             .map_err(|err| {
                 if TeamManager::is_actor_message_idempotency_conflict(&err) {
@@ -126,7 +126,7 @@ impl TeamInternalControl for TeamInternalControlService {
     ) -> Result<Response<ListActorInboxResponse>, Status> {
         let principal = self.authz.authenticate(request.metadata())?;
         self.authz
-            .ensure_permission(&principal, InternalAction::TeamInboxList)?;
+            .ensure_permission(&principal, InternalAction::InboxList)?;
         let payload = request.into_inner();
 
         let run_id = required_field(&payload.run_id, "run_id")?;
@@ -183,7 +183,7 @@ impl TeamInternalControl for TeamInternalControlService {
     ) -> Result<Response<AckActorMessageResponse>, Status> {
         let principal = self.authz.authenticate(request.metadata())?;
         self.authz
-            .ensure_permission(&principal, InternalAction::TeamMessageAck)?;
+            .ensure_permission(&principal, InternalAction::MessageAck)?;
         let payload = request.into_inner();
 
         let run_id = required_field(&payload.run_id, "run_id")?;
@@ -234,7 +234,7 @@ impl TeamInternalControl for TeamInternalControlService {
     ) -> Result<Response<TransitionStepResponse>, Status> {
         let principal = self.authz.authenticate(request.metadata())?;
         self.authz
-            .ensure_permission(&principal, InternalAction::TeamStepTransition)?;
+            .ensure_permission(&principal, InternalAction::StepTransition)?;
         if principal.role == InternalRole::Worker {
             return Err(Status::permission_denied(
                 "worker token cannot transition team steps",
@@ -261,7 +261,7 @@ impl TeamInternalControl for TeamInternalControlService {
                     .complete_step(
                         step_id,
                         optional_trimmed(&payload.output_json)
-                            .map(|raw| serde_json::from_str::<Value>(raw))
+                            .map(serde_json::from_str::<Value>)
                             .transpose()
                             .map_err(|err| Status::invalid_argument(err.to_string()))?,
                     )
@@ -278,7 +278,7 @@ impl TeamInternalControl for TeamInternalControlService {
                         step_id,
                         optional_trimmed(&payload.reason),
                         optional_trimmed(&payload.input_json)
-                            .map(|raw| serde_json::from_str::<Value>(raw))
+                            .map(serde_json::from_str::<Value>)
                             .transpose()
                             .map_err(|err| Status::invalid_argument(err.to_string()))?,
                     )
@@ -290,7 +290,7 @@ impl TeamInternalControl for TeamInternalControlService {
                     .resume_step(
                         step_id,
                         optional_trimmed(&payload.input_json)
-                            .map(|raw| serde_json::from_str::<Value>(raw))
+                            .map(serde_json::from_str::<Value>)
                             .transpose()
                             .map_err(|err| Status::invalid_argument(err.to_string()))?,
                     )
@@ -466,23 +466,23 @@ fn normalize_permission(raw: &str) -> Option<String> {
 fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
     match role {
         InternalRole::Leader => vec![
-            InternalAction::TeamMessageSend.as_str().to_string(),
-            InternalAction::TeamInboxList.as_str().to_string(),
-            InternalAction::TeamMessageAck.as_str().to_string(),
-            InternalAction::TeamStepTransition.as_str().to_string(),
-            InternalAction::TeamNodeIssue.as_str().to_string(),
+            InternalAction::MessageSend.as_str().to_string(),
+            InternalAction::InboxList.as_str().to_string(),
+            InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::StepTransition.as_str().to_string(),
+            InternalAction::NodeIssue.as_str().to_string(),
         ],
         InternalRole::Worker => vec![
-            InternalAction::TeamMessageSend.as_str().to_string(),
-            InternalAction::TeamInboxList.as_str().to_string(),
-            InternalAction::TeamMessageAck.as_str().to_string(),
+            InternalAction::MessageSend.as_str().to_string(),
+            InternalAction::InboxList.as_str().to_string(),
+            InternalAction::MessageAck.as_str().to_string(),
         ],
         InternalRole::Orchestrator => vec![
-            InternalAction::TeamMessageSend.as_str().to_string(),
-            InternalAction::TeamInboxList.as_str().to_string(),
-            InternalAction::TeamMessageAck.as_str().to_string(),
-            InternalAction::TeamStepTransition.as_str().to_string(),
-            InternalAction::TeamNodeIssue.as_str().to_string(),
+            InternalAction::MessageSend.as_str().to_string(),
+            InternalAction::InboxList.as_str().to_string(),
+            InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::StepTransition.as_str().to_string(),
+            InternalAction::NodeIssue.as_str().to_string(),
         ],
     }
 }
@@ -494,8 +494,8 @@ fn validate_role_permissions(role: InternalRole, permissions: &[String]) -> Resu
     if role == InternalRole::Worker {
         for permission in permissions {
             if permission == "*"
-                || permission == InternalAction::TeamStepTransition.as_str()
-                || permission == InternalAction::TeamNodeIssue.as_str()
+                || permission == InternalAction::StepTransition.as_str()
+                || permission == InternalAction::NodeIssue.as_str()
             {
                 return Err(Status::invalid_argument(
                     "worker permissions cannot include wildcard/step transition/node issue actions",

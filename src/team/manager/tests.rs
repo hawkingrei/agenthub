@@ -4,8 +4,8 @@ use std::sync::Arc;
 use super::TeamManager;
 use super::codec::team_run_status_from_str;
 use crate::team::{
-    TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig, TeamRunStatus,
-    TeamStepStatus,
+    SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
+    TeamRunStatus, TeamStepStatus,
 };
 use axum::body::Bytes;
 use axum::extract::State;
@@ -620,16 +620,16 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .expect("create run");
 
     let sent = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "reviewer",
-            "coordination",
-            TeamActorMessageTransport::Local,
-            None,
-            json!({"text":"please review"}),
-            None,
-        )
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: None,
+        })
         .await
         .expect("send message");
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);
@@ -710,29 +710,29 @@ async fn actor_message_send_is_idempotent_by_key() {
         .expect("create run");
 
     let first = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "reviewer",
-            "coordination",
-            TeamActorMessageTransport::Local,
-            None,
-            json!({"text":"please review"}),
-            Some("msg-1"),
-        )
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-1"),
+        })
         .await
         .expect("first send");
     let second = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "reviewer",
-            "coordination",
-            TeamActorMessageTransport::Local,
-            None,
-            json!({"text":"please review"}),
-            Some("msg-1"),
-        )
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-1"),
+        })
         .await
         .expect("retry send");
     assert_eq!(first.message_id, second.message_id);
@@ -789,29 +789,29 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
         .expect("create run");
 
     let _ = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "reviewer",
-            "coordination",
-            TeamActorMessageTransport::Local,
-            None,
-            json!({"text":"please review"}),
-            Some("msg-1"),
-        )
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-1"),
+        })
         .await
         .expect("first send");
     let err = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "reviewer",
-            "coordination",
-            TeamActorMessageTransport::Local,
-            None,
-            json!({"text":"changed payload"}),
-            Some("msg-1"),
-        )
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"changed payload"}),
+            idempotency_key: Some("msg-1"),
+        })
         .await
         .expect_err("mismatched payload should conflict");
     assert!(
@@ -857,13 +857,13 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
         .expect("create run");
 
     let sent = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "remote-reviewer",
-            "coordination",
-            TeamActorMessageTransport::Remote,
-            Some(json!({
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "remote-reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Remote,
+            route: Some(json!({
                 "endpoint": endpoint,
                 "method": "POST",
                 "headers": {
@@ -880,9 +880,9 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
                     "timestamp_header": "x-agenthub-timestamp"
                 }
             })),
-            json!({"text":"review this"}),
-            None,
-        )
+            payload: json!({"text":"review this"}),
+            idempotency_key: None,
+        })
         .await
         .expect("send remote message");
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);
@@ -975,13 +975,13 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
         .expect("create run");
 
     let retry_message = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "remote-retry",
-            "coordination",
-            TeamActorMessageTransport::Remote,
-            Some(json!({
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "remote-retry",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Remote,
+            route: Some(json!({
                 "endpoint": retry_endpoint,
                 "method": "POST",
                 "auth": {
@@ -990,25 +990,25 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
                     "value": "retry-secret"
                 }
             })),
-            json!({"text":"retry this"}),
-            None,
-        )
+            payload: json!({"text":"retry this"}),
+            idempotency_key: None,
+        })
         .await
         .expect("send retry remote message");
     let dead_message = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "remote-dead",
-            "coordination",
-            TeamActorMessageTransport::Remote,
-            Some(json!({
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "remote-dead",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Remote,
+            route: Some(json!({
                 "endpoint": dead_endpoint,
                 "method": "POST"
             })),
-            json!({"text":"dead-letter this"}),
-            None,
-        )
+            payload: json!({"text":"dead-letter this"}),
+            idempotency_key: None,
+        })
         .await
         .expect("send dead remote message");
 
@@ -1129,22 +1129,22 @@ async fn remote_actor_messages_relay_rejects_invalid_header_values() {
         .expect("create run");
 
     let sent = manager
-        .send_actor_message(
-            &run.id,
-            "planner",
-            "remote-reviewer",
-            "coordination",
-            TeamActorMessageTransport::Remote,
-            Some(json!({
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "remote-reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Remote,
+            route: Some(json!({
                 "endpoint": endpoint,
                 "method": "POST",
                 "headers": {
                     "x-agenthub-relay-test": "bad\nvalue"
                 }
             })),
-            json!({"text":"review this"}),
-            None,
-        )
+            payload: json!({"text":"review this"}),
+            idempotency_key: None,
+        })
         .await
         .expect("send remote message");
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);

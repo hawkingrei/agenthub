@@ -43,6 +43,20 @@ pub struct AcpActorSkillContext {
     pub actor_cli_path: String,
 }
 
+pub struct SpawnAcpSessionRequest {
+    pub event_sink: Arc<dyn AcpEventSink>,
+    pub permissions: Arc<AcpPermissionService>,
+    pub agent_id: String,
+    pub agent_session_id: String,
+    pub resume_session_id: Option<String>,
+    pub workdir: String,
+    pub client_info: Implementation,
+    pub stdout: ChildStdout,
+    pub stdin: ChildStdin,
+    pub safe_paths: Vec<String>,
+    pub actor_context: Option<AcpActorSkillContext>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AcpStream {
     System,
@@ -485,19 +499,20 @@ impl AcpHandle {
     }
 }
 
-pub async fn spawn_acp_session(
-    event_sink: Arc<dyn AcpEventSink>,
-    permissions: Arc<AcpPermissionService>,
-    agent_id: String,
-    agent_session_id: String,
-    resume_session_id: Option<String>,
-    workdir: String,
-    client_info: Implementation,
-    stdout: ChildStdout,
-    stdin: ChildStdin,
-    safe_paths: Vec<String>,
-    actor_context: Option<AcpActorSkillContext>,
-) -> anyhow::Result<AcpHandle> {
+pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
+    let SpawnAcpSessionRequest {
+        event_sink,
+        permissions,
+        agent_id,
+        agent_session_id,
+        resume_session_id,
+        workdir,
+        client_info,
+        stdout,
+        stdin,
+        safe_paths,
+        actor_context,
+    } = request;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
@@ -734,10 +749,10 @@ fn json_message(kind: &str, chunk: &ContentChunk, chunk_state: &mut AcpChunkStat
         }
         if let Some(Value::Number(raw_chunk_index)) = meta.get("chunk_index") {
             chunk_index = raw_chunk_index.as_u64();
-        } else if let Some(Value::String(raw_chunk_index)) = meta.get("chunk_index") {
-            if let Ok(value) = raw_chunk_index.parse::<u64>() {
-                chunk_index = Some(value);
-            }
+        } else if let Some(Value::String(raw_chunk_index)) = meta.get("chunk_index")
+            && let Ok(value) = raw_chunk_index.parse::<u64>()
+        {
+            chunk_index = Some(value);
         }
     }
     if let Some(id) = &message_id {
@@ -778,8 +793,8 @@ fn json_tool_call(tool_call: &ToolCall) -> Value {
         "type": "tool_call",
         "id": tool_call.tool_call_id.to_string(),
         "title": tool_call.title,
-        "kind": serde_json::to_value(&tool_call.kind).unwrap_or(Value::Null),
-        "status": serde_json::to_value(&tool_call.status).unwrap_or(Value::Null),
+        "kind": serde_json::to_value(tool_call.kind).unwrap_or(Value::Null),
+        "status": serde_json::to_value(tool_call.status).unwrap_or(Value::Null),
         "content": serde_json::to_value(&tool_call.content).unwrap_or(Value::Null),
         "raw_input": tool_call.raw_input,
         "raw_output": tool_call.raw_output,

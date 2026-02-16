@@ -189,11 +189,11 @@ impl AuthService {
         passkeys.push(passkey);
         self.save_passkeys(&user_id, &passkeys).await?;
 
-        if role == "device" {
-            if let Some(name) = device_name {
-                let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
-                self.insert_device(&user_id, &name, &user_agent).await?;
-            }
+        if role == "device"
+            && let Some(name) = device_name
+        {
+            let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
+            self.insert_device(&user_id, &name, &user_agent).await?;
         }
 
         Ok(user_id)

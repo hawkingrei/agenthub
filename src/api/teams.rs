@@ -15,9 +15,9 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
-    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamManager, TeamRunEventRecord, TeamRunRecord,
-    TeamStepRecord, TeamStepStatus,
+    SendActorMessageInput, TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord,
+    TeamActorMessageTransport, TeamDefinitionConfig, TeamDefinitionRecord, TeamManager,
+    TeamRunEventRecord, TeamRunRecord, TeamStepRecord, TeamStepStatus,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -612,16 +612,16 @@ async fn send_team_run_message(
     )?;
     let message = state
         .teams
-        .send_actor_message(
-            &run.id,
-            &from_actor_id,
-            &to_actor_id,
-            &channel,
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: &from_actor_id,
+            to_actor_id: &to_actor_id,
+            channel: &channel,
             transport,
-            payload.route,
-            payload.payload,
-            idempotency_key.as_deref(),
-        )
+            route: payload.route,
+            payload: payload.payload,
+            idempotency_key: idempotency_key.as_deref(),
+        })
         .await
         .map_err(map_send_actor_message_error)?;
     Ok(Json(message))
@@ -945,12 +945,12 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         return Err(ApiError::bad_request(
             "spec.entrypoint must reference spec.members[].member_id when spec.steps is omitted",
         ));
-    } else if let Some(leader_id) = leader_member_id.as_deref() {
-        if entrypoint != leader_id {
-            return Err(ApiError::bad_request(
-                "spec.entrypoint must equal leader_member_id when spec.steps is omitted",
-            ));
-        }
+    } else if let Some(leader_id) = leader_member_id.as_deref()
+        && entrypoint != leader_id
+    {
+        return Err(ApiError::bad_request(
+            "spec.entrypoint must equal leader_member_id when spec.steps is omitted",
+        ));
     }
 
     Ok(())
@@ -1132,12 +1132,12 @@ fn parse_spec_leader_member_id(
     }
 
     if let Some(explicit) = explicit_leader.as_deref() {
-        if let Some(role_leader) = member_role_leaders.first() {
-            if explicit != *role_leader {
-                return Err(ApiError::bad_request(
-                    "spec.leader_member_id must match spec.members[].role='leader'",
-                ));
-            }
+        if let Some(role_leader) = member_role_leaders.first()
+            && explicit != *role_leader
+        {
+            return Err(ApiError::bad_request(
+                "spec.leader_member_id must match spec.members[].role='leader'",
+            ));
         }
         return Ok(Some(explicit.to_string()));
     }

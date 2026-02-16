@@ -143,10 +143,10 @@ fn expand_tilde(path: &str) -> String {
     if path == "~" {
         return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
     }
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{}/{}", home, stripped);
-        }
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return format!("{}/{}", home, stripped);
     }
     path.to_string()
 }

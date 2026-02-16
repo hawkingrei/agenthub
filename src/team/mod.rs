@@ -8,7 +8,7 @@ pub use agenthub_team_actor::{
     ActorMessageRecord as TeamActorMessageRecord, ActorMessageStatus as TeamActorMessageStatus,
     ActorMessageTransport as TeamActorMessageTransport,
 };
-pub use manager::{TeamManager, TeamRemoteRelayWorkerSettings};
+pub use manager::{SendActorMessageInput, TeamManager, TeamRemoteRelayWorkerSettings};
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
 
 pub const TEAM_RUN_STATUS_VALUES: [&str; 6] = [
