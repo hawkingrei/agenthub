@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import QRCode from "qrcode";
 import {
   api,
   AgentRecord,
@@ -1433,7 +1432,8 @@ export function App() {
       setJoinPin(data.pin);
       setJoinToken(data.token);
       const url = `${location.origin}/join?token=${data.token}`;
-      const qr = await QRCode.toDataURL(url);
+      const { toDataURL } = await import("qrcode");
+      const qr = await toDataURL(url);
       setJoinQr(qr);
     } catch (err) {
       setError(String(err));
