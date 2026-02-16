@@ -793,12 +793,11 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let mut step_remote_task_id = None;
     for _ in 0..20 {
         let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
-        if let Some(step) = db_steps.first() {
-            if step.status == crate::team::TeamStepStatus::Working {
+        if let Some(step) = db_steps.first()
+            && step.status == crate::team::TeamStepStatus::Working {
                 step_remote_task_id = step.remote_task_id.clone();
                 break;
             }
-        }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     let remote_task_id = step_remote_task_id.expect("step should reach working state");

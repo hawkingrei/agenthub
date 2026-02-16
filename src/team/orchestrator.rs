@@ -564,8 +564,8 @@ mod tests {
     };
     use crate::acp::AcpActorSkillContext;
     use crate::team::{
-        TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig, TeamManager,
-        TeamStepRecord, TeamStepStatus,
+        SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport,
+        TeamDefinitionConfig, TeamManager, TeamStepRecord, TeamStepStatus,
     };
 
     fn make_step(step_key: &str, depends_on: &[&str]) -> TeamStepRecord {
@@ -938,16 +938,16 @@ mod tests {
         );
 
         let sent = teams
-            .send_actor_message(
-                &run.id,
-                "reviewer",
-                &calls[0].actor_context.actor_id,
-                "default",
-                TeamActorMessageTransport::Local,
-                None,
-                json!({"text":"ping"}),
-                Some("orchestrator-inbox-ack"),
-            )
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run.id,
+                from_actor_id: "reviewer",
+                to_actor_id: &calls[0].actor_context.actor_id,
+                channel: "default",
+                transport: TeamActorMessageTransport::Local,
+                route: None,
+                payload: json!({"text":"ping"}),
+                idempotency_key: Some("orchestrator-inbox-ack"),
+            })
             .await
             .expect("send actor message");
 

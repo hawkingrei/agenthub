@@ -92,15 +92,18 @@ impl TeamManager {
 
     pub async fn send_actor_message(
         &self,
-        run_id: &str,
-        from_actor_id: &str,
-        to_actor_id: &str,
-        channel: &str,
-        transport: TeamActorMessageTransport,
-        route: Option<Value>,
-        payload: Value,
-        idempotency_key: Option<&str>,
+        request: SendActorMessageInput<'_>,
     ) -> anyhow::Result<TeamActorMessageRecord> {
+        let SendActorMessageInput {
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route,
+            payload,
+            idempotency_key,
+        } = request;
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
         let message = mailbox
@@ -191,6 +194,17 @@ impl TeamManager {
             db: self.db.clone(),
         })
     }
+}
+
+pub struct SendActorMessageInput<'a> {
+    pub run_id: &'a str,
+    pub from_actor_id: &'a str,
+    pub to_actor_id: &'a str,
+    pub channel: &'a str,
+    pub transport: TeamActorMessageTransport,
+    pub route: Option<Value>,
+    pub payload: Value,
+    pub idempotency_key: Option<&'a str>,
 }
 
 #[derive(Clone)]

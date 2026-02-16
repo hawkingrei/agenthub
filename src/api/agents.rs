@@ -376,14 +376,20 @@ async fn respond_permission(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let _ = agent_id;
+    let fallback_outcome = match payload.outcome.as_deref() {
+        Some("cancelled") | None => agent_client_protocol::RequestPermissionOutcome::Cancelled,
+        Some(_other) => {
+            return Err(ApiError::bad_request(
+                "unsupported outcome, expected 'cancelled'",
+            ));
+        }
+    };
     let outcome = if let Some(option_id) = payload.option_id.clone() {
         agent_client_protocol::RequestPermissionOutcome::Selected(
             agent_client_protocol::SelectedPermissionOutcome::new(option_id.clone()),
         )
-    } else if payload.outcome.as_deref() == Some("cancelled") {
-        agent_client_protocol::RequestPermissionOutcome::Cancelled
     } else {
-        agent_client_protocol::RequestPermissionOutcome::Cancelled
+        fallback_outcome
     };
     state
         .acp_permissions
@@ -1324,13 +1330,12 @@ mod tests {
         .expect("insert safe path");
 
         let env_file = workdir.join("actor-runtime-env.txt");
-        let script = format!(
-            "printf '%s\\n' \"$AGENTHUB_ACTOR_RUN_ID\" > actor-runtime-env.txt; \
+        let script = "printf '%s\\n' \"$AGENTHUB_ACTOR_RUN_ID\" > actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_ID\" >> actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_CHANNEL\" >> actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_CLI\" >> actor-runtime-env.txt; \
              sleep 30"
-        );
+            .to_string();
 
         let create_resp = app
             .clone()

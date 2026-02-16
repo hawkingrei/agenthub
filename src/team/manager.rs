@@ -11,7 +11,7 @@ use serde_json::Value;
 use sqlx::{QueryBuilder, Row, SqlitePool};
 use uuid::Uuid;
 
-pub use mailbox::TeamRemoteRelayWorkerSettings;
+pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_definition_row,

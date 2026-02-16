@@ -75,10 +75,10 @@ fn parse_worktree_list(stdout: &str) -> Vec<GitWorktreeEntry> {
             }
             continue;
         }
-        if let Some(branch) = line.strip_prefix("branch ") {
-            if let Some(entry) = current.as_mut() {
-                entry.branch = Some(branch.to_string());
-            }
+        if let Some(branch) = line.strip_prefix("branch ")
+            && let Some(entry) = current.as_mut()
+        {
+            entry.branch = Some(branch.to_string());
         }
     }
     if let Some(entry) = current.take() {
@@ -93,7 +93,7 @@ fn trim_ref_prefix(value: &str) -> &str {
 
 fn is_hex_sha(value: &str) -> bool {
     let len = value.len();
-    len >= 7 && len <= 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())
+    (7..=64).contains(&len) && value.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn worktree_ref_matches(entry: &GitWorktreeEntry, expected_ref: &str) -> bool {
@@ -103,18 +103,17 @@ fn worktree_ref_matches(entry: &GitWorktreeEntry, expected_ref: &str) -> bool {
     }
 
     let expected_branch = trim_ref_prefix(expected);
-    if !expected_branch.is_empty() {
-        if let Some(branch) = entry.branch.as_deref() {
-            if trim_ref_prefix(branch) == expected_branch {
-                return true;
-            }
-        }
+    if !expected_branch.is_empty()
+        && let Some(branch) = entry.branch.as_deref()
+        && trim_ref_prefix(branch) == expected_branch
+    {
+        return true;
     }
 
-    if is_hex_sha(expected) {
-        if let Some(head) = entry.head.as_deref() {
-            return head.starts_with(expected);
-        }
+    if is_hex_sha(expected)
+        && let Some(head) = entry.head.as_deref()
+    {
+        return head.starts_with(expected);
     }
 
     false
