@@ -43,7 +43,10 @@ type AcpDebugProps = {
   onAcpClearSession: () => void;
   onJumpToPermissionHistory: (permission: AcpPermissionRecord) => void;
   runtimeMetrics: AcpRuntimeMetrics;
+  initialTab?: DebugTab;
 };
+
+const COPIED_STATE_RESET_DELAY_MS = 1600;
 
 export function AcpDebug({
   currentMode,
@@ -65,8 +68,9 @@ export function AcpDebug({
   onAcpClearSession,
   onJumpToPermissionHistory,
   runtimeMetrics,
+  initialTab,
 }: AcpDebugProps) {
-  const [tab, setTab] = React.useState<DebugTab>("session");
+  const [tab, setTab] = React.useState<DebugTab>(initialTab ?? "session");
   const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
   const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
@@ -108,7 +112,7 @@ export function AcpDebug({
       copiedResetTimerRef.current = window.setTimeout(() => {
         setCopiedPermissionId((prev) => (prev === permission.id ? null : prev));
         copiedResetTimerRef.current = null;
-      }, 1600);
+      }, COPIED_STATE_RESET_DELAY_MS);
     } catch {
       setCopiedPermissionId(null);
     }

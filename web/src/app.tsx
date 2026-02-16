@@ -92,6 +92,218 @@ import {
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
+const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
+const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
+
+type PendingPermissionJumpState = {
+  toolCallId: string;
+  sessionId: string | null;
+  attempts: number;
+};
+
+type RuntimeViewportSize = {
+  height: number;
+  width: number;
+};
+
+type PermissionJumpDecision = "idle" | "wait" | "clear" | "attempt";
+
+type RuntimeEventHandler = () => void;
+
+type RuntimeEventTargetLike = {
+  addEventListener: (type: string, listener: RuntimeEventHandler) => void;
+  removeEventListener: (type: string, listener: RuntimeEventHandler) => void;
+};
+
+type RuntimeVisualViewportLike = RuntimeEventTargetLike & {
+  height?: number;
+  width?: number;
+};
+
+type RuntimeWindowLike = RuntimeEventTargetLike & {
+  innerHeight: number;
+  innerWidth: number;
+  visualViewport?: RuntimeVisualViewportLike | null;
+  requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
+  cancelAnimationFrame?: (id: number) => void;
+};
+
+type StyleVarTarget = {
+  setProperty: (name: string, value: string) => void;
+};
+
+type LayoutAnchorNodeLike = {
+  getBoundingClientRect: () => { height: number; top: number };
+};
+
+type LayoutAnchorNodes = {
+  appRoot: LayoutAnchorNodeLike | null;
+  appHeader: LayoutAnchorNodeLike | null;
+  workspace: LayoutAnchorNodeLike | null;
+};
+
+type ResizeObserverLike = {
+  observe: (target: object) => void;
+  disconnect: () => void;
+};
+
+type ResizeObserverCtorLike = new (callback: () => void) => ResizeObserverLike;
+
+export function resolveRuntimeViewportSize(
+  viewport: Pick<VisualViewport, "height" | "width"> | null | undefined,
+  innerHeight: number,
+  innerWidth: number
+): RuntimeViewportSize {
+  return {
+    height: Math.max(1, Math.round(viewport?.height ?? innerHeight)),
+    width: Math.max(1, Math.round(viewport?.width ?? innerWidth)),
+  };
+}
+
+export function shouldSyncRuntimeViewportSize(
+  previous: RuntimeViewportSize | null,
+  next: RuntimeViewportSize
+): boolean {
+  if (!previous) return true;
+  return previous.height !== next.height || previous.width !== next.width;
+}
+
+export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.round(value));
+}
+
+export function decidePermissionJump(
+  pending: PendingPermissionJumpState | null,
+  acpTab: "conversation" | "debug",
+  activeSessionId: string | null,
+  maxAttempts: number = PERMISSION_JUMP_MAX_ATTEMPTS
+): PermissionJumpDecision {
+  if (!pending) return "idle";
+  if (acpTab !== "conversation") return "wait";
+  if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
+  if (pending.attempts >= maxAttempts) return "clear";
+  return "attempt";
+}
+
+export function setupRuntimeViewportVarSync(
+  runtimeWindow: RuntimeWindowLike,
+  styleTarget: StyleVarTarget
+): () => void {
+  const viewport = runtimeWindow.visualViewport;
+  let rafId: number | null = null;
+  let previousSize: RuntimeViewportSize | null = null;
+  const syncViewportSizeNow = () => {
+    const nextSize = resolveRuntimeViewportSize(
+      viewport,
+      runtimeWindow.innerHeight,
+      runtimeWindow.innerWidth
+    );
+    if (!shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
+      return;
+    }
+    previousSize = nextSize;
+    styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
+    styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
+  };
+  const scheduleSyncViewportSize = () => {
+    if (
+      typeof runtimeWindow.requestAnimationFrame !== "function" ||
+      typeof runtimeWindow.cancelAnimationFrame !== "function"
+    ) {
+      syncViewportSizeNow();
+      return;
+    }
+    if (rafId != null) return;
+    rafId = runtimeWindow.requestAnimationFrame(() => {
+      rafId = null;
+      syncViewportSizeNow();
+    });
+  };
+  syncViewportSizeNow();
+  runtimeWindow.addEventListener("resize", scheduleSyncViewportSize);
+  runtimeWindow.addEventListener("orientationchange", scheduleSyncViewportSize);
+  viewport?.addEventListener("resize", scheduleSyncViewportSize);
+  viewport?.addEventListener("scroll", scheduleSyncViewportSize);
+  return () => {
+    if (
+      rafId != null &&
+      typeof runtimeWindow.cancelAnimationFrame === "function"
+    ) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    runtimeWindow.removeEventListener("resize", scheduleSyncViewportSize);
+    runtimeWindow.removeEventListener("orientationchange", scheduleSyncViewportSize);
+    viewport?.removeEventListener("resize", scheduleSyncViewportSize);
+    viewport?.removeEventListener("scroll", scheduleSyncViewportSize);
+  };
+}
+
+export function setupLayoutAnchorVarSync(
+  runtimeWindow: RuntimeWindowLike,
+  styleTarget: StyleVarTarget,
+  nodes: LayoutAnchorNodes,
+  resizeObserverCtor?: ResizeObserverCtorLike
+): () => void {
+  const syncLayoutAnchors = () => {
+    const headerHeight = toNonNegativeRoundedPx(
+      nodes.appHeader?.getBoundingClientRect().height
+    );
+    if (headerHeight != null) {
+      styleTarget.setProperty("--agenthub-header-height", `${headerHeight}px`);
+    }
+    const workspaceTop = toNonNegativeRoundedPx(
+      nodes.workspace?.getBoundingClientRect().top
+    );
+    if (workspaceTop != null) {
+      styleTarget.setProperty("--agenthub-workspace-top", `${workspaceTop}px`);
+    }
+  };
+  let rafId: number | null = null;
+  const scheduleSync = () => {
+    if (
+      typeof runtimeWindow.requestAnimationFrame !== "function" ||
+      typeof runtimeWindow.cancelAnimationFrame !== "function"
+    ) {
+      syncLayoutAnchors();
+      return;
+    }
+    if (rafId != null) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    rafId = runtimeWindow.requestAnimationFrame(() => {
+      rafId = null;
+      syncLayoutAnchors();
+    });
+  };
+
+  syncLayoutAnchors();
+  runtimeWindow.addEventListener("resize", scheduleSync);
+  runtimeWindow.addEventListener("orientationchange", scheduleSync);
+  const viewport = runtimeWindow.visualViewport;
+  viewport?.addEventListener("resize", scheduleSync);
+  viewport?.addEventListener("scroll", scheduleSync);
+  let observer: ResizeObserverLike | null = null;
+  if (resizeObserverCtor) {
+    observer = new resizeObserverCtor(() => scheduleSync());
+    if (nodes.appRoot) observer.observe(nodes.appRoot);
+    if (nodes.appHeader) observer.observe(nodes.appHeader);
+    if (nodes.workspace) observer.observe(nodes.workspace);
+  }
+  return () => {
+    if (
+      rafId != null &&
+      typeof runtimeWindow.cancelAnimationFrame === "function"
+    ) {
+      runtimeWindow.cancelAnimationFrame(rafId);
+    }
+    runtimeWindow.removeEventListener("resize", scheduleSync);
+    runtimeWindow.removeEventListener("orientationchange", scheduleSync);
+    viewport?.removeEventListener("resize", scheduleSync);
+    viewport?.removeEventListener("scroll", scheduleSync);
+    observer?.disconnect();
+  };
+}
 
 export function App() {
   const eventLimit = 200;
@@ -205,11 +417,9 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
-  const [pendingPermissionJump, setPendingPermissionJump] = useState<{
-    toolCallId: string;
-    sessionId: string | null;
-    attempts: number;
-  } | null>(null);
+  const [pendingPermissionJump, setPendingPermissionJump] = useState<
+    PendingPermissionJumpState | null
+  >(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const appHeaderRef = useRef<HTMLElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -264,96 +474,21 @@ export function App() {
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
-    const root = document.documentElement;
-    const syncViewportSize = () => {
-      const viewport = window.visualViewport;
-      const height = Math.max(
-        1,
-        Math.round(viewport?.height ?? window.innerHeight)
-      );
-      const width = Math.max(
-        1,
-        Math.round(viewport?.width ?? window.innerWidth)
-      );
-      root.style.setProperty("--agenthub-vh", `${height}px`);
-      root.style.setProperty("--agenthub-vw", `${width}px`);
-    };
-    syncViewportSize();
-    window.addEventListener("resize", syncViewportSize);
-    window.addEventListener("orientationchange", syncViewportSize);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", syncViewportSize);
-    viewport?.addEventListener("scroll", syncViewportSize);
-    return () => {
-      window.removeEventListener("resize", syncViewportSize);
-      window.removeEventListener("orientationchange", syncViewportSize);
-      viewport?.removeEventListener("resize", syncViewportSize);
-      viewport?.removeEventListener("scroll", syncViewportSize);
-    };
+    return setupRuntimeViewportVarSync(window, document.documentElement.style);
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
-    const root = document.documentElement;
-    const syncLayoutAnchors = () => {
-      const headerRect = appHeaderRef.current?.getBoundingClientRect();
-      if (headerRect) {
-        root.style.setProperty(
-          "--agenthub-header-height",
-          `${Math.max(0, Math.round(headerRect.height))}px`
-        );
-      }
-      const workspaceRect = workspaceRef.current?.getBoundingClientRect();
-      if (workspaceRect) {
-        root.style.setProperty(
-          "--agenthub-workspace-top",
-          `${Math.max(0, Math.round(workspaceRect.top))}px`
-        );
-      }
-    };
-    let rafId: number | null = null;
-    const scheduleSync = () => {
-      if (
-        typeof window.requestAnimationFrame !== "function" ||
-        typeof window.cancelAnimationFrame !== "function"
-      ) {
-        syncLayoutAnchors();
-        return;
-      }
-      if (rafId != null) {
-        window.cancelAnimationFrame(rafId);
-      }
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        syncLayoutAnchors();
-      });
-    };
-    syncLayoutAnchors();
-    window.addEventListener("resize", scheduleSync);
-    window.addEventListener("orientationchange", scheduleSync);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", scheduleSync);
-    viewport?.addEventListener("scroll", scheduleSync);
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => scheduleSync());
-      if (appRootRef.current) observer.observe(appRootRef.current);
-      if (appHeaderRef.current) observer.observe(appHeaderRef.current);
-      if (workspaceRef.current) observer.observe(workspaceRef.current);
-    }
-    return () => {
-      if (
-        rafId != null &&
-        typeof window.cancelAnimationFrame === "function"
-      ) {
-        window.cancelAnimationFrame(rafId);
-      }
-      window.removeEventListener("resize", scheduleSync);
-      window.removeEventListener("orientationchange", scheduleSync);
-      viewport?.removeEventListener("resize", scheduleSync);
-      viewport?.removeEventListener("scroll", scheduleSync);
-      observer?.disconnect();
-    };
+    return setupLayoutAnchorVarSync(
+      window,
+      document.documentElement.style,
+      {
+        appRoot: appRootRef.current,
+        appHeader: appHeaderRef.current,
+        workspace: workspaceRef.current,
+      },
+      typeof ResizeObserver === "undefined" ? undefined : ResizeObserver
+    );
   }, [auth, normalizedError, agentsCollapsed]);
 
   useEffect(() => {
@@ -1714,19 +1849,18 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!pendingPermissionJump) return;
-    if (acpTab !== "conversation") return;
-    if (
-      pendingPermissionJump.sessionId &&
-      activeSessionId !== pendingPermissionJump.sessionId
-    ) {
-      return;
-    }
-    if (acpConversation.jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
+    const jumpDecision = decidePermissionJump(
+      pendingPermissionJump,
+      acpTab,
+      activeSessionId
+    );
+    if (jumpDecision === "idle" || jumpDecision === "wait") return;
+    if (jumpDecision === "clear") {
       setPendingPermissionJump(null);
       return;
     }
-    if (pendingPermissionJump.attempts >= 24) {
+    if (!pendingPermissionJump) return;
+    if (acpConversation.jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
       setPendingPermissionJump(null);
       return;
     }
@@ -1735,7 +1869,7 @@ export function App() {
         if (!prev) return prev;
         return { ...prev, attempts: prev.attempts + 1 };
       });
-    }, 120);
+    }, PERMISSION_JUMP_RETRY_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [
     pendingPermissionJump,

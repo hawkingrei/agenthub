@@ -1,6 +1,7 @@
 # TODO
 
 - [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
+- [ ] Verify newly added jsdom interaction tests for ACP debug copy/jump and app viewport sync stay stable in CI runners (no localStorage/env-specific flakes) (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
 - [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
 - [ ] Verify ACP Debug permission history copy-to-clipboard action works across desktop/mobile browsers with clipboard API fallback behavior (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
 - [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).

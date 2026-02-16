@@ -76,6 +76,9 @@ const VIRTUALIZATION_OVERSCAN = 14;
 const STICK_BOTTOM_STRICT_THRESHOLD = 4;
 const TAIL_PAYLOAD_MAX_DEPTH = 2;
 const TAIL_PAYLOAD_MAX_ENTRIES = 24;
+const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
+const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
+const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -224,6 +227,32 @@ export function findConversationToolCallIndex(
     if (item.id === toolCallId) return idx;
   }
   return -1;
+}
+
+export function estimateToolCallJumpTop(
+  targetIndex: number,
+  averageRowHeight: number
+): number {
+  return Math.max(
+    0,
+    Math.round(
+      (targetIndex - TOOL_CALL_JUMP_CONTEXT_LINES) *
+        Math.max(TOOL_CALL_JUMP_MIN_ROW_HEIGHT, averageRowHeight)
+    )
+  );
+}
+
+export function findToolCallNodeById(
+  container: ParentNode,
+  toolCallId: string
+): Element | null {
+  const candidates = container.querySelectorAll("[data-tool-call-id]");
+  for (const candidate of candidates) {
+    if (candidate.getAttribute("data-tool-call-id") === toolCallId) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 export function buildVirtualConversationSlice(
@@ -404,7 +433,7 @@ export function useAcpConversation({
         prev === toolCallId ? null : prev
       );
       focusedToolCallResetTimerRef.current = null;
-    }, 2500);
+    }, FOCUSED_TOOL_CALL_RESET_DELAY_MS);
   }, []);
 
   const jumpToConversationBottom = useCallback(() => {
@@ -434,9 +463,9 @@ export function useAcpConversation({
       const el = acpConversationRef.current;
       if (!el) return false;
 
-      const estimatedTop = Math.max(
-        0,
-        Math.round((targetIndex - 4) * Math.max(24, conversationAvgHeight))
+      const estimatedTop = estimateToolCallJumpTop(
+        targetIndex,
+        conversationAvgHeight
       );
       el.scrollTop = estimatedTop;
       acpStickToBottomRef.current = false;
@@ -453,31 +482,12 @@ export function useAcpConversation({
         node.scrollIntoView({ block: "center", inline: "nearest" });
         syncConversationViewport();
       };
-      const findNodeByToolCallId = (container: HTMLDivElement) => {
-        const candidates = container.querySelectorAll("[data-tool-call-id]");
-        for (const candidate of candidates) {
-          if (candidate.getAttribute("data-tool-call-id") === targetId) {
-            return candidate;
-          }
-        }
-        return null;
-      };
-      const immediateTarget = findNodeByToolCallId(el);
+      const immediateTarget = findToolCallNodeById(el, targetId);
       if (immediateTarget) {
         scrollNodeToCenter(immediateTarget);
         return true;
       }
-      if (
-        typeof window !== "undefined" &&
-        typeof window.requestAnimationFrame === "function"
-      ) {
-        window.requestAnimationFrame(() => {
-          const latest = acpConversationRef.current;
-          if (!latest) return;
-          scrollNodeToCenter(findNodeByToolCallId(latest));
-        });
-      }
-      return true;
+      return false;
     },
     [
       conversationMessages,

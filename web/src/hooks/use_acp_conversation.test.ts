@@ -4,7 +4,9 @@ import {
   buildConversationTailKey,
   buildVirtualConversationSlice,
   deriveConversationJumpState,
+  estimateToolCallJumpTop,
   estimateTailPayloadSize,
+  findToolCallNodeById,
   findConversationToolCallIndex,
   nextConversationViewport,
   normalizeConversationAvgHeightEstimate,
@@ -132,6 +134,31 @@ describe("findConversationToolCallIndex", () => {
     ];
     expect(findConversationToolCallIndex(items, "")).toBe(-1);
     expect(findConversationToolCallIndex(items, "missing")).toBe(-1);
+  });
+});
+
+describe("tool call jump helpers", () => {
+  it("estimates scroll top with context lines and minimum row height", () => {
+    expect(estimateToolCallJumpTop(10, 48)).toBe(288);
+    expect(estimateToolCallJumpTop(2, 18)).toBe(0);
+  });
+
+  it("finds matching tool call node from data attribute", () => {
+    const target = {
+      getAttribute: (name: string) => (name === "data-tool-call-id" ? "call-2" : null),
+    };
+    const container = {
+      querySelectorAll: () =>
+        [
+          {
+            getAttribute: (name: string) =>
+              name === "data-tool-call-id" ? "call-1" : null,
+          },
+          target,
+        ] as unknown as NodeListOf<Element>,
+    } as unknown as ParentNode;
+    expect(findToolCallNodeById(container, "call-2")).toBe(target);
+    expect(findToolCallNodeById(container, "missing")).toBeNull();
   });
 });
 
