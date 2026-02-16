@@ -566,131 +566,6 @@ export function App() {
     isAgentActive,
     onLoadOlder: loadOlderEvents,
   });
-  const acpRuntimeMetrics = useMemo(() => {
-    const cacheStats = getAcpConversationCacheStats();
-    return {
-      totalConversationItems: acpConversation.conversationTotalItems,
-      sourceConversationItems: acpConversation.conversationSourceItems,
-      renderedConversationItems: acpConversation.conversationRenderedItems,
-      pendingConversationItems: acpConversation.conversationPendingCount,
-      virtualizedConversation: acpConversation.conversationVirtualized,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
-      rawEventCount: acpView.rawEvents.length,
-      toolCallCount: acpView.toolCalls.length,
-      messageCount: acpView.messages.length,
-      markdownCacheHits: cacheStats.markdownHits,
-      markdownCacheMisses: cacheStats.markdownMisses,
-      ansiCacheHits: cacheStats.ansiHits,
-      ansiCacheMisses: cacheStats.ansiMisses,
-      payloadParses: cacheStats.payloadParses,
-      payloadParseFailures: cacheStats.payloadParseFailures,
-    };
-  }, [
-    acpConversation.conversationTotalItems,
-    acpConversation.conversationSourceItems,
-    acpConversation.conversationRenderedItems,
-    acpConversation.conversationPendingCount,
-    acpConversation.conversationVirtualized,
-    acpConversation.conversationStickToBottom,
-    acpConversation.conversationAvgHeight,
-    acpView.rawEvents.length,
-    acpView.toolCalls.length,
-    acpView.messages.length,
-  ]);
-  const acpConversationProps = useMemo(
-    () => ({
-      items: acpConversation.conversationRenderItems,
-      windowOffset: acpConversation.conversationWindowOffset,
-      isFrozenView: acpConversation.isFrozenView,
-      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
-      collapseCutoff: acpConversation.collapseCutoff,
-      runStatus: acpView.runStatus?.status ?? null,
-      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
-      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      pendingCount: acpConversation.conversationPendingCount,
-      avgHeight: acpConversation.conversationAvgHeight,
-      onScroll: acpConversation.handleConversationScroll,
-      containerRef: acpConversation.acpConversationRef,
-      ansi,
-    }),
-    [
-      acpConversation.conversationRenderItems,
-      acpConversation.conversationWindowOffset,
-      acpConversation.isFrozenView,
-      acpConversation.shouldAutoCollapse,
-      acpConversation.collapseCutoff,
-      acpConversation.conversationVirtualTopSpacer,
-      acpConversation.conversationVirtualBottomSpacer,
-      acpConversation.conversationStickToBottom,
-      acpConversation.conversationPendingCount,
-      acpConversation.conversationAvgHeight,
-      acpConversation.handleConversationScroll,
-      acpConversation.acpConversationRef,
-      acpView.runStatus?.status,
-      ansi,
-    ]
-  );
-  const acpDebugProps = useMemo(
-    () => ({
-      currentMode: acpView.currentMode,
-      rawEvents: acpView.rawEvents,
-      acpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      onAcpModeIdChange: setAcpModeId,
-      onAcpModelIdChange: setAcpModelId,
-      onAcpConfigIdChange: setAcpConfigId,
-      onAcpConfigValueChange: setAcpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      runtimeMetrics: acpRuntimeMetrics,
-    }),
-    [
-      acpView.currentMode,
-      acpView.rawEvents,
-      acpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      acpRuntimeMetrics,
-    ]
-  );
-  const acpPanelProps = useMemo(
-    () => ({
-      acpView,
-      subtitle: activeAgentRecord?.workdir ?? null,
-      acpTab,
-      onSelectTab: handleAcpTabSelect,
-      showConversationBadge: acpConversation.showConversationBadge,
-      conversation: acpConversationProps,
-      debug: acpDebugProps,
-    }),
-    [
-      acpView,
-      activeAgentRecord?.workdir,
-      acpTab,
-      handleAcpTabSelect,
-      acpConversation.showConversationBadge,
-      acpConversationProps,
-      acpDebugProps,
-    ]
-  );
-  const showInputDock = !(acpTab === "debug" && acpView.hasAcp);
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -1671,6 +1546,132 @@ export function App() {
       setError(String(err));
     }
   };
+
+  const acpRuntimeMetrics = useMemo(() => {
+    const cacheStats = getAcpConversationCacheStats();
+    return {
+      totalConversationItems: acpConversation.conversationTotalItems,
+      sourceConversationItems: acpConversation.conversationSourceItems,
+      renderedConversationItems: acpConversation.conversationRenderedItems,
+      pendingConversationItems: acpConversation.conversationPendingCount,
+      virtualizedConversation: acpConversation.conversationVirtualized,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+      rawEventCount: acpView.rawEvents.length,
+      toolCallCount: acpView.toolCalls.length,
+      messageCount: acpView.messages.length,
+      markdownCacheHits: cacheStats.markdownHits,
+      markdownCacheMisses: cacheStats.markdownMisses,
+      ansiCacheHits: cacheStats.ansiHits,
+      ansiCacheMisses: cacheStats.ansiMisses,
+      payloadParses: cacheStats.payloadParses,
+      payloadParseFailures: cacheStats.payloadParseFailures,
+    };
+  }, [
+    acpConversation.conversationTotalItems,
+    acpConversation.conversationSourceItems,
+    acpConversation.conversationRenderedItems,
+    acpConversation.conversationPendingCount,
+    acpConversation.conversationVirtualized,
+    acpConversation.conversationStickToBottom,
+    acpConversation.conversationAvgHeight,
+    acpView.rawEvents.length,
+    acpView.toolCalls.length,
+    acpView.messages.length,
+  ]);
+  const acpConversationProps = useMemo(
+    () => ({
+      items: acpConversation.conversationRenderItems,
+      windowOffset: acpConversation.conversationWindowOffset,
+      isFrozenView: acpConversation.isFrozenView,
+      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
+      collapseCutoff: acpConversation.collapseCutoff,
+      runStatus: acpView.runStatus?.status ?? null,
+      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
+      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      pendingCount: acpConversation.conversationPendingCount,
+      avgHeight: acpConversation.conversationAvgHeight,
+      onScroll: acpConversation.handleConversationScroll,
+      containerRef: acpConversation.acpConversationRef,
+      ansi,
+    }),
+    [
+      acpConversation.conversationRenderItems,
+      acpConversation.conversationWindowOffset,
+      acpConversation.isFrozenView,
+      acpConversation.shouldAutoCollapse,
+      acpConversation.collapseCutoff,
+      acpConversation.conversationVirtualTopSpacer,
+      acpConversation.conversationVirtualBottomSpacer,
+      acpConversation.conversationStickToBottom,
+      acpConversation.conversationPendingCount,
+      acpConversation.conversationAvgHeight,
+      acpConversation.handleConversationScroll,
+      acpConversation.acpConversationRef,
+      acpView.runStatus?.status,
+      ansi,
+    ]
+  );
+  const acpDebugProps = useMemo(
+    () => ({
+      currentMode: acpView.currentMode,
+      rawEvents: acpView.rawEvents,
+      acpPermissionHistory,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      onAcpModeIdChange: setAcpModeId,
+      onAcpModelIdChange: setAcpModelId,
+      onAcpConfigIdChange: setAcpConfigId,
+      onAcpConfigValueChange: setAcpConfigValue,
+      canControlAcp,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      runtimeMetrics: acpRuntimeMetrics,
+    }),
+    [
+      acpView.currentMode,
+      acpView.rawEvents,
+      acpPermissionHistory,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      canControlAcp,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      acpRuntimeMetrics,
+    ]
+  );
+  const acpPanelProps = useMemo(
+    () => ({
+      acpView,
+      subtitle: activeAgentRecord?.workdir ?? null,
+      acpTab,
+      onSelectTab: handleAcpTabSelect,
+      showConversationBadge: acpConversation.showConversationBadge,
+      conversation: acpConversationProps,
+      debug: acpDebugProps,
+    }),
+    [
+      acpView,
+      activeAgentRecord?.workdir,
+      acpTab,
+      handleAcpTabSelect,
+      acpConversation.showConversationBadge,
+      acpConversationProps,
+      acpDebugProps,
+    ]
+  );
+  const showInputDock = !(acpTab === "debug" && acpView.hasAcp);
 
   if (location.pathname.startsWith("/join")) {
     return <JoinPage onComplete={(next) => setAuth(next)} />;

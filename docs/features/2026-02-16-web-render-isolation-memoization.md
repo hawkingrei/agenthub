@@ -52,6 +52,11 @@ change.
    - no ACP flow changes
 5. Keep `acp_panel` callback test intact by exporting an internal render
    function (`AcpPanelView`) for direct event callback assertions.
+6. Keep hook initialization order safe:
+   - callbacks referenced by memoized prop objects must be initialized before
+     those `useMemo` blocks run;
+   - avoid TDZ (`Cannot access 'onAcpSetMode' before initialization`) causing a
+     blank initial app shell.
 
 ## Validation
 
@@ -59,6 +64,7 @@ Recommended commands:
 
 ```bash
 npm --prefix web run test -- src/output_body.test.tsx src/acp_panel.test.tsx src/output_header.test.tsx
+npm --prefix web run e2e -- tests/e2e/app.e2e.ts
 ```
 
 Manual checks:
