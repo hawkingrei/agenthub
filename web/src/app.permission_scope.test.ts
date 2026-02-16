@@ -4,6 +4,7 @@ import {
   decidePermissionJump,
   filterPermissionsForAgent,
   resolveRuntimeViewportSize,
+  schedulePermissionPollLoop,
   setupLayoutAnchorVarSync,
   setupRuntimeViewportVarSync,
   shouldSyncRuntimeViewportSize,
@@ -406,5 +407,62 @@ describe("app helper decisions", () => {
 
     cleanup();
     expect(cancelSpy).toHaveBeenCalledWith(2);
+  });
+
+  it("does not schedule permission polling when already cancelled", () => {
+    const pollState = { timer: null as number | null };
+    const scheduleSpy = vi.fn(() => 1);
+    const clearSpy = vi.fn();
+
+    schedulePermissionPollLoop(
+      0,
+      pollState,
+      async () => 0,
+      () => true,
+      scheduleSpy,
+      clearSpy
+    );
+
+    expect(scheduleSpy).not.toHaveBeenCalled();
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(pollState.timer).toBeNull();
+  });
+
+  it("stops permission poll loop when cancelled during an in-flight request", async () => {
+    const pollState = { timer: null as number | null };
+    const scheduledCallbacks: Array<() => void> = [];
+    const clearSpy = vi.fn();
+    let cancelled = false;
+    let resolvePollOnce: ((count: number) => void) | null = null;
+    const pollOnce = vi.fn(
+      () =>
+        new Promise<number>((resolve) => {
+          resolvePollOnce = resolve;
+        })
+    );
+
+    schedulePermissionPollLoop(
+      0,
+      pollState,
+      pollOnce,
+      () => cancelled,
+      (callback) => {
+        scheduledCallbacks.push(callback);
+        return scheduledCallbacks.length;
+      },
+      clearSpy
+    );
+
+    expect(scheduledCallbacks).toHaveLength(1);
+    const running = scheduledCallbacks[0]();
+    expect(pollOnce).toHaveBeenCalledTimes(1);
+
+    cancelled = true;
+    resolvePollOnce?.(1);
+    await running;
+
+    expect(scheduledCallbacks).toHaveLength(1);
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(pollState.timer).toBeNull();
   });
 });

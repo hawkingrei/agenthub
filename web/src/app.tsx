@@ -305,6 +305,42 @@ export function setupLayoutAnchorVarSync(
   };
 }
 
+export function schedulePermissionPollLoop(
+  delay: number,
+  pollState: { timer: number | null },
+  pollOnce: () => Promise<number>,
+  isCancelled: () => boolean,
+  scheduleTimeout: (callback: () => void, delayMs: number) => number = (callback, delayMs) =>
+    window.setTimeout(callback, delayMs),
+  clearTimeoutFn: (timerId: number) => void = (timerId) => window.clearTimeout(timerId)
+): void {
+  if (isCancelled()) return;
+  if (pollState.timer != null) {
+    clearTimeoutFn(pollState.timer);
+    pollState.timer = null;
+  }
+  pollState.timer = scheduleTimeout(async () => {
+    if (isCancelled()) {
+      pollState.timer = null;
+      return;
+    }
+    const pendingCount = await pollOnce();
+    if (isCancelled()) {
+      pollState.timer = null;
+      return;
+    }
+    const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
+    schedulePermissionPollLoop(
+      nextDelay,
+      pollState,
+      pollOnce,
+      isCancelled,
+      scheduleTimeout,
+      clearTimeoutFn
+    );
+  }, delay);
+}
+
 export function App() {
   const eventLimit = 200;
   const maxCachedEvents = 800;
@@ -1241,14 +1277,12 @@ export function App() {
       }
     };
     const schedule = (delay: number) => {
-      if (pollState.timer) {
-        window.clearTimeout(pollState.timer);
-      }
-      pollState.timer = window.setTimeout(async () => {
-        const pendingCount = await pollOnce();
-        const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
-        schedule(nextDelay);
-      }, delay);
+      schedulePermissionPollLoop(
+        delay,
+        pollState,
+        pollOnce,
+        () => cancelled
+      );
     };
     schedulePermissionPollRef.current = schedule;
     schedule(0);
