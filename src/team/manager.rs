@@ -6,7 +6,7 @@ mod tests;
 
 use chrono::Utc;
 use serde_json::Value;
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, SqlitePool};
 use uuid::Uuid;
 
 pub use mailbox::TeamRemoteRelayWorkerSettings;
@@ -305,38 +305,25 @@ impl TeamManager {
         before_created_at: Option<i64>,
     ) -> anyhow::Result<Vec<TeamRunRecord>> {
         let limit = limit.max(1);
-        let rows = if let Some(before_created_at) = before_created_at {
-            sqlx::query(
-                r#"
-                SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
-                FROM team_runs
-                WHERE team_id = ?1 AND (?2 IS NULL OR status = ?2) AND created_at < ?3
-                ORDER BY created_at DESC, id DESC
-                LIMIT ?4
-                "#,
-            )
-            .bind(team_id)
-            .bind(status)
-            .bind(before_created_at)
-            .bind(limit)
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
-                FROM team_runs
-                WHERE team_id = ?1 AND (?2 IS NULL OR status = ?2)
-                ORDER BY created_at DESC, id DESC
-                LIMIT ?3
-                "#,
-            )
-            .bind(team_id)
-            .bind(status)
-            .bind(limit)
-            .fetch_all(&self.db)
-            .await?
-        };
+        let mut builder = QueryBuilder::<sqlx::Sqlite>::new(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE team_id = "#,
+        );
+        builder.push_bind(team_id);
+        if let Some(status) = status {
+            builder.push(" AND status = ");
+            builder.push_bind(status);
+        }
+        if let Some(before_created_at) = before_created_at {
+            builder.push(" AND created_at < ");
+            builder.push_bind(before_created_at);
+        }
+        builder.push(" ORDER BY created_at DESC, id DESC LIMIT ");
+        builder.push_bind(limit);
+
+        let rows = builder.build().fetch_all(&self.db).await?;
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {

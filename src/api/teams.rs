@@ -15,8 +15,9 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
-    TeamActorMessageRecord, TeamActorMessageTransport, TeamDefinitionConfig, TeamDefinitionRecord,
-    TeamManager, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
+    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamManager, TeamRunEventRecord, TeamRunRecord,
+    TeamStepRecord,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -673,14 +674,13 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
     if trimmed.is_empty() {
         return Ok(None);
     }
-    match trimmed {
-        "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" => {
-            Ok(Some(trimmed.to_string()))
-        }
-        _ => Err(ApiError::bad_request(
-            "status must be one of: submitted, working, input_required, completed, failed, canceled",
-        )),
+    if TEAM_RUN_STATUS_VALUES.contains(&trimmed) {
+        return Ok(Some(trimmed.to_string()));
     }
+    Err(ApiError::bad_request(&format!(
+        "status must be one of: {}",
+        TEAM_RUN_STATUS_VALUES.join(", ")
+    )))
 }
 
 async fn load_run_and_member_ids(

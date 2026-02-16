@@ -11,6 +11,24 @@ pub use agenthub_team_actor::{
 pub use manager::{TeamManager, TeamRemoteRelayWorkerSettings};
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
 
+pub const TEAM_RUN_STATUS_VALUES: [&str; 6] = [
+    "submitted",
+    "working",
+    "input_required",
+    "completed",
+    "failed",
+    "canceled",
+];
+
+pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
+    "submitted",
+    "working",
+    "input_required",
+    "completed",
+    "failed",
+    "canceled",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamDefinitionConfig {
     pub name: String,

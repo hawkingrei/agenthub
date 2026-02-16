@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
+use crate::team::{TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -82,7 +83,7 @@ fn openapi_spec() -> Value {
               "context_id": { "type": "string" },
               "status": {
                 "type": "string",
-                "enum": ["submitted", "working", "input_required", "completed", "failed", "canceled"]
+                "enum": TEAM_RUN_STATUS_VALUES
               },
               "input": { "type": "object", "additionalProperties": true },
               "created_at": { "type": "integer", "format": "int64" },
@@ -115,7 +116,7 @@ fn openapi_spec() -> Value {
               "remote_task_id": { "type": ["string", "null"] },
               "status": {
                 "type": "string",
-                "enum": ["submitted", "working", "input_required", "completed", "failed", "canceled"]
+                "enum": TEAM_STEP_STATUS_VALUES
               },
               "attempt": { "type": "integer", "format": "int64" },
               "depends_on": { "type": "array", "items": { "type": "string" } },
@@ -308,7 +309,7 @@ fn openapi_spec() -> Value {
                 "in": "query",
                 "schema": {
                   "type": "string",
-                  "enum": ["submitted", "working", "input_required", "completed", "failed", "canceled"]
+                  "enum": TEAM_RUN_STATUS_VALUES
                 }
               },
               { "name": "before_created_at", "in": "query", "schema": { "type": "integer", "format": "int64" } }
@@ -734,7 +735,7 @@ const OPENAPI_DOCS_HTML: &str = r#"<!doctype html>
           const resp = await fetch("/api/openapi.json", { headers });
           if (!resp.ok) {
             const text = await resp.text();
-            output.innerHTML = `<span class="error">HTTP ${resp.status}</span>\n${text}`;
+            output.textContent = `HTTP ${resp.status}\n${text}`;
             currentJson = "";
             return;
           }
@@ -742,7 +743,7 @@ const OPENAPI_DOCS_HTML: &str = r#"<!doctype html>
           currentJson = JSON.stringify(body, null, 2);
           output.textContent = currentJson;
         } catch (err) {
-          output.innerHTML = `<span class="error">${String(err)}</span>`;
+          output.textContent = String(err);
           currentJson = "";
         }
       }
