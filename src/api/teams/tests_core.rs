@@ -24,6 +24,20 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
     .await
     .expect("create team");
     assert_eq!(created.spec["spec_version"], Value::from(1));
+    assert_eq!(created.spec["leader_member_id"], Value::from("planner"));
+    assert_eq!(created.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(created.spec["steps"][0]["step_key"], Value::from("leader_plan"));
+    assert_eq!(created.spec["steps"][0]["member_id"], Value::from("planner"));
+    assert!(
+        created.spec["members"][0]["prompt"]
+            .as_str()
+            .is_some_and(|prompt| !prompt.trim().is_empty())
+    );
+    assert!(
+        created.spec["members"][0]["skills"]
+            .as_array()
+            .is_some_and(|skills| !skills.is_empty())
+    );
 
     let Json(listed) = list_teams(State(state.clone()), headers.clone())
         .await
@@ -52,6 +66,66 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
     .await
     .expect_err("duplicate team name should fail");
     assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn teams_api_generates_default_steps_for_multi_member_team() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "default-steps-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "members":[
+                    {"member_id":"leader-agent","role":"leader"},
+                    {"member_id":"worker-agent-a","role":"worker"},
+                    {"member_id":"worker-agent-b","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team with generated defaults");
+
+    assert_eq!(created.spec["entrypoint"], Value::from("leader_plan"));
+    let steps = created.spec["steps"]
+        .as_array()
+        .expect("generated steps array");
+    assert_eq!(steps.len(), 4);
+    assert_eq!(steps[0]["step_key"], Value::from("leader_plan"));
+    assert_eq!(steps[0]["member_id"], Value::from("leader-agent"));
+    let worker_step_keys = steps
+        .iter()
+        .filter_map(|step| {
+            let member_id = step.get("member_id")?.as_str()?;
+            if member_id.starts_with("worker-agent") {
+                step.get("step_key")?.as_str().map(str::to_string)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(worker_step_keys.len(), 2);
+    let synth_step = steps
+        .iter()
+        .find(|step| step.get("step_key").and_then(Value::as_str) == Some("leader_synthesize"))
+        .expect("leader_synthesize step");
+    let synth_depends = synth_step["depends_on"]
+        .as_array()
+        .expect("synthesize depends_on");
+    assert_eq!(synth_depends.len(), 2);
+    for worker_step_key in worker_step_keys {
+        assert!(
+            synth_depends
+                .iter()
+                .any(|dep| dep.as_str() == Some(worker_step_key.as_str()))
+        );
+    }
 }
 
 #[tokio::test]
