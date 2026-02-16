@@ -45,6 +45,7 @@ The PR had two concrete issues:
 ```bash
 cd web
 npm run test
+npm run test:coverage
 npm run build
 
 cd ..
@@ -57,3 +58,21 @@ Expected outcomes:
 - Tool-call jump retry path remains deterministic for caller logic.
 - CSS contract test still passes while reducing brittle block-level assertions.
 - Web build and Rust web-assets test pass.
+
+## Follow-up (Round 2)
+
+To close the remaining patch-coverage gap, tests were further expanded in three
+hot paths:
+
+1. `web/src/app.permission_scope.test.ts`
+   - Cover viewport no-op sync branch (skip duplicate CSS var writes).
+   - Cover layout RAF coalescing cancel branch and cleanup cancel path.
+2. `web/src/hooks/use_acp_conversation.interaction.test.tsx`
+   - Cover jump result when tool call exists but DOM bubble is not mounted.
+   - Cover focus-reset timer replacement and jump-to-bottom focus reset path.
+3. `web/src/acp_debug.interaction.test.tsx`
+   - Cover clipboard fallback via `document.execCommand("copy")`.
+   - Cover clipboard failure catch path and repeated-copy timer replacement.
+
+This keeps branch-heavy UI behavior covered without inflating component
+implementation complexity.

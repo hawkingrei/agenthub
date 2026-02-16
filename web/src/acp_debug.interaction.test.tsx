@@ -153,4 +153,84 @@ describe("AcpDebug interactions", () => {
       "Copy"
     );
   });
+
+  it("falls back to document.execCommand when Clipboard API is unavailable", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+
+    act(() => {
+      root.render(<AcpDebug {...buildProps()} />);
+    });
+    clickByText(container, "Permissions");
+
+    const copyButton = container.querySelector(".acp-permission-copy");
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(container.querySelector(".acp-permission-copy")?.textContent).toContain(
+      "Copied"
+    );
+  });
+
+  it("keeps copy button idle when clipboard write fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    act(() => {
+      root.render(<AcpDebug {...buildProps()} />);
+    });
+    clickByText(container, "Permissions");
+
+    const copyButton = container.querySelector(".acp-permission-copy");
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".acp-permission-copy")?.textContent).toContain(
+      "Copy"
+    );
+  });
+
+  it("clears previous copied-state reset timer when copying repeatedly", async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const clearSpy = vi.spyOn(window, "clearTimeout");
+
+    act(() => {
+      root.render(<AcpDebug {...buildProps()} />);
+    });
+    clickByText(container, "Permissions");
+
+    const copyButton = container.querySelector(".acp-permission-copy");
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(clearSpy).toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledTimes(2);
+  });
 });

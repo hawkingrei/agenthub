@@ -33,9 +33,11 @@ const baseAcpView: AcpView = {
 
 function HookHarness({
   acpTab = "conversation",
+  renderToolCallNode = true,
   onSnapshot,
 }: {
   acpTab?: "conversation" | "debug";
+  renderToolCallNode?: boolean;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }) {
   const snapshot = useAcpConversation({
@@ -53,7 +55,9 @@ function HookHarness({
       {snapshot.conversationRenderItems.map((item, idx) => (
         <div
           key={`${item.kind}-${idx}`}
-          data-tool-call-id={item.kind === "tool_call" ? item.id : undefined}
+          data-tool-call-id={
+            item.kind === "tool_call" && renderToolCallNode ? item.id : undefined
+          }
         />
       ))}
     </div>
@@ -117,5 +121,41 @@ describe("useAcpConversation jump interaction", () => {
       result = snapshot?.jumpToConversationToolCall("missing-call") ?? true;
     });
     expect(result).toBe(false);
+  });
+
+  it("returns false when tool call exists but target bubble is not mounted", () => {
+    act(() => {
+      root.render(<HookHarness onSnapshot={onSnapshot} renderToolCallNode={false} />);
+    });
+
+    let result = true;
+    act(() => {
+      result = snapshot?.jumpToConversationToolCall("call-1") ?? true;
+    });
+    expect(result).toBe(false);
+    expect(snapshot?.focusedConversationToolCallId).toBe("call-1");
+  });
+
+  it("clears previous focus timer when re-jumping and resets focus at bottom jump", () => {
+    vi.useFakeTimers();
+    const clearSpy = vi.spyOn(window, "clearTimeout");
+    act(() => {
+      root.render(<HookHarness onSnapshot={onSnapshot} />);
+    });
+
+    act(() => {
+      snapshot?.jumpToConversationToolCall("call-1");
+    });
+    expect(snapshot?.focusedConversationToolCallId).toBe("call-1");
+
+    act(() => {
+      snapshot?.jumpToConversationToolCall("call-1");
+    });
+    expect(clearSpy).toHaveBeenCalled();
+
+    act(() => {
+      snapshot?.jumpToConversationBottom();
+    });
+    expect(snapshot?.focusedConversationToolCallId).toBeNull();
   });
 });

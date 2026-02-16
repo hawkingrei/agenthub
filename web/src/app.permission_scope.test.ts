@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord } from "./api";
 import {
   decidePermissionJump,
@@ -181,6 +181,80 @@ describe("app helper decisions", () => {
     expect(runtimeWindow.visualViewport.listenerCount("scroll")).toBe(0);
   });
 
+  it("coalesces viewport sync with requestAnimationFrame and cancels pending frame on cleanup", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & { height: number; width: number };
+      requestAnimationFrame: (cb: (ts: number) => void) => number;
+      cancelAnimationFrame: (id: number) => void;
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+    });
+    const style = createStyleTarget();
+    const rafCallbacks: Array<(ts: number) => void> = [];
+    const cancelSpy = vi.fn();
+    runtimeWindow.requestAnimationFrame = (cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    };
+    runtimeWindow.cancelAnimationFrame = cancelSpy;
+
+    const cleanup = setupRuntimeViewportVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupRuntimeViewportVarSync>[0],
+      style.target
+    );
+
+    runtimeWindow.visualViewport.height = 680;
+    runtimeWindow.visualViewport.width = 370;
+    runtimeWindow.visualViewport.emit("resize");
+    runtimeWindow.visualViewport.emit("scroll");
+    expect(rafCallbacks.length).toBe(1);
+    rafCallbacks[0](0);
+    expect(style.values.get("--agenthub-vh")).toBe("680px");
+    expect(style.values.get("--agenthub-vw")).toBe("370px");
+
+    runtimeWindow.visualViewport.height = 650;
+    runtimeWindow.visualViewport.emit("resize");
+    expect(rafCallbacks.length).toBe(2);
+    cleanup();
+    expect(cancelSpy).toHaveBeenCalledWith(2);
+  });
+
+  it("skips viewport css writes when viewport size does not change", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & { height: number; width: number };
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+    });
+    const values = new Map<string, string>();
+    const setProperty = vi.fn((name: string, value: string) => {
+      values.set(name, value);
+    });
+
+    const cleanup = setupRuntimeViewportVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupRuntimeViewportVarSync>[0],
+      { setProperty }
+    );
+    expect(values.get("--agenthub-vh")).toBe("700px");
+    expect(values.get("--agenthub-vw")).toBe("390px");
+    setProperty.mockClear();
+
+    runtimeWindow.visualViewport.emit("resize");
+    expect(setProperty).not.toHaveBeenCalled();
+    cleanup();
+  });
+
   it("syncs layout anchor vars and disconnects observer on cleanup", () => {
     const runtimeWindow = new MockEventTarget() as MockEventTarget & {
       innerHeight: number;
@@ -253,5 +327,84 @@ describe("app helper decisions", () => {
 
     cleanup();
     expect(disconnected).toBe(true);
+  });
+
+  it("handles layout sync without raf and without resize observer", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & { height: number; width: number };
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+    });
+    const style = createStyleTarget();
+    const cleanup = setupLayoutAnchorVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupLayoutAnchorVarSync>[0],
+      style.target,
+      {
+        appRoot: null,
+        appHeader: null,
+        workspace: null,
+      }
+    );
+
+    runtimeWindow.emit("resize");
+    expect(style.values.get("--agenthub-header-height")).toBeUndefined();
+    expect(style.values.get("--agenthub-workspace-top")).toBeUndefined();
+
+    cleanup();
+    expect(runtimeWindow.listenerCount("resize")).toBe(0);
+    expect(runtimeWindow.listenerCount("orientationchange")).toBe(0);
+    expect(runtimeWindow.visualViewport.listenerCount("resize")).toBe(0);
+    expect(runtimeWindow.visualViewport.listenerCount("scroll")).toBe(0);
+  });
+
+  it("coalesces layout sync by cancelling previous frame and pending cleanup frame", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & { height: number; width: number };
+      requestAnimationFrame: (cb: (ts: number) => void) => number;
+      cancelAnimationFrame: (id: number) => void;
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+    });
+    const rafCallbacks: Array<(ts: number) => void> = [];
+    const cancelSpy = vi.fn();
+    runtimeWindow.requestAnimationFrame = (cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    };
+    runtimeWindow.cancelAnimationFrame = cancelSpy;
+
+    const cleanup = setupLayoutAnchorVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupLayoutAnchorVarSync>[0],
+      createStyleTarget().target,
+      {
+        appRoot: null,
+        appHeader: {
+          getBoundingClientRect: () => ({ height: 56, top: 0 }),
+        },
+        workspace: {
+          getBoundingClientRect: () => ({ height: 0, top: 64 }),
+        },
+      }
+    );
+
+    runtimeWindow.emit("resize");
+    runtimeWindow.emit("orientationchange");
+    expect(cancelSpy).toHaveBeenCalledWith(1);
+    expect(rafCallbacks.length).toBe(2);
+
+    cleanup();
+    expect(cancelSpy).toHaveBeenCalledWith(2);
   });
 });
