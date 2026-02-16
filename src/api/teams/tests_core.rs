@@ -113,7 +113,7 @@ async fn teams_api_generates_default_steps_for_multi_member_team() {
     assert_eq!(worker_step_keys.len(), 2);
     let synth_step = steps
         .iter()
-        .find(|step| step["step_key"] == Value::from("leader_synthesize"))
+        .find(|step| step.get("step_key").and_then(Value::as_str) == Some("leader_synthesize"))
         .expect("leader_synthesize step");
     let synth_depends = synth_step["depends_on"]
         .as_array()

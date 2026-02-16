@@ -940,13 +940,13 @@ fn inject_team_spec_defaults(
         .map(|member| member.member_id.as_str())
         .collect::<HashSet<_>>();
     let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
-    if let Some(leader_id) = leader_member_id.as_deref() {
-        if !spec_obj.contains_key("leader_member_id") {
-            spec_obj.insert(
-                "leader_member_id".to_string(),
-                Value::String(leader_id.to_string()),
-            );
-        }
+    if let Some(leader_id) = leader_member_id.as_deref()
+        && !spec_obj.contains_key("leader_member_id")
+    {
+        spec_obj.insert(
+            "leader_member_id".to_string(),
+            Value::String(leader_id.to_string()),
+        );
     }
 
     if let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) {
