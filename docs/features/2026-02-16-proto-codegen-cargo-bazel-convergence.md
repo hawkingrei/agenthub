@@ -8,6 +8,10 @@ Converge Cargo and Bazel protobuf usage on a single contract:
 - `src/internal/proto/agenthub.internal.v1.rs` is the tracked generated artifact.
 - CI verifies the tracked artifact is byte-identical to fresh codegen output.
 
+This feature note **supersedes** `docs/features/2026-02-15-team-proto-codegen-check.md`,
+which described the previous "generated Rust files are not checked into git"
+policy.
+
 ## Background
 
 After Bazel migration, runtime proto inclusion moved to the tracked generated file

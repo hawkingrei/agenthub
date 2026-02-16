@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mode="${1:---check}"
-if [[ "${mode}" != "--check" && "${mode}" != "--write" ]]; then
-  echo "usage: $0 [--check|--write]"
+if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--check" && "$1" != "--write") ]]; then
+  echo "usage: $0 [--check|--write]" >&2
   exit 1
 fi
+mode="${1:-"--check"}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"

@@ -86,9 +86,11 @@ bazel test //...
 
 ## Internal Proto Codegen Guard
 
-`proto/internal/v1/team.proto` is compiled via `build.rs` (`tonic-build`) at build time.
-Generated Rust protobuf source is tracked at `src/internal/proto/agenthub.internal.v1.rs`
-and must stay in sync with schema and generator output.
+`proto/internal/v1/team.proto` is compiled by `build.rs` (`tonic-build`) to produce
+a fresh reference output in `OUT_DIR` for drift checking.
+Application/runtime compilation uses the tracked generated file
+`src/internal/proto/agenthub.internal.v1.rs`, which must stay in sync with schema
+and generator output.
 
 ```bash
 # regenerate tracked proto file from latest codegen output
