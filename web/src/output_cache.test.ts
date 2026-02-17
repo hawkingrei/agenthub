@@ -112,6 +112,13 @@ describe("appendOutputLine", () => {
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
     expect(next.find((evt) => evt.event_id === 2)?.message).toBe("stdout-2-new");
   });
+
+  it("returns the same array when incoming line is unchanged", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const incoming = { ...makeEvent(2, "stdout") };
+    const next = appendOutputLine(existing, incoming);
+    expect(next).toBe(existing);
+  });
 });
 
 describe("selectCachedOutputs", () => {

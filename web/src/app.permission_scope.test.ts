@@ -3,10 +3,12 @@ import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
+  chunkPermissionPollAgentIds,
   decidePermissionJump,
   filterPermissionsForAgent,
   mergePendingPermissionCountMap,
   parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
   resolveOutputHistoryKey,
   resolveSessionScopedEvents,
   resolveRuntimeViewportAxis,
@@ -127,6 +129,28 @@ describe("app helper decisions", () => {
       "agent-a",
       "agent-c",
     ]);
+  });
+
+  it("splits permission poll ids into bounded concurrent chunks", () => {
+    expect(
+      chunkPermissionPollAgentIds(
+        ["agent-a", "agent-b", "agent-c", "agent-d", "agent-e"],
+        2
+      )
+    ).toEqual([
+      ["agent-a", "agent-b"],
+      ["agent-c", "agent-d"],
+      ["agent-e"],
+    ]);
+    expect(chunkPermissionPollAgentIds(["agent-a", "agent-b"], 0)).toEqual([
+      ["agent-a"],
+      ["agent-b"],
+    ]);
+  });
+
+  it("uses slower global permission polling interval when agents panel is collapsed", () => {
+    expect(resolveGlobalPermissionPollIntervalMs(false)).toBe(5000);
+    expect(resolveGlobalPermissionPollIntervalMs(true)).toBe(10000);
   });
 
   it("builds pending permission count map using only positive counts", () => {

@@ -96,6 +96,9 @@ import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
 const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
+const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
+const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
+const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 
 type PendingPermissionJumpState = {
   toolCallId: string;
@@ -216,6 +219,26 @@ export function buildGlobalPermissionPollAgentIds(
 ): string[] {
   if (!activeAgent) return allAgentIds;
   return allAgentIds.filter((agentId) => agentId !== activeAgent);
+}
+
+export function resolveGlobalPermissionPollIntervalMs(
+  agentsCollapsed: boolean
+): number {
+  return agentsCollapsed
+    ? GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS
+    : GLOBAL_PERMISSION_POLL_INTERVAL_MS;
+}
+
+export function chunkPermissionPollAgentIds(
+  agentIds: string[],
+  maxConcurrency: number
+): string[][] {
+  const limit = Math.max(1, Math.floor(maxConcurrency));
+  const chunks: string[][] = [];
+  for (let i = 0; i < agentIds.length; i += limit) {
+    chunks.push(agentIds.slice(i, i + limit));
+  }
+  return chunks;
 }
 
 export function buildPendingPermissionCountMap(
@@ -858,9 +881,13 @@ export function App() {
       if (resolvedKey !== key) {
         updateOutputCacheEntry(resolvedKey, ordered);
       }
-      replaceAcpOutputCacheEntry(key, ordered);
+      if (sessionId) {
+        updateAcpOutputCacheEntry(key, ordered);
+      } else {
+        replaceAcpOutputCacheEntry(key, ordered);
+      }
       if (resolvedKey !== key) {
-        replaceAcpOutputCacheEntry(resolvedKey, ordered);
+        updateAcpOutputCacheEntry(resolvedKey, ordered);
       }
       const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
@@ -912,6 +939,7 @@ export function App() {
     token,
     eventLimit,
     updateOutputCacheEntry,
+    updateAcpOutputCacheEntry,
     replaceAcpOutputCacheEntry,
   ]);
 
@@ -1407,17 +1435,27 @@ export function App() {
       allAgentIds,
       activeAgent
     );
+    const requestedChunks = chunkPermissionPollAgentIds(
+      requestedAgentIds,
+      GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY
+    );
+    const pollIntervalMs = resolveGlobalPermissionPollIntervalMs(agentsCollapsed);
     const load = async () => {
-      const entries = await Promise.all(
-        requestedAgentIds.map(async (agentId) => {
-          try {
-            const items = await api.listAcpPermissions(token, agentId, "pending");
-            return [agentId, items.length] as const;
-          } catch {
-            return [agentId, null] as const;
-          }
-        })
-      );
+      const entries: Array<readonly [string, number | null]> = [];
+      for (const chunk of requestedChunks) {
+        const batch = await Promise.all(
+          chunk.map(async (agentId) => {
+            try {
+              const items = await api.listAcpPermissions(token, agentId, "pending");
+              return [agentId, items.length] as const;
+            } catch {
+              return [agentId, null] as const;
+            }
+          })
+        );
+        entries.push(...batch);
+        if (cancelled) return;
+      }
       if (cancelled) return;
       setPendingPermissionCounts((prev) =>
         (() => {
@@ -1433,12 +1471,12 @@ export function App() {
       );
     };
     load();
-    const timer = window.setInterval(load, 5000);
+    const timer = window.setInterval(load, pollIntervalMs);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, permissionPollAgentIdsKey, activeAgent]);
+  }, [token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
