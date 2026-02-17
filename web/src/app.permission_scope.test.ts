@@ -257,6 +257,20 @@ describe("app helper decisions", () => {
       width: 400,
       height: 701,
     });
+    expect(resolveRuntimeViewportSize({ width: 1, height: 0 }, 812, 390)).toEqual({
+      width: 390,
+      height: 812,
+    });
+    expect(
+      resolveRuntimeViewportSize(
+        { width: Number.NaN, height: Number.NEGATIVE_INFINITY },
+        844,
+        412
+      )
+    ).toEqual({
+      width: 412,
+      height: 844,
+    });
     expect(resolveRuntimeViewportSize(undefined, 0, -10)).toEqual({
       width: 1,
       height: 1,

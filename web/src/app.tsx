@@ -177,9 +177,32 @@ export function resolveRuntimeViewportSize(
   innerHeight: number,
   innerWidth: number
 ): RuntimeViewportSize {
+  const toSafeViewportDimension = (
+    viewportValue: number | undefined,
+    fallback: number
+  ): number => {
+    const safeFallback =
+      typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0
+        ? fallback
+        : 1;
+    if (
+      typeof viewportValue !== "number" ||
+      !Number.isFinite(viewportValue) ||
+      viewportValue <= 1
+    ) {
+      return safeFallback;
+    }
+    return viewportValue;
+  };
   return {
-    height: resolveRuntimeViewportAxis(viewport?.height, innerHeight),
-    width: resolveRuntimeViewportAxis(viewport?.width, innerWidth),
+    height: resolveRuntimeViewportAxis(
+      toSafeViewportDimension(viewport?.height, innerHeight),
+      innerHeight
+    ),
+    width: resolveRuntimeViewportAxis(
+      toSafeViewportDimension(viewport?.width, innerWidth),
+      innerWidth
+    ),
   };
 }
 

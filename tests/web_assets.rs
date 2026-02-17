@@ -93,6 +93,14 @@ fn styles_keep_acp_conversation_scoped() {
         "app should clamp width to runtime viewport width"
     );
     assert!(
+        css.contains("grid-template-rows: minmax(0, 1fr);"),
+        "workspace grid should reserve full-height row for right panel bottom docking"
+    );
+    assert!(
+        css.contains(".workspace-right {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  min-height: 0;\n  overflow: hidden;\n  align-self: stretch;\n}"),
+        "workspace right panel should stretch and clip overflow for docked input bottom alignment"
+    );
+    assert!(
         css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: hidden;"),
         "app should keep fixed-height scroll container behavior"
     );
