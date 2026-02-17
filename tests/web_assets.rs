@@ -97,7 +97,7 @@ fn styles_keep_acp_conversation_scoped() {
         "app should keep fixed-height scroll container behavior"
     );
     assert!(
-        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 8px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n}"),
+        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 12px;\n  padding: 10px;\n  box-shadow: var(--shadow);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 8px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n  flex: 0 0 auto;\n}"),
         "input docked should use grid slots for actions and editor rows"
     );
     assert!(
