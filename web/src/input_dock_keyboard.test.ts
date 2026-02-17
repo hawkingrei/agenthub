@@ -279,6 +279,27 @@ describe("isInputRectOutsideViewport", () => {
       isInputRectOutsideViewport({ top: 10, bottom: 72 }, 40, 420)
     ).toBe(true);
   });
+
+  it("respects custom safe margin when checking visibility", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 12, bottom: 80 }, 0, 200, 0)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: 12, bottom: 80 }, 0, 200, 16)
+    ).toBe(true);
+  });
+
+  it("returns false for invalid viewport metrics", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 100, bottom: 140 }, 0, 0)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: 100, bottom: 140 }, Number.NaN, 300)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: Number.NaN, bottom: 140 }, 0, 300)
+    ).toBe(false);
+  });
 });
 
 describe("mobile input helpers", () => {
