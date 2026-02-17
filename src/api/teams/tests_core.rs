@@ -75,6 +75,152 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
 }
 
 #[tokio::test]
+async fn teams_api_delete_team_cascades_related_run_data() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "delete-team".to_string(),
+            description: Some("delete target".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-delete-team".to_string()),
+            input: Some(json!({"task":"delete"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let step_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json,
+            input_json, output_json, error_text, started_at, ended_at
+        )
+        VALUES (?1, ?2, 'worker_step', 'planner', NULL, 'submitted', 0, '[]', NULL, NULL, NULL, NULL, NULL)
+        "#,
+    )
+    .bind(&step_id)
+    .bind(&run.id)
+    .execute(&state.db)
+    .await
+    .expect("insert step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+        VALUES (?1, ?2, 'step_submitted', ?3, '{}')
+        "#,
+    )
+    .bind(&run.id)
+    .bind(&step_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert run event");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id, from_actor_id, to_actor_id, channel, transport, route_json, payload_json,
+            idempotency_key, status, created_at
+        )
+        VALUES (?1, 'leader', 'worker', 'default', 'local', NULL, '{}', NULL, 'pending', ?2)
+        "#,
+    )
+    .bind(&run.id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert actor message");
+
+    let Json(deleted) = delete_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("delete team");
+    assert_eq!(deleted.id, team.id);
+
+    let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect_err("team should be deleted");
+    assert_eq!(get_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let Json(listed) = list_teams(State(state.clone()), headers.clone())
+        .await
+        .expect("list teams after delete");
+    assert!(listed.is_empty());
+
+    let team_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_definitions WHERE id = ?1")
+        .bind(&team.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count teams");
+    assert_eq!(team_count, 0);
+
+    let run_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_runs WHERE id = ?1")
+        .bind(&run.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count runs");
+    assert_eq!(run_count, 0);
+
+    let step_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_steps WHERE run_id = ?1")
+        .bind(&run.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count steps");
+    assert_eq!(step_count, 0);
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count events");
+    assert_eq!(event_count, 0);
+
+    let message_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_actor_messages WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count messages");
+    assert_eq!(message_count, 0);
+}
+
+#[tokio::test]
+async fn teams_api_delete_team_returns_not_found_when_missing() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let err = delete_team(
+        State(state),
+        headers,
+        Path("missing-team".to_string()),
+    )
+    .await
+    .expect_err("missing team delete should fail");
+    assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn teams_api_generates_default_steps_for_multi_member_team() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

@@ -1242,6 +1242,47 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
+  const onDeleteTeam = async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete team "${selectedTeam.name}" and all associated runs/events/messages?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusy("delete-team");
+    setError(null);
+    try {
+      await api.deleteTeam(props.token, selectedTeam.id);
+
+      const remainingTeams = teams.filter((team) => team.id !== selectedTeam.id);
+      const remainingRuns = runs.filter((run) => run.team_id !== selectedTeam.id);
+
+      setTeams(remainingTeams);
+      setRuns(remainingRuns);
+      setTeamRunBrowserByTeam((prev) => {
+        const next = { ...prev };
+        delete next[selectedTeam.id];
+        return next;
+      });
+      setSelectedTeamId((current) =>
+        current === selectedTeam.id ? (remainingTeams[0]?.id ?? null) : current
+      );
+      setActiveRunId((current) =>
+        current && remainingRuns.some((run) => run.id === current) ? current : null
+      );
+      setRunLookupId("");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onLoadRunById = async () => {
     const runId = runLookupId.trim();
     if (!runId) {
@@ -1609,7 +1650,15 @@ export function TeamPage(props: TeamPageProps) {
               <div className="card">
                 <div className="toolbar">
                   <h2>{selectedTeam.name}</h2>
-                  <span className="mono">{selectedTeam.id}</span>
+                  <div className="actions">
+                    <span className="mono">{selectedTeam.id}</span>
+                    <button
+                      onClick={() => void onDeleteTeam()}
+                      disabled={busy === "delete-team"}
+                    >
+                      Delete Team
+                    </button>
+                  </div>
                 </div>
                 <div className="teams-run-create">
                   <h3>Create / Load Run</h3>

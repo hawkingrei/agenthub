@@ -96,6 +96,70 @@ impl TeamManager {
         parse_team_definition_row(&row)
     }
 
+    pub async fn delete_team(&self, team_id: &str) -> anyhow::Result<TeamDefinitionRecord> {
+        let mut tx = self.db.begin().await?;
+        let team_row = sqlx::query(
+            r#"
+            SELECT id, name, description, spec_json, created_at, updated_at
+            FROM team_definitions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(team_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let team = parse_team_definition_row(&team_row)?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_actor_messages
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_run_events
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_steps
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM team_runs WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("DELETE FROM team_definitions WHERE id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(team)
+    }
+
     pub async fn create_run(
         &self,
         team_id: &str,

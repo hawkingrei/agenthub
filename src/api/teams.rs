@@ -176,7 +176,7 @@ pub struct TeamMailboxSnapshot {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
-        .route("/:id", get(get_team))
+        .route("/:id", get(get_team).delete(delete_team))
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
@@ -258,6 +258,20 @@ async fn get_team(
     let team = state
         .teams
         .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    Ok(Json(team))
+}
+
+async fn delete_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamDefinitionRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let team = state
+        .teams
+        .delete_team(&team_id)
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
     Ok(Json(team))
@@ -1135,10 +1149,8 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
                 let mut out = Vec::with_capacity(items.len());
                 let mut seen = HashSet::with_capacity(items.len());
                 for item in items {
-                    if let Some(skill) = item
-                        .as_str()
-                        .map(str::trim)
-                        .filter(|item| !item.is_empty())
+                    if let Some(skill) =
+                        item.as_str().map(str::trim).filter(|item| !item.is_empty())
                         && seen.insert(skill.to_string())
                     {
                         out.push(skill.to_string());

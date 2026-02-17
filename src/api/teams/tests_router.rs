@@ -706,6 +706,56 @@ async fn teams_router_http_contract() {
         .await
         .expect("unsupported version request");
     assert_eq!(unsupported_version_resp.status(), StatusCode::BAD_REQUEST);
+
+    let delete_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("delete team via router");
+    assert_eq!(delete_team_resp.status(), StatusCode::OK);
+    let deleted_team = decode_json_body(delete_team_resp).await;
+    assert_eq!(deleted_team["id"], team_id);
+
+    let deleted_get_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get deleted team via router");
+    assert_eq!(deleted_get_team_resp.status(), StatusCode::NOT_FOUND);
+
+    let deleted_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get run after team deletion");
+    assert_eq!(deleted_run_resp.status(), StatusCode::NOT_FOUND);
+
+    let delete_missing_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            "/missing-team",
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("delete missing team via router");
+    assert_eq!(delete_missing_team_resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -204,6 +204,31 @@ async function mockTeamPageApis(
     await route.fallback();
   });
 
+  await page.route(/\/api\/teams\/[^/]+$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.split("/").pop() ?? "";
+    if (request.method() === "GET") {
+      const found = teams.find((team) => team.id === teamId);
+      if (!found) {
+        await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+        return;
+      }
+      await route.fulfill(jsonResponse(found));
+      return;
+    }
+    if (request.method() === "DELETE") {
+      const index = teams.findIndex((team) => team.id === teamId);
+      if (index < 0) {
+        await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+        return;
+      }
+      const [deleted] = teams.splice(index, 1);
+      await route.fulfill(jsonResponse(deleted));
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route(/\/api\/teams\/[^/]+\/runs(?:\?.*)?$/, async (route, request) => {
     if (request.method() !== "GET") {
       await route.fallback();
@@ -310,6 +335,48 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+});
+
+test("team list supports deleting selected team", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push(
+    {
+      id: "team-delete-a",
+      name: "Team Delete A",
+      description: "first team",
+      spec: {
+        leader_member_id: "agent-leader-1",
+        members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now,
+      updated_at: fixture.now,
+    },
+    {
+      id: "team-delete-b",
+      name: "Team Delete B",
+      description: "second team",
+      spec: {
+        leader_member_id: "agent-worker-1",
+        members: [{ member_id: "agent-worker-1", role: "leader", model: "gemini" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now + 1,
+      updated_at: fixture.now + 1,
+    }
+  );
+
+  await page.goto("/teams");
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete Team" }).click();
+
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toHaveCount(0);
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Team Delete B" })).toBeVisible();
 });
 
 test("team run list keeps per-team filters and uses before_created_at cursor paging", async ({
