@@ -37,9 +37,12 @@ were missing locally:
    resolve relative paths from that root.
 2. Add lexical path normalization (`.` / `..`) before root-prefix checks to
    reject traversal attempts deterministically.
-3. Enable `serde_json` `preserve_order` feature in `agenthub-codex-acp` to
+3. Resolve symlink escapes safely by canonicalizing the session root and the
+   deepest existing ancestor of target paths, then append non-existent suffix
+   segments lexically so new files still work under root constraints.
+4. Enable `serde_json` `preserve_order` feature in `agenthub-codex-acp` to
    align JSON behavior with upstream codex-acp/codex-cli.
-4. Add focused unit tests around `local_spawner` path guard behavior.
+5. Add focused unit tests around `local_spawner` path guard behavior.
 
 ## Validation
 
