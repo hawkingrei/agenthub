@@ -79,6 +79,7 @@ const TAIL_PAYLOAD_MAX_ENTRIES = 24;
 const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
+const USER_SCROLL_UP_EPSILON_PX = 24;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -216,6 +217,23 @@ export function deriveConversationJumpState(
   };
 }
 
+export function deriveConversationStickToBottom(
+  scrollHeight: number,
+  scrollTop: number,
+  clientHeight: number,
+  wasStickToBottom: boolean,
+  previousScrollTop: number | null,
+  threshold: number = 120
+): boolean {
+  if (isNearBottom(scrollHeight, scrollTop, clientHeight, threshold)) {
+    return true;
+  }
+  if (!wasStickToBottom) return false;
+  if (previousScrollTop == null) return true;
+  const movedUp = scrollTop < previousScrollTop - USER_SCROLL_UP_EPSILON_PX;
+  return !movedUp;
+}
+
 export function findConversationToolCallIndex(
   items: ConversationItem[],
   toolCallId: string
@@ -321,6 +339,7 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
+  const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
   const [conversationViewport, setConversationViewport] = useState({
@@ -440,6 +459,7 @@ export function useAcpConversation({
     const el = acpConversationRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    lastConversationScrollTopRef.current = el.scrollTop;
     syncConversationViewport();
     acpStickToBottomRef.current = true;
     didAutoAlignConversationRef.current = true;
@@ -468,6 +488,7 @@ export function useAcpConversation({
         conversationAvgHeight
       );
       el.scrollTop = estimatedTop;
+      lastConversationScrollTopRef.current = el.scrollTop;
       acpStickToBottomRef.current = false;
       setConversationStickToBottom(false);
       setConversationFrozen(false);
@@ -480,6 +501,9 @@ export function useAcpConversation({
       const scrollNodeToCenter = (node: Element | null) => {
         if (!node || !(node instanceof HTMLElement)) return;
         node.scrollIntoView({ block: "center", inline: "nearest" });
+        if (acpConversationRef.current) {
+          lastConversationScrollTopRef.current = acpConversationRef.current.scrollTop;
+        }
         syncConversationViewport();
       };
       const immediateTarget = findToolCallNodeById(el, targetId);
@@ -503,6 +527,7 @@ export function useAcpConversation({
     if (acpTab !== "conversation") return;
     if (!conversationStickToBottom && !acpStickToBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
+    lastConversationScrollTopRef.current = el.scrollTop;
     syncConversationViewport();
     if (
       typeof window === "undefined" ||
@@ -517,6 +542,7 @@ export function useAcpConversation({
       const node = acpConversationRef.current;
       if (!node) return;
       node.scrollTop = node.scrollHeight;
+      lastConversationScrollTopRef.current = node.scrollTop;
       syncConversationViewport();
       if (
         isNearBottom(
@@ -532,6 +558,7 @@ export function useAcpConversation({
         const latest = acpConversationRef.current;
         if (!latest) return;
         latest.scrollTop = latest.scrollHeight;
+        lastConversationScrollTopRef.current = latest.scrollTop;
         syncConversationViewport();
       });
     });
@@ -554,7 +581,15 @@ export function useAcpConversation({
     const el = acpConversationRef.current;
     if (!el) return;
     syncConversationViewport();
-    const stick = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    const previousTop = lastConversationScrollTopRef.current;
+    const stick = deriveConversationStickToBottom(
+      el.scrollHeight,
+      el.scrollTop,
+      el.clientHeight,
+      acpStickToBottomRef.current,
+      previousTop
+    );
+    lastConversationScrollTopRef.current = el.scrollTop;
     acpStickToBottomRef.current = stick;
     if (stick !== conversationStickToBottom) {
       if (!stick) {
@@ -682,6 +717,7 @@ export function useAcpConversation({
     didAutoAlignConversationRef.current = false;
     acpStickToBottomRef.current = true;
     pendingScrollAdjustRef.current = null;
+    lastConversationScrollTopRef.current = null;
     setConversationStickToBottom(true);
     setConversationFrozen(false);
     setConversationFreezeCursor(null);
@@ -738,6 +774,7 @@ export function useAcpConversation({
       el.scrollHeight,
       el.clientHeight
     );
+    lastConversationScrollTopRef.current = el.scrollTop;
   }, [acpTab, conversationStickToBottom, conversationTailKey, jumpToConversationBottom]);
 
   useEffect(() => {
@@ -760,6 +797,7 @@ export function useAcpConversation({
     if (!el || !pending) return;
     const nextHeight = el.scrollHeight;
     el.scrollTop = nextHeight - pending.prevHeight + pending.prevTop;
+    lastConversationScrollTopRef.current = el.scrollTop;
     pendingScrollAdjustRef.current = null;
     syncConversationViewport();
   }, [acpView.messages.length, syncConversationViewport]);

@@ -3,6 +3,7 @@ import { ConversationItem } from "../conversation";
 import {
   buildConversationTailKey,
   buildVirtualConversationSlice,
+  deriveConversationStickToBottom,
   deriveConversationJumpState,
   estimateToolCallJumpTop,
   estimateTailPayloadSize,
@@ -272,5 +273,62 @@ describe("conversation helper decisions", () => {
       showConversationJump: true,
       showConversationBadge: true,
     });
+  });
+
+  it("keeps stick enabled for passive viewport/content changes while sticky", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1200,
+        700,
+        300,
+        true,
+        700
+      )
+    ).toBe(true);
+  });
+
+  it("does not detach stick for tiny upward movement", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1600,
+        900,
+        300,
+        true,
+        920
+      )
+    ).toBe(true);
+  });
+
+  it("detaches stick when user scrolls up beyond threshold", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1600,
+        860,
+        300,
+        true,
+        920
+      )
+    ).toBe(false);
+  });
+
+  it("keeps non-sticky state until near-bottom", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1800,
+        1200,
+        300,
+        false,
+        1220
+      )
+    ).toBe(false);
+    expect(
+      deriveConversationStickToBottom(
+        1800,
+        1385,
+        300,
+        false,
+        1220
+      )
+    ).toBe(true);
   });
 });
