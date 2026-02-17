@@ -75,6 +75,7 @@
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
+- [ ] Verify `scripts/setup_team_skills.sh` appends Team leader/worker skill entries into `~/.agenthub/skills.json` without dropping existing skills and that new ACP sessions receive both `team-leader-orchestrator` and `team-worker-executor` blocks (see `docs/features/2026-02-17-team-skills-bootstrap-script.md`).
 - [x] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).
