@@ -419,6 +419,9 @@ export function App() {
   const [acpPermissions, setAcpPermissions] = useState<AcpPermissionRecord[]>(
     []
   );
+  const [pendingPermissionCounts, setPendingPermissionCounts] = useState<
+    Record<string, number>
+  >({});
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
@@ -603,12 +606,22 @@ export function App() {
   const scopedAcpPermissionHistory = useMemo(() => {
     return filterPermissionsForAgent(acpPermissionHistory, activeAgent);
   }, [acpPermissionHistory, activeAgent]);
+  const hasPendingPermissions = useMemo(() => {
+    return Object.values(pendingPermissionCounts).some((count) => count > 0);
+  }, [pendingPermissionCounts]);
   const activeAgentStatus = activeAgentRecord?.status ?? null;
   const isAgentActive = isAgentActiveStatus(activeAgentStatus);
   const streamAgentIds = useMemo(() => buildSseTargetAgentIds(agents), [agents]);
   const streamAgentIdsQuery = useMemo(
     () => encodeSseTargetAgentIds(streamAgentIds),
     [streamAgentIds]
+  );
+  const permissionPollAgentIds = useMemo(() => {
+    return Array.from(new Set(agents.map((agent) => agent.id))).sort();
+  }, [agents]);
+  const permissionPollAgentIdsKey = useMemo(
+    () => permissionPollAgentIds.join(","),
+    [permissionPollAgentIds]
   );
   const hasSseTarget = streamAgentIds.length > 0;
   const connectionBadge = useMemo(
@@ -708,32 +721,31 @@ export function App() {
         sessionId ?? undefined
       );
       if (seq !== loadSeq.current) return false;
-      if (!sessionId) {
-        const latestSession = [...events]
-          .reverse()
-          .find((evt) => evt.session_id)?.session_id;
-        if (latestSession) {
-          setAgentSessions((prev) => ({ ...prev, [id]: latestSession }));
-          if (activeAgentRef.current === id && !activeSessionIdRef.current) {
-            setActiveSessionId(latestSession);
-          }
-          setEventMeta((prev) => ({
-            ...prev,
-            [key]: {
-              oldestId: null,
-              hasMore: false,
-              loading: false,
-              loaded: true,
-            },
-          }));
-          return true;
+      const latestSession = !sessionId
+        ? [...events].reverse().find((evt) => evt.session_id)?.session_id ?? null
+        : null;
+      if (latestSession) {
+        setAgentSessions((prev) => ({ ...prev, [id]: latestSession }));
+        if (activeAgentRef.current === id && !activeSessionIdRef.current) {
+          setActiveSessionId(latestSession);
         }
       }
-      const ordered = [...events].sort((a, b) => compareEventOrder(a, b));
+      const resolvedSessionId = sessionId ?? latestSession;
+      const scopedEvents = resolvedSessionId
+        ? events.filter((evt) => evt.session_id === resolvedSessionId)
+        : events;
+      const ordered = [...scopedEvents].sort((a, b) => compareEventOrder(a, b));
+      const resolvedKey = `${id}:${resolvedSessionId ?? "latest"}`;
       const nextSlice = updateOutputCacheEntry(key, ordered);
+      if (resolvedKey !== key) {
+        updateOutputCacheEntry(resolvedKey, ordered);
+      }
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       if (acpOrdered.length > 0) {
         updateAcpOutputCacheEntry(key, acpOrdered);
+        if (resolvedKey !== key) {
+          updateAcpOutputCacheEntry(resolvedKey, acpOrdered);
+        }
       }
       const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
@@ -752,17 +764,24 @@ export function App() {
           loading: false,
           loaded: true,
         };
-        const current = prev[key];
-        if (
-          current &&
-          current.oldestId === nextMeta.oldestId &&
-          current.hasMore === nextMeta.hasMore &&
-          current.loading === nextMeta.loading &&
-          current.loaded === nextMeta.loaded
-        ) {
-          return prev;
+        const apply = (metaKey: string, currentState: typeof prev) => {
+          const current = currentState[metaKey];
+          if (
+            current &&
+            current.oldestId === nextMeta.oldestId &&
+            current.hasMore === nextMeta.hasMore &&
+            current.loading === nextMeta.loading &&
+            current.loaded === nextMeta.loaded
+          ) {
+            return currentState;
+          }
+          return { ...currentState, [metaKey]: nextMeta };
+        };
+        let nextState = apply(key, prev);
+        if (resolvedKey !== key) {
+          nextState = apply(resolvedKey, nextState);
         }
-        return { ...prev, [key]: nextMeta };
+        return nextState;
       });
       return hasNew;
     } catch {
@@ -1248,11 +1267,50 @@ export function App() {
       el.scrollTop = el.scrollHeight;
       return;
     }
-  }, [outputs.length, acpView.hasAcp]);
+  }, [outputs, acpView.hasAcp]);
 
   useEffect(() => {
     terminalStickToBottomRef.current = true;
   }, [activeAgent, activeSessionId]);
+
+  useEffect(() => {
+    if (!token || !permissionPollAgentIdsKey) {
+      setPendingPermissionCounts({});
+      return;
+    }
+    let cancelled = false;
+    const requestedAgentIds = permissionPollAgentIdsKey
+      .split(",")
+      .filter(Boolean);
+    const load = async () => {
+      const entries = await Promise.all(
+        requestedAgentIds.map(async (agentId) => {
+          try {
+            const items = await api.listAcpPermissions(token, agentId, "pending");
+            return [agentId, items.length] as const;
+          } catch {
+            return [agentId, 0] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      const nextCounts: Record<string, number> = {};
+      for (const [agentId, count] of entries) {
+        if (count > 0) {
+          nextCounts[agentId] = count;
+        }
+      }
+      setPendingPermissionCounts((prev) =>
+        isSamePendingPermissionCountMap(prev, nextCounts) ? prev : nextCounts
+      );
+    };
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [token, permissionPollAgentIdsKey]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;
@@ -1269,6 +1327,17 @@ export function App() {
         if (!cancelled) {
           if (activeAgentRef.current !== requestedAgentId) return 0;
           setAcpPermissions((prev) => (isSamePermissionList(prev, items) ? prev : items));
+          setPendingPermissionCounts((prev) => {
+            const nextCount = items.length;
+            if (nextCount <= 0) {
+              if (!(requestedAgentId in prev)) return prev;
+              const next = { ...prev };
+              delete next[requestedAgentId];
+              return next;
+            }
+            if (prev[requestedAgentId] === nextCount) return prev;
+            return { ...prev, [requestedAgentId]: nextCount };
+          });
         }
         return items.length;
       } catch {
@@ -1390,6 +1459,7 @@ export function App() {
     setSafePaths([]);
     setDevices([]);
     setAcpPermissions([]);
+    setPendingPermissionCounts({});
     setVapidInfo(null);
     setWorktreeError(null);
     setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
@@ -1881,6 +1951,7 @@ export function App() {
     },
     [activeSessionId]
   );
+  const jumpToConversationToolCall = acpConversation.jumpToConversationToolCall;
 
   useEffect(() => {
     const jumpDecision = decidePermissionJump(
@@ -1894,7 +1965,7 @@ export function App() {
       return;
     }
     if (!pendingPermissionJump) return;
-    if (acpConversation.jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
+    if (jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
       setPendingPermissionJump(null);
       return;
     }
@@ -1909,7 +1980,7 @@ export function App() {
     pendingPermissionJump,
     acpTab,
     activeSessionId,
-    acpConversation.jumpToConversationToolCall,
+    jumpToConversationToolCall,
   ]);
 
   const acpConversationProps = useMemo(
@@ -2137,6 +2208,8 @@ export function App() {
             agents={agents}
             activeAgent={activeAgent}
             agentsCollapsed={agentsCollapsed}
+            hasPendingPermissions={hasPendingPermissions}
+            pendingPermissionCounts={pendingPermissionCounts}
             onCollapse={handleCollapseAgents}
             onExpand={handleExpandAgents}
             onCreateAgent={openCreateAgentModal}
@@ -2440,6 +2513,19 @@ function isSamePermissionList(
     if ((left.responded_at ?? null) !== (right.responded_at ?? null)) {
       return false;
     }
+  }
+  return true;
+}
+
+function isSamePendingPermissionCountMap(
+  a: Record<string, number>,
+  b: Record<string, number>
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
   }
   return true;
 }

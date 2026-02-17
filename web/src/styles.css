@@ -339,6 +339,7 @@ section {
 }
 
 .agents-rail-metric {
+  position: relative;
   display: grid;
   gap: 2px;
   justify-items: center;
@@ -356,6 +357,18 @@ section {
 
 .agents-rail-metric.running .value {
   color: #1c4a7a;
+}
+
+.agents-rail-dot {
+  position: absolute;
+  top: -2px;
+  right: -10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #dc2626;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25);
 }
 
 .workspace-right {
@@ -662,6 +675,16 @@ select:not([class*="mantine-"]):focus-visible {
   color: #3d5466;
   text-transform: none;
   flex-shrink: 0;
+}
+
+.agent-permission-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #dc2626;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25);
+  flex: 0 0 auto;
 }
 
 .agent-row-meta {

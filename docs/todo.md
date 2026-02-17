@@ -1,6 +1,8 @@
 # TODO
 
 - [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
+- [ ] Verify collapsed agents rail and expanded agent rows both surface pending ACP permissions with red indicators during active permission polling and agent switching (see `docs/features/2026-02-17-agents-interaction-polish.md`).
+- [ ] Verify agent switch output hydration no longer waits for a second fetch when resolving `latest` session ids, and terminal auto-follow stays at bottom during in-place output updates (see `docs/features/2026-02-17-agents-interaction-polish.md`).
 - [ ] Verify web Codecov patch gate remains above threshold after additional `app.tsx`/ACP interaction changes; keep targeted branch tests in `app.permission_scope`, `acp_debug.interaction`, and `use_acp_conversation.interaction` up to date (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
 - [ ] Verify newly added jsdom interaction tests for ACP debug copy/jump and app viewport sync stay stable in CI runners (no localStorage/env-specific flakes) (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
 - [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
