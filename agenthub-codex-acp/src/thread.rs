@@ -296,10 +296,8 @@ impl Thread {
 enum SubmissionState {
     /// Loading custom prompts from the project
     CustomPrompts(CustomPromptsState),
-    /// User prompts + some slash commands like /init or /review
+    /// User prompts, including slash commands like /init, /review, /compact, /undo.
     Prompt(Box<PromptState>),
-    /// Subtask, like /compact
-    Task(TaskState),
 }
 
 impl SubmissionState {
@@ -307,7 +305,6 @@ impl SubmissionState {
         match self {
             Self::CustomPrompts(state) => state.is_active(),
             Self::Prompt(state) => state.is_active(),
-            Self::Task(state) => state.is_active(),
         }
     }
 
@@ -315,7 +312,6 @@ impl SubmissionState {
         match self {
             Self::CustomPrompts(state) => state.handle_event(event),
             Self::Prompt(state) => state.handle_event(client, event).await,
-            Self::Task(state) => state.handle_event(client, event).await,
         }
     }
 }
@@ -355,7 +351,6 @@ impl CustomPromptsState {
 }
 
 struct ActiveCommand {
-    call_id: String,
     tool_call_id: ToolCallId,
     terminal_output: bool,
     output: String,
@@ -363,7 +358,7 @@ struct ActiveCommand {
 }
 
 struct PromptState {
-    active_command: Option<ActiveCommand>,
+    active_commands: HashMap<String, ActiveCommand>,
     active_web_search: Option<String>,
     thread: Arc<dyn CodexThreadImpl>,
     event_count: usize,
@@ -381,7 +376,7 @@ impl PromptState {
         submission_id: String,
     ) -> Self {
         Self {
-            active_command: None,
+            active_commands: HashMap::new(),
             active_web_search: None,
             thread,
             event_count: 0,
@@ -1012,13 +1007,15 @@ impl PromptState {
             locations,
             kind,
         } = parse_command_tool_call(parsed_cmd, &cwd);
-        self.active_command = Some(ActiveCommand {
-            call_id,
-            terminal_output,
-            tool_call_id: tool_call_id.clone(),
-            output: String::new(),
-            file_extension,
-        });
+        self.active_commands.insert(
+            call_id.clone(),
+            ActiveCommand {
+                terminal_output,
+                tool_call_id: tool_call_id.clone(),
+                output: String::new(),
+                file_extension,
+            },
+        );
 
         let mut content = vec![];
 
@@ -1115,7 +1112,6 @@ impl PromptState {
         } = parse_command_tool_call(parsed_cmd, &cwd);
 
         let active_command = ActiveCommand {
-            call_id: call_id.clone(),
             tool_call_id: tool_call_id.clone(),
             output: String::new(),
             file_extension,
@@ -1135,7 +1131,7 @@ impl PromptState {
             (vec![], None)
         };
 
-        self.active_command = Some(active_command);
+        self.active_commands.insert(call_id.clone(), active_command);
 
         client
             .send_tool_call(
@@ -1161,9 +1157,7 @@ impl PromptState {
             stream: _,
         } = event;
         // Stream output bytes to the display-only terminal via ToolCallUpdate meta.
-        if let Some(active_command) = &mut self.active_command
-            && *active_command.call_id == call_id
-        {
+        if let Some(active_command) = self.active_commands.get_mut(&call_id) {
             let data_str = String::from_utf8_lossy(&chunk).to_string();
 
             let update = if client.supports_terminal_output(active_command) {
@@ -1219,9 +1213,7 @@ impl PromptState {
             formatted_output: _,
             process_id: _,
         } = event;
-        if let Some(active_command) = self.active_command.take()
-            && active_command.call_id == call_id
-        {
+        if let Some(active_command) = self.active_commands.remove(&call_id) {
             let is_success = exit_code == 0;
 
             client
@@ -1266,9 +1258,7 @@ impl PromptState {
 
         let stdin = format!("\n{stdin}\n");
         // Stream output bytes to the display-only terminal via ToolCallUpdate meta.
-        if let Some(active_command) = &mut self.active_command
-            && *active_command.call_id == call_id
-        {
+        if let Some(active_command) = self.active_commands.get_mut(&call_id) {
             let update = if client.supports_terminal_output(active_command) {
                 ToolCallUpdate::new(
                     active_command.tool_call_id.clone(),
@@ -1430,169 +1420,6 @@ fn parse_command_tool_call(parsed_cmd: Vec<ParsedCommand>, cwd: &Path) -> ParseC
         terminal_output,
         locations,
         kind,
-    }
-}
-
-struct TaskState {
-    response_tx: Option<oneshot::Sender<Result<StopReason, Error>>>,
-}
-
-impl TaskState {
-    fn new(response_tx: oneshot::Sender<Result<StopReason, Error>>) -> Self {
-        Self {
-            response_tx: Some(response_tx),
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        self.response_tx.is_some()
-    }
-
-    async fn handle_event(&mut self, client: &SessionClient, event: EventMsg) {
-        match event {
-            EventMsg::TurnComplete(..) => {
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::EndTurn)).ok();
-                }
-            }
-            // Safer to grab the non-streaming version of the events so we don't duplicate
-            // and it is likely these are synthetic events, not from the model
-            EventMsg::AgentMessage(AgentMessageEvent { message }) => {
-                client.send_agent_text(message).await;
-            }
-            EventMsg::AgentReasoning(AgentReasoningEvent { text }) => {
-                client.send_agent_thought(text).await;
-            }
-            EventMsg::UndoStarted(event) => {
-                client
-                    .send_agent_text(
-                        event
-                            .message
-                            .unwrap_or_else(|| "Undo in progress...".to_string()),
-                    )
-                    .await;
-            }
-            EventMsg::UndoCompleted(event) => {
-                let fallback = if event.success {
-                    "Undo completed.".to_string()
-                } else {
-                    "Undo failed.".to_string()
-                };
-                client
-                    .send_agent_text(event.message.unwrap_or(fallback))
-                    .await;
-            }
-            EventMsg::StreamError(StreamErrorEvent {
-                message,
-                codex_error_info,
-                additional_details,
-            }) => {
-                error!(
-                    "Handled error during turn: {message} {codex_error_info:?} {additional_details:?}"
-                );
-            }
-            EventMsg::Error(ErrorEvent {
-                message,
-                codex_error_info,
-            }) => {
-                error!("Unhandled error during turn: {message} {codex_error_info:?}");
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx
-                        .send(Err(Error::internal_error().data(
-                            json!({ "message": message, "codex_error_info": codex_error_info }),
-                        )))
-                        .ok();
-                }
-            }
-            EventMsg::TurnAborted(TurnAbortedEvent { reason }) => {
-                info!("Turn aborted: {reason:?}");
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::Cancelled)).ok();
-                }
-            }
-            EventMsg::ShutdownComplete => {
-                info!("Agent shutting down");
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::Cancelled)).ok();
-                }
-            }
-            EventMsg::Warning(WarningEvent { message }) => {
-                warn!("Warning: {message}");
-            }
-            EventMsg::McpStartupUpdate(McpStartupUpdateEvent { server, status }) => {
-                info!("MCP startup update: server={server}, status={status:?}");
-            }
-            EventMsg::McpStartupComplete(McpStartupCompleteEvent {
-                ready,
-                failed,
-                cancelled,
-            }) => {
-                info!(
-                    "MCP startup complete: ready={ready:?}, failed={failed:?}, cancelled={cancelled:?}"
-                );
-            }
-            // Expected but ignore
-            EventMsg::TurnStarted(..)
-            | EventMsg::ThreadRolledBack(..)
-            | EventMsg::ThreadNameUpdated(..)
-            | EventMsg::ItemStarted(..)
-            | EventMsg::ItemCompleted(..)
-            | EventMsg::TokenCount(..)
-            | EventMsg::AgentMessageDelta(..)
-            | EventMsg::AgentReasoningDelta(..)
-            | EventMsg::AgentMessageContentDelta(..)
-            | EventMsg::AgentReasoningRawContent(..)
-            | EventMsg::AgentReasoningRawContentDelta(..)
-            | EventMsg::ReasoningContentDelta(..)
-            | EventMsg::ReasoningRawContentDelta(..)
-            | EventMsg::AgentReasoningSectionBreak(..)
-            | EventMsg::RawResponseItem(..)
-            | EventMsg::BackgroundEvent(..)
-            | EventMsg::SkillsUpdateAvailable
-            | EventMsg::ContextCompacted(..)
-            // TODO: Subagent UI?
-            | EventMsg::CollabAgentSpawnBegin(..)
-            | EventMsg::CollabAgentSpawnEnd(..)
-            | EventMsg::CollabAgentInteractionBegin(..)
-            | EventMsg::CollabAgentInteractionEnd(..)
-            | EventMsg::CollabWaitingBegin(..)
-            | EventMsg::CollabWaitingEnd(..)
-            | EventMsg::CollabCloseBegin(..)
-            | EventMsg::CollabCloseEnd(..) => {}
-            // Unexpected events for this submission
-            e @ (EventMsg::UserMessage(..)
-            | EventMsg::SessionConfigured(..)
-            | EventMsg::McpToolCallBegin(..)
-            | EventMsg::McpToolCallEnd(..)
-            | EventMsg::WebSearchBegin(..)
-            | EventMsg::WebSearchEnd(..)
-            | EventMsg::ExecCommandBegin(..)
-            | EventMsg::ExecCommandOutputDelta(..)
-            | EventMsg::ExecCommandEnd(..)
-            | EventMsg::TerminalInteraction(..)
-            | EventMsg::ViewImageToolCall(..)
-            | EventMsg::ExecApprovalRequest(..)
-            | EventMsg::ApplyPatchApprovalRequest(..)
-            | EventMsg::PatchApplyBegin(..)
-            | EventMsg::PatchApplyEnd(..)
-            | EventMsg::TurnDiff(..)
-            | EventMsg::GetHistoryEntryResponse(..)
-            | EventMsg::McpListToolsResponse(..)
-            | EventMsg::ListCustomPromptsResponse(..)
-            | EventMsg::ListSkillsResponse(..)
-            | EventMsg::PlanUpdate(..)
-            | EventMsg::PlanDelta(..)
-            | EventMsg::EnteredReviewMode(..)
-            | EventMsg::ExitedReviewMode(..)
-            | EventMsg::DeprecationNotice(..)
-            | EventMsg::ElicitationRequest(..)
-            | EventMsg::RequestUserInput(..)
-            | EventMsg::DynamicToolCallRequest(..)
-            | EventMsg::ListRemoteSkillsResponse(..)
-            | EventMsg::RemoteSkillDownloaded(..)) => {
-                warn!("Unexpected event: {:?}", e);
-            }
-        }
     }
 }
 
@@ -2384,14 +2211,11 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = match op {
-            Op::Compact | Op::Undo => SubmissionState::Task(TaskState::new(response_tx)),
-            _ => SubmissionState::Prompt(Box::new(PromptState::new(
-                self.thread.clone(),
-                response_tx,
-                submission_id.clone(),
-            ))),
-        };
+        let state = SubmissionState::Prompt(Box::new(PromptState::new(
+            self.thread.clone(),
+            response_tx,
+            submission_id.clone(),
+        )));
 
         self.submissions.insert(submission_id, state);
 
@@ -3562,6 +3386,78 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn test_parallel_exec_commands() -> anyhow::Result<()> {
+        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::Prompt {
+            request: PromptRequest::new(session_id.clone(), vec!["parallel-exec".into()]),
+            response_tx: prompt_response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                let stop_reason = prompt_response_rx.await??.await??;
+                assert_eq!(stop_reason, StopReason::EndTurn);
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let notifications = client.notifications.lock().unwrap();
+        let tool_calls: Vec<_> = notifications
+            .iter()
+            .filter_map(|n| match &n.update {
+                SessionUpdate::ToolCall(tc) => Some(tc.clone()),
+                _ => None,
+            })
+            .collect();
+        let completed_updates: Vec<_> = notifications
+            .iter()
+            .filter_map(|n| match &n.update {
+                SessionUpdate::ToolCallUpdate(update) => {
+                    if update.fields.status == Some(ToolCallStatus::Completed) {
+                        Some(update.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            tool_calls.len(),
+            2,
+            "expected 2 ToolCall begin notifications, got {tool_calls:?}"
+        );
+        assert_eq!(
+            completed_updates.len(),
+            2,
+            "expected 2 completed ToolCallUpdate notifications, got {completed_updates:?}"
+        );
+
+        let begin_ids: std::collections::HashSet<_> = tool_calls
+            .iter()
+            .map(|tc| tc.tool_call_id.clone())
+            .collect();
+        let end_ids: std::collections::HashSet<_> = completed_updates
+            .iter()
+            .map(|u| u.tool_call_id.clone())
+            .collect();
+        assert_eq!(
+            begin_ids, end_ids,
+            "completed update tool_call_ids should match begin tool_call_ids"
+        );
+
+        Ok(())
+    }
+
     async fn setup(
         custom_prompts: Vec<CustomPrompt>,
     ) -> anyhow::Result<(
@@ -3658,34 +3554,107 @@ mod tests {
                         })
                         .join("\n");
 
-                    self.op_tx
-                        .send(Event {
-                            id: id.to_string(),
-                            msg: EventMsg::AgentMessageContentDelta(
-                                AgentMessageContentDeltaEvent {
-                                    thread_id: id.to_string(),
-                                    turn_id: id.to_string(),
-                                    item_id: id.to_string(),
-                                    delta: prompt.clone(),
-                                },
-                            ),
-                        })
-                        .unwrap();
-                    // Send non-delta event (should be deduplicated, but handled by deduplication)
-                    self.op_tx
-                        .send(Event {
-                            id: id.to_string(),
-                            msg: EventMsg::AgentMessage(AgentMessageEvent { message: prompt }),
-                        })
-                        .unwrap();
-                    self.op_tx
-                        .send(Event {
-                            id: id.to_string(),
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                            }),
-                        })
-                        .unwrap();
+                    if prompt == "parallel-exec" {
+                        let turn_id = id.to_string();
+                        let cwd = std::env::current_dir().unwrap();
+                        let send = |msg| {
+                            self.op_tx
+                                .send(Event {
+                                    id: id.to_string(),
+                                    msg,
+                                })
+                                .unwrap();
+                        };
+
+                        send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
+                            call_id: "call-a".into(),
+                            process_id: None,
+                            turn_id: turn_id.clone(),
+                            command: vec!["echo".into(), "a".into()],
+                            cwd: cwd.clone(),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: "echo a".into(),
+                            }],
+                            source: Default::default(),
+                            interaction_input: None,
+                        }));
+                        send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
+                            call_id: "call-b".into(),
+                            process_id: None,
+                            turn_id: turn_id.clone(),
+                            command: vec!["echo".into(), "b".into()],
+                            cwd: cwd.clone(),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: "echo b".into(),
+                            }],
+                            source: Default::default(),
+                            interaction_input: None,
+                        }));
+                        send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
+                            turn_id: turn_id.clone(),
+                            command: vec!["echo".into(), "a".into()],
+                            cwd: cwd.clone(),
+                            parsed_cmd: vec![],
+                            source: Default::default(),
+                            interaction_input: None,
+                            call_id: "call-a".into(),
+                            exit_code: 0,
+                            stdout: "a\n".into(),
+                            stderr: String::new(),
+                            aggregated_output: "a\n".into(),
+                            duration: std::time::Duration::from_millis(10),
+                            formatted_output: "a\n".into(),
+                            process_id: None,
+                        }));
+                        send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
+                            turn_id: turn_id.clone(),
+                            command: vec!["echo".into(), "b".into()],
+                            cwd,
+                            parsed_cmd: vec![],
+                            source: Default::default(),
+                            interaction_input: None,
+                            call_id: "call-b".into(),
+                            exit_code: 0,
+                            stdout: "b\n".into(),
+                            stderr: String::new(),
+                            aggregated_output: "b\n".into(),
+                            duration: std::time::Duration::from_millis(10),
+                            formatted_output: "b\n".into(),
+                            process_id: None,
+                        }));
+                        send(EventMsg::TurnComplete(TurnCompleteEvent {
+                            last_agent_message: None,
+                        }));
+                    } else {
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::AgentMessageContentDelta(
+                                    AgentMessageContentDeltaEvent {
+                                        thread_id: id.to_string(),
+                                        turn_id: id.to_string(),
+                                        item_id: id.to_string(),
+                                        delta: prompt.clone(),
+                                    },
+                                ),
+                            })
+                            .unwrap();
+                        // Send non-delta event (should be deduplicated, but handled by deduplication)
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::AgentMessage(AgentMessageEvent { message: prompt }),
+                            })
+                            .unwrap();
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                    last_agent_message: None,
+                                }),
+                            })
+                            .unwrap();
+                    }
                 }
                 Op::Compact => {
                     self.op_tx

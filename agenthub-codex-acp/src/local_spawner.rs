@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::Cursor,
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -13,6 +13,72 @@ use codex_apply_patch::StdFs;
 use tokio::sync::mpsc;
 
 use crate::ACP_CLIENT;
+
+fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    normalized
+}
+
+fn ensure_path_within_root(root: &Path, path: &Path) -> std::io::Result<PathBuf> {
+    let abs_root = std::fs::canonicalize(root)?;
+    let raw_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        abs_root.join(path)
+    };
+    let normalized = normalize_lexical(raw_path.as_path());
+
+    // Resolve symlinks in the deepest existing ancestor, while still allowing
+    // non-existent trailing path segments (new files/dirs).
+    let mut existing_prefix = normalized.clone();
+    let mut suffix = vec![];
+    while !existing_prefix.exists() {
+        let Some(name) = existing_prefix.file_name() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid path: {}", normalized.display()),
+            ));
+        };
+        suffix.push(name.to_owned());
+        let Some(parent) = existing_prefix.parent() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid path: {}", normalized.display()),
+            ));
+        };
+        existing_prefix = parent.to_path_buf();
+    }
+
+    let mut abs_path = std::fs::canonicalize(existing_prefix)?;
+    for name in suffix.iter().rev() {
+        abs_path.push(name);
+    }
+    let abs_path = normalize_lexical(abs_path.as_path());
+
+    if abs_path.starts_with(&abs_root) {
+        Ok(abs_path)
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "access to {} denied (outside session root {})",
+                abs_path.display(),
+                abs_root.display()
+            ),
+        ))
+    }
+}
 
 #[derive(Debug)]
 pub enum FsTask {
@@ -125,20 +191,7 @@ impl AcpFs {
     }
 
     fn ensure_within_root(&self, path: &std::path::Path) -> std::io::Result<PathBuf> {
-        let root = std::path::absolute(self.session_root()?)?;
-        let abs_path = std::path::absolute(path)?;
-        if abs_path.starts_with(&root) {
-            Ok(abs_path)
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!(
-                    "access to {} denied (outside session root {})",
-                    abs_path.display(),
-                    root.display()
-                ),
-            ))
-        }
+        ensure_path_within_root(self.session_root()?.as_path(), path)
     }
 }
 
@@ -251,5 +304,103 @@ impl LocalSpawner {
         self.send
             .send(task)
             .expect("Thread with LocalSet has shut down.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_path_within_root;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_root() -> PathBuf {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let tick = NEXT.fetch_add(1, Ordering::Relaxed);
+        let now_nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "agenthub-codex-acp-local-spawner-{now_nanos}-{}-{tick}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn resolves_relative_paths_against_root() {
+        let root = temp_root();
+        fs::create_dir_all(root.join("nested")).unwrap();
+        let canonical_root = fs::canonicalize(&root).unwrap();
+
+        let resolved =
+            ensure_path_within_root(root.as_path(), PathBuf::from("nested/file.txt").as_path())
+                .unwrap();
+        assert_eq!(resolved, canonical_root.join("nested/file.txt"));
+
+        drop(fs::remove_dir_all(root));
+    }
+
+    #[test]
+    fn rejects_paths_escaping_root() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let escaped = root.join("../outside.txt");
+
+        let err = ensure_path_within_root(root.as_path(), escaped.as_path()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+
+        drop(fs::remove_dir_all(root));
+    }
+
+    #[test]
+    fn accepts_absolute_paths_under_root() {
+        let root = temp_root();
+        fs::create_dir_all(root.join("nested")).unwrap();
+        let canonical_root = fs::canonicalize(&root).unwrap();
+        let inside = canonical_root.join("nested/inside.txt");
+
+        let resolved = ensure_path_within_root(root.as_path(), inside.as_path()).unwrap();
+        assert_eq!(resolved, inside);
+
+        drop(fs::remove_dir_all(root));
+    }
+
+    #[test]
+    fn allows_nonexistent_paths_under_root() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let canonical_root = fs::canonicalize(&root).unwrap();
+        let unresolved = PathBuf::from("new/deep/file.txt");
+
+        let resolved = ensure_path_within_root(root.as_path(), unresolved.as_path()).unwrap();
+        assert_eq!(resolved, canonical_root.join("new/deep/file.txt"));
+
+        drop(fs::remove_dir_all(root));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_escape_under_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root();
+        let outside = temp_root().with_file_name(format!(
+            "{}-outside",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, root.join("link_out")).unwrap();
+
+        let err =
+            ensure_path_within_root(root.as_path(), Path::new("link_out/secret.txt")).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+
+        drop(fs::remove_dir_all(root));
+        drop(fs::remove_dir_all(outside));
     }
 }
