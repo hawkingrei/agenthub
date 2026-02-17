@@ -3,29 +3,56 @@ import { compareEventOrder, type SeqComparable } from "./seq_order";
 
 export type PlanEntryView = Pick<AcpPlanEntry, "content" | "status" | "priority">;
 
+export type MessageConversationItem = {
+  kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
+  text: string;
+  plan_entries?: PlanEntryView[];
+  live?: boolean;
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
+export type ToolCallConversationItem = {
+  kind: "tool_call";
+  id: string;
+  title: string;
+  status?: string;
+  content?: string;
+  raw_input?: unknown;
+  raw_output?: unknown;
+  terminal_output?: string;
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
+export type ToolCallGroupConversationItem = {
+  kind: "tool_call_group";
+  calls: ToolCallConversationItem[];
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
+export type ExploreGroupChildConversationItem =
+  | (MessageConversationItem & { kind: "agent_thinking" })
+  | ToolCallConversationItem
+  | ToolCallGroupConversationItem;
+
+export type ExploreGroupConversationItem = {
+  kind: "explore_group";
+  items: ExploreGroupChildConversationItem[];
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
 export type ConversationItem =
-  | {
-      kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
-      text: string;
-      plan_entries?: PlanEntryView[];
-      live?: boolean;
-      seq?: string;
-      event_id?: number;
-      ts?: number;
-    }
-  | {
-      kind: "tool_call";
-      id: string;
-      title: string;
-      status?: string;
-      content?: string;
-      raw_input?: unknown;
-      raw_output?: unknown;
-      terminal_output?: string;
-      seq?: string;
-      event_id?: number;
-      ts?: number;
-    };
+  | MessageConversationItem
+  | ToolCallConversationItem
+  | ToolCallGroupConversationItem
+  | ExploreGroupConversationItem;
 
 export type ConversationWindow = {
   items: ConversationItem[];
@@ -49,6 +76,30 @@ export function formatConversationPreview(text: string, limit: number): string {
   if (limit <= 0) return "";
   if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit)}…`;
+}
+
+export function isExploreThinkingText(text: string): boolean {
+  const firstLine = text
+    .split("\n")
+    .map((line) => line.trim().toLowerCase())
+    .find((line) => line.length > 0);
+  return Boolean(firstLine?.startsWith("explore"));
+}
+
+export function flattenExploreGroupToolCalls(
+  items: ExploreGroupConversationItem["items"]
+): ToolCallConversationItem[] {
+  const calls: ToolCallConversationItem[] = [];
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      calls.push(item);
+      continue;
+    }
+    if (item.kind === "tool_call_group") {
+      calls.push(...item.calls);
+    }
+  }
+  return calls;
 }
 
 export function buildConversationMessages(
@@ -244,7 +295,98 @@ export function buildConversationMessages(
       ts: pendingThoughtTs ?? undefined,
     });
   }
-  return items;
+  return groupExploreItems(groupConsecutiveToolCalls(items));
+}
+
+function groupConsecutiveToolCalls(items: ConversationItem[]): ConversationItem[] {
+  if (items.length < 2) return items;
+  const grouped: ConversationItem[] = [];
+  let pendingCalls: ToolCallConversationItem[] = [];
+
+  const flushPendingCalls = () => {
+    if (pendingCalls.length === 0) return;
+    if (pendingCalls.length === 1) {
+      grouped.push(pendingCalls[0]);
+    } else {
+      const tail = pendingCalls[pendingCalls.length - 1];
+      grouped.push({
+        kind: "tool_call_group",
+        calls: pendingCalls,
+        seq: tail.seq,
+        event_id: tail.event_id,
+        ts: tail.ts,
+      });
+    }
+    pendingCalls = [];
+  };
+
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      pendingCalls.push(item);
+      continue;
+    }
+    flushPendingCalls();
+    grouped.push(item);
+  }
+  flushPendingCalls();
+  return grouped;
+}
+
+function groupExploreItems(items: ConversationItem[]): ConversationItem[] {
+  if (items.length < 2) return items;
+  const grouped: ConversationItem[] = [];
+  let index = 0;
+
+  while (index < items.length) {
+    const current = items[index];
+    if (!isExploreThinkingItem(current)) {
+      grouped.push(current);
+      index += 1;
+      continue;
+    }
+
+    const runItems: ExploreGroupChildConversationItem[] = [current];
+    let hasToolCall = false;
+    index += 1;
+
+    while (index < items.length) {
+      const next = items[index];
+      if (next.kind === "tool_call" || next.kind === "tool_call_group") {
+        runItems.push(next);
+        hasToolCall = true;
+        index += 1;
+        continue;
+      }
+      if (isExploreThinkingItem(next)) {
+        runItems.push(next);
+        index += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (!hasToolCall) {
+      grouped.push(current);
+      continue;
+    }
+
+    const tail = runItems[runItems.length - 1];
+    grouped.push({
+      kind: "explore_group",
+      items: runItems,
+      seq: tail.seq,
+      event_id: tail.event_id,
+      ts: tail.ts,
+    });
+  }
+
+  return grouped;
+}
+
+function isExploreThinkingItem(
+  item: ConversationItem
+): item is MessageConversationItem & { kind: "agent_thinking" } {
+  return item.kind === "agent_thinking" && isExploreThinkingText(item.text);
 }
 
 export function windowConversation(

@@ -12,6 +12,8 @@ import {
   nextConversationViewport,
   normalizeConversationAvgHeightEstimate,
   restoreConversationScrollTop,
+  hasReachedConversationTop,
+  shouldShowConversationTopReachedHint,
   shouldAutoLoadConversationHistory,
   shouldLoadOlderFromMeta,
   shouldUseConversationVirtualization,
@@ -116,6 +118,75 @@ describe("buildConversationTailKey", () => {
     expect(key).toContain("tool_call:8:");
     expect(key.length).toBeLessThan(120);
   });
+
+  it("builds key for grouped tool calls using trailing call payload lengths", () => {
+    const key = buildConversationTailKey([
+      {
+        kind: "tool_call_group",
+        calls: [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            title: "Search",
+            content: "first",
+            event_id: 9,
+          },
+          {
+            kind: "tool_call",
+            id: "call-2",
+            title: "Read",
+            content: "tail-content",
+            terminal_output: "ok",
+            raw_input: { path: "README.md" },
+            raw_output: { done: true },
+            event_id: 10,
+          },
+        ],
+        event_id: 10,
+      },
+    ]);
+    expect(key).toContain("tool_call_group:10:count:2:12:2:");
+  });
+
+  it("builds key for explore groups using trailing nested tool call payload lengths", () => {
+    const key = buildConversationTailKey([
+      {
+        kind: "explore_group",
+        event_id: 12,
+        items: [
+          {
+            kind: "agent_thinking",
+            text: "explore workspace",
+            event_id: 10,
+          },
+          {
+            kind: "tool_call_group",
+            event_id: 12,
+            calls: [
+              {
+                kind: "tool_call",
+                id: "call-1",
+                title: "Search",
+                content: "first",
+                event_id: 11,
+              },
+              {
+                kind: "tool_call",
+                id: "call-2",
+                title: "Read",
+                content: "tail-content",
+                terminal_output: "ok",
+                raw_input: { path: "README.md" },
+                raw_output: { done: true },
+                event_id: 12,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(key).toContain("explore_group:12:count:2:12:2:");
+  });
 });
 
 describe("findConversationToolCallIndex", () => {
@@ -135,6 +206,45 @@ describe("findConversationToolCallIndex", () => {
     ];
     expect(findConversationToolCallIndex(items, "")).toBe(-1);
     expect(findConversationToolCallIndex(items, "missing")).toBe(-1);
+  });
+
+  it("returns grouped item index when call is nested in tool_call_group", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      {
+        kind: "tool_call_group",
+        calls: [
+          { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+          { kind: "tool_call", id: "call-2", title: "Write", event_id: 3 },
+        ],
+        event_id: 3,
+      },
+      { kind: "agent_message", text: "b", event_id: 4 },
+    ];
+    expect(findConversationToolCallIndex(items, "call-2")).toBe(1);
+  });
+
+  it("returns explore group index when call is nested in explore group", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      {
+        kind: "explore_group",
+        event_id: 4,
+        items: [
+          { kind: "agent_thinking", text: "explore docs", event_id: 2 },
+          {
+            kind: "tool_call_group",
+            event_id: 4,
+            calls: [
+              { kind: "tool_call", id: "call-1", title: "Search", event_id: 3 },
+              { kind: "tool_call", id: "call-2", title: "Read", event_id: 4 },
+            ],
+          },
+        ],
+      },
+      { kind: "agent_message", text: "b", event_id: 5 },
+    ];
+    expect(findConversationToolCallIndex(items, "call-2")).toBe(1);
   });
 });
 
@@ -242,6 +352,45 @@ describe("conversation helper decisions", () => {
     expect(
       shouldAutoLoadConversationHistory("conversation", "agent-1", true, 4)
     ).toBe(true);
+  });
+
+  it("identifies when history has reached top from metadata", () => {
+    expect(
+      hasReachedConversationTop({
+        oldestId: 1,
+        hasMore: false,
+        loading: false,
+        loaded: true,
+      })
+    ).toBe(true);
+    expect(
+      hasReachedConversationTop({
+        oldestId: 1,
+        hasMore: true,
+        loading: false,
+        loaded: true,
+      })
+    ).toBe(false);
+    expect(
+      hasReachedConversationTop({
+        oldestId: 1,
+        hasMore: false,
+        loading: true,
+        loaded: true,
+      })
+    ).toBe(false);
+  });
+
+  it("shows top reached hint only near top and when no older history exists", () => {
+    const topMeta = {
+      oldestId: 1,
+      hasMore: false,
+      loading: false,
+      loaded: true,
+    };
+    expect(shouldShowConversationTopReachedHint(20, false, topMeta)).toBe(true);
+    expect(shouldShowConversationTopReachedHint(20, true, topMeta)).toBe(false);
+    expect(shouldShowConversationTopReachedHint(120, false, topMeta)).toBe(false);
   });
 
   it("normalizes average height estimates with bounds and jitter guard", () => {

@@ -56,6 +56,83 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
+  it("renders grouped tool calls with a shared fold and nested tool entries", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call_group",
+        event_id: 12,
+        calls: [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            title: "Shell",
+            status: "completed",
+            raw_input: { cmd: "ls" },
+          },
+          {
+            kind: "tool_call",
+            id: "call-2",
+            title: "Read",
+            status: "in_progress",
+            content: "line1\\nline2",
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain("Tool Calls (2)");
+    expect(html).toContain("acp-tool-group-fold");
+    expect(html).toContain("acp-tool-group-list");
+    expect(html).toContain("#1 Shell");
+    expect(html).toContain("#2 Read");
+    expect(html).toContain("tool-call-enter");
+    expect(html).toContain("1 running");
+  });
+
+  it("renders explore groups as a single fold with thinking and nested tool calls", () => {
+    const html = renderConversation([
+      {
+        kind: "explore_group",
+        event_id: 20,
+        items: [
+          {
+            kind: "agent_thinking",
+            text: "explore **repo** layout",
+            event_id: 18,
+          },
+          {
+            kind: "tool_call_group",
+            event_id: 19,
+            calls: [
+              {
+                kind: "tool_call",
+                id: "call-1",
+                title: "Search",
+                status: "completed",
+              },
+              {
+                kind: "tool_call",
+                id: "call-2",
+                title: "Read",
+                status: "in_progress",
+                raw_input: { path: "README.md" },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain("acp-explore-group-fold");
+    expect(html).toContain("Explore (2 tools)");
+    expect(html).toContain("Explore #1");
+    expect(html).toContain("<strong>repo</strong>");
+    expect(html).toContain("#1 Search");
+    expect(html).toContain("#2 Read");
+    expect(html).toContain("README.md");
+    expect(html).toContain("1 running");
+  });
+
   it("renders JSON-like payload strings as structured sections", () => {
     const html = renderConversation([
       {
@@ -218,6 +295,36 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
+  it("shows success status dot for completed tool calls", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-success-mark",
+        title: "Search",
+        status: "completed",
+      },
+    ]);
+
+    expect(html).toContain("acp-tool-status-mark tone-success");
+    expect(html).toContain("acp-tool-status-dot");
+    expect(html).toContain("aria-label=\"Completed\"");
+  });
+
+  it("shows error status dot for failed tool calls", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-error-mark",
+        title: "Read",
+        status: "failed",
+      },
+    ]);
+
+    expect(html).toContain("acp-tool-status-mark tone-failure");
+    expect(html).toContain("acp-tool-status-dot");
+    expect(html).toContain("aria-label=\"Failed\"");
+  });
+
   it("shows segmented footer for long tool text payloads", () => {
     const lines = Array.from({ length: 400 }, (_, idx) => `line-${idx}`).join("\n");
     const html = renderConversation([
@@ -256,7 +363,7 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("results");
   });
 
-  it("hides debug-only payload fields such as turn_id and turnId", () => {
+  it("hides debug-only payload fields such as turn_id/process_id/source", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
@@ -266,6 +373,8 @@ describe("AcpConversation rendering", () => {
         raw_output: {
           turn_id: "t-1",
           turnId: "t-2",
+          process_id: "p-1",
+          source: "agenthub",
           query: "agenthub",
           path: "src/main.rs",
         },
@@ -278,18 +387,125 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("src/main.rs");
     expect(html).not.toContain("turn_id");
     expect(html).not.toContain("turnId");
+    expect(html).not.toContain("process_id");
+    expect(html).not.toContain("source");
     expect(html).not.toContain("t-1");
     expect(html).not.toContain("t-2");
+    expect(html).not.toContain("p-1");
   });
 
-  it("hides turn_id fields for JSON-like string payloads as well", () => {
+  it("hides empty stderr/stdout fields while keeping non-empty stream output", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-hide-empty-stream-fields",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          stdout: "line-1\\nline-2",
+          stderr: "   \\n\\t",
+          summary: "done",
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>stdout</dt>");
+    expect(html).toContain("line-1");
+    expect(html).toContain("<dt>summary</dt>");
+    expect(html).toContain("done");
+    expect(html).not.toContain("<dt>stderr</dt>");
+  });
+
+  it("hides empty stderr/stdout fields for JSON-like string payloads", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-hide-empty-stream-fields-json-text",
+        title: "Shell",
+        status: "completed",
+        raw_output:
+          "{\"stdout\":\"\",\"stderr\":\"   \",\"summary\":\"done\"}",
+      },
+    ]);
+
+    expect(html).not.toContain("<dt>stdout</dt>");
+    expect(html).not.toContain("<dt>stderr</dt>");
+    expect(html).toContain("<dt>summary</dt>");
+    expect(html).toContain("done");
+  });
+
+  it("shows only highest-priority output field among aggregated/formatted/stdout", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-output-priority-object",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: "aggregated-value",
+          formatted_output: "formatted-value",
+          stdout: "stdout-value",
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>aggregated_output</dt>");
+    expect(html).toContain("aggregated-value");
+    expect(html).not.toContain("<dt>formatted_output</dt>");
+    expect(html).not.toContain("formatted-value");
+    expect(html).not.toContain("<dt>stdout</dt>");
+    expect(html).not.toContain("stdout-value");
+  });
+
+  it("falls back from aggregated_output to formatted_output when aggregated_output is empty", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-output-priority-json",
+        title: "Shell",
+        status: "completed",
+        raw_output:
+          "{\"aggregated_output\":\"   \",\"formatted_output\":\"formatted-value\",\"stdout\":\"stdout-value\"}",
+      },
+    ]);
+
+    expect(html).not.toContain("<dt>aggregated_output</dt>");
+    expect(html).toContain("<dt>formatted_output</dt>");
+    expect(html).toContain("formatted-value");
+    expect(html).not.toContain("<dt>stdout</dt>");
+    expect(html).not.toContain("stdout-value");
+  });
+
+  it("falls back to stdout when aggregated_output and formatted_output are empty", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-output-priority-stdout-fallback",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: "",
+          formatted_output: "   ",
+          stdout: "stdout-value",
+        },
+      },
+    ]);
+
+    expect(html).not.toContain("<dt>aggregated_output</dt>");
+    expect(html).not.toContain("<dt>formatted_output</dt>");
+    expect(html).toContain("<dt>stdout</dt>");
+    expect(html).toContain("stdout-value");
+  });
+
+  it("hides debug-only fields for JSON-like string payloads as well", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
         id: "call-hidden-debug-fields-json-text",
         title: "Search",
         status: "completed",
-        raw_output: "{\"turn_id\":\"t-3\",\"query\":\"agenthub\",\"path\":\"src/app.tsx\"}",
+        raw_output:
+          "{\"turn_id\":\"t-3\",\"process_id\":\"p-2\",\"source\":\"agenthub\",\"query\":\"agenthub\",\"path\":\"src/app.tsx\"}",
       },
     ]);
 
@@ -298,10 +514,13 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("path");
     expect(html).toContain("src/app.tsx");
     expect(html).not.toContain("turn_id");
+    expect(html).not.toContain("process_id");
+    expect(html).not.toContain("source");
     expect(html).not.toContain("t-3");
+    expect(html).not.toContain("p-2");
   });
 
-  it("renders auto-collapsed summaries for thinking and plan", () => {
+  it("keeps thinking expanded while still rendering plan summary folds", () => {
     const html = renderConversation(
       [
         {
@@ -323,8 +542,68 @@ describe("AcpConversation rendering", () => {
       }
     );
 
-    expect(html).toContain("Thinking:");
+    expect(html).toContain("acp-thinking-title");
+    expect(html).toContain("Thinking");
+    expect(html).not.toContain("agent_thinking\"><details");
     expect(html).toContain("Plan:");
+  });
+
+  it("renders thinking bubble content with markdown formatting", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_thinking",
+        text: "**inspect** `query`",
+        live: true,
+        event_id: 20,
+      },
+    ]);
+
+    expect(html).toContain("<strong>inspect</strong>");
+    expect(html).toContain("<code>query</code>");
+  });
+
+  it("renders skill xml fragments as structured markdown fields", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_thinking",
+        text: [
+          "<skill>",
+          "<name>team-leader-orchestrator</name>",
+          "<path>/tmp/team-leader-orchestrator.SKILL.md</path>",
+          "</skill>",
+        ].join("\n"),
+        live: false,
+        event_id: 21,
+      },
+    ]);
+
+    expect(html).toContain("<strong>Skill</strong>");
+    expect(html).toContain("Name:");
+    expect(html).toContain("<code>team-leader-orchestrator</code>");
+    expect(html).toContain("Path:");
+    expect(html).toContain("<code>/tmp/team-leader-orchestrator.SKILL.md</code>");
+  });
+
+  it("keeps skill xml inline-code rendering safe when fields contain backticks or html", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_thinking",
+        text: [
+          "<skill>",
+          "<name>owner`name</name>",
+          "<path>/tmp/``skill``-path/<img src=x onerror=alert(1)></path>",
+          "</skill>",
+        ].join("\n"),
+        live: false,
+        event_id: 22,
+      },
+    ]);
+
+    expect(html).toContain("<strong>Skill</strong>");
+    expect((html.match(/<code>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain("owner`name");
   });
 
   it("renders plan entries as a structured plan card", () => {
