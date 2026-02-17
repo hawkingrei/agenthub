@@ -69,6 +69,17 @@ export function buildAcpCacheSlice(
   return merged.slice(merged.length - maxCachedEvents);
 }
 
+export function replaceAcpCacheSlice(
+  ordered: OutputLine[],
+  maxCachedEvents: number
+): OutputLine[] {
+  const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+  if (maxCachedEvents > 0 && acpOrdered.length > maxCachedEvents) {
+    return acpOrdered.slice(acpOrdered.length - maxCachedEvents);
+  }
+  return acpOrdered;
+}
+
 export function buildOutputCacheSlice(
   existing: OutputLine[],
   ordered: OutputLine[],

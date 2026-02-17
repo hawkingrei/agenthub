@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
+  buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
   decidePermissionJump,
   filterPermissionsForAgent,
@@ -116,6 +117,17 @@ describe("app helper decisions", () => {
     ]);
   });
 
+  it("builds global permission poll targets and skips active agent", () => {
+    const allAgentIds = ["agent-a", "agent-b", "agent-c"];
+    expect(buildGlobalPermissionPollAgentIds(allAgentIds, null)).toEqual(
+      allAgentIds
+    );
+    expect(buildGlobalPermissionPollAgentIds(allAgentIds, "agent-b")).toEqual([
+      "agent-a",
+      "agent-c",
+    ]);
+  });
+
   it("builds pending permission count map using only positive counts", () => {
     const map = buildPendingPermissionCountMap([
       ["agent-a", 2],
@@ -147,6 +159,21 @@ describe("app helper decisions", () => {
     expect(next).toEqual({
       "agent-b": 2,
       "agent-c": 1,
+    });
+  });
+
+  it("drops stale counts for agents removed from the current list", () => {
+    const prev = {
+      "agent-a": 2,
+      "agent-b": 1,
+    };
+    const next = mergePendingPermissionCountMap(
+      prev,
+      ["agent-a"],
+      [["agent-a", 2]]
+    );
+    expect(next).toEqual({
+      "agent-a": 2,
     });
   });
 

@@ -41,6 +41,7 @@ import {
   isSameOutputList,
   mergeOutputsPreserveHistory,
   mergeOutputs,
+  replaceAcpCacheSlice,
   OutputLine,
   selectCachedOutputs,
 } from "./output_cache";
@@ -189,6 +190,14 @@ export function decidePermissionJump(
 
 export function parsePermissionPollAgentIds(key: string): string[] {
   return key.split(",").filter(Boolean);
+}
+
+export function buildGlobalPermissionPollAgentIds(
+  allAgentIds: string[],
+  activeAgent: string | null
+): string[] {
+  if (!activeAgent) return allAgentIds;
+  return allAgentIds.filter((agentId) => agentId !== activeAgent);
 }
 
 export function buildPendingPermissionCountMap(
@@ -674,11 +683,7 @@ export function App() {
   const replaceAcpOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = acpOutputCacheRef.current[key] ?? [];
-      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
-      const nextSlice =
-        maxCachedEvents > 0 && acpOrdered.length > maxCachedEvents
-          ? acpOrdered.slice(acpOrdered.length - maxCachedEvents)
-          : acpOrdered;
+      const nextSlice = replaceAcpCacheSlice(ordered, maxCachedEvents);
       if (!isSameOutputList(existing, nextSlice)) {
         const nextCache = { ...acpOutputCacheRef.current, [key]: nextSlice };
         acpOutputCacheRef.current = nextCache;
@@ -1380,9 +1385,10 @@ export function App() {
     const allAgentIds = parsePermissionPollAgentIds(
       permissionPollAgentIdsKey
     );
-    const requestedAgentIds = activeAgent
-      ? allAgentIds.filter((agentId) => agentId !== activeAgent)
-      : allAgentIds;
+    const requestedAgentIds = buildGlobalPermissionPollAgentIds(
+      allAgentIds,
+      activeAgent
+    );
     const load = async () => {
       const entries = await Promise.all(
         requestedAgentIds.map(async (agentId) => {

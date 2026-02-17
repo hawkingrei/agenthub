@@ -4,6 +4,7 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   mergeOutputsPreserveHistory,
+  replaceAcpCacheSlice,
   selectCachedOutputs,
 } from "./output_cache";
 import { AgentEvent } from "./api";
@@ -30,6 +31,36 @@ describe("buildAcpCacheSlice", () => {
     const next = buildAcpCacheSlice(existing, ordered, 3);
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 50]);
     expect(next.every((evt) => evt.stream === "acp")).toBe(true);
+  });
+});
+
+describe("replaceAcpCacheSlice", () => {
+  it("returns only ACP events and drops non-ACP events", () => {
+    const ordered = [
+      makeEvent(1, "stdout"),
+      makeEvent(2, "acp"),
+      makeEvent(3, "stderr"),
+      makeEvent(4, "acp"),
+    ];
+    const next = replaceAcpCacheSlice(ordered, 10);
+    expect(next.map((evt) => evt.event_id)).toEqual([2, 4]);
+    expect(next.every((evt) => evt.stream === "acp")).toBe(true);
+  });
+
+  it("returns empty list when there are no ACP events", () => {
+    const ordered = [makeEvent(1, "stdout"), makeEvent(2, "stderr")];
+    const next = replaceAcpCacheSlice(ordered, 10);
+    expect(next).toEqual([]);
+  });
+
+  it("trims ACP list to maxCachedEvents", () => {
+    const ordered = [
+      makeEvent(1, "acp"),
+      makeEvent(2, "acp"),
+      makeEvent(3, "acp"),
+    ];
+    const next = replaceAcpCacheSlice(ordered, 2);
+    expect(next.map((evt) => evt.event_id)).toEqual([2, 3]);
   });
 });
 
