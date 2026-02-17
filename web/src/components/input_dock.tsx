@@ -242,7 +242,6 @@ export function InputDock({
     ) {
       return;
     }
-    textarea.scrollIntoView({ block: "nearest", inline: "nearest" });
     inputDockRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
   }, [mobileInputViewport]);
 

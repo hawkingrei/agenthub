@@ -36,7 +36,7 @@ export const OutputHeader = React.memo(function OutputHeader({
     <div className="output-header">
       <div className="output-title">
         <button
-          className="icon-button small"
+          className="icon-button small output-agents-toggle"
           onClick={onToggleAgents}
           title={agentsCollapsed ? "Show agents" : "Hide agents"}
           aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}

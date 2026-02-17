@@ -20,7 +20,8 @@ The existing collapse control in `OutputHeader` remains rendered but is visually
 
 1. Add a dedicated `Hide agents` button inside the expanded agents panel toolbar.
 2. Keep this button responsive-only (`max-width: 1024px`) to avoid duplicating desktop controls.
-3. Add a render assertion in `agents_panel.test.tsx` to prevent regression.
+3. On narrow viewports, hide `OutputHeader` collapse control while workspace is expanded so screen readers do not see duplicate `Hide agents` controls.
+4. Add a render assertion in `agents_panel.test.tsx` to prevent regression.
 
 ## Validation
 

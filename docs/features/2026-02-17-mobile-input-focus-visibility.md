@@ -19,7 +19,7 @@ The dock stayed at layout bottom, but viewport changes (keyboard/pan) could plac
 
 1. Add a mobile-only focus visibility guard in `InputDock`.
 2. While textarea is focused, listen to `visualViewport` resize/scroll and window resize.
-3. Detect when textarea vertical bounds leave visible viewport and scroll the textarea/dock back into view.
+3. Detect when textarea vertical bounds leave visible viewport and scroll the dock container into view with a single `scrollIntoView` call to avoid double-jump effects.
 4. Keep desktop behavior unchanged by gating this logic behind mobile input breakpoint detection.
 
 ## Validation

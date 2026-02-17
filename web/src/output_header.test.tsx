@@ -53,6 +53,7 @@ describe("OutputHeader", () => {
     expect(html).toContain("Code mode on");
     expect(html).toContain("Session session-");
     expect(html).toContain("Updated");
+    expect(html).toContain("output-agents-toggle");
   });
 
   it("shows subtitle row when ACP is absent", () => {
