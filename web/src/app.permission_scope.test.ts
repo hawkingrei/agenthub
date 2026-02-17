@@ -9,6 +9,7 @@ import {
   parsePermissionPollAgentIds,
   resolveOutputHistoryKey,
   resolveSessionScopedEvents,
+  resolveRuntimeViewportAxis,
   resolveRuntimeViewportSize,
   schedulePermissionPollLoop,
   setupLayoutAnchorVarSync,
@@ -235,6 +236,17 @@ describe("app helper decisions", () => {
     expect(resolveRuntimeViewportSize(undefined, 0, -10)).toEqual({
       width: 1,
       height: 1,
+    });
+  });
+
+  it("ignores implausibly tiny visual viewport values and keeps fallback axes", () => {
+    expect(resolveRuntimeViewportAxis(3, 390)).toBe(390);
+    expect(resolveRuntimeViewportAxis(320, 844)).toBe(320);
+    expect(
+      resolveRuntimeViewportSize({ width: 3, height: 9 }, 844, 390)
+    ).toEqual({
+      width: 390,
+      height: 844,
     });
   });
 

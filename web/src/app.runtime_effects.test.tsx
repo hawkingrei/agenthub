@@ -106,4 +106,25 @@ describe("App runtime viewport effects", () => {
       document.documentElement.style.getPropertyValue("--agenthub-vw")
     ).toBe("360px");
   });
+
+  it("does not collapse runtime viewport vars when visual viewport reports tiny transient values", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    mockViewport.height = 1;
+    mockViewport.width = 1;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("700px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vw")
+    ).toBe("390px");
+  });
 });

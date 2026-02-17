@@ -151,14 +151,32 @@ type ResizeObserverLike = {
 
 type ResizeObserverCtorLike = new (callback: () => void) => ResizeObserverLike;
 
+const MIN_RELIABLE_VIEWPORT_AXIS_PX = 48;
+
+export function resolveRuntimeViewportAxis(
+  axis: number | null | undefined,
+  fallback: number
+): number {
+  const fallbackRounded = Math.max(1, Math.round(fallback));
+  if (typeof axis !== "number" || !Number.isFinite(axis)) {
+    return fallbackRounded;
+  }
+  const rounded = Math.max(1, Math.round(axis));
+  const minReliable = Math.min(MIN_RELIABLE_VIEWPORT_AXIS_PX, fallbackRounded);
+  if (rounded < minReliable) {
+    return fallbackRounded;
+  }
+  return rounded;
+}
+
 export function resolveRuntimeViewportSize(
   viewport: Pick<VisualViewport, "height" | "width"> | null | undefined,
   innerHeight: number,
   innerWidth: number
 ): RuntimeViewportSize {
   return {
-    height: Math.max(1, Math.round(viewport?.height ?? innerHeight)),
-    width: Math.max(1, Math.round(viewport?.width ?? innerWidth)),
+    height: resolveRuntimeViewportAxis(viewport?.height, innerHeight),
+    width: resolveRuntimeViewportAxis(viewport?.width, innerWidth),
   };
 }
 

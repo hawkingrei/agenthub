@@ -29,6 +29,29 @@ async function mountInputDock(page: import("@playwright/test").Page): Promise<vo
   `);
 }
 
+async function mountWorkspaceWithDock(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  await page.setContent(`
+    <style>${styles}</style>
+    <section class="workspace" style="height: 760px; grid-template-columns: minmax(0, 1fr);">
+      <div class="workspace-right">
+        <div class="output-header"><h2>Output</h2></div>
+        <div class="output-body" style="overflow: auto;">
+          <div style="height: 1200px; background: linear-gradient(#f6f8fb, #e8edf6);"></div>
+        </div>
+        <div class="input docked">
+          <div class="input-row" role="group" aria-label="Input actions"></div>
+          <div class="input-editor-row">
+            <textarea rows="2">echo hello</textarea>
+            <button class="input-send-button">Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  `);
+}
+
 async function assertDockLayout(
   page: import("@playwright/test").Page,
   expectedChipMinHeight: number,
@@ -96,4 +119,20 @@ test("keeps input dock controls non-overlapping on tablet viewports", async ({
     await mountInputDock(page);
     await assertDockLayout(page, 28, 48);
   }
+});
+
+test("keeps docked input anchored to the workspace bottom on mobile viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mountWorkspaceWithDock(page);
+  const workspaceBox = await page.locator(".workspace-right").boundingBox();
+  const dockBox = await page.locator(".input.docked").boundingBox();
+  expect(workspaceBox).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  const workspace = workspaceBox!;
+  const dock = dockBox!;
+  expect(dock.y + dock.height).toBeGreaterThanOrEqual(
+    workspace.y + workspace.height - 6
+  );
 });
