@@ -30,12 +30,21 @@ async function mountInputDock(page: import("@playwright/test").Page): Promise<vo
 }
 
 async function mountWorkspaceWithDock(
-  page: import("@playwright/test").Page
+  page: import("@playwright/test").Page,
+  options: { collapsed?: boolean } = {}
 ): Promise<void> {
+  const collapsed = options.collapsed ?? false;
+  const workspaceClass = collapsed ? "workspace collapsed" : "workspace";
+  const workspaceLeftClass = collapsed ? "workspace-left collapsed" : "workspace-left";
   await page.setContent(`
     <style>${styles}</style>
-    <section class="workspace" style="height: 760px; grid-template-columns: minmax(0, 1fr);">
-      <div class="workspace-right">
+    <section class="${workspaceClass}" style="height: var(--agenthub-vh, 760px);">
+      <div class="${workspaceLeftClass}">
+        <div class="agent-layout">
+          <h2>Agents</h2>
+        </div>
+      </div>
+      <div class="workspace-right" style="height: 100%;">
         <div class="output-header"><h2>Output</h2></div>
         <div class="output-body" style="overflow: auto;">
           <div style="height: 1200px; background: linear-gradient(#f6f8fb, #e8edf6);"></div>
@@ -50,6 +59,21 @@ async function mountWorkspaceWithDock(
       </div>
     </section>
   `);
+}
+
+async function assertDockAnchoredToWorkspaceBottom(
+  page: import("@playwright/test").Page,
+  tolerance = 6
+): Promise<void> {
+  const workspaceBox = await page.locator(".workspace-right").boundingBox();
+  const dockBox = await page.locator(".input.docked").boundingBox();
+  expect(workspaceBox).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  const workspace = workspaceBox!;
+  const dock = dockBox!;
+  expect(dock.y + dock.height).toBeGreaterThanOrEqual(
+    workspace.y + workspace.height - tolerance
+  );
 }
 
 async function assertDockLayout(
@@ -125,14 +149,49 @@ test("keeps docked input anchored to the workspace bottom on mobile viewport", a
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await mountWorkspaceWithDock(page);
-  const workspaceBox = await page.locator(".workspace-right").boundingBox();
-  const dockBox = await page.locator(".input.docked").boundingBox();
-  expect(workspaceBox).not.toBeNull();
-  expect(dockBox).not.toBeNull();
-  const workspace = workspaceBox!;
-  const dock = dockBox!;
-  expect(dock.y + dock.height).toBeGreaterThanOrEqual(
-    workspace.y + workspace.height - 6
-  );
+  await mountWorkspaceWithDock(page, { collapsed: true });
+  await assertDockAnchoredToWorkspaceBottom(page);
+});
+
+test("keeps docked input anchored while agents panel toggles collapsed/expanded on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mountWorkspaceWithDock(page, { collapsed: false });
+  await assertDockAnchoredToWorkspaceBottom(page);
+
+  await page.evaluate(() => {
+    document.querySelector(".workspace")?.classList.add("collapsed");
+    document.querySelector(".workspace-left")?.classList.add("collapsed");
+  });
+  await assertDockAnchoredToWorkspaceBottom(page);
+
+  await page.evaluate(() => {
+    document.querySelector(".workspace")?.classList.remove("collapsed");
+    document.querySelector(".workspace-left")?.classList.remove("collapsed");
+  });
+  await assertDockAnchoredToWorkspaceBottom(page);
+});
+
+test("keeps docked input anchored through simulated keyboard open/close viewport transitions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mountWorkspaceWithDock(page, { collapsed: true });
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--agenthub-vh", "844px");
+  });
+  await assertDockAnchoredToWorkspaceBottom(page);
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--agenthub-vh", "620px");
+  });
+  await page.setViewportSize({ width: 390, height: 620 });
+  await assertDockAnchoredToWorkspaceBottom(page);
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--agenthub-vh", "844px");
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertDockAnchoredToWorkspaceBottom(page);
 });

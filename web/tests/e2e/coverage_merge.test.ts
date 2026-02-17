@@ -83,6 +83,41 @@ describe("mergeCoverageEntries", () => {
     expect(merge).toHaveBeenCalledTimes(1);
   });
 
+  it("falls back to modern conversion when legacy-style invocation fails", async () => {
+    const filePath = "/repo/web/src/main.ts";
+    const merge = vi.fn();
+    const warn = vi.fn();
+    const converter = vi.fn(async function converterWithLegacyArity(
+      input: unknown,
+      _wrapperLength: number,
+      _options: { source?: string }
+    ) {
+      void _wrapperLength;
+      void _options;
+      if (
+        !input ||
+        typeof input !== "object" ||
+        !("code" in input) ||
+        !("coverage" in input)
+      ) {
+        throw new TypeError("modern signature expected");
+      }
+      return createEmptyCoverage(filePath);
+    });
+
+    await mergeCoverageEntries({
+      map: { merge },
+      entries: [SAMPLE_ENTRY],
+      resolveFilePath: () => filePath,
+      converter,
+      logger: { warn },
+    });
+
+    expect(converter).toHaveBeenCalledTimes(2);
+    expect(merge).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("skips entries with missing source or empty functions", async () => {
     const merge = vi.fn();
     const converter = vi.fn(async () => createEmptyCoverage("/repo/web/src/main.ts"));

@@ -27,7 +27,7 @@ Playwright E2E tests run in CI, but their exercised frontend paths are not refle
 3. Convert Playwright V8 coverage entries into Istanbul coverage and emit `web/coverage/e2e/lcov.info`.
 4. Keep E2E coverage in a separate Codecov flag (`web-e2e`) so it does not interfere with unit coverage gates.
 5. Force single worker when E2E coverage is enabled to avoid cross-worker merge complexity.
-6. Use a converter adapter that supports both modern `ast-v8-to-istanbul` API and legacy `load/applyCoverage` API shapes, and skip malformed/sourceless entries without failing the full E2E suite.
+6. Use a converter adapter that first probes legacy `load/applyCoverage` shape, then falls back to modern `ast-v8-to-istanbul` conversion args when legacy-style invocation fails, and skip malformed/sourceless entries without failing the full E2E suite.
 
 ## Validation
 
