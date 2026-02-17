@@ -391,10 +391,11 @@ const ToolCallBubble = React.memo(
             <span className="acp-tool-title">
               {statusMark && (
                 <span
-                  className={`acp-tool-status-mark ${statusMark.tone}`}
-                  aria-hidden="true"
+                  className={`acp-tool-status-mark tone-${statusMark.tone}`}
+                  title={statusMark.label}
+                  aria-label={statusMark.label}
                 >
-                  {statusMark.icon}
+                  <span className="acp-tool-status-dot" />
                 </span>
               )}
               {title}
@@ -1161,14 +1162,14 @@ function formatToolCallStatus(status?: string): string {
 
 function getToolCallStatusMark(
   status?: string
-): { icon: string; tone: "success" | "error" } | null {
+): { tone: "success" | "failure"; label: string } | null {
   if (!status) return null;
   const normalized = normalizeToolCallStatus(status);
   if (normalized === "completed") {
-    return { icon: "✅", tone: "success" };
+    return { tone: "success", label: "Completed" };
   }
   if (FAILED_TOOL_STATUSES.has(normalized)) {
-    return { icon: "❌", tone: "error" };
+    return { tone: "failure", label: "Failed" };
   }
   return null;
 }

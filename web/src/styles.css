@@ -1883,16 +1883,35 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .acp-tool-status-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  line-height: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: #475467;
 }
 
-.acp-tool-status-mark.success {
-  filter: saturate(1.05);
+.acp-tool-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  display: inline-block;
 }
 
-.acp-tool-status-mark.error {
-  filter: saturate(1.1);
+.acp-tool-status-mark.tone-success {
+  color: #1f7a3d;
+  background: rgba(31, 122, 61, 0.14);
+  border-color: rgba(31, 122, 61, 0.32);
+}
+
+.acp-tool-status-mark.tone-failure {
+  color: #b42318;
+  background: rgba(180, 35, 24, 0.14);
+  border-color: rgba(180, 35, 24, 0.32);
 }
 
 .acp-tool-fold summary .acp-tool-status {

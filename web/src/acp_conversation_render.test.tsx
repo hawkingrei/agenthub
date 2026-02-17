@@ -295,7 +295,7 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
-  it("shows success mark for completed tool calls", () => {
+  it("shows success status dot for completed tool calls", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
@@ -305,11 +305,12 @@ describe("AcpConversation rendering", () => {
       },
     ]);
 
-    expect(html).toContain("✅");
-    expect(html).toContain("acp-tool-status-mark success");
+    expect(html).toContain("acp-tool-status-mark tone-success");
+    expect(html).toContain("acp-tool-status-dot");
+    expect(html).toContain("aria-label=\"Completed\"");
   });
 
-  it("shows error mark for failed tool calls", () => {
+  it("shows error status dot for failed tool calls", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
@@ -319,8 +320,9 @@ describe("AcpConversation rendering", () => {
       },
     ]);
 
-    expect(html).toContain("❌");
-    expect(html).toContain("acp-tool-status-mark error");
+    expect(html).toContain("acp-tool-status-mark tone-failure");
+    expect(html).toContain("acp-tool-status-dot");
+    expect(html).toContain("aria-label=\"Failed\"");
   });
 
   it("shows segmented footer for long tool text payloads", () => {
