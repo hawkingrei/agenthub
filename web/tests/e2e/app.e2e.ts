@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./coverage";
 
 test("renders login shell", async ({ page }) => {
   const pageErrors: string[] = [];

@@ -5,6 +5,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 const disableWebServer = process.env.PLAYWRIGHT_NO_WEBSERVER === "1";
 const minimalRuntime = process.env.PLAYWRIGHT_MINIMAL_RUNTIME === "1";
 const enableSystemChrome = process.env.PLAYWRIGHT_SYSTEM_CHROME === "1";
+const enableE2eCoverage = process.env.PLAYWRIGHT_E2E_COVERAGE === "1";
 
 const webServer = disableWebServer
   ? undefined
@@ -22,7 +23,7 @@ export default defineConfig({
     timeout: 5_000,
   },
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI || enableE2eCoverage ? 1 : undefined,
   use: {
     baseURL,
     trace: minimalRuntime ? "off" : "retain-on-failure",

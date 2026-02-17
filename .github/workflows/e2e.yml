@@ -25,5 +25,13 @@ jobs:
         run: npx --yes playwright install --with-deps chromium
         working-directory: web
       - name: E2E
-        run: npm run e2e
+        run: npm run e2e:coverage
         working-directory: web
+      - name: Upload E2E coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: web/coverage/e2e/lcov.info
+          flags: web-e2e
+          name: web-e2e-coverage
+          fail_ci_if_error: false
