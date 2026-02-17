@@ -17,6 +17,7 @@ the shell to near-zero size and appear as a white screen while typing.
 
 - `web/src/app.tsx`
 - `web/src/app.permission_scope.test.ts`
+- `web/src/app.runtime_effects.test.tsx`
 - `docs/todo.md`
 
 ## Key Decisions
@@ -33,7 +34,7 @@ the shell to near-zero size and appear as a white screen while typing.
 ```bash
 cd web
 npm run test -- src/app.permission_scope.test.ts
-npm run test
+npm run test -- src/app.runtime_effects.test.tsx
 npm run build
 ```
 
@@ -41,4 +42,6 @@ Expected outcomes:
 
 - Invalid transient viewport values no longer collapse the app shell.
 - Existing viewport sync behavior still works for normal values.
+- Runtime app-shell effects recover cleanly after invalid (`0/1` or non-finite)
+  viewport transitions and resume valid viewport sizing.
 - Web tests/build pass.

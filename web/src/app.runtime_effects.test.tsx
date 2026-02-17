@@ -127,4 +127,70 @@ describe("App runtime viewport effects", () => {
       document.documentElement.style.getPropertyValue("--agenthub-vw")
     ).toBe("390px");
   });
+
+  it("ignores non-finite viewport anomalies during keyboard transitions", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    mockViewport.height = Number.NaN;
+    mockViewport.width = Number.POSITIVE_INFINITY;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("700px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vw")
+    ).toBe("390px");
+
+    mockViewport.height = Number.NEGATIVE_INFINITY;
+    mockViewport.width = Number.NaN;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+    });
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("700px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vw")
+    ).toBe("390px");
+  });
+
+  it("recovers viewport vars once keyboard transition returns to valid dimensions", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    mockViewport.height = 0;
+    mockViewport.width = 1;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("700px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vw")
+    ).toBe("390px");
+
+    mockViewport.height = 644;
+    mockViewport.width = 358;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("644px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vw")
+    ).toBe("358px");
+  });
 });
