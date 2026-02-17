@@ -154,9 +154,26 @@ export function resolveRuntimeViewportSize(
   innerHeight: number,
   innerWidth: number
 ): RuntimeViewportSize {
+  const toSafeViewportDimension = (
+    viewportValue: number | undefined,
+    fallback: number
+  ): number => {
+    const safeFallback =
+      typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0
+        ? fallback
+        : 1;
+    if (
+      typeof viewportValue !== "number" ||
+      !Number.isFinite(viewportValue) ||
+      viewportValue <= 1
+    ) {
+      return safeFallback;
+    }
+    return viewportValue;
+  };
   return {
-    height: Math.max(1, Math.round(viewport?.height ?? innerHeight)),
-    width: Math.max(1, Math.round(viewport?.width ?? innerWidth)),
+    height: Math.max(1, Math.round(toSafeViewportDimension(viewport?.height, innerHeight))),
+    width: Math.max(1, Math.round(toSafeViewportDimension(viewport?.width, innerWidth))),
   };
 }
 
