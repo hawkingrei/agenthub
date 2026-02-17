@@ -5,6 +5,7 @@ import {
   deriveInputDockKeyAction,
   deriveInputHistoryNavigation,
   isImeComposing,
+  isInputRectOutsideViewport,
   isMobileInputViewport,
   shouldCloseHistoryFromPointerTarget,
   type InputHistoryNavigationContext,
@@ -257,6 +258,59 @@ describe("deriveInputDockKeyAction", () => {
         selectionEnd: 0,
       })
     ).toEqual({ type: "none" });
+  });
+});
+
+describe("isInputRectOutsideViewport", () => {
+  it("returns false when input rect is fully inside visible viewport", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 220, bottom: 300 }, 0, 844)
+    ).toBe(false);
+  });
+
+  it("returns true when input bottom is covered by keyboard viewport", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 430, bottom: 492 }, 0, 480)
+    ).toBe(true);
+  });
+
+  it("returns true when viewport is shifted and input top is outside", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 10, bottom: 72 }, 40, 420)
+    ).toBe(true);
+  });
+
+  it("returns false when viewport is shifted and input remains inside", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 96, bottom: 156 }, 40, 420)
+    ).toBe(false);
+  });
+
+  it("respects custom safe margin when checking visibility", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 12, bottom: 80 }, 0, 200, 0)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: 12, bottom: 80 }, 0, 200, 16)
+    ).toBe(true);
+  });
+
+  it("returns false for invalid viewport metrics", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 100, bottom: 140 }, 0, 0)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: 100, bottom: 140 }, Number.NaN, 300)
+    ).toBe(false);
+    expect(
+      isInputRectOutsideViewport({ top: Number.NaN, bottom: 140 }, 0, 300)
+    ).toBe(false);
+  });
+
+  it("returns true when viewport shrink hides only the bottom edge", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 250, bottom: 318 }, 0, 320)
+    ).toBe(true);
   });
 });
 

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=lcov",
     "e2e": "playwright test",
+    "e2e:coverage": "PLAYWRIGHT_E2E_COVERAGE=1 playwright test",
     "preview": "vite preview"
   },
   "dependencies": {

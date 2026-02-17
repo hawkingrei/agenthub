@@ -137,6 +137,10 @@ fn styles_keep_acp_conversation_scoped() {
         "mobile workspace drawer should anchor to computed workspace top"
     );
     assert!(
+        css.contains(".workspace:not(.collapsed) .output-agents-toggle {\n    display: none;\n  }"),
+        "mobile expanded workspace should hide output header collapse control to avoid duplicate hide-agents actions"
+    );
+    assert!(
         css.contains(".admin .card li:not([class*=\"mantine-\"])"),
         "admin list layout styles should be scoped and not override markdown lists"
     );

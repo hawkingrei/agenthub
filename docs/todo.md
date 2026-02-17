@@ -1,5 +1,9 @@
 # TODO
 
+- [x] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
+- [x] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
+- [x] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).
+- [ ] Verify Playwright E2E coverage upload publishes `web-e2e` flag with `web/coverage/e2e/lcov.info` in CI push/PR runs (see `docs/features/2026-02-17-playwright-e2e-coverage-codecov.md`).
 - [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
 - [ ] Verify collapsed agents rail and expanded agent rows both surface pending ACP permissions with red indicators during active permission polling and agent switching (see `docs/features/2026-02-17-agents-interaction-polish.md`).
 - [ ] Verify agent switch output hydration no longer waits for a second fetch when resolving `latest` session ids, and terminal auto-follow stays at bottom during in-place output updates (see `docs/features/2026-02-17-agents-interaction-polish.md`).
@@ -10,7 +14,8 @@
 - [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
 - [ ] Verify ACP Debug permission history copy-to-clipboard action works across desktop/mobile browsers with clipboard API fallback behavior (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
 - [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
-- [ ] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
+- [x] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
+- [ ] Verify Rust workflow cache hit behavior after adding `Swatinem/rust-cache` and cache-aware `cargo-llvm-cov` setup (3-5 runs) and confirm no regression in `rust-cargo` coverage upload (see `docs/features/2026-02-17-rust-ci-cache-expansion.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
 - [ ] Verify new userdocs `Deployment` and `Advanced Usage` tracks (sidebar order, cross-links, and page accuracy) in real browser navigation (see `docs/features/2026-02-16-userdocs-deployment-advanced-expansion.md`).
 - [ ] Verify local toolchain bootstrap from `rust-toolchain.toml` installs required components (`rustc`, `cargo`, `std`, `rustfmt`, `clippy`) on clean machines without manual `rustup component add` (see `docs/features/2026-02-16-rust-toolchain-components-local-compile.md`).

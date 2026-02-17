@@ -16,12 +16,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.1
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
       - name: Verify internal protobuf codegen
         run: make proto-check
       - name: Setup Rust coverage tool
         run: |
           rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov --locked
+          if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+            cargo install cargo-llvm-cov --locked
+          fi
+          cargo llvm-cov --version
       - name: Cargo check (workspace)
         run: cargo check --workspace --locked
       - name: Cargo test coverage (workspace)
