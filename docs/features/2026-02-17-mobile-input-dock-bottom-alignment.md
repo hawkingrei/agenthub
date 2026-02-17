@@ -16,6 +16,7 @@ input dock to float above the bottom.
 
 - `web/src/styles.css`
 - `tests/web_assets.rs`
+- `web/tests/e2e/input_dock_layout.e2e.ts`
 - `docs/todo.md`
 
 ## Key Decisions
@@ -25,19 +26,22 @@ input dock to float above the bottom.
    `overflow: hidden`) so the output area + input dock layout stays constrained
    and bottom-aligned.
 3. Add style-guard assertions to prevent regression in future CSS refactors.
+4. Add Playwright layout assertions for three runtime states:
+   - mobile workspace with agents collapsed,
+   - mobile workspace while toggling agents collapsed/expanded,
+   - virtual-keyboard style viewport shrink/restore transitions.
 
 ## Validation
 
 ```bash
-cd web
-npm run build
-
-cd ..
+PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/input_dock_layout.e2e.ts --project=chromium
 cargo test --test web_assets
 ```
 
 Expected outcomes:
 
 - Input dock remains visually anchored to panel bottom on mobile/tablet.
+- Input dock stays pinned during agent panel collapse/expand transitions.
+- Input dock stays pinned during keyboard-like viewport height changes.
 - Workspace right panel does not expand unexpectedly from internal scroll areas.
 - Style guard test passes.

@@ -327,10 +327,13 @@ export function resolveSessionScopedEvents(
   resolvedSessionId: string | null;
   scopedEvents: AgentEvent[];
 } {
-  const latestSessionId =
-    !requestedSessionId
-      ? [...events].reverse().find((evt) => evt.session_id)?.session_id ?? null
-      : null;
+  const latestSessionId = !requestedSessionId
+    ? events.reduce<AgentEvent | null>((latest, current) => {
+        if (!current.session_id) return latest;
+        if (!latest) return current;
+        return compareEventOrder(current, latest) > 0 ? current : latest;
+      }, null)?.session_id ?? null
+    : null;
   const resolvedSessionId = requestedSessionId ?? latestSessionId;
   const scopedEvents = resolvedSessionId
     ? events.filter((evt) => evt.session_id === resolvedSessionId)

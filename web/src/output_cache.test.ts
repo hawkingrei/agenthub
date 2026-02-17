@@ -90,6 +90,7 @@ describe("buildOutputCacheSlice", () => {
     const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
     const ordered = [{ ...makeEvent(2, "stdout"), message: "stdout-2-updated" }];
     const next = buildOutputCacheSlice(existing, ordered, 10);
+    expect(next).not.toBe(existing);
     const updated = next.find((evt) => evt.event_id === 2);
     expect(updated?.message).toBe("stdout-2-updated");
   });
@@ -109,6 +110,7 @@ describe("appendOutputLine", () => {
     const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
     const incoming = { ...makeEvent(2, "stdout"), message: "stdout-2-new" };
     const next = appendOutputLine(existing, incoming);
+    expect(next).not.toBe(existing);
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
     expect(next.find((evt) => evt.event_id === 2)?.message).toBe("stdout-2-new");
   });

@@ -11,7 +11,7 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 - Agent lifecycle management: create, start, stop, reconnect, destroy
 - Real-time output and interaction: HTTP polling or SSE by default; WebSocket as an optional enhancement
 - Admin console: agent list, status, logs, session details
-- Authentication and security: Passkey login (WebAuthn), basic access control
+- Authentication and security: username/password login, join/bootstrap flow, basic access control
 - Persistence: SQLite stores sessions, agent configuration, and audit records
 - Notifications: in-app notification when an agent completes (extendable to webhook/email)
   - Use browser Push API (extend to Webhook later)
@@ -29,7 +29,7 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 1) Frontend is a static SPA build (Vite), served by Rust as static files and API.
 2) Agent output defaults to non-WS transport; WS is an optional enhancement (future bash sandbox streaming).
 3) Agent lifecycle is managed by the backend process; sessions and runtime state are persisted to SQLite.
-4) Login uses Passkey (WebAuthn); server stores credential and challenge data.
+4) Login uses username/password with token-based auth; join/bootstrap remains available for initial setup flows.
 5) ACP (Agent Control Protocol) renders structured agent output; history must be retained.
 
 ## 5. Directory Plan (adjustable)
@@ -61,7 +61,7 @@ agenthub/
 
 ## 7. Testing and Validation (initial suggestions)
 
-- Passkey register/login flows
+- Username/password login and join/bootstrap flows
 - ACP rendering and history replay
 - WS reconnect and message integrity (optional)
 - Long-running agents and resource cleanup
@@ -108,7 +108,27 @@ agenthub/
 - Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
 - API naming conventions live in `docs/api_naming.md` and must be followed for all AgentHub-owned payloads.
 
-## 12. Change Log
+## 12. TODO Lifecycle And CI Verification Rules
+
+- Keep `docs/todo.md` as the single verification backlog for implementation follow-ups.
+- Add new verification items near the top of `docs/todo.md` so active work stays visible.
+- Mark an item as done (`[x]`) only when evidence exists:
+  - local/manual checks: include explicit validation steps in the related feature note;
+  - CI checks: require successful workflow evidence in GitHub Actions logs.
+- For CI items that explicitly mention both push and PR behavior, verify both event types before marking done.
+- For CI verification evidence, record workflow name and run IDs in PR description (or issue comment) before merge.
+- Remove superseded items from active `docs/todo.md` backlog and keep historical context in feature notes / merged PRs.
+
+### CI Baseline (as of 2026-02-17)
+
+- `Rust`: cargo check + coverage (`rust-cargo.lcov`) + Codecov flag `rust-cargo`.
+- `Clippy`: independent `cargo clippy --workspace --all-targets -- -D warnings` gate.
+- `Web`: lint + unit coverage + build + Codecov flag `web`.
+- `Web E2E`: Playwright E2E coverage + Codecov flag `web-e2e`.
+- `Bazel`: `bazel build //...` and `bazel test //...`.
+- `User Docs`: Docusaurus docs install/build checks.
+
+## 13. Change Log
 
 ### 2026-02-05
 
