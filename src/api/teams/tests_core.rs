@@ -26,8 +26,14 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
     assert_eq!(created.spec["spec_version"], Value::from(1));
     assert_eq!(created.spec["leader_member_id"], Value::from("planner"));
     assert_eq!(created.spec["entrypoint"], Value::from("leader_plan"));
-    assert_eq!(created.spec["steps"][0]["step_key"], Value::from("leader_plan"));
-    assert_eq!(created.spec["steps"][0]["member_id"], Value::from("planner"));
+    assert_eq!(
+        created.spec["steps"][0]["step_key"],
+        Value::from("leader_plan")
+    );
+    assert_eq!(
+        created.spec["steps"][0]["member_id"],
+        Value::from("planner")
+    );
     assert!(
         created.spec["members"][0]["prompt"]
             .as_str()
@@ -66,6 +72,152 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
     .await
     .expect_err("duplicate team name should fail");
     assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn teams_api_delete_team_cascades_related_run_data() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "delete-team".to_string(),
+            description: Some("delete target".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-delete-team".to_string()),
+            input: Some(json!({"task":"delete"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let step_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json,
+            input_json, output_json, error_text, started_at, ended_at
+        )
+        VALUES (?1, ?2, 'worker_step', 'planner', NULL, 'submitted', 0, '[]', NULL, NULL, NULL, NULL, NULL)
+        "#,
+    )
+    .bind(&step_id)
+    .bind(&run.id)
+    .execute(&state.db)
+    .await
+    .expect("insert step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+        VALUES (?1, ?2, 'step_submitted', ?3, '{}')
+        "#,
+    )
+    .bind(&run.id)
+    .bind(&step_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert run event");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id, from_actor_id, to_actor_id, channel, transport, route_json, payload_json,
+            idempotency_key, status, created_at
+        )
+        VALUES (?1, 'leader', 'worker', 'default', 'local', NULL, '{}', NULL, 'pending', ?2)
+        "#,
+    )
+    .bind(&run.id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert actor message");
+
+    let Json(deleted) = delete_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("delete team");
+    assert_eq!(deleted.id, team.id);
+
+    let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect_err("team should be deleted");
+    assert_eq!(get_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let Json(listed) = list_teams(State(state.clone()), headers.clone())
+        .await
+        .expect("list teams after delete");
+    assert!(listed.is_empty());
+
+    let team_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_definitions WHERE id = ?1")
+        .bind(&team.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count teams");
+    assert_eq!(team_count, 0);
+
+    let run_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_runs WHERE id = ?1")
+        .bind(&run.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count runs");
+    assert_eq!(run_count, 0);
+
+    let step_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_steps WHERE run_id = ?1")
+        .bind(&run.id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count steps");
+    assert_eq!(step_count, 0);
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count events");
+    assert_eq!(event_count, 0);
+
+    let message_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_actor_messages WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count messages");
+    assert_eq!(message_count, 0);
+}
+
+#[tokio::test]
+async fn teams_api_delete_team_returns_not_found_when_missing() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let err = delete_team(
+        State(state),
+        headers,
+        Path("missing-team".to_string()),
+    )
+    .await
+    .expect_err("missing team delete should fail");
+    assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -324,10 +476,9 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
     .expect("create run");
     assert_eq!(run.status, crate::team::TeamRunStatus::Submitted);
 
-    let Json(found_run) =
-        get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
-            .await
-            .expect("get run");
+    let Json(found_run) = get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
+        .await
+        .expect("get run");
     assert_eq!(found_run.id, run.id);
 
     let Json(canceled) =
@@ -512,9 +663,13 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
     assert_eq!(runs[0].id, second_run.id);
     assert_eq!(runs[1].id, first_run.id);
 
-    let _ = cancel_team_run(State(state.clone()), headers.clone(), Path(first_run.id.clone()))
-        .await
-        .expect("cancel first run");
+    let _ = cancel_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(first_run.id.clone()),
+    )
+    .await
+    .expect("cancel first run");
 
     let Json(canceled_runs) = list_team_runs(
         State(state.clone()),
@@ -575,7 +730,10 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
     )
     .await
     .expect_err("missing team should fail");
-    assert_eq!(missing_team_err.into_response().status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        missing_team_err.into_response().status(),
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]
@@ -1295,7 +1453,10 @@ async fn team_run_messages_api_supports_idempotency_key() {
     )
     .await
     .expect_err("same idempotency key with changed payload should conflict");
-    assert_eq!(mismatch_conflict_err.into_response().status(), StatusCode::CONFLICT);
+    assert_eq!(
+        mismatch_conflict_err.into_response().status(),
+        StatusCode::CONFLICT
+    );
 
     let Json(events) = list_team_run_events(
         State(state.clone()),
@@ -1334,6 +1495,298 @@ async fn team_run_messages_api_supports_idempotency_key() {
         invalid_idempotency_err.into_response().status(),
         StatusCode::BAD_REQUEST
     );
+}
+
+#[tokio::test]
+async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idempotent() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-profile-patch-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"planner",
+                "leader_member_id":"planner",
+                "members":[
+                    {
+                        "member_id":"planner",
+                        "role":"leader",
+                        "prompt":"Lead with checkpoints.",
+                        "skills":["planning"]
+                    },
+                    {
+                        "member_id":"reviewer",
+                        "role":"worker",
+                        "prompt":"Review implementation.",
+                        "skills":["review"]
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-profile-patch-team".to_string()),
+            input: Some(json!({"prompt":"mailbox profile patch"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let request_payload = json!({
+        "type":"profile_patch_proposal",
+        "target":"team",
+        "member_id":"planner",
+        "prompt_append":"Escalate blockers in a dedicated section.",
+        "skills_add":["risk-analysis","planning"]
+    });
+
+    let Json(_first_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: request_payload.clone(),
+            idempotency_key: Some("profile-team-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send team profile patch");
+
+    let Json(_retry_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: request_payload,
+            idempotency_key: Some("profile-team-1".to_string()),
+        }),
+    )
+    .await
+    .expect("retry team profile patch");
+
+    let Json(updated_team) = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("get updated team");
+    let planner = updated_team
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .and_then(|members| {
+            members.iter().find(|member| {
+                member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id == "planner")
+            })
+        })
+        .cloned()
+        .expect("planner member exists");
+    let planner_prompt = planner
+        .get("prompt")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(planner_prompt.contains("Lead with checkpoints."));
+    assert!(planner_prompt.contains("Escalate blockers in a dedicated section."));
+    let planner_skills = planner
+        .get("skills")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| item.as_str().map(str::to_string))
+        .collect::<Vec<_>>();
+    assert!(planner_skills.iter().any(|skill| skill == "planning"));
+    assert!(planner_skills.iter().any(|skill| skill == "risk-analysis"));
+
+    let Json(events) = list_team_run_events(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(200),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+    let applied_events = events
+        .iter()
+        .filter(|event| event.event_type == "profile_patch_applied")
+        .collect::<Vec<_>>();
+    assert_eq!(applied_events.len(), 1);
+    assert_eq!(applied_events[0].payload["target"], Value::from("team"));
+    assert_eq!(
+        applied_events[0].payload["member_id"],
+        Value::from("planner")
+    );
+}
+
+#[tokio::test]
+async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snapshot_view() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-profile-patch-run".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "prompt":"Lead the run.",
+                        "skills":["planning"]
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "prompt":"Execute baseline tasks.",
+                        "skills":["coding"]
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create run patch team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-profile-patch-run".to_string()),
+            input: Some(json!({"prompt":"run-specific patch"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(_message) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "leader-agent".to_string(),
+            to_actor_id: "worker-agent".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({
+                "type":"profile_patch_proposal",
+                "target":"run",
+                "member_id":"worker-agent",
+                "prompt_append":"Ask one clarification question before coding when requirements are incomplete.",
+                "skills_add":["actor-mailbox"]
+            }),
+            idempotency_key: Some("profile-run-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send run profile patch");
+
+    let Json(updated_run) =
+        get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
+            .await
+            .expect("get updated run");
+    assert_eq!(
+        updated_run.input["profile_overrides"]["members"]["worker-agent"]["skills_add"][0],
+        Value::from("actor-mailbox")
+    );
+
+    let Json(unchanged_team) =
+        get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("get unchanged team");
+    let worker_member = unchanged_team
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .and_then(|members| {
+            members.iter().find(|member| {
+                member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id == "worker-agent")
+            })
+        })
+        .cloned()
+        .expect("worker member exists");
+    assert_eq!(
+        worker_member.get("prompt").and_then(Value::as_str),
+        Some("Execute baseline tasks.")
+    );
+
+    let Json(snapshot) = get_team_run_snapshot(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(200),
+            message_limit: Some(200),
+        }),
+    )
+    .await
+    .expect("get snapshot");
+    let worker_snapshot = snapshot
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-agent")
+        .expect("worker snapshot member exists");
+    let worker_prompt = worker_snapshot.prompt.clone().unwrap_or_default();
+    assert!(worker_prompt.contains("Execute baseline tasks."));
+    assert!(worker_prompt.contains("Ask one clarification question before coding"));
+    assert!(worker_snapshot.skills.iter().any(|skill| skill == "coding"));
+    assert!(
+        worker_snapshot
+            .skills
+            .iter()
+            .any(|skill| skill == "actor-mailbox")
+    );
+
+    let Json(events) = list_team_run_events(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(200),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+    let applied = events
+        .iter()
+        .find(|event| event.event_type == "profile_patch_applied")
+        .expect("profile_patch_applied event");
+    assert_eq!(applied.payload["target"], Value::from("run"));
+    assert_eq!(applied.payload["member_id"], Value::from("worker-agent"));
 }
 
 #[tokio::test]
@@ -1476,10 +1929,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 
     assert_eq!(snapshot.run.id, run.id);
     assert_eq!(snapshot.team.id, team.id);
-    assert_eq!(
-        snapshot.leader_member_id.as_deref(),
-        Some("leader-agent")
-    );
+    assert_eq!(snapshot.leader_member_id.as_deref(), Some("leader-agent"));
     assert_eq!(snapshot.members.len(), 2);
     assert!(snapshot.latest_events.len() >= 3);
     assert_eq!(snapshot.mailbox.pending, 1);
@@ -1495,7 +1945,10 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(leader.role, "leader");
     assert_eq!(leader.model.as_deref(), Some("gpt-5"));
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
-    assert_eq!(leader.skills, vec!["planning".to_string(), "review".to_string()]);
+    assert_eq!(
+        leader.skills,
+        vec!["planning".to_string(), "review".to_string()]
+    );
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");
     assert_eq!(leader.session_status.as_deref(), Some("working"));

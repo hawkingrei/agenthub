@@ -361,6 +361,28 @@ fn openapi_spec() -> Value {
                 }
               }
             }
+          },
+          "delete": {
+            "tags": ["teams"],
+            "summary": "Delete team",
+            "parameters": [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Deleted team definition",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamDefinitionRecord" }
+                  }
+                }
+              }
+            }
           }
         },
         "/api/teams/{id}/runs": {
@@ -902,6 +924,7 @@ mod tests {
             .expect("read response body");
         let value: Value = serde_json::from_slice(&bytes).expect("decode openapi json");
         assert_eq!(value["openapi"], Value::from("3.0.3"));
+        assert!(value["paths"]["/api/teams/{id}"]["delete"].is_object());
         assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
         assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     }

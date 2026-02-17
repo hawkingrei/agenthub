@@ -7,6 +7,7 @@ import {
   TeamDefinitionRecord,
   TeamRunEventRecord,
   TeamRunRecord,
+  TeamRunStatus,
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
@@ -22,6 +23,19 @@ type TeamPageProps = {
 
 type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
 type CreateTeamStage = 0 | 1 | 2 | 3;
+type TeamRunStatusFilter = TeamRunStatus | "all";
+type TeamRunBrowserState = {
+  statusFilter: TeamRunStatusFilter;
+  beforeCreatedAt?: number;
+  hasMore: boolean;
+};
+type MailboxTemplateKey =
+  | "leader_task_assignment"
+  | "clarification_request"
+  | "clarification_response"
+  | "worker_done"
+  | "worker_blocked"
+  | "profile_patch_proposal";
 type StepAction =
   | "start"
   | "complete"
@@ -31,6 +45,35 @@ type StepAction =
 
 const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
+const TEAM_RUN_PAGE_LIMIT = 50;
+const TEAM_EVENT_PREVIEW_LIMIT = 5;
+const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
+  statusFilter: "all",
+  hasMore: false,
+};
+const MAILBOX_TEMPLATE_OPTIONS: Array<{
+  value: MailboxTemplateKey;
+  label: string;
+}> = [
+  { value: "leader_task_assignment", label: "Leader Task Assignment" },
+  { value: "clarification_request", label: "Clarification Request" },
+  { value: "clarification_response", label: "Clarification Response" },
+  { value: "worker_done", label: "Worker Done Status" },
+  { value: "worker_blocked", label: "Worker Blocked Status" },
+  { value: "profile_patch_proposal", label: "Profile Patch Proposal" },
+];
+const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
+  value: TeamRunStatusFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All statuses" },
+  { value: "submitted", label: "submitted" },
+  { value: "working", label: "working" },
+  { value: "input_required", label: "input_required" },
+  { value: "completed", label: "completed" },
+  { value: "failed", label: "failed" },
+  { value: "canceled", label: "canceled" },
+];
 const CREATE_TEAM_STAGE_TITLES = [
   "Mission Brief",
   "Leader Forge",
@@ -45,7 +88,11 @@ const DEFAULT_TEAM_LEADER_PROMPT = [
   "2. Use actor mailbox to assign concrete tasks to workers.",
   "3. Pull inbox regularly and acknowledge consumed messages.",
   "4. Merge worker outputs, resolve conflicts, and produce final deliverable.",
-  "5. If blocked, send clear follow-up questions to workers.",
+  "5. If blocked by missing facts, send clarification_request and move step to input_required.",
+  "Structured payload contracts:",
+  "- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}",
+  "- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}",
+  "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}",
 ].join("\n");
 const DEFAULT_TEAM_WORKER_PROMPT = [
   "You are a Worker in an AgentHub team.",
@@ -56,6 +103,8 @@ const DEFAULT_TEAM_WORKER_PROMPT = [
   "3. Execute the task and summarize output with evidence.",
   "4. Send the result back to leader via actor mailbox.",
   "5. If blocked, send blocker details and a proposed next action.",
+  "Use worker_status payload contract:",
+  "{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}",
 ].join("\n");
 const DEFAULT_TEAM_LEADER_SKILLS = ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const DEFAULT_TEAM_WORKER_SKILLS = ["agenthub-actor-runtime", "team-worker-executor"];
@@ -89,6 +138,59 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
   const withoutCurrent = list.filter((run) => run.id !== nextRun.id);
   return sortRuns([nextRun, ...withoutCurrent]);
+}
+
+export function mergeRunPages(
+  existing: TeamRunRecord[],
+  incoming: TeamRunRecord[]
+): TeamRunRecord[] {
+  const byId = new Map<string, TeamRunRecord>();
+  for (const run of existing) {
+    byId.set(run.id, run);
+  }
+  for (const run of incoming) {
+    byId.set(run.id, run);
+  }
+  return sortRuns([...byId.values()]);
+}
+
+export function mergeTeamRunList(
+  previousTeamRuns: TeamRunRecord[],
+  incoming: TeamRunRecord[],
+  mode: "replace" | "append",
+  activeRunId: string | null
+): TeamRunRecord[] {
+  const base = mode === "append" ? previousTeamRuns : [];
+  let merged = mergeRunPages(base, incoming);
+  if (mode !== "replace" || !activeRunId) {
+    return merged;
+  }
+  const pinned = previousTeamRuns.find((run) => run.id === activeRunId);
+  if (!pinned || merged.some((run) => run.id === pinned.id)) {
+    return merged;
+  }
+  merged = mergeRunPages(merged, [pinned]);
+  return merged;
+}
+
+export function resolveRunStatusFilter(
+  status: TeamRunStatusFilter
+): TeamRunStatus | undefined {
+  return status === "all" ? undefined : status;
+}
+
+export function selectTeamPreviewEvents(
+  events: TeamRunEventRecord[],
+  selectedMemberId: string,
+  limit = TEAM_EVENT_PREVIEW_LIMIT
+): TeamRunEventRecord[] {
+  if (selectedMemberId.trim().length > 0) {
+    return events;
+  }
+  if (events.length <= limit) {
+    return events;
+  }
+  return events.slice(events.length - limit);
 }
 
 function upsertEventList(
@@ -268,6 +370,57 @@ function parseCsvListWithFallback(raw: string, fallback: string[]): string[] {
   return parsed.length > 0 ? parsed : [...fallback];
 }
 
+export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
+  switch (template) {
+    case "leader_task_assignment":
+      return {
+        type: "leader_task_assignment",
+        task: "Implement the requested change in a focused scope.",
+        acceptance: "All listed checks pass and artifacts are updated.",
+        deadline: "asap",
+      };
+    case "clarification_request":
+      return {
+        type: "clarification_request",
+        question: "Need one product decision before continuing.",
+        choices: ["option_a", "option_b"],
+        blocking_scope: "run",
+        context: {},
+      };
+    case "clarification_response":
+      return {
+        type: "clarification_response",
+        request_id: "fill_request_id",
+        answer: "option_a",
+        rationale: "Fits current constraints and priority.",
+      };
+    case "worker_done":
+      return {
+        type: "worker_status",
+        status: "done",
+        result: "Implemented scoped change and verified behavior.",
+        evidence: ["path/to/file:123", "test_name"],
+      };
+    case "worker_blocked":
+      return {
+        type: "worker_status",
+        status: "blocked",
+        result: "Blocked by missing requirement detail.",
+        evidence: ["blocking_input_missing"],
+        next_action: "Please provide target behavior for edge case X.",
+      };
+    case "profile_patch_proposal":
+      return {
+        type: "profile_patch_proposal",
+        target: "run",
+        prompt_append: "Add missing domain constraint and output contract.",
+        skills_add: ["team-leader-orchestrator"],
+      };
+    default:
+      return {};
+  }
+}
+
 function buildAgentLabel(agent: AgentRecord): string {
   const model = formatAgentModelLabel(agent.command, agent.args) ?? "Unknown";
   return `${agent.name} · ${model} · ${agent.id.slice(0, 8)}`;
@@ -349,7 +502,12 @@ export function TeamPage(props: TeamPageProps) {
   const [runLookupId, setRunLookupId] = useState("");
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
+  const [teamRunBrowserByTeam, setTeamRunBrowserByTeam] = useState<
+    Record<string, TeamRunBrowserState>
+  >({});
+  const [runsLoading, setRunsLoading] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<TeamRunSnapshotRecord | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 
@@ -378,6 +536,9 @@ export function TeamPage(props: TeamPageProps) {
   const [msgChannel, setMsgChannel] = useState("default");
   const [msgTransport, setMsgTransport] = useState<"local" | "remote">("local");
   const [msgRoute, setMsgRoute] = useState("");
+  const [msgTemplate, setMsgTemplate] = useState<MailboxTemplateKey>(
+    "leader_task_assignment"
+  );
   const [msgPayload, setMsgPayload] = useState("{}");
   const [msgIdempotencyKey, setMsgIdempotencyKey] = useState("");
 
@@ -407,11 +568,34 @@ export function TeamPage(props: TeamPageProps) {
     () => runs.find((run) => run.id === activeRunId) ?? null,
     [runs, activeRunId]
   );
+  const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
+    if (!selectedTeamId) {
+      return DEFAULT_TEAM_RUN_BROWSER_STATE;
+    }
+    return teamRunBrowserByTeam[selectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
+  }, [selectedTeamId, teamRunBrowserByTeam]);
+  const runStatusFilter = selectedTeamRunBrowserState.statusFilter;
+  const runsHasMore = selectedTeamRunBrowserState.hasMore;
+  const runsBeforeCreatedAt = selectedTeamRunBrowserState.beforeCreatedAt;
+  const totalLoadedRunsForTeam = useMemo(() => {
+    if (!selectedTeamId) return 0;
+    return runs.filter((run) => run.team_id === selectedTeamId).length;
+  }, [runs, selectedTeamId]);
 
   const visibleRuns = useMemo(() => {
     if (!selectedTeamId) return [];
-    return runs.filter((run) => run.team_id === selectedTeamId);
-  }, [runs, selectedTeamId]);
+    return runs.filter((run) => {
+      if (run.team_id !== selectedTeamId) return false;
+      if (runStatusFilter === "all") return true;
+      return run.status === runStatusFilter;
+    });
+  }, [runStatusFilter, runs, selectedTeamId]);
+  const isActiveRunHiddenByFilter = useMemo(() => {
+    if (!activeRun || !selectedTeamId) return false;
+    if (activeRun.team_id !== selectedTeamId) return false;
+    if (runStatusFilter === "all") return false;
+    return activeRun.status !== runStatusFilter;
+  }, [activeRun, runStatusFilter, selectedTeamId]);
 
   const builtTeamSpec = useMemo(
     () =>
@@ -435,6 +619,11 @@ export function TeamPage(props: TeamPageProps) {
   const selectedMemberSnapshot = useMemo(
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
+  );
+  const previewMode = selectedMemberId.trim().length === 0;
+  const displayedRunEvents = useMemo(
+    () => selectTeamPreviewEvents(events, selectedMemberId),
+    [events, selectedMemberId]
   );
   const configuredWorkerCount = useMemo(
     () => workers.filter((worker) => worker.member_id.trim().length > 0).length,
@@ -640,13 +829,52 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   const refreshTeamRuns = useCallback(
-    async (teamId: string) => {
-      const list = await api.listTeamRuns(props.token, teamId, { limit: 200 });
-      setRuns((prev) => {
-        const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
-        return sortRuns([...otherTeamRuns, ...list]);
-      });
-      return list;
+    async (
+      teamId: string,
+      mode: "replace" | "append" = "replace",
+      options?: {
+        statusFilter?: TeamRunStatusFilter;
+        beforeCreatedAt?: number;
+      }
+    ) => {
+      setRunsLoading(true);
+      try {
+        const statusFilter = options?.statusFilter ?? "all";
+        const beforeCreatedAt =
+          mode === "append" ? options?.beforeCreatedAt : undefined;
+        const list = await api.listTeamRuns(props.token, teamId, {
+          limit: TEAM_RUN_PAGE_LIMIT,
+          before_created_at: beforeCreatedAt,
+          status: resolveRunStatusFilter(statusFilter),
+        });
+        setRuns((prev) => {
+          const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
+          const currentTeamRuns = prev.filter((run) => run.team_id === teamId);
+          const merged = mergeTeamRunList(
+            currentTeamRuns,
+            list,
+            mode,
+            activeRunIdRef.current
+          );
+          return sortRuns([...otherTeamRuns, ...merged]);
+        });
+        const hasMore = list.length >= TEAM_RUN_PAGE_LIMIT;
+        const nextBeforeCreatedAt =
+          list.length > 0 ? list[list.length - 1]?.created_at : undefined;
+        setTeamRunBrowserByTeam((prev) => {
+          return {
+            ...prev,
+            [teamId]: {
+              statusFilter,
+              hasMore,
+              beforeCreatedAt: hasMore ? nextBeforeCreatedAt : undefined,
+            },
+          };
+        });
+        return list;
+      } finally {
+        setRunsLoading(false);
+      }
     },
     [props.token]
   );
@@ -707,6 +935,10 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useEffect(() => {
+    activeRunIdRef.current = activeRunId;
+  }, [activeRunId]);
 
   useEffect(() => {
     memberEventsRef.current = memberEvents;
@@ -794,14 +1026,10 @@ export function TeamPage(props: TeamPageProps) {
     const loadTeamRuns = async () => {
       try {
         setError(null);
-        const list = await refreshTeamRuns(selectedTeamId);
-        if (canceled) return;
-        setActiveRunId((prev) => {
-          if (prev && list.some((run) => run.id === prev)) {
-            return prev;
-          }
-          return list[0]?.id ?? null;
+        await refreshTeamRuns(selectedTeamId, "replace", {
+          statusFilter: runStatusFilter,
         });
+        if (canceled) return;
       } catch (err) {
         if (!canceled) {
           setError(parseErrorMessage(err));
@@ -812,7 +1040,7 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       canceled = true;
     };
-  }, [refreshTeamRuns, selectedTeamId]);
+  }, [refreshTeamRuns, selectedTeamId, runStatusFilter]);
 
   useEffect(() => {
     if (!selectedTeamId) return;
@@ -1023,6 +1251,47 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
+  const onDeleteTeam = async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete team "${selectedTeam.name}" and all associated runs/events/messages?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusy("delete-team");
+    setError(null);
+    try {
+      await api.deleteTeam(props.token, selectedTeam.id);
+
+      const remainingTeams = teams.filter((team) => team.id !== selectedTeam.id);
+      const remainingRuns = runs.filter((run) => run.team_id !== selectedTeam.id);
+
+      setTeams(remainingTeams);
+      setRuns(remainingRuns);
+      setTeamRunBrowserByTeam((prev) => {
+        const next = { ...prev };
+        delete next[selectedTeam.id];
+        return next;
+      });
+      setSelectedTeamId((current) =>
+        current === selectedTeam.id ? (remainingTeams[0]?.id ?? null) : current
+      );
+      setActiveRunId((current) =>
+        current && remainingRuns.some((run) => run.id === current) ? current : null
+      );
+      setRunLookupId("");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onLoadRunById = async () => {
     const runId = runLookupId.trim();
     if (!runId) {
@@ -1041,6 +1310,28 @@ export function TeamPage(props: TeamPageProps) {
       setBusy(null);
     }
   };
+
+  const onLoadMoreRuns = useCallback(async () => {
+    if (!selectedTeamId || runsLoading || !runsHasMore) {
+      return;
+    }
+    setError(null);
+    try {
+      await refreshTeamRuns(selectedTeamId, "append", {
+        statusFilter: runStatusFilter,
+        beforeCreatedAt: runsBeforeCreatedAt,
+      });
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [
+    refreshTeamRuns,
+    runStatusFilter,
+    runsBeforeCreatedAt,
+    runsHasMore,
+    runsLoading,
+    selectedTeamId,
+  ]);
 
   const onCancelRun = async () => {
     if (!activeRunId) return;
@@ -1142,6 +1433,10 @@ export function TeamPage(props: TeamPageProps) {
     } finally {
       setBusy(null);
     }
+  };
+
+  const onApplyMessageTemplate = () => {
+    setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
   const onSendMessage = async () => {
@@ -1364,7 +1659,15 @@ export function TeamPage(props: TeamPageProps) {
               <div className="card">
                 <div className="toolbar">
                   <h2>{selectedTeam.name}</h2>
-                  <span className="mono">{selectedTeam.id}</span>
+                  <div className="actions">
+                    <span className="mono">{selectedTeam.id}</span>
+                    <button
+                      onClick={() => void onDeleteTeam()}
+                      disabled={busy === "delete-team"}
+                    >
+                      Delete Team
+                    </button>
+                  </div>
                 </div>
                 <div className="teams-run-create">
                   <h3>Create / Load Run</h3>
@@ -1402,9 +1705,51 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
                 </div>
                 <div className="teams-run-list">
-                  <h3>Runs</h3>
+                  <div className="teams-run-list-head">
+                    <h3>Runs</h3>
+                    <div className="actions">
+                      <select
+                        value={runStatusFilter}
+                        onChange={(event) => {
+                          if (!selectedTeamId) return;
+                          const nextFilter = event.target.value as TeamRunStatusFilter;
+                          setTeamRunBrowserByTeam((prev) => ({
+                            ...prev,
+                            [selectedTeamId]: {
+                              statusFilter: nextFilter,
+                              beforeCreatedAt: undefined,
+                              hasMore: false,
+                            },
+                          }));
+                        }}
+                        aria-label="Run status filter"
+                      >
+                        {TEAM_RUN_STATUS_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!selectedTeamId) return;
+                          void refreshTeamRuns(selectedTeamId, "replace", {
+                            statusFilter: runStatusFilter,
+                          }).catch((err) => setError(parseErrorMessage(err)));
+                        }}
+                        disabled={runsLoading}
+                      >
+                        Refresh Runs
+                      </button>
+                    </div>
+                  </div>
                   {visibleRuns.length === 0 && (
                     <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
+                  )}
+                  {isActiveRunHiddenByFilter && activeRun && (
+                    <p className="muted">
+                      Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
+                    </p>
                   )}
                   {visibleRuns.map((run) => (
                     <button
@@ -1416,6 +1761,18 @@ export function TeamPage(props: TeamPageProps) {
                       <span className="team-status">{run.status}</span>
                     </button>
                   ))}
+                  <div className="teams-run-list-foot">
+                    <span className="mono">
+                      showing={visibleRuns.length} loaded={totalLoadedRunsForTeam}
+                      {" "}limit={TEAM_RUN_PAGE_LIMIT}
+                    </span>
+                    <button
+                      onClick={onLoadMoreRuns}
+                      disabled={runsLoading || !runsHasMore || !selectedTeamId}
+                    >
+                      {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1596,15 +1953,26 @@ export function TeamPage(props: TeamPageProps) {
                           </button>
                           <button
                             onClick={() => void refreshEvents(activeRun.id, "prepend")}
-                            disabled={eventsLoading || !eventsHasMore || oldestEventId == null}
+                            disabled={
+                              previewMode ||
+                              eventsLoading ||
+                              !eventsHasMore ||
+                              oldestEventId == null
+                            }
                           >
                             Load Older
                           </button>
                         </div>
                       </div>
-                      {events.length === 0 && <p className="muted">No events.</p>}
+                      {previewMode && (
+                        <p className="muted">
+                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} records. For full event
+                          history, select a member in the Member Console tab.
+                        </p>
+                      )}
+                      {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}
                       <ul className="teams-event-list">
-                        {events.map((event) => (
+                        {displayedRunEvents.map((event) => (
                           <li key={event.event_id}>
                             <div className="teams-event-head">
                               <span className="mono">#{event.event_id}</span>
@@ -1825,6 +2193,23 @@ export function TeamPage(props: TeamPageProps) {
                             value={msgRoute}
                             onChange={(event) => setMsgRoute(event.target.value)}
                           />
+                          <div className="form-row">
+                            <select
+                              value={msgTemplate}
+                              onChange={(event) =>
+                                setMsgTemplate(event.target.value as MailboxTemplateKey)
+                              }
+                            >
+                              {MAILBOX_TEMPLATE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button type="button" onClick={onApplyMessageTemplate}>
+                              Apply Template
+                            </button>
+                          </div>
                           <textarea
                             className="mono"
                             rows={4}
@@ -1926,14 +2311,26 @@ export function TeamPage(props: TeamPageProps) {
                         <h3>Member Console</h3>
                         <div className="actions">
                           <button
-                            onClick={() => void loadMemberEvents("replace")}
-                            disabled={memberEventsLoading}
+                            onClick={() => {
+                              if (selectedMemberSnapshot) {
+                                void loadMemberEvents("replace");
+                                return;
+                              }
+                              if (activeRunId) {
+                                void refreshEvents(activeRunId);
+                              }
+                            }}
+                            disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
                           >
                             Refresh
                           </button>
                           <button
-                            onClick={() => void loadMemberEvents("prepend")}
+                            onClick={() => {
+                              if (!selectedMemberSnapshot) return;
+                              void loadMemberEvents("prepend");
+                            }}
                             disabled={
+                              !selectedMemberSnapshot ||
                               memberEventsLoading ||
                               !memberEventsHasMore ||
                               oldestMemberEventId == null
@@ -1982,7 +2379,10 @@ export function TeamPage(props: TeamPageProps) {
                       )}
 
                       {!selectedMemberSnapshot && (
-                        <p className="muted">Select a member to inspect output.</p>
+                        <p className="muted">
+                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} run records. Select a member
+                          for full member history.
+                        </p>
                       )}
 
                       {selectedMemberSnapshot &&
@@ -1998,18 +2398,39 @@ export function TeamPage(props: TeamPageProps) {
                           <p className="muted">No member events yet.</p>
                         )}
 
-                      <ul className="teams-event-list">
-                        {memberEvents.map((event) => (
-                          <li key={event.event_id}>
-                            <div className="teams-event-head">
-                              <span className="mono">#{event.event_id}</span>
-                              <span>{event.stream}</span>
-                              <span>{formatTs(event.ts)}</span>
-                            </div>
-                            <pre className="mono">{event.message}</pre>
-                          </li>
-                        ))}
-                      </ul>
+                      {!selectedMemberSnapshot && displayedRunEvents.length === 0 && (
+                        <p className="muted">No run records yet.</p>
+                      )}
+
+                      {selectedMemberSnapshot && (
+                        <ul className="teams-event-list">
+                          {memberEvents.map((event) => (
+                            <li key={event.event_id}>
+                              <div className="teams-event-head">
+                                <span className="mono">#{event.event_id}</span>
+                                <span>{event.stream}</span>
+                                <span>{formatTs(event.ts)}</span>
+                              </div>
+                              <pre className="mono">{event.message}</pre>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {!selectedMemberSnapshot && (
+                        <ul className="teams-event-list">
+                          {displayedRunEvents.map((event) => (
+                            <li key={event.event_id}>
+                              <div className="teams-event-head">
+                                <span className="mono">#{event.event_id}</span>
+                                <span>{event.event_type}</span>
+                                <span>{formatTs(event.ts)}</span>
+                              </div>
+                              <pre className="mono">{toPrettyJson(event.payload)}</pre>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )}
                 </>

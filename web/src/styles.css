@@ -2687,6 +2687,33 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 8px;
 }
 
+.teams-run-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.teams-run-list-head .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.teams-run-list-head .actions select {
+  min-width: 164px;
+}
+
+.teams-run-list-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
 .teams-create-launch {
   border: 1px solid #d3dfeb;
   background:

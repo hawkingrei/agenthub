@@ -53,6 +53,23 @@ type TeamDefinitionRecord = {
   updated_at: number;
 };
 
+type TeamRunRecord = {
+  id: string;
+  team_id: string;
+  context_id: string;
+  status:
+    | "submitted"
+    | "working"
+    | "input_required"
+    | "completed"
+    | "failed"
+    | "canceled";
+  input: Record<string, unknown>;
+  created_at: number;
+  started_at: number | null;
+  ended_at: number | null;
+};
+
 type TeamPageFixture = {
   now: number;
   auth: StoredAuthState;
@@ -70,6 +87,24 @@ function jsonResponse(data: unknown, status = 200): {
     status,
     contentType: "application/json",
     body: JSON.stringify(data),
+  };
+}
+
+function buildTeamRun(
+  teamId: string,
+  status: TeamRunRecord["status"],
+  createdAt: number,
+  index: number
+): TeamRunRecord {
+  return {
+    id: `${teamId}-${status}-${index}`,
+    team_id: teamId,
+    context_id: `ctx-${teamId}-${index}`,
+    status,
+    input: {},
+    created_at: createdAt,
+    started_at: null,
+    ended_at: null,
   };
 }
 
@@ -164,6 +199,31 @@ async function mockTeamPageApis(
       };
       teams.push(created);
       await route.fulfill(jsonResponse(created));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.split("/").pop() ?? "";
+    if (request.method() === "GET") {
+      const found = teams.find((team) => team.id === teamId);
+      if (!found) {
+        await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+        return;
+      }
+      await route.fulfill(jsonResponse(found));
+      return;
+    }
+    if (request.method() === "DELETE") {
+      const index = teams.findIndex((team) => team.id === teamId);
+      if (index < 0) {
+        await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+        return;
+      }
+      const [deleted] = teams.splice(index, 1);
+      await route.fulfill(jsonResponse(deleted));
       return;
     }
     await route.fallback();
@@ -275,4 +335,149 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+});
+
+test("team list supports deleting selected team", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push(
+    {
+      id: "team-delete-a",
+      name: "Team Delete A",
+      description: "first team",
+      spec: {
+        leader_member_id: "agent-leader-1",
+        members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now,
+      updated_at: fixture.now,
+    },
+    {
+      id: "team-delete-b",
+      name: "Team Delete B",
+      description: "second team",
+      spec: {
+        leader_member_id: "agent-worker-1",
+        members: [{ member_id: "agent-worker-1", role: "leader", model: "gemini" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now + 1,
+      updated_at: fixture.now + 1,
+    }
+  );
+
+  await page.goto("/teams");
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete Team" }).click();
+
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toHaveCount(0);
+  await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Team Delete B" })).toBeVisible();
+});
+
+test("team run list keeps per-team filters and uses before_created_at cursor paging", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push(
+    {
+      id: "team-a",
+      name: "Team A",
+      description: "first team",
+      spec: {
+        leader_member_id: "agent-leader-1",
+        members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now,
+      updated_at: fixture.now,
+    },
+    {
+      id: "team-b",
+      name: "Team B",
+      description: "second team",
+      spec: {
+        leader_member_id: "agent-worker-1",
+        members: [{ member_id: "agent-worker-1", role: "leader", model: "gemini" }],
+        steps: [{ step_key: "leader_plan" }],
+      },
+      created_at: fixture.now + 1,
+      updated_at: fixture.now + 1,
+    }
+  );
+
+  const runQueries: Array<{ teamId: string; status: string; before: number | null }> = [];
+  await page.route(/\/api\/teams\/[^/]+\/runs(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const teamIdMatch = url.pathname.match(/\/api\/teams\/([^/]+)\/runs$/);
+    const teamId = teamIdMatch?.[1] ?? "";
+    const status = url.searchParams.get("status") ?? "all";
+    const beforeRaw = url.searchParams.get("before_created_at");
+    const before = beforeRaw == null ? null : Number(beforeRaw);
+    runQueries.push({ teamId, status, before });
+
+    let payload: TeamRunRecord[] = [];
+    if (teamId === "team-a" && status === "all") {
+      payload = [buildTeamRun("team-a", "submitted", 500, 1)];
+    } else if (teamId === "team-a" && status === "working" && before == null) {
+      payload = Array.from({ length: 50 }, (_, index) =>
+        buildTeamRun("team-a", "working", 300 - index, index)
+      );
+    } else if (teamId === "team-a" && status === "working" && before === 251) {
+      payload = [buildTeamRun("team-a", "working", 250, 999)];
+    } else if (teamId === "team-b" && status === "all") {
+      payload = [buildTeamRun("team-b", "submitted", 450, 1)];
+    } else if (teamId === "team-b" && status === "failed") {
+      payload = [buildTeamRun("team-b", "failed", 400, 2)];
+    }
+
+    await route.fulfill(jsonResponse(payload));
+  });
+
+  await page.goto("/teams");
+
+  const runFilter = page.getByLabel("Run status filter");
+  await expect(runFilter).toHaveValue("all");
+
+  await runFilter.selectOption("working");
+  await expect(runFilter).toHaveValue("working");
+  await expect(page.getByRole("button", { name: "Load More" })).toBeEnabled();
+  await page.getByRole("button", { name: "Load More" }).click();
+
+  await expect
+    .poll(() =>
+      runQueries.some(
+        (query) =>
+          query.teamId === "team-a" &&
+          query.status === "working" &&
+          query.before === 251
+      )
+    )
+    .toBe(true);
+
+  const teamAItem = page.locator(".teams-sidebar .teams-list .team-item", {
+    hasText: "Team A",
+  });
+  const teamBItem = page.locator(".teams-sidebar .teams-list .team-item", {
+    hasText: "Team B",
+  });
+
+  await teamBItem.click();
+  await expect(runFilter).toHaveValue("all");
+  await runFilter.selectOption("failed");
+  await expect(runFilter).toHaveValue("failed");
+
+  await teamAItem.click();
+  await expect(runFilter).toHaveValue("working");
+
+  await teamBItem.click();
+  await expect(runFilter).toHaveValue("failed");
 });

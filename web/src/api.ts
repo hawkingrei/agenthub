@@ -359,6 +359,10 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token),
+  deleteTeam: (token: string, id: string) =>
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token, {
+      method: "DELETE",
+    }),
   listTeamRuns: (
     token: string,
     teamId: string,

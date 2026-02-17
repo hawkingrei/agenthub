@@ -96,6 +96,70 @@ impl TeamManager {
         parse_team_definition_row(&row)
     }
 
+    pub async fn delete_team(&self, team_id: &str) -> anyhow::Result<TeamDefinitionRecord> {
+        let mut tx = self.db.begin().await?;
+        let team_row = sqlx::query(
+            r#"
+            SELECT id, name, description, spec_json, created_at, updated_at
+            FROM team_definitions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(team_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let team = parse_team_definition_row(&team_row)?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_actor_messages
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_run_events
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM team_steps
+            WHERE run_id IN (
+                SELECT id FROM team_runs WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM team_runs WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("DELETE FROM team_definitions WHERE id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(team)
+    }
+
     pub async fn create_run(
         &self,
         team_id: &str,
@@ -908,6 +972,91 @@ impl TeamManager {
         .fetch_one(&self.db)
         .await?;
         parse_team_run_row(&row)
+    }
+
+    pub async fn update_team_spec_if_unchanged(
+        &self,
+        team_id: &str,
+        expected_updated_at: i64,
+        spec: Value,
+    ) -> anyhow::Result<Option<TeamDefinitionRecord>> {
+        let now = Utc::now().timestamp();
+        let spec_json = serde_json::to_string(&spec)?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_definitions
+            SET spec_json = ?1, updated_at = ?2
+            WHERE id = ?3 AND updated_at = ?4
+            "#,
+        )
+        .bind(spec_json)
+        .bind(now)
+        .bind(team_id)
+        .bind(expected_updated_at)
+        .execute(&self.db)
+        .await?;
+        if update.rows_affected() == 0 {
+            let exists: Option<i64> = sqlx::query_scalar(
+                r#"
+                SELECT 1
+                FROM team_definitions
+                WHERE id = ?1
+                "#,
+            )
+            .bind(team_id)
+            .fetch_optional(&self.db)
+            .await?;
+            if exists.is_none() {
+                return Err(sqlx::Error::RowNotFound.into());
+            }
+            return Ok(None);
+        }
+        self.get_team(team_id).await.map(Some)
+    }
+
+    pub async fn update_run_input(
+        &self,
+        run_id: &str,
+        input: Value,
+    ) -> anyhow::Result<TeamRunRecord> {
+        let input_json = serde_json::to_string(&input)?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_runs
+            SET input_json = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(input_json)
+        .bind(run_id)
+        .execute(&self.db)
+        .await?;
+        if update.rows_affected() == 0 {
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+        self.get_run(run_id).await
+    }
+
+    pub async fn append_run_event(
+        &self,
+        run_id: &str,
+        event_type: &str,
+        payload: Value,
+    ) -> anyhow::Result<()> {
+        let ts = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+            VALUES (?1, NULL, ?2, ?3, ?4)
+            "#,
+        )
+        .bind(run_id)
+        .bind(event_type)
+        .bind(ts)
+        .bind(payload.to_string())
+        .execute(&self.db)
+        .await?;
+        Ok(())
     }
 
     pub async fn cancel_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {
