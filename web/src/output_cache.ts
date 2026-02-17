@@ -15,40 +15,21 @@ export function mergeOutputs(
   existing: OutputLine[],
   incoming: OutputLine[]
 ): OutputLine[] {
-  const merged = [...existing, ...incoming];
-  const seen = new Set<string>();
-  const deduped: OutputLine[] = [];
-  for (const line of merged) {
-    const key = `id-${line.event_id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(line);
+  const byEventId = new Map<number, OutputLine>();
+  for (const line of existing) {
+    byEventId.set(line.event_id, line);
   }
-  return deduped.sort(compareOutputLines);
+  for (const line of incoming) {
+    byEventId.set(line.event_id, line);
+  }
+  return Array.from(byEventId.values()).sort(compareOutputLines);
 }
 
 export function appendOutputLine(
   existing: OutputLine[],
   line: OutputLine
 ): OutputLine[] {
-  if (existing.length === 0) return [line];
-  const last = existing[existing.length - 1];
-  if (compareOutputLines(last, line) <= 0) {
-    return [...existing, line];
-  }
-  const next = existing.slice();
-  let lo = 0;
-  let hi = next.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (compareOutputLines(next[mid], line) <= 0) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  next.splice(lo, 0, line);
-  return next;
+  return mergeOutputs(existing, [line]);
 }
 
 export function isSameOutputList(a: OutputLine[], b: OutputLine[]): boolean {

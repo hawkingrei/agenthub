@@ -203,6 +203,49 @@ export function buildPendingPermissionCountMap(
   return nextCounts;
 }
 
+export function mergePendingPermissionCountMap(
+  prev: Record<string, number>,
+  allAgentIds: string[],
+  updates: ReadonlyArray<readonly [string, number | null]>
+): Record<string, number> {
+  const nextCounts: Record<string, number> = {};
+  const allAgentSet = new Set(allAgentIds);
+  const updatedAgentSet = new Set(updates.map(([agentId]) => agentId));
+
+  for (const [agentId, count] of Object.entries(prev)) {
+    if (!allAgentSet.has(agentId)) continue;
+    if (!updatedAgentSet.has(agentId) && count > 0) {
+      nextCounts[agentId] = count;
+    }
+  }
+
+  for (const [agentId, count] of updates) {
+    if (count == null) {
+      const prevCount = prev[agentId];
+      if (typeof prevCount === "number" && prevCount > 0) {
+        nextCounts[agentId] = prevCount;
+      }
+      continue;
+    }
+    if (count > 0) {
+      nextCounts[agentId] = count;
+    } else {
+      delete nextCounts[agentId];
+    }
+  }
+  return nextCounts;
+}
+
+export function resolveOutputHistoryKey(
+  agentId: string,
+  sessionId: string | null,
+  agentSessions: Record<string, string>
+): string {
+  if (sessionId) return `${agentId}:${sessionId}`;
+  const latestSessionId = agentSessions[agentId] ?? "latest";
+  return `${agentId}:latest:${latestSessionId}`;
+}
+
 export function resolveSessionScopedEvents(
   events: AgentEvent[],
   requestedSessionId: string | null
@@ -628,6 +671,23 @@ export function App() {
     },
     [maxCachedEvents]
   );
+  const replaceAcpOutputCacheEntry = useCallback(
+    (key: string, ordered: OutputLine[]) => {
+      const existing = acpOutputCacheRef.current[key] ?? [];
+      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+      const nextSlice =
+        maxCachedEvents > 0 && acpOrdered.length > maxCachedEvents
+          ? acpOrdered.slice(acpOrdered.length - maxCachedEvents)
+          : acpOrdered;
+      if (!isSameOutputList(existing, nextSlice)) {
+        const nextCache = { ...acpOutputCacheRef.current, [key]: nextSlice };
+        acpOutputCacheRef.current = nextCache;
+        setAcpOutputCache(nextCache);
+      }
+      return nextSlice;
+    },
+    [maxCachedEvents]
+  );
   const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
@@ -775,12 +835,9 @@ export function App() {
       if (resolvedKey !== key) {
         updateOutputCacheEntry(resolvedKey, ordered);
       }
-      const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
-      if (acpOrdered.length > 0) {
-        updateAcpOutputCacheEntry(key, acpOrdered);
-        if (resolvedKey !== key) {
-          updateAcpOutputCacheEntry(resolvedKey, acpOrdered);
-        }
+      replaceAcpOutputCacheEntry(key, ordered);
+      if (resolvedKey !== key) {
+        replaceAcpOutputCacheEntry(resolvedKey, ordered);
       }
       const oldestEvent = nextSlice.length ? nextSlice[0] : null;
       const oldestId =
@@ -832,7 +889,7 @@ export function App() {
     token,
     eventLimit,
     updateOutputCacheEntry,
-    updateAcpOutputCacheEntry,
+    replaceAcpOutputCacheEntry,
   ]);
 
   const loadOlderEvents = useCallback(async () => {
@@ -926,6 +983,11 @@ export function App() {
     if (!token || !activeAgent) return;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     const latestKey = `${activeAgent}:latest`;
+    const viewKey = resolveOutputHistoryKey(
+      activeAgent,
+      activeSessionId,
+      agentSessions
+    );
     const previousKey = outputsKeyRef.current;
     const selection = selectCachedOutputs(
       outputCache,
@@ -936,7 +998,7 @@ export function App() {
     if (selection.source === "none") {
       setOutputs([]);
       setAcpOutputs([]);
-      outputsKeyRef.current = key;
+      outputsKeyRef.current = viewKey;
       loadAgentEvents(activeAgent, activeSessionId);
       return;
     }
@@ -968,7 +1030,7 @@ export function App() {
       baseAcpOutputs.length > 0
         ? mergeOutputs(baseAcpOutputs, latestAcpOutputs)
         : baseAcpOutputs;
-    const shouldPreserveHistory = previousKey === key;
+    const shouldPreserveHistory = previousKey === viewKey;
     const nextOutputs = mergeOutputsPreserveHistory(
       outputsRef.current,
       combinedOutputs,
@@ -985,7 +1047,7 @@ export function App() {
     if (!isSameOutputList(acpOutputsRef.current, nextAcpOutputs)) {
       setAcpOutputs(nextAcpOutputs);
     }
-    outputsKeyRef.current = key;
+    outputsKeyRef.current = viewKey;
     if (!eventMeta[key]) {
       const oldestEvent = nextOutputs.length
         ? nextOutputs[0]
@@ -1009,6 +1071,7 @@ export function App() {
     token,
     activeAgent,
     activeSessionId,
+    agentSessions,
     outputCache,
     acpOutputCache,
     eventMeta,
@@ -1314,9 +1377,12 @@ export function App() {
       return;
     }
     let cancelled = false;
-    const requestedAgentIds = parsePermissionPollAgentIds(
+    const allAgentIds = parsePermissionPollAgentIds(
       permissionPollAgentIdsKey
     );
+    const requestedAgentIds = activeAgent
+      ? allAgentIds.filter((agentId) => agentId !== activeAgent)
+      : allAgentIds;
     const load = async () => {
       const entries = await Promise.all(
         requestedAgentIds.map(async (agentId) => {
@@ -1324,14 +1390,22 @@ export function App() {
             const items = await api.listAcpPermissions(token, agentId, "pending");
             return [agentId, items.length] as const;
           } catch {
-            return [agentId, 0] as const;
+            return [agentId, null] as const;
           }
         })
       );
       if (cancelled) return;
-      const nextCounts = buildPendingPermissionCountMap(entries);
       setPendingPermissionCounts((prev) =>
-        isSamePendingPermissionCountMap(prev, nextCounts) ? prev : nextCounts
+        (() => {
+          const nextCounts = mergePendingPermissionCountMap(
+            prev,
+            allAgentIds,
+            entries
+          );
+          return isSamePendingPermissionCountMap(prev, nextCounts)
+            ? prev
+            : nextCounts;
+        })()
       );
     };
     load();
@@ -1340,7 +1414,7 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, permissionPollAgentIdsKey]);
+  }, [token, permissionPollAgentIdsKey, activeAgent]);
 
   useEffect(() => {
     if (!token || !activeAgent) return;

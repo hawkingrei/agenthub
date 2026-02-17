@@ -4,7 +4,9 @@ import {
   buildPendingPermissionCountMap,
   decidePermissionJump,
   filterPermissionsForAgent,
+  mergePendingPermissionCountMap,
   parsePermissionPollAgentIds,
+  resolveOutputHistoryKey,
   resolveSessionScopedEvents,
   resolveRuntimeViewportSize,
   schedulePermissionPollLoop,
@@ -125,6 +127,39 @@ describe("app helper decisions", () => {
       "agent-a": 2,
       "agent-d": 1,
     });
+  });
+
+  it("merges pending permission counts while preserving failed agents", () => {
+    const prev = {
+      "agent-a": 3,
+      "agent-b": 2,
+      "agent-z": 9,
+    };
+    const next = mergePendingPermissionCountMap(
+      prev,
+      ["agent-a", "agent-b", "agent-c"],
+      [
+        ["agent-a", 0],
+        ["agent-b", null],
+        ["agent-c", 1],
+      ]
+    );
+    expect(next).toEqual({
+      "agent-b": 2,
+      "agent-c": 1,
+    });
+  });
+
+  it("builds output history key with latest session marker", () => {
+    expect(resolveOutputHistoryKey("agent-a", "session-1", {})).toBe(
+      "agent-a:session-1"
+    );
+    expect(resolveOutputHistoryKey("agent-a", null, { "agent-a": "session-latest" })).toBe(
+      "agent-a:latest:session-latest"
+    );
+    expect(resolveOutputHistoryKey("agent-a", null, {})).toBe(
+      "agent-a:latest:latest"
+    );
   });
 
   it("resolves scoped events for explicit session id", () => {
