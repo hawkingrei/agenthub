@@ -24,6 +24,11 @@ type TeamPageProps = {
 type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
 type CreateTeamStage = 0 | 1 | 2 | 3;
 type TeamRunStatusFilter = TeamRunStatus | "all";
+type TeamRunBrowserState = {
+  statusFilter: TeamRunStatusFilter;
+  beforeCreatedAt?: number;
+  hasMore: boolean;
+};
 type StepAction =
   | "start"
   | "complete"
@@ -35,6 +40,10 @@ const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
 const TEAM_RUN_PAGE_LIMIT = 50;
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
+const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
+  statusFilter: "all",
+  hasMore: false,
+};
 const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
   value: TeamRunStatusFilter;
   label: string;
@@ -418,9 +427,9 @@ export function TeamPage(props: TeamPageProps) {
   const [runLookupId, setRunLookupId] = useState("");
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
-  const [runStatusFilter, setRunStatusFilter] = useState<TeamRunStatusFilter>("all");
-  const [runsOffset, setRunsOffset] = useState(0);
-  const [runsHasMore, setRunsHasMore] = useState(false);
+  const [teamRunBrowserByTeam, setTeamRunBrowserByTeam] = useState<
+    Record<string, TeamRunBrowserState>
+  >({});
   const [runsLoading, setRunsLoading] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
@@ -481,6 +490,15 @@ export function TeamPage(props: TeamPageProps) {
     () => runs.find((run) => run.id === activeRunId) ?? null,
     [runs, activeRunId]
   );
+  const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
+    if (!selectedTeamId) {
+      return DEFAULT_TEAM_RUN_BROWSER_STATE;
+    }
+    return teamRunBrowserByTeam[selectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
+  }, [selectedTeamId, teamRunBrowserByTeam]);
+  const runStatusFilter = selectedTeamRunBrowserState.statusFilter;
+  const runsHasMore = selectedTeamRunBrowserState.hasMore;
+  const runsBeforeCreatedAt = selectedTeamRunBrowserState.beforeCreatedAt;
 
   const visibleRuns = useMemo(() => {
     if (!selectedTeamId) return [];
@@ -723,14 +741,23 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   const refreshTeamRuns = useCallback(
-    async (teamId: string, mode: "replace" | "append" = "replace") => {
+    async (
+      teamId: string,
+      mode: "replace" | "append" = "replace",
+      options?: {
+        statusFilter?: TeamRunStatusFilter;
+        beforeCreatedAt?: number;
+      }
+    ) => {
       setRunsLoading(true);
       try {
-        const offset = mode === "append" ? runsOffset : 0;
+        const statusFilter = options?.statusFilter ?? "all";
+        const beforeCreatedAt =
+          mode === "append" ? options?.beforeCreatedAt : undefined;
         const list = await api.listTeamRuns(props.token, teamId, {
           limit: TEAM_RUN_PAGE_LIMIT,
-          offset,
-          status: resolveRunStatusFilter(runStatusFilter),
+          before_created_at: beforeCreatedAt,
+          status: resolveRunStatusFilter(statusFilter),
         });
         setRuns((prev) => {
           const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
@@ -743,14 +770,25 @@ export function TeamPage(props: TeamPageProps) {
           );
           return sortRuns([...otherTeamRuns, ...merged]);
         });
-        setRunsOffset(offset + list.length);
-        setRunsHasMore(list.length >= TEAM_RUN_PAGE_LIMIT);
+        const hasMore = list.length >= TEAM_RUN_PAGE_LIMIT;
+        const nextBeforeCreatedAt =
+          list.length > 0 ? list[list.length - 1]?.created_at : undefined;
+        setTeamRunBrowserByTeam((prev) => {
+          return {
+            ...prev,
+            [teamId]: {
+              statusFilter,
+              hasMore,
+              beforeCreatedAt: hasMore ? nextBeforeCreatedAt : undefined,
+            },
+          };
+        });
         return list;
       } finally {
         setRunsLoading(false);
       }
     },
-    [props.token, runStatusFilter, runsOffset]
+    [props.token]
   );
 
   const refreshSteps = useCallback(
@@ -888,8 +926,6 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) {
       setActiveRunId(null);
       setRuns([]);
-      setRunsOffset(0);
-      setRunsHasMore(false);
       setEvents([]);
       setSteps([]);
       setInbox([]);
@@ -902,10 +938,10 @@ export function TeamPage(props: TeamPageProps) {
     const loadTeamRuns = async () => {
       try {
         setError(null);
-        const list = await refreshTeamRuns(selectedTeamId, "replace");
+        await refreshTeamRuns(selectedTeamId, "replace", {
+          statusFilter: runStatusFilter,
+        });
         if (canceled) return;
-        setRunsOffset(list.length);
-        setRunsHasMore(list.length >= TEAM_RUN_PAGE_LIMIT);
       } catch (err) {
         if (!canceled) {
           setError(parseErrorMessage(err));
@@ -1152,7 +1188,10 @@ export function TeamPage(props: TeamPageProps) {
     }
     setError(null);
     try {
-      await refreshTeamRuns(selectedTeamId, "append");
+      await refreshTeamRuns(selectedTeamId, "append", {
+        statusFilter: runStatusFilter,
+        beforeCreatedAt: runsBeforeCreatedAt,
+      });
     } catch (err) {
       setError(parseErrorMessage(err));
     }
@@ -1523,9 +1562,18 @@ export function TeamPage(props: TeamPageProps) {
                     <div className="actions">
                       <select
                         value={runStatusFilter}
-                        onChange={(event) =>
-                          setRunStatusFilter(event.target.value as TeamRunStatusFilter)
-                        }
+                        onChange={(event) => {
+                          if (!selectedTeamId) return;
+                          const nextFilter = event.target.value as TeamRunStatusFilter;
+                          setTeamRunBrowserByTeam((prev) => ({
+                            ...prev,
+                            [selectedTeamId]: {
+                              statusFilter: nextFilter,
+                              beforeCreatedAt: undefined,
+                              hasMore: false,
+                            },
+                          }));
+                        }}
                         aria-label="Run status filter"
                       >
                         {TEAM_RUN_STATUS_FILTER_OPTIONS.map((option) => (
@@ -1537,9 +1585,9 @@ export function TeamPage(props: TeamPageProps) {
                       <button
                         onClick={() => {
                           if (!selectedTeamId) return;
-                          void refreshTeamRuns(selectedTeamId, "replace").catch((err) =>
-                            setError(parseErrorMessage(err))
-                          );
+                          void refreshTeamRuns(selectedTeamId, "replace", {
+                            statusFilter: runStatusFilter,
+                          }).catch((err) => setError(parseErrorMessage(err)));
                         }}
                         disabled={runsLoading}
                       >
