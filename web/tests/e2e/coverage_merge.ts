@@ -57,10 +57,60 @@ type MergeCoverageEntriesOptions = {
 
 const defaultConverter = astV8ToIstanbul as unknown as CoverageConverter;
 
-function isModernCoverageConverter(
-  converter: CoverageConverter
-): converter is ModernCoverageConverter {
-  return converter.length <= 1;
+function isLegacyCoverageConverter(value: unknown): value is LegacyCoverageConverter {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<LegacyCoverageConverter>;
+  return (
+    typeof candidate.load === "function" &&
+    typeof candidate.applyCoverage === "function" &&
+    typeof candidate.toIstanbul === "function"
+  );
+}
+
+function isThenable<T>(value: unknown): value is Promise<T> {
+  return (
+    !!value &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+async function tryLegacyConversion(
+  converter: CoverageConverter,
+  filePath: string,
+  source: string,
+  functions: JsCoverageFunction[]
+): Promise<CoverageMapData | null> {
+  let candidate: unknown;
+  try {
+    candidate = (converter as LegacyCoverageConverterFactory)(filePath, 0, {
+      source,
+    });
+  } catch {
+    return null;
+  }
+
+  if (isLegacyCoverageConverter(candidate)) {
+    await candidate.load();
+    candidate.applyCoverage(functions);
+    return candidate.toIstanbul();
+  }
+
+  if (isThenable<CoverageMapData>(candidate)) {
+    try {
+      return await candidate;
+    } catch {
+      return null;
+    }
+  }
+
+  if (candidate && typeof candidate === "object") {
+    return candidate as CoverageMapData;
+  }
+
+  return null;
 }
 
 function buildCoverageAst(source: string, filePath: string): unknown {
@@ -82,20 +132,24 @@ async function convertCoverageEntry(
   entry: JsCoverageEntry
 ): Promise<CoverageMapData> {
   const functions = entry.functions ?? [];
-  if (isModernCoverageConverter(converter)) {
-    const ast = buildCoverageAst(entry.source ?? "", filePath);
-    return converter({
-      code: entry.source ?? "",
-      coverage: { url: entry.url, functions },
-      ast,
-      wrapperLength: 0,
-    });
+  const source = entry.source ?? "";
+  const legacyCoverage = await tryLegacyConversion(
+    converter,
+    filePath,
+    source,
+    functions
+  );
+  if (legacyCoverage) {
+    return legacyCoverage;
   }
 
-  const legacyConverter = converter(filePath, 0, { source: entry.source });
-  await legacyConverter.load();
-  legacyConverter.applyCoverage(functions);
-  return legacyConverter.toIstanbul();
+  const ast = buildCoverageAst(source, filePath);
+  return (converter as ModernCoverageConverter)({
+    code: source,
+    coverage: { url: entry.url, functions },
+    ast,
+    wrapperLength: 0,
+  });
 }
 
 export async function mergeCoverageEntries({

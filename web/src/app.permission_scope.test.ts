@@ -187,6 +187,56 @@ describe("app helper decisions", () => {
     });
   });
 
+  it("preserves non-polled agent counts across active-agent switches", () => {
+    const initial = {
+      "agent-a": 3,
+      "agent-b": 2,
+    };
+
+    const afterFirstGlobalPoll = mergePendingPermissionCountMap(
+      initial,
+      ["agent-a", "agent-b", "agent-c"],
+      [
+        ["agent-a", 0],
+        ["agent-c", 1],
+      ]
+    );
+    expect(afterFirstGlobalPoll).toEqual({
+      "agent-b": 2,
+      "agent-c": 1,
+    });
+
+    const afterSwitchGlobalPoll = mergePendingPermissionCountMap(
+      afterFirstGlobalPoll,
+      ["agent-a", "agent-b", "agent-c"],
+      [
+        ["agent-a", 4],
+        ["agent-b", 1],
+      ]
+    );
+    expect(afterSwitchGlobalPoll).toEqual({
+      "agent-a": 4,
+      "agent-b": 1,
+      "agent-c": 1,
+    });
+  });
+
+  it("keeps permission lists scoped when active agent changes", () => {
+    const permissions = [
+      buildPermission("p-a-1", "agent-a"),
+      buildPermission("p-b-1", "agent-b"),
+      buildPermission("p-a-2", "agent-a", "responded"),
+      buildPermission("p-c-1", "agent-c"),
+    ];
+
+    expect(
+      filterPermissionsForAgent(permissions, "agent-a").map((item) => item.id)
+    ).toEqual(["p-a-1", "p-a-2"]);
+    expect(
+      filterPermissionsForAgent(permissions, "agent-b").map((item) => item.id)
+    ).toEqual(["p-b-1"]);
+  });
+
   it("drops stale counts for agents removed from the current list", () => {
     const prev = {
       "agent-a": 2,
@@ -237,6 +287,18 @@ describe("app helper decisions", () => {
     expect(resolved.latestSessionId).toBe("session-c");
     expect(resolved.resolvedSessionId).toBe("session-c");
     expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([4]);
+  });
+
+  it("resolves latest session from event ordering even when list order is stale", () => {
+    const events = [
+      buildEvent(10, "session-new"),
+      buildEvent(3, "session-old"),
+      buildEvent(8, "session-mid"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBe("session-new");
+    expect(resolved.resolvedSessionId).toBe("session-new");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([10]);
   });
 
   it("keeps all events when no session can be resolved", () => {

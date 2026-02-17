@@ -14,6 +14,7 @@ completed, causing permission history to appear mixed across agents.
 ## Scope
 
 - `web/src/app.tsx`
+- `web/src/app.permission_scope.test.ts`
 - `docs/todo.md`
 
 ## Key Decisions
@@ -28,16 +29,18 @@ completed, causing permission history to appear mixed across agents.
 
 ```bash
 cd web
-npm run build
+npm run test -- src/app.permission_scope.test.ts
 ```
 
 Expected outcomes:
 
-- Build succeeds.
+- Scope helper tests pass.
 - Permission modal/history no longer shows records from previously selected
   agents.
+- Pending permission count map remains stable when global polling excludes the
+  currently active agent during switches.
 
 ## Follow-ups
 
-- Add a frontend test that switches active agent while permission poll requests
-  are in flight and asserts scoped rendering correctness.
+- Consider adding a Playwright test that validates scoped permission indicators
+  across rapid team/agent switching in a real browser session.
