@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   api,
   AgentRecord,
+  AgentEvent,
   AuditRecord,
   AcpPermissionRecord,
   DeviceRecord,
@@ -184,6 +185,45 @@ export function decidePermissionJump(
   if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
   if (pending.attempts >= maxAttempts) return "clear";
   return "attempt";
+}
+
+export function parsePermissionPollAgentIds(key: string): string[] {
+  return key.split(",").filter(Boolean);
+}
+
+export function buildPendingPermissionCountMap(
+  entries: ReadonlyArray<readonly [string, number]>
+): Record<string, number> {
+  const nextCounts: Record<string, number> = {};
+  for (const [agentId, count] of entries) {
+    if (count > 0) {
+      nextCounts[agentId] = count;
+    }
+  }
+  return nextCounts;
+}
+
+export function resolveSessionScopedEvents(
+  events: AgentEvent[],
+  requestedSessionId: string | null
+): {
+  latestSessionId: string | null;
+  resolvedSessionId: string | null;
+  scopedEvents: AgentEvent[];
+} {
+  const latestSessionId =
+    !requestedSessionId
+      ? [...events].reverse().find((evt) => evt.session_id)?.session_id ?? null
+      : null;
+  const resolvedSessionId = requestedSessionId ?? latestSessionId;
+  const scopedEvents = resolvedSessionId
+    ? events.filter((evt) => evt.session_id === resolvedSessionId)
+    : events;
+  return {
+    latestSessionId,
+    resolvedSessionId,
+    scopedEvents,
+  };
 }
 
 export function setupRuntimeViewportVarSync(
@@ -721,19 +761,14 @@ export function App() {
         sessionId ?? undefined
       );
       if (seq !== loadSeq.current) return false;
-      const latestSession = !sessionId
-        ? [...events].reverse().find((evt) => evt.session_id)?.session_id ?? null
-        : null;
-      if (latestSession) {
-        setAgentSessions((prev) => ({ ...prev, [id]: latestSession }));
+      const { latestSessionId, resolvedSessionId, scopedEvents } =
+        resolveSessionScopedEvents(events, sessionId ?? null);
+      if (latestSessionId) {
+        setAgentSessions((prev) => ({ ...prev, [id]: latestSessionId }));
         if (activeAgentRef.current === id && !activeSessionIdRef.current) {
-          setActiveSessionId(latestSession);
+          setActiveSessionId(latestSessionId);
         }
       }
-      const resolvedSessionId = sessionId ?? latestSession;
-      const scopedEvents = resolvedSessionId
-        ? events.filter((evt) => evt.session_id === resolvedSessionId)
-        : events;
       const ordered = [...scopedEvents].sort((a, b) => compareEventOrder(a, b));
       const resolvedKey = `${id}:${resolvedSessionId ?? "latest"}`;
       const nextSlice = updateOutputCacheEntry(key, ordered);
@@ -1279,9 +1314,9 @@ export function App() {
       return;
     }
     let cancelled = false;
-    const requestedAgentIds = permissionPollAgentIdsKey
-      .split(",")
-      .filter(Boolean);
+    const requestedAgentIds = parsePermissionPollAgentIds(
+      permissionPollAgentIdsKey
+    );
     const load = async () => {
       const entries = await Promise.all(
         requestedAgentIds.map(async (agentId) => {
@@ -1294,12 +1329,7 @@ export function App() {
         })
       );
       if (cancelled) return;
-      const nextCounts: Record<string, number> = {};
-      for (const [agentId, count] of entries) {
-        if (count > 0) {
-          nextCounts[agentId] = count;
-        }
-      }
+      const nextCounts = buildPendingPermissionCountMap(entries);
       setPendingPermissionCounts((prev) =>
         isSamePendingPermissionCountMap(prev, nextCounts) ? prev : nextCounts
       );

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { AcpPermissionRecord } from "./api";
+import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
+  buildPendingPermissionCountMap,
   decidePermissionJump,
   filterPermissionsForAgent,
+  parsePermissionPollAgentIds,
+  resolveSessionScopedEvents,
   resolveRuntimeViewportSize,
   schedulePermissionPollLoop,
   setupLayoutAnchorVarSync,
@@ -22,6 +25,20 @@ const buildPermission = (
   options: [],
   status,
   created_at: 1,
+});
+
+const buildEvent = (
+  eventId: number,
+  sessionId: string,
+  stream: AgentEvent["stream"] = "stdout"
+): AgentEvent => ({
+  event_id: eventId,
+  agent_id: "agent-1",
+  session_id: sessionId,
+  seq: String(eventId),
+  ts: eventId,
+  stream,
+  message: `${stream}-${eventId}`,
 });
 
 class MockEventTarget {
@@ -85,6 +102,67 @@ describe("filterPermissionsForAgent", () => {
 });
 
 describe("app helper decisions", () => {
+  it("parses permission poll agent ids from stable key", () => {
+    expect(parsePermissionPollAgentIds("")).toEqual([]);
+    expect(parsePermissionPollAgentIds("agent-a,agent-b")).toEqual([
+      "agent-a",
+      "agent-b",
+    ]);
+    expect(parsePermissionPollAgentIds("agent-a,,agent-b,")).toEqual([
+      "agent-a",
+      "agent-b",
+    ]);
+  });
+
+  it("builds pending permission count map using only positive counts", () => {
+    const map = buildPendingPermissionCountMap([
+      ["agent-a", 2],
+      ["agent-b", 0],
+      ["agent-c", -1],
+      ["agent-d", 1],
+    ]);
+    expect(map).toEqual({
+      "agent-a": 2,
+      "agent-d": 1,
+    });
+  });
+
+  it("resolves scoped events for explicit session id", () => {
+    const events = [
+      buildEvent(1, "session-a"),
+      buildEvent(2, "session-b"),
+      buildEvent(3, "session-a"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, "session-a");
+    expect(resolved.latestSessionId).toBeNull();
+    expect(resolved.resolvedSessionId).toBe("session-a");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([1, 3]);
+  });
+
+  it("resolves latest session and scopes events when session id is missing", () => {
+    const events = [
+      buildEvent(1, "session-a"),
+      buildEvent(2, "session-b"),
+      buildEvent(3, "session-b"),
+      buildEvent(4, "session-c"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBe("session-c");
+    expect(resolved.resolvedSessionId).toBe("session-c");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([4]);
+  });
+
+  it("keeps all events when no session can be resolved", () => {
+    const events = [
+      { ...buildEvent(1, ""), session_id: "" },
+      { ...buildEvent(2, ""), session_id: "" },
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBeNull();
+    expect(resolved.resolvedSessionId).toBeNull();
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([1, 2]);
+  });
+
   it("resolves viewport size with fallback and clamps to positive pixels", () => {
     expect(
       resolveRuntimeViewportSize({ width: 399.6, height: 701.2 }, 800, 500)

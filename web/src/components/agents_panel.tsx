@@ -60,6 +60,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               {hasPendingPermissions ? (
                 <span
                   className="agents-rail-dot"
+                  role="img"
                   aria-label="Pending permissions"
                   title="Pending permissions"
                 />
@@ -99,6 +100,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 {agents.map((agent) => {
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
+                  const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
                   const modelLabel = formatAgentModelLabel(
                     agent.command,
                     agent.args
@@ -130,8 +132,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           {pendingPermissionCount > 0 ? (
                             <span
                               className="agent-permission-dot"
-                              aria-label={`Pending permissions for ${agent.name}`}
-                              title={`${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""}`}
+                              role="img"
+                              aria-label={pendingPermissionLabel}
+                              title={pendingPermissionLabel}
                             />
                           ) : null}
                           {modelLabel ? (
