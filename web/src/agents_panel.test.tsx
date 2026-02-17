@@ -59,6 +59,8 @@ describe("AgentsPanel", () => {
     expect(html).toContain("Agents");
     expect(html).toContain("Running");
     expect(html).not.toContain("Create Agent");
+    expect(html).not.toContain('aria-label="Hide agents"');
+    expect(html).not.toContain("agents-backdrop");
   });
 
   it("renders collapsed permission indicator when pending permissions exist", () => {
@@ -78,6 +80,7 @@ describe("AgentsPanel", () => {
     const html = renderToStaticMarkup(
       <AgentsPanel {...baseProps} agentsCollapsed={false} />
     );
+    expect(html).toContain("agents-backdrop");
     expect(html).toContain("Agents</h2>");
     expect(html).toContain('aria-label="Hide agents"');
     expect(html).toContain("Create Agent");

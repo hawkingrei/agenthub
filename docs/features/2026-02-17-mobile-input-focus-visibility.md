@@ -32,6 +32,7 @@ npm --prefix web run build
 Expected outcomes:
 
 - New viewport-visibility helper tests pass.
+- Viewport helper coverage includes shifted viewport and viewport-shrink edge cases.
 - Web build succeeds without type/style regressions.
 
 ## Follow-ups

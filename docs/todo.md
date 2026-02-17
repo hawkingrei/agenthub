@@ -1,8 +1,8 @@
 # TODO
 
-- [ ] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
-- [ ] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
-- [ ] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).
+- [x] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
+- [x] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
+- [x] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).
 - [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
 - [ ] Verify collapsed agents rail and expanded agent rows both surface pending ACP permissions with red indicators during active permission polling and agent switching (see `docs/features/2026-02-17-agents-interaction-polish.md`).
 - [ ] Verify agent switch output hydration no longer waits for a second fetch when resolving `latest` session ids, and terminal auto-follow stays at bottom during in-place output updates (see `docs/features/2026-02-17-agents-interaction-polish.md`).

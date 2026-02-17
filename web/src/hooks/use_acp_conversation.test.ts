@@ -287,6 +287,18 @@ describe("conversation helper decisions", () => {
     ).toBe(true);
   });
 
+  it("keeps sticky mode when previous scroll top is unavailable", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1600,
+        900,
+        300,
+        true,
+        null
+      )
+    ).toBe(true);
+  });
+
   it("does not detach stick for tiny upward movement", () => {
     expect(
       deriveConversationStickToBottom(
@@ -295,6 +307,18 @@ describe("conversation helper decisions", () => {
         300,
         true,
         920
+      )
+    ).toBe(true);
+  });
+
+  it("keeps sticky mode on downward movement while not near bottom", () => {
+    expect(
+      deriveConversationStickToBottom(
+        1600,
+        950,
+        300,
+        true,
+        900
       )
     ).toBe(true);
   });

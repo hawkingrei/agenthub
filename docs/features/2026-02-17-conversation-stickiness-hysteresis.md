@@ -35,6 +35,7 @@ npm --prefix web run build
 Expected outcomes:
 
 - New stickiness helper tests pass.
+- Helper coverage confirms sticky mode survives passive growth / tiny jitter and detaches after meaningful upward scroll.
 - Web build succeeds.
 
 ## Follow-ups

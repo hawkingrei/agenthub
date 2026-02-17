@@ -33,6 +33,7 @@ npm --prefix web run build
 Expected outcomes:
 
 - Expanded panel markup includes `aria-label="Hide agents"`.
+- Expanded mode keeps dedicated backdrop + in-panel collapse control markup while collapsed mode drops both.
 - Web build stays green.
 
 ## Follow-ups

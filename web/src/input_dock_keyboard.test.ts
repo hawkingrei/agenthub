@@ -280,6 +280,12 @@ describe("isInputRectOutsideViewport", () => {
     ).toBe(true);
   });
 
+  it("returns false when viewport is shifted and input remains inside", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 96, bottom: 156 }, 40, 420)
+    ).toBe(false);
+  });
+
   it("respects custom safe margin when checking visibility", () => {
     expect(
       isInputRectOutsideViewport({ top: 12, bottom: 80 }, 0, 200, 0)
@@ -299,6 +305,12 @@ describe("isInputRectOutsideViewport", () => {
     expect(
       isInputRectOutsideViewport({ top: Number.NaN, bottom: 140 }, 0, 300)
     ).toBe(false);
+  });
+
+  it("returns true when viewport shrink hides only the bottom edge", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 250, bottom: 318 }, 0, 320)
+    ).toBe(true);
   });
 });
 
