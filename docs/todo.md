@@ -3,7 +3,7 @@
 - [x] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
 - [x] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
 - [x] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).
-- [ ] Verify Playwright E2E coverage upload publishes `web-e2e` flag with `web/coverage/e2e/lcov.info` in CI push/PR runs (see `docs/features/2026-02-17-playwright-e2e-coverage-codecov.md`).
+- [x] Verify Playwright E2E coverage upload publishes `web-e2e` flag with `web/coverage/e2e/lcov.info` in CI push/PR runs (see `docs/features/2026-02-17-playwright-e2e-coverage-codecov.md`).
 - [ ] Verify app shell uses runtime viewport sizing (`--agenthub-vh/--agenthub-vw`) and workspace-top anchoring on iOS/Android tablet+phone (address bar expand/collapse, keyboard open/close, orientation changes) without layout clipping or drawer offset drift (see `docs/features/2026-02-16-web-mobile-viewport-alignment.md`).
 - [ ] Verify collapsed agents rail and expanded agent rows both surface pending ACP permissions with red indicators during active permission polling and agent switching (see `docs/features/2026-02-17-agents-interaction-polish.md`).
 - [ ] Verify agent switch output hydration no longer waits for a second fetch when resolving `latest` session ids, and terminal auto-follow stays at bottom during in-place output updates (see `docs/features/2026-02-17-agents-interaction-polish.md`).
@@ -67,7 +67,7 @@
 - [ ] Extend native Bazel coverage to web build/test targets (replace remaining non-native gaps) (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
 - [x] (Superseded) Switch Rust CI coverage collection to Bazel-native `bazel coverage --combined_report=lcov` and upload `rust` flag to Codecov (see `docs/features/2026-02-15-ci-bazel-rust-coverage.md`).
 - [x] Split Rust/Bazel CI responsibility: Rust workflow runs Cargo check + cargo-llvm-cov and Bazel workflow keeps Bazel build/test; upload Rust coverage with `rust-cargo` Codecov flag (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
-- [ ] Verify Cargo-generated Rust lcov report (`rust-cargo.lcov`) remains stable on CI across PR and main branch runs (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
+- [x] Verify Cargo-generated Rust lcov report (`rust-cargo.lcov`) remains stable on CI across PR and main branch runs (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
 - [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
 - [ ] Verify lazy payload rendering keeps tool call fold open/close interaction smooth under large JSON payloads and terminal streams (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
 - [ ] Verify ACP Debug Runtime metrics reflect conversation virtualization/cache hit behavior during long runs (see `docs/features/2026-02-15-acp-conversation-runtime-metrics-and-segmented-rendering.md`).
