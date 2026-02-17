@@ -22,6 +22,8 @@ During daily usage, three issues repeatedly hurt usability:
 - `web/src/components/agents_panel.tsx`
 - `web/src/styles.css`
 - `web/src/agents_panel.test.tsx`
+- `web/src/app.permission_scope.test.ts`
+- `web/src/output_cache.test.ts`
 - `docs/todo.md`
 
 ## Key Decisions
@@ -37,7 +39,7 @@ During daily usage, three issues repeatedly hurt usability:
 
 ```bash
 npm --prefix web run lint
-npm --prefix web run test -- agents_panel.test.tsx app.permission_scope.test.ts
+npm --prefix web run test -- src/agents_panel.test.tsx src/app.permission_scope.test.ts src/output_cache.test.ts
 npm --prefix web run build
 ```
 
@@ -46,8 +48,11 @@ Expected outcomes:
 - Lint passes.
 - Added/updated tests pass.
 - Production build succeeds.
+- Latest-session hydration resolves from ordered events without requiring a second
+  fetch pass when switching to `latest`.
+- In-place output updates (same event id, new payload) keep a new output array
+  reference so terminal follow effects can react consistently.
 
 ## Follow-ups
 
 - Add a browser-level interaction test that verifies collapsed/expanded pending dots update when permission status changes.
-- Add a targeted regression test for fast agent switch with `latest` session resolution under mocked delayed responses.

@@ -289,6 +289,18 @@ describe("app helper decisions", () => {
     expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([4]);
   });
 
+  it("resolves latest session from event ordering even when list order is stale", () => {
+    const events = [
+      buildEvent(10, "session-new"),
+      buildEvent(3, "session-old"),
+      buildEvent(8, "session-mid"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBe("session-new");
+    expect(resolved.resolvedSessionId).toBe("session-new");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([10]);
+  });
+
   it("keeps all events when no session can be resolved", () => {
     const events = [
       { ...buildEvent(1, ""), session_id: "" },
