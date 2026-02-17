@@ -7,6 +7,7 @@ import {
   TeamDefinitionRecord,
   TeamRunEventRecord,
   TeamRunRecord,
+  TeamRunStatus,
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
@@ -22,6 +23,7 @@ type TeamPageProps = {
 
 type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
 type CreateTeamStage = 0 | 1 | 2 | 3;
+type TeamRunStatusFilter = TeamRunStatus | "all";
 type StepAction =
   | "start"
   | "complete"
@@ -31,6 +33,19 @@ type StepAction =
 
 const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
+const TEAM_RUN_PAGE_LIMIT = 50;
+const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
+  value: TeamRunStatusFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All statuses" },
+  { value: "submitted", label: "submitted" },
+  { value: "working", label: "working" },
+  { value: "input_required", label: "input_required" },
+  { value: "completed", label: "completed" },
+  { value: "failed", label: "failed" },
+  { value: "canceled", label: "canceled" },
+];
 const CREATE_TEAM_STAGE_TITLES = [
   "Mission Brief",
   "Leader Forge",
@@ -89,6 +104,45 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
   const withoutCurrent = list.filter((run) => run.id !== nextRun.id);
   return sortRuns([nextRun, ...withoutCurrent]);
+}
+
+export function mergeRunPages(
+  existing: TeamRunRecord[],
+  incoming: TeamRunRecord[]
+): TeamRunRecord[] {
+  const byId = new Map<string, TeamRunRecord>();
+  for (const run of existing) {
+    byId.set(run.id, run);
+  }
+  for (const run of incoming) {
+    byId.set(run.id, run);
+  }
+  return sortRuns([...byId.values()]);
+}
+
+export function mergeTeamRunList(
+  previousTeamRuns: TeamRunRecord[],
+  incoming: TeamRunRecord[],
+  mode: "replace" | "append",
+  activeRunId: string | null
+): TeamRunRecord[] {
+  const base = mode === "append" ? previousTeamRuns : [];
+  let merged = mergeRunPages(base, incoming);
+  if (mode !== "replace" || !activeRunId) {
+    return merged;
+  }
+  const pinned = previousTeamRuns.find((run) => run.id === activeRunId);
+  if (!pinned || merged.some((run) => run.id === pinned.id)) {
+    return merged;
+  }
+  merged = mergeRunPages(merged, [pinned]);
+  return merged;
+}
+
+export function resolveRunStatusFilter(
+  status: TeamRunStatusFilter
+): TeamRunStatus | undefined {
+  return status === "all" ? undefined : status;
 }
 
 function upsertEventList(
@@ -349,7 +403,12 @@ export function TeamPage(props: TeamPageProps) {
   const [runLookupId, setRunLookupId] = useState("");
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
+  const [runStatusFilter, setRunStatusFilter] = useState<TeamRunStatusFilter>("all");
+  const [runsOffset, setRunsOffset] = useState(0);
+  const [runsHasMore, setRunsHasMore] = useState(false);
+  const [runsLoading, setRunsLoading] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<TeamRunSnapshotRecord | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 
@@ -410,8 +469,12 @@ export function TeamPage(props: TeamPageProps) {
 
   const visibleRuns = useMemo(() => {
     if (!selectedTeamId) return [];
-    return runs.filter((run) => run.team_id === selectedTeamId);
-  }, [runs, selectedTeamId]);
+    return runs.filter((run) => {
+      if (run.team_id !== selectedTeamId) return false;
+      if (runStatusFilter === "all") return true;
+      return run.status === runStatusFilter;
+    });
+  }, [runStatusFilter, runs, selectedTeamId]);
 
   const builtTeamSpec = useMemo(
     () =>
@@ -640,15 +703,34 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   const refreshTeamRuns = useCallback(
-    async (teamId: string) => {
-      const list = await api.listTeamRuns(props.token, teamId, { limit: 200 });
-      setRuns((prev) => {
-        const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
-        return sortRuns([...otherTeamRuns, ...list]);
-      });
-      return list;
+    async (teamId: string, mode: "replace" | "append" = "replace") => {
+      setRunsLoading(true);
+      try {
+        const offset = mode === "append" ? runsOffset : 0;
+        const list = await api.listTeamRuns(props.token, teamId, {
+          limit: TEAM_RUN_PAGE_LIMIT,
+          offset,
+          status: resolveRunStatusFilter(runStatusFilter),
+        });
+        setRuns((prev) => {
+          const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
+          const currentTeamRuns = prev.filter((run) => run.team_id === teamId);
+          const merged = mergeTeamRunList(
+            currentTeamRuns,
+            list,
+            mode,
+            activeRunIdRef.current
+          );
+          return sortRuns([...otherTeamRuns, ...merged]);
+        });
+        setRunsOffset(offset + list.length);
+        setRunsHasMore(list.length >= TEAM_RUN_PAGE_LIMIT);
+        return list;
+      } finally {
+        setRunsLoading(false);
+      }
     },
-    [props.token]
+    [props.token, runStatusFilter, runsOffset]
   );
 
   const refreshSteps = useCallback(
@@ -707,6 +789,10 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useEffect(() => {
+    activeRunIdRef.current = activeRunId;
+  }, [activeRunId]);
 
   useEffect(() => {
     memberEventsRef.current = memberEvents;
@@ -782,6 +868,8 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) {
       setActiveRunId(null);
       setRuns([]);
+      setRunsOffset(0);
+      setRunsHasMore(false);
       setEvents([]);
       setSteps([]);
       setInbox([]);
@@ -794,14 +882,10 @@ export function TeamPage(props: TeamPageProps) {
     const loadTeamRuns = async () => {
       try {
         setError(null);
-        const list = await refreshTeamRuns(selectedTeamId);
+        const list = await refreshTeamRuns(selectedTeamId, "replace");
         if (canceled) return;
-        setActiveRunId((prev) => {
-          if (prev && list.some((run) => run.id === prev)) {
-            return prev;
-          }
-          return list[0]?.id ?? null;
-        });
+        setRunsOffset(list.length);
+        setRunsHasMore(list.length >= TEAM_RUN_PAGE_LIMIT);
       } catch (err) {
         if (!canceled) {
           setError(parseErrorMessage(err));
@@ -812,7 +896,7 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       canceled = true;
     };
-  }, [refreshTeamRuns, selectedTeamId]);
+  }, [refreshTeamRuns, selectedTeamId, runStatusFilter]);
 
   useEffect(() => {
     if (!selectedTeamId) return;
@@ -1039,6 +1123,18 @@ export function TeamPage(props: TeamPageProps) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
+    }
+  };
+
+  const onLoadMoreRuns = async () => {
+    if (!selectedTeamId || runsLoading || !runsHasMore) {
+      return;
+    }
+    setError(null);
+    try {
+      await refreshTeamRuns(selectedTeamId, "append");
+    } catch (err) {
+      setError(parseErrorMessage(err));
     }
   };
 
@@ -1402,7 +1498,35 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
                 </div>
                 <div className="teams-run-list">
-                  <h3>Runs</h3>
+                  <div className="teams-run-list-head">
+                    <h3>Runs</h3>
+                    <div className="actions">
+                      <select
+                        value={runStatusFilter}
+                        onChange={(event) =>
+                          setRunStatusFilter(event.target.value as TeamRunStatusFilter)
+                        }
+                        aria-label="Run status filter"
+                      >
+                        {TEAM_RUN_STATUS_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!selectedTeamId) return;
+                          void refreshTeamRuns(selectedTeamId, "replace").catch((err) =>
+                            setError(parseErrorMessage(err))
+                          );
+                        }}
+                        disabled={runsLoading}
+                      >
+                        Refresh Runs
+                      </button>
+                    </div>
+                  </div>
                   {visibleRuns.length === 0 && (
                     <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
                   )}
@@ -1416,6 +1540,17 @@ export function TeamPage(props: TeamPageProps) {
                       <span className="team-status">{run.status}</span>
                     </button>
                   ))}
+                  <div className="teams-run-list-foot">
+                    <span className="mono">
+                      loaded={visibleRuns.length} limit={TEAM_RUN_PAGE_LIMIT}
+                    </span>
+                    <button
+                      onClick={onLoadMoreRuns}
+                      disabled={runsLoading || !runsHasMore || !selectedTeamId}
+                    >
+                      {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
+                    </button>
+                  </div>
                 </div>
               </div>
 
