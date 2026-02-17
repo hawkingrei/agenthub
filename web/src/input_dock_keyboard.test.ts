@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   bindHistoryOutsideClose,
+  deriveInputPlaceholder,
   deriveInputDockKeyAction,
   deriveInputHistoryNavigation,
   isImeComposing,
+  isMobileInputViewport,
   shouldCloseHistoryFromPointerTarget,
   type InputHistoryNavigationContext,
 } from "./components/input_dock";
@@ -154,6 +156,24 @@ describe("deriveInputDockKeyAction", () => {
     ).toEqual({ type: "none" });
   });
 
+  it("does not send on Enter when sendOnEnter is disabled", () => {
+    expect(
+      deriveInputDockKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        ctrlKey: false,
+        sendOnEnter: false,
+        showHistory: false,
+        composing: false,
+        value: "hi",
+        selectionStart: 2,
+        selectionEnd: 2,
+      })
+    ).toEqual({ type: "none" });
+  });
+
   it("does not send on Enter while IME composing", () => {
     expect(
       deriveInputDockKeyAction({
@@ -237,6 +257,19 @@ describe("deriveInputDockKeyAction", () => {
         selectionEnd: 0,
       })
     ).toEqual({ type: "none" });
+  });
+});
+
+describe("mobile input helpers", () => {
+  it("detects mobile viewport at and below breakpoint", () => {
+    expect(isMobileInputViewport(720)).toBe(true);
+    expect(isMobileInputViewport(640)).toBe(true);
+    expect(isMobileInputViewport(721)).toBe(false);
+  });
+
+  it("uses compact placeholder text on mobile viewport", () => {
+    expect(deriveInputPlaceholder(true)).toContain("tap Send");
+    expect(deriveInputPlaceholder(false)).toContain("Shift+Enter");
   });
 });
 

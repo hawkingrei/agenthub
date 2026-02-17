@@ -38,6 +38,8 @@ const agents: AgentRecord[] = [
 const baseProps = {
   agents,
   activeAgent: "agent-1",
+  hasPendingPermissions: false,
+  pendingPermissionCounts: {},
   onCollapse: () => {},
   onExpand: () => {},
   onCreateAgent: () => {},
@@ -59,6 +61,19 @@ describe("AgentsPanel", () => {
     expect(html).not.toContain("Create Agent");
   });
 
+  it("renders collapsed permission indicator when pending permissions exist", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={true}
+        hasPendingPermissions={true}
+      />
+    );
+    expect(html).toContain("agents-rail-dot");
+    expect(html).toContain('role="img"');
+    expect(html).toContain('aria-label="Pending permissions"');
+  });
+
   it("renders list and actions when expanded", () => {
     const html = renderToStaticMarkup(
       <AgentsPanel {...baseProps} agentsCollapsed={false} />
@@ -68,5 +83,39 @@ describe("AgentsPanel", () => {
     expect(html).toContain("Alpha");
     expect(html).toContain("Beta");
     expect(html).toContain("running");
+  });
+
+  it("renders per-agent permission indicator in expanded mode", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        pendingPermissionCounts={{ "agent-1": 2 }}
+      />
+    );
+    expect(html).toContain("agent-permission-dot");
+    expect(html).toContain('aria-label="2 pending permissions for Alpha"');
+  });
+
+  it("renders singular pending-permission label for one pending item", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        pendingPermissionCounts={{ "agent-2": 1 }}
+      />
+    );
+    expect(html).toContain('aria-label="1 pending permission for Beta"');
+  });
+
+  it("omits per-agent indicator when count is zero", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        pendingPermissionCounts={{ "agent-1": 0 }}
+      />
+    );
+    expect(html).not.toContain("agent-permission-dot");
   });
 });

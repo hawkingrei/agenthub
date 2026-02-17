@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { AcpPermissionRecord } from "./api";
+import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
+  buildGlobalPermissionPollAgentIds,
+  buildPendingPermissionCountMap,
+  chunkPermissionPollAgentIds,
   decidePermissionJump,
   filterPermissionsForAgent,
+  mergePendingPermissionCountMap,
+  parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  resolveOutputHistoryKey,
+  resolveSessionScopedEvents,
+  resolveRuntimeViewportAxis,
   resolveRuntimeViewportSize,
   schedulePermissionPollLoop,
   setupLayoutAnchorVarSync,
@@ -22,6 +31,20 @@ const buildPermission = (
   options: [],
   status,
   created_at: 1,
+});
+
+const buildEvent = (
+  eventId: number,
+  sessionId: string,
+  stream: AgentEvent["stream"] = "stdout"
+): AgentEvent => ({
+  event_id: eventId,
+  agent_id: "agent-1",
+  session_id: sessionId,
+  seq: String(eventId),
+  ts: eventId,
+  stream,
+  message: `${stream}-${eventId}`,
 });
 
 class MockEventTarget {
@@ -85,6 +108,148 @@ describe("filterPermissionsForAgent", () => {
 });
 
 describe("app helper decisions", () => {
+  it("parses permission poll agent ids from stable key", () => {
+    expect(parsePermissionPollAgentIds("")).toEqual([]);
+    expect(parsePermissionPollAgentIds("agent-a,agent-b")).toEqual([
+      "agent-a",
+      "agent-b",
+    ]);
+    expect(parsePermissionPollAgentIds("agent-a,,agent-b,")).toEqual([
+      "agent-a",
+      "agent-b",
+    ]);
+  });
+
+  it("builds global permission poll targets and skips active agent", () => {
+    const allAgentIds = ["agent-a", "agent-b", "agent-c"];
+    expect(buildGlobalPermissionPollAgentIds(allAgentIds, null)).toEqual(
+      allAgentIds
+    );
+    expect(buildGlobalPermissionPollAgentIds(allAgentIds, "agent-b")).toEqual([
+      "agent-a",
+      "agent-c",
+    ]);
+  });
+
+  it("splits permission poll ids into bounded concurrent chunks", () => {
+    expect(
+      chunkPermissionPollAgentIds(
+        ["agent-a", "agent-b", "agent-c", "agent-d", "agent-e"],
+        2
+      )
+    ).toEqual([
+      ["agent-a", "agent-b"],
+      ["agent-c", "agent-d"],
+      ["agent-e"],
+    ]);
+    expect(chunkPermissionPollAgentIds(["agent-a", "agent-b"], 0)).toEqual([
+      ["agent-a"],
+      ["agent-b"],
+    ]);
+  });
+
+  it("uses slower global permission polling interval when agents panel is collapsed", () => {
+    expect(resolveGlobalPermissionPollIntervalMs(false)).toBe(5000);
+    expect(resolveGlobalPermissionPollIntervalMs(true)).toBe(10000);
+  });
+
+  it("builds pending permission count map using only positive counts", () => {
+    const map = buildPendingPermissionCountMap([
+      ["agent-a", 2],
+      ["agent-b", 0],
+      ["agent-c", -1],
+      ["agent-d", 1],
+    ]);
+    expect(map).toEqual({
+      "agent-a": 2,
+      "agent-d": 1,
+    });
+  });
+
+  it("merges pending permission counts while preserving failed agents", () => {
+    const prev = {
+      "agent-a": 3,
+      "agent-b": 2,
+      "agent-z": 9,
+    };
+    const next = mergePendingPermissionCountMap(
+      prev,
+      ["agent-a", "agent-b", "agent-c"],
+      [
+        ["agent-a", 0],
+        ["agent-b", null],
+        ["agent-c", 1],
+      ]
+    );
+    expect(next).toEqual({
+      "agent-b": 2,
+      "agent-c": 1,
+    });
+  });
+
+  it("drops stale counts for agents removed from the current list", () => {
+    const prev = {
+      "agent-a": 2,
+      "agent-b": 1,
+    };
+    const next = mergePendingPermissionCountMap(
+      prev,
+      ["agent-a"],
+      [["agent-a", 2]]
+    );
+    expect(next).toEqual({
+      "agent-a": 2,
+    });
+  });
+
+  it("builds output history key with latest session marker", () => {
+    expect(resolveOutputHistoryKey("agent-a", "session-1", {})).toBe(
+      "agent-a:session-1"
+    );
+    expect(resolveOutputHistoryKey("agent-a", null, { "agent-a": "session-latest" })).toBe(
+      "agent-a:latest:session-latest"
+    );
+    expect(resolveOutputHistoryKey("agent-a", null, {})).toBe(
+      "agent-a:latest:latest"
+    );
+  });
+
+  it("resolves scoped events for explicit session id", () => {
+    const events = [
+      buildEvent(1, "session-a"),
+      buildEvent(2, "session-b"),
+      buildEvent(3, "session-a"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, "session-a");
+    expect(resolved.latestSessionId).toBeNull();
+    expect(resolved.resolvedSessionId).toBe("session-a");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([1, 3]);
+  });
+
+  it("resolves latest session and scopes events when session id is missing", () => {
+    const events = [
+      buildEvent(1, "session-a"),
+      buildEvent(2, "session-b"),
+      buildEvent(3, "session-b"),
+      buildEvent(4, "session-c"),
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBe("session-c");
+    expect(resolved.resolvedSessionId).toBe("session-c");
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([4]);
+  });
+
+  it("keeps all events when no session can be resolved", () => {
+    const events = [
+      { ...buildEvent(1, ""), session_id: "" },
+      { ...buildEvent(2, ""), session_id: "" },
+    ];
+    const resolved = resolveSessionScopedEvents(events, null);
+    expect(resolved.latestSessionId).toBeNull();
+    expect(resolved.resolvedSessionId).toBeNull();
+    expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([1, 2]);
+  });
+
   it("resolves viewport size with fallback and clamps to positive pixels", () => {
     expect(
       resolveRuntimeViewportSize({ width: 399.6, height: 701.2 }, 800, 500)
@@ -109,6 +274,17 @@ describe("app helper decisions", () => {
     expect(resolveRuntimeViewportSize(undefined, 0, -10)).toEqual({
       width: 1,
       height: 1,
+    });
+  });
+
+  it("ignores implausibly tiny visual viewport values and keeps fallback axes", () => {
+    expect(resolveRuntimeViewportAxis(3, 390)).toBe(390);
+    expect(resolveRuntimeViewportAxis(320, 844)).toBe(320);
+    expect(
+      resolveRuntimeViewportSize({ width: 3, height: 9 }, 844, 390)
+    ).toEqual({
+      width: 390,
+      height: 844,
     });
   });
 

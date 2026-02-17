@@ -4,6 +4,7 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   mergeOutputsPreserveHistory,
+  replaceAcpCacheSlice,
   selectCachedOutputs,
 } from "./output_cache";
 import { AgentEvent } from "./api";
@@ -33,6 +34,36 @@ describe("buildAcpCacheSlice", () => {
   });
 });
 
+describe("replaceAcpCacheSlice", () => {
+  it("returns only ACP events and drops non-ACP events", () => {
+    const ordered = [
+      makeEvent(1, "stdout"),
+      makeEvent(2, "acp"),
+      makeEvent(3, "stderr"),
+      makeEvent(4, "acp"),
+    ];
+    const next = replaceAcpCacheSlice(ordered, 10);
+    expect(next.map((evt) => evt.event_id)).toEqual([2, 4]);
+    expect(next.every((evt) => evt.stream === "acp")).toBe(true);
+  });
+
+  it("returns empty list when there are no ACP events", () => {
+    const ordered = [makeEvent(1, "stdout"), makeEvent(2, "stderr")];
+    const next = replaceAcpCacheSlice(ordered, 10);
+    expect(next).toEqual([]);
+  });
+
+  it("trims ACP list to maxCachedEvents", () => {
+    const ordered = [
+      makeEvent(1, "acp"),
+      makeEvent(2, "acp"),
+      makeEvent(3, "acp"),
+    ];
+    const next = replaceAcpCacheSlice(ordered, 2);
+    expect(next.map((evt) => evt.event_id)).toEqual([2, 3]);
+  });
+});
+
 describe("buildOutputCacheSlice", () => {
   it("merges and trims to maxCachedEvents", () => {
     const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
@@ -54,6 +85,14 @@ describe("buildOutputCacheSlice", () => {
     const next = buildOutputCacheSlice(existing, ordered, 10);
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
   });
+
+  it("keeps latest payload when event_id already exists", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const ordered = [{ ...makeEvent(2, "stdout"), message: "stdout-2-updated" }];
+    const next = buildOutputCacheSlice(existing, ordered, 10);
+    const updated = next.find((evt) => evt.event_id === 2);
+    expect(updated?.message).toBe("stdout-2-updated");
+  });
 });
 
 describe("appendOutputLine", () => {
@@ -64,6 +103,21 @@ describe("appendOutputLine", () => {
     const incoming = { ...makeEvent(1, "stdout"), ts: 300 };
     const next = appendOutputLine(existing, incoming);
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
+  });
+
+  it("replaces existing line when event_id matches", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const incoming = { ...makeEvent(2, "stdout"), message: "stdout-2-new" };
+    const next = appendOutputLine(existing, incoming);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2]);
+    expect(next.find((evt) => evt.event_id === 2)?.message).toBe("stdout-2-new");
+  });
+
+  it("returns the same array when incoming line is unchanged", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const incoming = { ...makeEvent(2, "stdout") };
+    const next = appendOutputLine(existing, incoming);
+    expect(next).toBe(existing);
   });
 });
 

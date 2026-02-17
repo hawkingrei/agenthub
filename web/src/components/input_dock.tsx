@@ -98,6 +98,7 @@ export type InputDockKeyActionContext = {
   altKey: boolean;
   metaKey: boolean;
   ctrlKey: boolean;
+  sendOnEnter?: boolean;
   showHistory: boolean;
   composing: boolean;
   value: string;
@@ -105,13 +106,62 @@ export type InputDockKeyActionContext = {
   selectionEnd: number | null;
 };
 
+const MOBILE_INPUT_BREAKPOINT = 720;
+
+type RuntimeWindowLike = Pick<Window, "innerWidth" | "addEventListener" | "removeEventListener">;
+
+function resolveRuntimeWindow(): RuntimeWindowLike | null {
+  if (typeof window === "undefined") return null;
+  return window;
+}
+
+export function isMobileInputViewport(width: number): boolean {
+  return width <= MOBILE_INPUT_BREAKPOINT;
+}
+
+export function deriveInputPlaceholder(isMobileViewport: boolean): string {
+  if (isMobileViewport) {
+    return "Type a message (tap Send; Enter = newline)";
+  }
+  return "Send input (Enter to send, Shift+Enter for newline)";
+}
+
+function useMobileInputViewport(): boolean {
+  const runtimeWindow = resolveRuntimeWindow();
+  const [isMobileViewport, setIsMobileViewport] = React.useState(() =>
+    runtimeWindow ? isMobileInputViewport(runtimeWindow.innerWidth) : false
+  );
+
+  React.useEffect(() => {
+    if (!runtimeWindow) return;
+    const syncViewport = () => {
+      setIsMobileViewport((previous) => {
+        const next = isMobileInputViewport(runtimeWindow.innerWidth);
+        return previous === next ? previous : next;
+      });
+    };
+    syncViewport();
+    runtimeWindow.addEventListener("resize", syncViewport);
+    return () => {
+      runtimeWindow.removeEventListener("resize", syncViewport);
+    };
+  }, [runtimeWindow]);
+
+  return isMobileViewport;
+}
+
 export function deriveInputDockKeyAction(
   ctx: InputDockKeyActionContext
 ): InputDockKeyAction {
   if (ctx.key === "Escape" && ctx.showHistory) {
     return { type: "close_history" };
   }
-  if (ctx.key === "Enter" && !ctx.shiftKey && !ctx.composing) {
+  if (
+    ctx.key === "Enter" &&
+    !ctx.shiftKey &&
+    !ctx.composing &&
+    (ctx.sendOnEnter ?? true)
+  ) {
     return { type: "send" };
   }
   const direction = deriveInputHistoryNavigation({
@@ -148,6 +198,8 @@ export function InputDock({
   const [showHistory, setShowHistory] = React.useState(false);
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
+  const mobileInputViewport = useMobileInputViewport();
+  const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
 
   React.useEffect(() => {
     if (!showHistory) return;
@@ -214,7 +266,7 @@ export function InputDock({
       )}
       <div className="input-editor-row">
         <textarea
-          placeholder="Send input (Enter to send, Shift+Enter for newline)"
+          placeholder={inputPlaceholder}
           value={input}
           onChange={(e) => {
             setShowHistory(false);
@@ -240,6 +292,7 @@ export function InputDock({
               altKey: e.altKey,
               metaKey: e.metaKey,
               ctrlKey: e.ctrlKey,
+              sendOnEnter: !mobileInputViewport,
               showHistory,
               composing,
               value: target.value,

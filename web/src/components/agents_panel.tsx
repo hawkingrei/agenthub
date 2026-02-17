@@ -7,6 +7,8 @@ type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
   agentsCollapsed: boolean;
+  hasPendingPermissions: boolean;
+  pendingPermissionCounts: Record<string, number>;
   onCollapse: () => void;
   onExpand: () => void;
   onCreateAgent: () => void;
@@ -21,6 +23,8 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   agents,
   activeAgent,
   agentsCollapsed,
+  hasPendingPermissions,
+  pendingPermissionCounts,
   onCollapse,
   onExpand,
   onCreateAgent,
@@ -53,6 +57,14 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             <div className="agents-rail-metric" title="Agents">
               <span className="value">{agents.length}</span>
               <span className="label">Agents</span>
+              {hasPendingPermissions ? (
+                <span
+                  className="agents-rail-dot"
+                  role="img"
+                  aria-label="Pending permissions"
+                  title="Pending permissions"
+                />
+              ) : null}
             </div>
             <div className="agents-rail-metric running" title="Running">
               <span className="value">{runningCount}</span>
@@ -86,6 +98,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             <div className="agent-layout">
               <div className="agent-list">
                 {agents.map((agent) => {
+                  const pendingPermissionCount =
+                    pendingPermissionCounts[agent.id] ?? 0;
+                  const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
                   const modelLabel = formatAgentModelLabel(
                     agent.command,
                     agent.args
@@ -114,6 +129,14 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                       <div className="agent-row-head">
                         <div className="agent-row-title">
                           <span className="agent-name">{agent.name}</span>
+                          {pendingPermissionCount > 0 ? (
+                            <span
+                              className="agent-permission-dot"
+                              role="img"
+                              aria-label={pendingPermissionLabel}
+                              title={pendingPermissionLabel}
+                            />
+                          ) : null}
                           {modelLabel ? (
                             <span className="agent-tag">{modelLabel}</span>
                           ) : null}

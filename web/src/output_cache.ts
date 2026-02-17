@@ -11,20 +11,56 @@ const compareOutputLines = (a: OutputLine, b: OutputLine): number => {
   return 0;
 };
 
+const isSameOutputLine = (a: OutputLine, b: OutputLine): boolean =>
+  a.event_id === b.event_id &&
+  a.ts === b.ts &&
+  a.seq === b.seq &&
+  a.stream === b.stream &&
+  a.message === b.message &&
+  a.session_id === b.session_id &&
+  a.agent_id === b.agent_id;
+
+const findOutputLineIndexByEventId = (
+  lines: OutputLine[],
+  eventId: number
+): number => {
+  for (let idx = 0; idx < lines.length; idx++) {
+    if (lines[idx].event_id === eventId) {
+      return idx;
+    }
+  }
+  return -1;
+};
+
+const locateSortedInsertIndex = (
+  lines: OutputLine[],
+  candidate: OutputLine
+): number => {
+  let low = 0;
+  let high = lines.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (compareOutputLines(lines[mid], candidate) <= 0) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+};
+
 export function mergeOutputs(
   existing: OutputLine[],
   incoming: OutputLine[]
 ): OutputLine[] {
-  const merged = [...existing, ...incoming];
-  const seen = new Set<string>();
-  const deduped: OutputLine[] = [];
-  for (const line of merged) {
-    const key = `id-${line.event_id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(line);
+  const byEventId = new Map<number, OutputLine>();
+  for (const line of existing) {
+    byEventId.set(line.event_id, line);
   }
-  return deduped.sort(compareOutputLines);
+  for (const line of incoming) {
+    byEventId.set(line.event_id, line);
+  }
+  return Array.from(byEventId.values()).sort(compareOutputLines);
 }
 
 export function appendOutputLine(
@@ -32,22 +68,30 @@ export function appendOutputLine(
   line: OutputLine
 ): OutputLine[] {
   if (existing.length === 0) return [line];
-  const last = existing[existing.length - 1];
-  if (compareOutputLines(last, line) <= 0) {
+  const existingIndex = findOutputLineIndexByEventId(existing, line.event_id);
+
+  if (existingIndex >= 0) {
+    const previous = existing[existingIndex];
+    if (isSameOutputLine(previous, line)) return existing;
+    const withoutExisting = [
+      ...existing.slice(0, existingIndex),
+      ...existing.slice(existingIndex + 1),
+    ];
+    const insertIndex = locateSortedInsertIndex(withoutExisting, line);
+    const next = [...withoutExisting];
+    next.splice(insertIndex, 0, line);
+    return next;
+  }
+
+  const insertIndex = locateSortedInsertIndex(existing, line);
+  if (insertIndex === existing.length) {
     return [...existing, line];
   }
-  const next = existing.slice();
-  let lo = 0;
-  let hi = next.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (compareOutputLines(next[mid], line) <= 0) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
+  if (insertIndex === 0) {
+    return [line, ...existing];
   }
-  next.splice(lo, 0, line);
+  const next = [...existing];
+  next.splice(insertIndex, 0, line);
   return next;
 }
 
@@ -86,6 +130,17 @@ export function buildAcpCacheSlice(
   const merged = mergeOutputs(existing, acpOrdered);
   if (merged.length <= maxCachedEvents) return merged;
   return merged.slice(merged.length - maxCachedEvents);
+}
+
+export function replaceAcpCacheSlice(
+  ordered: OutputLine[],
+  maxCachedEvents: number
+): OutputLine[] {
+  const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
+  if (maxCachedEvents > 0 && acpOrdered.length > maxCachedEvents) {
+    return acpOrdered.slice(acpOrdered.length - maxCachedEvents);
+  }
+  return acpOrdered;
 }
 
 export function buildOutputCacheSlice(
