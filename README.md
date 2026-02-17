@@ -19,15 +19,27 @@ and SQLite-backed persistent sessions.
 - Internal engineering notes: `docs/features/`
 - Internal backlog / follow-ups: `docs/todo.md`
 - API payload naming conventions: `docs/api_naming.md`
+- Project charter and engineering constraints: `AGENTS.md`
 
 For user-facing documentation preview/build:
 
 ```bash
 cd userdocs
-npm install
+npm ci
 npm run start   # local preview
 npm run build   # static output at userdocs/build
 ```
+
+## CI Pipelines
+
+GitHub Actions workflows are split by concern:
+
+- `Rust`: cargo check + coverage (`rust-cargo.lcov`) + Codecov upload (`rust-cargo`)
+- `Clippy`: `cargo clippy --workspace --all-targets -- -D warnings`
+- `Web`: lint + unit coverage + build + Codecov upload (`web`)
+- `Web E2E`: Playwright coverage + Codecov upload (`web-e2e`)
+- `Bazel`: `bazel build //...` and `bazel test //...`
+- `User Docs`: Docusaurus build validation
 
 ## Requirements
 
@@ -40,7 +52,7 @@ npm run build   # static output at userdocs/build
 ```bash
 # 1) Build web assets
 cd web
-npm install
+npm ci
 npm run build
 
 # 2) Run AgentHub
@@ -72,16 +84,35 @@ Runtime state (database, local artifacts) defaults to `~/.agenthub/`.
 cargo test
 
 # Run frontend unit tests
-cd web
-npm test
+npm --prefix web test
 
 # Lint frontend
-npm run lint
+npm --prefix web run lint
+
+# Frontend build
+npm --prefix web run build
+
+# Playwright E2E
+npm --prefix web run e2e
 
 # Bazel checks (optional)
-cd ..
 bazel build //...
 bazel test //...
+```
+
+## Recommended Pre-PR Checks
+
+```bash
+# Rust + proto guard
+cargo test
+make proto-check
+
+# Web checks
+npm --prefix web run lint
+npm --prefix web run test:coverage
+
+# Optional: E2E smoke
+npm --prefix web run e2e -- tests/e2e/app.e2e.ts --project=chromium
 ```
 
 ## Internal Proto Codegen Guard

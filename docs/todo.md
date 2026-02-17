@@ -13,7 +13,7 @@
 - [ ] Verify newly added jsdom interaction tests for ACP debug copy/jump and app viewport sync stay stable in CI runners (no localStorage/env-specific flakes) (see `docs/features/2026-02-16-web-coverage-review-followups.md`).
 - [ ] Verify ACP Debug permission history row click jumps to the linked Conversation tool call bubble with preserved surrounding context and temporary highlight across long virtualized sessions (see `docs/features/2026-02-16-acp-permission-history-jump-context.md`).
 - [ ] Verify ACP Debug permission history copy-to-clipboard action works across desktop/mobile browsers with clipboard API fallback behavior (see `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`).
-- [ ] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
+- [x] Verify ACP permission pending/history views remain scoped to the active agent during agent switching and in-flight permission polling (see `docs/features/2026-02-16-permission-history-agent-scope.md`).
 - [x] Verify dedicated Clippy workflow (`.github/workflows/clippy.yml`) runs on push/PR and enforces `cargo clippy --workspace --all-targets -- -D warnings` as an independent CI gate (see `docs/features/2026-02-16-cargo-clippy-zero-warning-and-ci-gate.md`).
 - [ ] Verify Rust workflow cache hit behavior after adding `Swatinem/rust-cache` and cache-aware `cargo-llvm-cov` setup (3-5 runs) and confirm no regression in `rust-cargo` coverage upload (see `docs/features/2026-02-17-rust-ci-cache-expansion.md`).
 - [ ] Verify refreshed README/docs navigation and command snippets (`README.md`, `docs/README.md`, `userdocs/README.md`) remain aligned with current scripts and deployment workflow (see `docs/features/2026-02-16-readme-docs-structure-refresh.md`).
@@ -65,7 +65,6 @@
 - [x] Converge Bazel `crate_universe` manifest source to `Cargo.toml` and remove duplicated `Cargo.bazel.toml` to avoid Cargo/Bazel dependency drift (see `docs/features/2026-02-16-cargo-bazel-manifest-convergence.md`).
 - [ ] Verify Bazel CI cache restore/save behavior (`bazelisk-cache`, `repository-cache`, `disk-cache`) improves repeated run latency without remote cache secrets (see `docs/features/2026-02-16-bazel-ci-cache-without-remote.md`).
 - [ ] Extend native Bazel coverage to web build/test targets (replace remaining non-native gaps) (see `docs/features/2026-02-15-bazel-native-rules-rust-core.md`).
-- [x] (Superseded) Switch Rust CI coverage collection to Bazel-native `bazel coverage --combined_report=lcov` and upload `rust` flag to Codecov (see `docs/features/2026-02-15-ci-bazel-rust-coverage.md`).
 - [x] Split Rust/Bazel CI responsibility: Rust workflow runs Cargo check + cargo-llvm-cov and Bazel workflow keeps Bazel build/test; upload Rust coverage with `rust-cargo` Codecov flag (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
 - [x] Verify Cargo-generated Rust lcov report (`rust-cargo.lcov`) remains stable on CI across PR and main branch runs (see `docs/features/2026-02-16-ci-rust-cargo-and-bazel-split.md`).
 - [ ] Verify ACP tool call Input/Output sections render structured key-value payload views (not raw JSON-first) across Codex/Gemini/Kimi sessions (see `docs/features/2026-02-15-acp-tool-call-humanized-rendering.md`).
@@ -181,9 +180,7 @@
 - [ ] Verify new workspace output/agents component tests and CSS guard updates (see `docs/features/2026-02-10-workspace-output-tests.md`).
 - [x] Verify Playwright E2E runs in CI and locally (see `docs/features/2026-02-10-playwright-e2e.md`).
 - [x] Verify CI workflows are split into Rust/Web/E2E pipelines (see `docs/features/2026-02-10-ci-pipeline-split.md`).
-- [ ] Decide and document MCP configuration source for ACP sessions (Codex config vs AgentHub config).
 - [ ] Investigate ACP output formatting for large chunked messages (e.g., shiro sessions) and fix cache retention/rendering.
-- [ ] Add ACP support for Gemini and Kimi providers, including config wiring and documentation.
 - [ ] Refresh codex git dependencies and `Cargo.lock` after ACP protocol sync (see `docs/features/2026-02-09-codex-acp-protocol-sync.md`).
 - [ ] Verify ACP debug layout, interrupt gating, permission debug events, and tool output logging (see `docs/features/2026-02-09-acp-debug-layout-fixes.md`).
 - [ ] Verify ACP debug raw events auto-scrolls in the Raw tab (see `docs/features/2026-02-10-acp-raw-scroll.md`).
