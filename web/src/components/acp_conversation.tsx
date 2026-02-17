@@ -42,6 +42,13 @@ const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
 const TOOL_PAYLOAD_INITIAL_ITEMS = 24;
 const TOOL_PAYLOAD_ITEM_CHUNK = 48;
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
+const FAILED_TOOL_STATUSES = new Set([
+  "failed",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "stopped",
+]);
 
 const markdownHtmlCache = new Map<string, string>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
@@ -897,13 +904,7 @@ function deriveToolGroupStatusLabel(
       continue;
     }
     const normalized = normalizeToolCallStatus(call.status);
-    if (
-      normalized === "failed" ||
-      normalized === "cancelled" ||
-      normalized === "canceled" ||
-      normalized === "interrupted" ||
-      normalized === "stopped"
-    ) {
+    if (FAILED_TOOL_STATUSES.has(normalized)) {
       failedCount += 1;
     }
   }
