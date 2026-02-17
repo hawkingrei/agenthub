@@ -92,6 +92,14 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             <div className="toolbar">
               <h2>Agents</h2>
               <div className="toolbar-actions">
+                <button
+                  className="icon-button small agents-collapse-button"
+                  onClick={onCollapse}
+                  title="Hide agents"
+                  aria-label="Hide agents"
+                >
+                  <i className="bi bi-chevron-left" aria-hidden="true" />
+                </button>
                 <button onClick={onCreateAgent}>Create Agent</button>
               </div>
             </div>

@@ -79,6 +79,7 @@ describe("AgentsPanel", () => {
       <AgentsPanel {...baseProps} agentsCollapsed={false} />
     );
     expect(html).toContain("Agents</h2>");
+    expect(html).toContain('aria-label="Hide agents"');
     expect(html).toContain("Create Agent");
     expect(html).toContain("Alpha");
     expect(html).toContain("Beta");

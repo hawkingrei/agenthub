@@ -2248,6 +2248,10 @@ select:not([class*="mantine-"]):focus-visible {
   align-items: center;
 }
 
+.agents-collapse-button {
+  display: none;
+}
+
 @media (max-width: 1024px) {
   .app {
     padding: calc(2px + env(safe-area-inset-top, 0px)) 6px
@@ -2272,6 +2276,10 @@ select:not([class*="mantine-"]):focus-visible {
 
   .workspace-right {
     order: 1;
+  }
+
+  .agents-collapse-button {
+    display: inline-flex;
   }
 }
 
