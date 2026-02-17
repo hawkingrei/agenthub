@@ -94,6 +94,14 @@ impl TeamManager {
         &self,
         request: SendActorMessageInput<'_>,
     ) -> anyhow::Result<TeamActorMessageRecord> {
+        let (message, _created) = self.send_actor_message_with_created(request).await?;
+        Ok(message)
+    }
+
+    pub async fn send_actor_message_with_created(
+        &self,
+        request: SendActorMessageInput<'_>,
+    ) -> anyhow::Result<(TeamActorMessageRecord, bool)> {
         let SendActorMessageInput {
             run_id,
             from_actor_id,
@@ -106,8 +114,8 @@ impl TeamManager {
         } = request;
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let message = mailbox
-            .send(SendActorMessageCommand {
+        let result = mailbox
+            .send_with_result(SendActorMessageCommand {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
                 to_actor_id: to_actor_id.to_string(),
@@ -120,7 +128,7 @@ impl TeamManager {
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
-        Ok(message)
+        Ok((result.message, result.created))
     }
 
     pub async fn list_actor_inbox(

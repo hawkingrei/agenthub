@@ -910,6 +910,76 @@ impl TeamManager {
         parse_team_run_row(&row)
     }
 
+    pub async fn update_team_spec(
+        &self,
+        team_id: &str,
+        spec: Value,
+    ) -> anyhow::Result<TeamDefinitionRecord> {
+        let now = Utc::now().timestamp();
+        let spec_json = serde_json::to_string(&spec)?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_definitions
+            SET spec_json = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(spec_json)
+        .bind(now)
+        .bind(team_id)
+        .execute(&self.db)
+        .await?;
+        if update.rows_affected() == 0 {
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+        self.get_team(team_id).await
+    }
+
+    pub async fn update_run_input(
+        &self,
+        run_id: &str,
+        input: Value,
+    ) -> anyhow::Result<TeamRunRecord> {
+        let input_json = serde_json::to_string(&input)?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_runs
+            SET input_json = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(input_json)
+        .bind(run_id)
+        .execute(&self.db)
+        .await?;
+        if update.rows_affected() == 0 {
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+        self.get_run(run_id).await
+    }
+
+    pub async fn append_run_event(
+        &self,
+        run_id: &str,
+        event_type: &str,
+        payload: Value,
+    ) -> anyhow::Result<()> {
+        let ts = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+            VALUES (?1, NULL, ?2, ?3, ?4)
+            "#,
+        )
+        .bind(run_id)
+        .bind(event_type)
+        .bind(ts)
+        .bind(payload.to_string())
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
     pub async fn cancel_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;

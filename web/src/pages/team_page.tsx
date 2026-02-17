@@ -29,6 +29,13 @@ type TeamRunBrowserState = {
   beforeCreatedAt?: number;
   hasMore: boolean;
 };
+type MailboxTemplateKey =
+  | "leader_task_assignment"
+  | "clarification_request"
+  | "clarification_response"
+  | "worker_done"
+  | "worker_blocked"
+  | "profile_patch_proposal";
 type StepAction =
   | "start"
   | "complete"
@@ -44,6 +51,17 @@ const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
   statusFilter: "all",
   hasMore: false,
 };
+const MAILBOX_TEMPLATE_OPTIONS: Array<{
+  value: MailboxTemplateKey;
+  label: string;
+}> = [
+  { value: "leader_task_assignment", label: "Leader Task Assignment" },
+  { value: "clarification_request", label: "Clarification Request" },
+  { value: "clarification_response", label: "Clarification Response" },
+  { value: "worker_done", label: "Worker Done Status" },
+  { value: "worker_blocked", label: "Worker Blocked Status" },
+  { value: "profile_patch_proposal", label: "Profile Patch Proposal" },
+];
 const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
   value: TeamRunStatusFilter;
   label: string;
@@ -70,7 +88,11 @@ const DEFAULT_TEAM_LEADER_PROMPT = [
   "2. Use actor mailbox to assign concrete tasks to workers.",
   "3. Pull inbox regularly and acknowledge consumed messages.",
   "4. Merge worker outputs, resolve conflicts, and produce final deliverable.",
-  "5. If blocked, send clear follow-up questions to workers.",
+  "5. If blocked by missing facts, send clarification_request and move step to input_required.",
+  "Structured payload contracts:",
+  "- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}",
+  "- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}",
+  "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}",
 ].join("\n");
 const DEFAULT_TEAM_WORKER_PROMPT = [
   "You are a Worker in an AgentHub team.",
@@ -81,6 +103,8 @@ const DEFAULT_TEAM_WORKER_PROMPT = [
   "3. Execute the task and summarize output with evidence.",
   "4. Send the result back to leader via actor mailbox.",
   "5. If blocked, send blocker details and a proposed next action.",
+  "Use worker_status payload contract:",
+  "{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}",
 ].join("\n");
 const DEFAULT_TEAM_LEADER_SKILLS = ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const DEFAULT_TEAM_WORKER_SKILLS = ["agenthub-actor-runtime", "team-worker-executor"];
@@ -346,6 +370,57 @@ function parseCsvListWithFallback(raw: string, fallback: string[]): string[] {
   return parsed.length > 0 ? parsed : [...fallback];
 }
 
+export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
+  switch (template) {
+    case "leader_task_assignment":
+      return {
+        type: "leader_task_assignment",
+        task: "Implement the requested change in a focused scope.",
+        acceptance: "All listed checks pass and artifacts are updated.",
+        deadline: "asap",
+      };
+    case "clarification_request":
+      return {
+        type: "clarification_request",
+        question: "Need one product decision before continuing.",
+        choices: ["option_a", "option_b"],
+        blocking_scope: "run",
+        context: {},
+      };
+    case "clarification_response":
+      return {
+        type: "clarification_response",
+        request_id: "fill_request_id",
+        answer: "option_a",
+        rationale: "Fits current constraints and priority.",
+      };
+    case "worker_done":
+      return {
+        type: "worker_status",
+        status: "done",
+        result: "Implemented scoped change and verified behavior.",
+        evidence: ["path/to/file:123", "test_name"],
+      };
+    case "worker_blocked":
+      return {
+        type: "worker_status",
+        status: "blocked",
+        result: "Blocked by missing requirement detail.",
+        evidence: ["blocking_input_missing"],
+        next_action: "Please provide target behavior for edge case X.",
+      };
+    case "profile_patch_proposal":
+      return {
+        type: "profile_patch_proposal",
+        target: "run",
+        prompt_append: "Add missing domain constraint and output contract.",
+        skills_add: ["team-leader-orchestrator"],
+      };
+    default:
+      return {};
+  }
+}
+
 function buildAgentLabel(agent: AgentRecord): string {
   const model = formatAgentModelLabel(agent.command, agent.args) ?? "Unknown";
   return `${agent.name} · ${model} · ${agent.id.slice(0, 8)}`;
@@ -461,6 +536,9 @@ export function TeamPage(props: TeamPageProps) {
   const [msgChannel, setMsgChannel] = useState("default");
   const [msgTransport, setMsgTransport] = useState<"local" | "remote">("local");
   const [msgRoute, setMsgRoute] = useState("");
+  const [msgTemplate, setMsgTemplate] = useState<MailboxTemplateKey>(
+    "leader_task_assignment"
+  );
   const [msgPayload, setMsgPayload] = useState("{}");
   const [msgIdempotencyKey, setMsgIdempotencyKey] = useState("");
 
@@ -1299,6 +1377,10 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
+  const onApplyMessageTemplate = () => {
+    setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
+  };
+
   const onSendMessage = async () => {
     if (!activeRunId) {
       setError("Select a run first");
@@ -2039,6 +2121,23 @@ export function TeamPage(props: TeamPageProps) {
                             value={msgRoute}
                             onChange={(event) => setMsgRoute(event.target.value)}
                           />
+                          <div className="form-row">
+                            <select
+                              value={msgTemplate}
+                              onChange={(event) =>
+                                setMsgTemplate(event.target.value as MailboxTemplateKey)
+                              }
+                            >
+                              {MAILBOX_TEMPLATE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button type="button" onClick={onApplyMessageTemplate}>
+                              Apply Template
+                            </button>
+                          </div>
                           <textarea
                             className="mono"
                             rows={4}

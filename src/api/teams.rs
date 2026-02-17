@@ -32,7 +32,11 @@ Workflow:\n\
 2. Use actor mailbox to assign concrete tasks to workers.\n\
 3. Pull inbox regularly and acknowledge consumed messages.\n\
 4. Merge worker outputs, resolve conflicts, and produce final deliverable.\n\
-5. If blocked, send clear follow-up questions to workers.";
+5. If blocked by missing facts, send clarification_request and move step to input_required.\n\
+Structured payload contracts:\n\
+- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}\n\
+- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}\n\
+- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}";
 const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team.\n\
 Your job is to execute assignments from the team leader and report results.\n\
 Workflow:\n\
@@ -40,7 +44,9 @@ Workflow:\n\
 2. Acknowledge messages after reading.\n\
 3. Execute the task and summarize output with evidence.\n\
 4. Send the result back to leader via actor mailbox.\n\
-5. If blocked, send blocker details and a proposed next action.";
+5. If blocked, send blocker details and a proposed next action.\n\
+Use worker_status payload contract:\n\
+{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
 const DEFAULT_TEAM_LEADER_SKILLS: [&str; 2] =
     ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const DEFAULT_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
@@ -389,6 +395,7 @@ async fn get_team_run_snapshot(
         .list_actor_messages_for_run(&run_id, message_limit)
         .await
         .map_err(map_team_internal_error)?;
+    let run_member_overrides = extract_run_member_profile_overrides(&run.input);
 
     let mut members = Vec::with_capacity(member_specs.len());
     for member in member_specs {
@@ -416,12 +423,20 @@ async fn get_team_run_snapshot(
         } else {
             member.role.as_deref().unwrap_or("worker")
         };
+        let mut prompt = member.prompt.clone();
+        let mut skills = member.skills.clone();
+        if let Some(override_item) = run_member_overrides.get(member.member_id.as_str()) {
+            if let Some(prompt_append) = override_item.prompt_append.as_deref() {
+                prompt = Some(merge_prompt_append(prompt.as_deref(), Some(prompt_append)));
+            }
+            let _added = merge_skills_unique(&mut skills, &override_item.skills_add);
+        }
         members.push(TeamMemberSnapshot {
             member_id: member.member_id.clone(),
             role: role.to_string(),
             model: member.model.clone(),
-            prompt: member.prompt.clone(),
-            skills: member.skills.clone(),
+            prompt,
+            skills,
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
             status,
             latest_step,
@@ -631,9 +646,10 @@ async fn send_team_run_message(
         &transport,
         payload.route.as_ref(),
     )?;
-    let message = state
+    let patch_proposal = parse_profile_patch_proposal(&payload.payload, &from_actor_id)?;
+    let (message, created) = state
         .teams
-        .send_actor_message(SendActorMessageInput {
+        .send_actor_message_with_created(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: &from_actor_id,
             to_actor_id: &to_actor_id,
@@ -645,6 +661,17 @@ async fn send_team_run_message(
         })
         .await
         .map_err(map_send_actor_message_error)?;
+    if created && let Some(proposal) = patch_proposal {
+        apply_profile_patch_proposal(
+            &state,
+            &run,
+            &member_ids,
+            &from_actor_id,
+            message.message_id,
+            &proposal,
+        )
+        .await?;
+    }
     Ok(Json(message))
 }
 
@@ -697,6 +724,440 @@ async fn ack_team_run_message(
         .await
         .map_err(|err| map_not_found_error(err, "message not found"))?;
     Ok(Json(message))
+}
+
+fn parse_profile_patch_proposal(
+    payload: &Value,
+    default_member_id: &str,
+) -> Result<Option<ProfilePatchProposal>, ApiError> {
+    let Some(payload_obj) = payload.as_object() else {
+        return Ok(None);
+    };
+    let Some(payload_type) = payload_obj.get("type").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    if payload_type != "profile_patch_proposal" {
+        return Ok(None);
+    }
+
+    let target = parse_profile_patch_target(payload_obj.get("target"))?;
+    let member_id = payload_obj
+        .get("member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default_member_id)
+        .to_string();
+    let prompt_append = payload_obj
+        .get("prompt_append")
+        .map(parse_optional_prompt_append)
+        .transpose()?
+        .flatten();
+    let skills_add = payload_obj
+        .get("skills_add")
+        .map(parse_profile_patch_skills_add)
+        .transpose()?
+        .unwrap_or_default();
+    if prompt_append.is_none() && skills_add.is_empty() {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal requires prompt_append and/or skills_add",
+        ));
+    }
+
+    Ok(Some(ProfilePatchProposal {
+        target,
+        member_id,
+        prompt_append,
+        skills_add,
+    }))
+}
+
+fn parse_profile_patch_target(value: Option<&Value>) -> Result<ProfilePatchTarget, ApiError> {
+    let raw = value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .ok_or_else(|| {
+            ApiError::bad_request("profile_patch_proposal.target must be 'run' or 'team'")
+        })?;
+    match raw {
+        "run" => Ok(ProfilePatchTarget::Run),
+        "team" => Ok(ProfilePatchTarget::Team),
+        _ => Err(ApiError::bad_request(
+            "profile_patch_proposal.target must be 'run' or 'team'",
+        )),
+    }
+}
+
+fn parse_optional_prompt_append(value: &Value) -> Result<Option<String>, ApiError> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let raw = value.as_str().ok_or_else(|| {
+        ApiError::bad_request("profile_patch_proposal.prompt_append must be a non-empty string")
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal.prompt_append must be a non-empty string",
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn parse_profile_patch_skills_add(value: &Value) -> Result<Vec<String>, ApiError> {
+    let items = value.as_array().ok_or_else(|| {
+        ApiError::bad_request("profile_patch_proposal.skills_add must be an array")
+    })?;
+    let mut out = Vec::with_capacity(items.len());
+    let mut seen = HashSet::with_capacity(items.len());
+    for item in items {
+        let skill = item
+            .as_str()
+            .map(str::trim)
+            .filter(|skill| !skill.is_empty())
+            .ok_or_else(|| {
+                ApiError::bad_request(
+                    "profile_patch_proposal.skills_add entries must be non-empty strings",
+                )
+            })?;
+        if !seen.insert(skill.to_string()) {
+            continue;
+        }
+        out.push(skill.to_string());
+    }
+    Ok(out)
+}
+
+async fn apply_profile_patch_proposal(
+    state: &AppState,
+    run: &TeamRunRecord,
+    member_ids: &HashSet<String>,
+    from_actor_id: &str,
+    message_id: i64,
+    proposal: &ProfilePatchProposal,
+) -> Result<(), ApiError> {
+    if !member_ids.contains(proposal.member_id.as_str()) {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal.member_id must reference spec.members[].member_id",
+        ));
+    }
+
+    match proposal.target {
+        ProfilePatchTarget::Team => {
+            let mut team = state
+                .teams
+                .get_team(&run.team_id)
+                .await
+                .map_err(|err| map_not_found_error(err, "team not found"))?;
+            let before =
+                extract_member_profile_override_from_spec(&team.spec, &proposal.member_id)?;
+            apply_profile_patch_to_team_spec(&mut team.spec, proposal)?;
+            validate_team_spec(&team.spec)?;
+            let after = extract_member_profile_override_from_spec(&team.spec, &proposal.member_id)?;
+            state
+                .teams
+                .update_team_spec(&team.id, team.spec)
+                .await
+                .map_err(map_team_internal_error)?;
+            state
+                .teams
+                .append_run_event(
+                    &run.id,
+                    "profile_patch_applied",
+                    serde_json::json!({
+                        "target": proposal.target.as_str(),
+                        "member_id": proposal.member_id,
+                        "applied_by": from_actor_id,
+                        "message_id": message_id,
+                        "prompt_append": proposal.prompt_append,
+                        "skills_add": proposal.skills_add,
+                        "before": {
+                            "prompt": before.prompt_append,
+                            "skills": before.skills_add,
+                        },
+                        "after": {
+                            "prompt": after.prompt_append,
+                            "skills": after.skills_add,
+                        },
+                    }),
+                )
+                .await
+                .map_err(map_team_internal_error)?;
+        }
+        ProfilePatchTarget::Run => {
+            let mut run_input = run.input.clone();
+            let before = extract_run_member_profile_overrides(&run_input)
+                .remove(&proposal.member_id)
+                .unwrap_or_default();
+            apply_profile_patch_to_run_input(&mut run_input, proposal)?;
+            let after = extract_run_member_profile_overrides(&run_input)
+                .remove(&proposal.member_id)
+                .unwrap_or_default();
+            state
+                .teams
+                .update_run_input(&run.id, run_input)
+                .await
+                .map_err(map_team_internal_error)?;
+            state
+                .teams
+                .append_run_event(
+                    &run.id,
+                    "profile_patch_applied",
+                    serde_json::json!({
+                        "target": proposal.target.as_str(),
+                        "member_id": proposal.member_id,
+                        "applied_by": from_actor_id,
+                        "message_id": message_id,
+                        "prompt_append": proposal.prompt_append,
+                        "skills_add": proposal.skills_add,
+                        "before": {
+                            "prompt": before.prompt_append,
+                            "skills": before.skills_add,
+                        },
+                        "after": {
+                            "prompt": after.prompt_append,
+                            "skills": after.skills_add,
+                        },
+                    }),
+                )
+                .await
+                .map_err(map_team_internal_error)?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_profile_patch_to_team_spec(
+    spec: &mut Value,
+    proposal: &ProfilePatchProposal,
+) -> Result<(), ApiError> {
+    let spec_obj = spec
+        .as_object_mut()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let members = spec_obj
+        .get_mut("members")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
+    let Some(member_obj) = members.iter_mut().find_map(|member| {
+        let member_obj = member.as_object_mut()?;
+        let member_id = member_obj.get("member_id").and_then(Value::as_str)?.trim();
+        if member_id == proposal.member_id {
+            Some(member_obj)
+        } else {
+            None
+        }
+    }) else {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal.member_id must reference spec.members[].member_id",
+        ));
+    };
+
+    if let Some(prompt_append) = proposal.prompt_append.as_deref() {
+        let merged = merge_prompt_append(
+            member_obj.get("prompt").and_then(Value::as_str),
+            Some(prompt_append),
+        );
+        member_obj.insert("prompt".to_string(), Value::String(merged));
+    }
+    if !proposal.skills_add.is_empty() {
+        let mut current = parse_skills_array(member_obj.get("skills"))?;
+        let _added = merge_skills_unique(&mut current, &proposal.skills_add);
+        member_obj.insert(
+            "skills".to_string(),
+            Value::Array(current.into_iter().map(Value::String).collect()),
+        );
+    }
+    Ok(())
+}
+
+fn apply_profile_patch_to_run_input(
+    run_input: &mut Value,
+    proposal: &ProfilePatchProposal,
+) -> Result<(), ApiError> {
+    let run_obj = run_input.as_object_mut().ok_or_else(|| {
+        ApiError::bad_request(
+            "run input must be a JSON object for profile_patch_proposal target='run'",
+        )
+    })?;
+    let profile_overrides_value = run_obj
+        .entry("profile_overrides".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let profile_overrides_obj = profile_overrides_value.as_object_mut().ok_or_else(|| {
+        ApiError::bad_request("run input profile_overrides must be a JSON object")
+    })?;
+    let members_value = profile_overrides_obj
+        .entry("members".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let members_obj = members_value.as_object_mut().ok_or_else(|| {
+        ApiError::bad_request("run input profile_overrides.members must be an object")
+    })?;
+    let member_value = members_obj
+        .entry(proposal.member_id.clone())
+        .or_insert_with(|| serde_json::json!({}));
+    let member_obj = member_value.as_object_mut().ok_or_else(|| {
+        ApiError::bad_request("run input profile_overrides.members entries must be objects")
+    })?;
+
+    if let Some(prompt_append) = proposal.prompt_append.as_deref() {
+        let merged = merge_prompt_append(
+            member_obj.get("prompt_append").and_then(Value::as_str),
+            Some(prompt_append),
+        );
+        member_obj.insert("prompt_append".to_string(), Value::String(merged));
+    }
+
+    if !proposal.skills_add.is_empty() {
+        let mut current = parse_skills_array(member_obj.get("skills_add"))?;
+        let _added = merge_skills_unique(&mut current, &proposal.skills_add);
+        member_obj.insert(
+            "skills_add".to_string(),
+            Value::Array(current.into_iter().map(Value::String).collect()),
+        );
+    }
+
+    Ok(())
+}
+
+fn merge_prompt_append(existing: Option<&str>, incoming: Option<&str>) -> String {
+    let existing = existing.unwrap_or("").trim();
+    let incoming = incoming.unwrap_or("").trim();
+    if existing.is_empty() {
+        return incoming.to_string();
+    }
+    if incoming.is_empty() {
+        return existing.to_string();
+    }
+    format!("{existing}\n\n{incoming}")
+}
+
+fn parse_skills_array(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = value.as_array() else {
+        return Err(ApiError::bad_request(
+            "profile patch skills field must be an array of strings",
+        ));
+    };
+    let mut out = Vec::with_capacity(items.len());
+    let mut seen = HashSet::with_capacity(items.len());
+    for item in items {
+        let Some(skill) = item.as_str().map(str::trim).filter(|item| !item.is_empty()) else {
+            return Err(ApiError::bad_request(
+                "profile patch skills field must contain non-empty strings",
+            ));
+        };
+        if !seen.insert(skill.to_string()) {
+            continue;
+        }
+        out.push(skill.to_string());
+    }
+    Ok(out)
+}
+
+fn merge_skills_unique(current: &mut Vec<String>, incoming: &[String]) -> Vec<String> {
+    let mut seen = current.iter().cloned().collect::<HashSet<_>>();
+    let mut added = Vec::new();
+    for skill in incoming {
+        if seen.insert(skill.to_string()) {
+            current.push(skill.to_string());
+            added.push(skill.to_string());
+        }
+    }
+    added
+}
+
+fn extract_member_profile_override_from_spec(
+    spec: &Value,
+    member_id: &str,
+) -> Result<MemberProfileOverride, ApiError> {
+    let spec_obj = spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let members = spec_obj
+        .get("members")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
+    let Some(member_obj) = members.iter().find_map(|member| {
+        let member_obj = member.as_object()?;
+        let id = member_obj.get("member_id").and_then(Value::as_str)?.trim();
+        if id == member_id {
+            Some(member_obj)
+        } else {
+            None
+        }
+    }) else {
+        return Ok(MemberProfileOverride::default());
+    };
+    Ok(MemberProfileOverride {
+        prompt_append: member_obj
+            .get("prompt")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        skills_add: parse_skills_array(member_obj.get("skills"))?,
+    })
+}
+
+fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, MemberProfileOverride> {
+    let Some(input_obj) = input.as_object() else {
+        return HashMap::new();
+    };
+    let Some(profile_overrides_obj) = input_obj
+        .get("profile_overrides")
+        .and_then(Value::as_object)
+    else {
+        return HashMap::new();
+    };
+    let Some(members_obj) = profile_overrides_obj
+        .get("members")
+        .and_then(Value::as_object)
+    else {
+        return HashMap::new();
+    };
+
+    let mut out = HashMap::with_capacity(members_obj.len());
+    for (member_id, member_value) in members_obj {
+        let Some(member_obj) = member_value.as_object() else {
+            continue;
+        };
+        let prompt_append = member_obj
+            .get("prompt_append")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let skills_add = member_obj
+            .get("skills_add")
+            .and_then(Value::as_array)
+            .map(|items| {
+                let mut out = Vec::with_capacity(items.len());
+                let mut seen = HashSet::with_capacity(items.len());
+                for item in items {
+                    if let Some(skill) =
+                        item.as_str().map(str::trim).filter(|item| !item.is_empty())
+                    {
+                        if seen.insert(skill.to_string()) {
+                            out.push(skill.to_string());
+                        }
+                    }
+                }
+                out
+            })
+            .unwrap_or_default();
+        if prompt_append.is_none() && skills_add.is_empty() {
+            continue;
+        }
+        out.insert(
+            member_id.clone(),
+            MemberProfileOverride {
+                prompt_append,
+                skills_add,
+            },
+        );
+    }
+    out
 }
 
 async fn ensure_run_exists(state: &AppState, run_id: &str) -> Result<(), ApiError> {
@@ -931,6 +1392,35 @@ struct TeamMemberSpec {
     model: Option<String>,
     prompt: Option<String>,
     skills: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ProfilePatchTarget {
+    Run,
+    Team,
+}
+
+impl ProfilePatchTarget {
+    fn as_str(self) -> &'static str {
+        match self {
+            ProfilePatchTarget::Run => "run",
+            ProfilePatchTarget::Team => "team",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ProfilePatchProposal {
+    target: ProfilePatchTarget,
+    member_id: String,
+    prompt_append: Option<String>,
+    skills_add: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MemberProfileOverride {
+    prompt_append: Option<String>,
+    skills_add: Vec<String>,
 }
 
 fn normalize_team_spec(spec: &mut Value) -> Result<(), ApiError> {

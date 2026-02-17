@@ -142,10 +142,10 @@ impl<S> ActorMailbox<S>
 where
     S: ActorMailboxStore,
 {
-    pub async fn send(
+    pub async fn send_with_result(
         &self,
         cmd: SendActorMessageCommand,
-    ) -> Result<ActorMessageRecord, ActorMailboxError<S::Error>> {
+    ) -> Result<CreatePendingMessageResult, ActorMailboxError<S::Error>> {
         let result = self.store.create_pending_message(&cmd).await?;
         if result.created {
             let event_payload = serde_json::json!({
@@ -165,6 +165,14 @@ where
                 )
                 .await?;
         }
+        Ok(result)
+    }
+
+    pub async fn send(
+        &self,
+        cmd: SendActorMessageCommand,
+    ) -> Result<ActorMessageRecord, ActorMailboxError<S::Error>> {
+        let result = self.send_with_result(cmd).await?;
         Ok(result.message)
     }
 

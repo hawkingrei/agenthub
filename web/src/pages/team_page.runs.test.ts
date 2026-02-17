@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TeamRunEventRecord, TeamRunRecord } from "../api";
 import {
+  buildMailboxPayloadTemplate,
   mergeRunPages,
   mergeTeamRunList,
   resolveRunStatusFilter,
@@ -76,5 +77,41 @@ describe("team run list helpers", () => {
     const events = [1, 2, 3, 4, 5, 6, 7].map(buildRunEvent);
     const fullList = selectTeamPreviewEvents(events, "agent-worker-1");
     expect(fullList.map((event) => event.event_id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("builds mailbox templates for leader assignment and clarification", () => {
+    const assignment = buildMailboxPayloadTemplate("leader_task_assignment") as {
+      type: string;
+      task: string;
+    };
+    expect(assignment.type).toBe("leader_task_assignment");
+    expect(assignment.task.length).toBeGreaterThan(0);
+
+    const clarification = buildMailboxPayloadTemplate("clarification_request") as {
+      type: string;
+      choices: string[];
+      context: Record<string, unknown>;
+    };
+    expect(clarification.type).toBe("clarification_request");
+    expect(Array.isArray(clarification.choices)).toBe(true);
+    expect(clarification.context).toEqual({});
+  });
+
+  it("builds mailbox templates for worker status reports", () => {
+    const done = buildMailboxPayloadTemplate("worker_done") as {
+      type: string;
+      status: string;
+      evidence: string[];
+    };
+    expect(done.type).toBe("worker_status");
+    expect(done.status).toBe("done");
+    expect(done.evidence.length).toBeGreaterThan(0);
+
+    const blocked = buildMailboxPayloadTemplate("worker_blocked") as {
+      status: string;
+      next_action: string;
+    };
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.next_action.length).toBeGreaterThan(0);
   });
 });
