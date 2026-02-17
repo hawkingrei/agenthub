@@ -6,6 +6,7 @@ import {
   parseAnsiSegmentsCached,
   renderMarkdownCached,
   resetAcpConversationCaches,
+  shouldCollapseToolFoldWhenOutOfView,
 } from "./components/acp_conversation";
 
 describe("deriveToolCallOpenState", () => {
@@ -21,6 +22,21 @@ describe("deriveToolCallOpenState", () => {
   it("preserves manual toggle state for non-live tool calls", () => {
     expect(deriveToolCallOpenState(true, false, false)).toBe(true);
     expect(deriveToolCallOpenState(false, false, false)).toBe(false);
+  });
+});
+
+describe("shouldCollapseToolFoldWhenOutOfView", () => {
+  it("collapses when tool fold is outside visible conversation area", () => {
+    expect(shouldCollapseToolFoldWhenOutOfView(false, 0)).toBe(true);
+    expect(shouldCollapseToolFoldWhenOutOfView(false, null)).toBe(true);
+  });
+
+  it("keeps fold state when still intersecting", () => {
+    expect(shouldCollapseToolFoldWhenOutOfView(true, 0.01)).toBe(false);
+  });
+
+  it("does not collapse if observer reports non-zero ratio", () => {
+    expect(shouldCollapseToolFoldWhenOutOfView(false, 0.2)).toBe(false);
   });
 });
 

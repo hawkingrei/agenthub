@@ -41,6 +41,7 @@ const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
 const TOOL_PAYLOAD_INITIAL_ITEMS = 24;
 const TOOL_PAYLOAD_ITEM_CHUNK = 48;
+const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
 
 const markdownHtmlCache = new Map<string, string>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
@@ -203,9 +204,10 @@ const ConversationBubble = React.memo(
         <div className="acp-bubble agent_thinking">
           <details className="acp-thought-fold" open={msg.live}>
             <summary>{summary}</summary>
-            <div className="acp-text">
-              <pre>{msg.text}</pre>
-            </div>
+            <div
+              className="acp-text"
+              dangerouslySetInnerHTML={{ __html: renderMarkdownCached(msg.text) }}
+            />
           </details>
         </div>
       );
@@ -286,6 +288,10 @@ const ToolCallBubble = React.memo(
   }: ToolCallBubbleProps) {
     const isLive = isToolCallEffectivelyLive(msg.status, runStatus);
     const [open, setOpen] = React.useState(isLive);
+    const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
+    const handleAutoCollapse = React.useCallback(() => {
+      setOpen((prev) => (prev ? false : prev));
+    }, []);
     const wasLiveRef = React.useRef(isLive);
     const callHint = deriveToolCallHint(msg.title, msg.raw_input, msg.content);
     const inputPayload = React.useMemo(
@@ -310,6 +316,11 @@ const ToolCallBubble = React.memo(
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
     }, [isLive]);
+    useAutoCollapseToolFoldWhenOutOfView({
+      detailsRef,
+      enabled: !grouped,
+      onCollapse: handleAutoCollapse,
+    });
 
     const title = grouped
       ? `${indexLabel ? `${indexLabel} ` : ""}${msg.title || "Tool Call"}`
@@ -319,6 +330,7 @@ const ToolCallBubble = React.memo(
       <div className={`acp-bubble tool_call${grouped ? " acp-tool-group-entry" : " tool-call-enter"}`}>
         <details
           className={`acp-tool-fold${grouped ? " acp-tool-fold-nested" : ""}`}
+          ref={detailsRef}
           open={open}
           onToggle={(event) => {
             setOpen(event.currentTarget.open);
@@ -404,6 +416,10 @@ const ToolCallGroupBubble = React.memo(
       [msg.calls, runStatus]
     );
     const [open, setOpen] = React.useState(isLive);
+    const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
+    const handleAutoCollapse = React.useCallback(() => {
+      setOpen((prev) => (prev ? false : prev));
+    }, []);
     const wasLiveRef = React.useRef(isLive);
     const titlePreview = React.useMemo(() => summarizeToolGroupTitles(msg.calls), [msg.calls]);
     const statusLabel = React.useMemo(
@@ -415,11 +431,17 @@ const ToolCallGroupBubble = React.memo(
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
     }, [isLive]);
+    useAutoCollapseToolFoldWhenOutOfView({
+      detailsRef,
+      enabled: true,
+      onCollapse: handleAutoCollapse,
+    });
 
     return (
       <div className="acp-bubble tool_call tool_call_group tool-call-enter">
         <details
           className="acp-tool-group-fold"
+          ref={detailsRef}
           open={open}
           onToggle={(event) => {
             setOpen(event.currentTarget.open);
@@ -469,6 +491,58 @@ export function deriveToolCallOpenState(
   if (isLive) return true;
   if (wasLive) return false;
   return prevOpen;
+}
+
+export function shouldCollapseToolFoldWhenOutOfView(
+  isIntersecting: boolean,
+  intersectionRatio?: number | null
+): boolean {
+  if (isIntersecting) return false;
+  if (intersectionRatio != null && Number.isFinite(intersectionRatio)) {
+    return intersectionRatio <= TOOL_VISIBILITY_COLLAPSE_THRESHOLD;
+  }
+  return true;
+}
+
+function useAutoCollapseToolFoldWhenOutOfView({
+  detailsRef,
+  enabled,
+  onCollapse,
+}: {
+  detailsRef: React.RefObject<HTMLDetailsElement>;
+  enabled: boolean;
+  onCollapse: () => void;
+}): void {
+  React.useEffect(() => {
+    if (!enabled) return;
+    if (typeof window === "undefined") return;
+    if (typeof window.IntersectionObserver !== "function") return;
+    const node = detailsRef.current;
+    if (!node) return;
+    const root = node.closest(".acp-conversation");
+    if (!(root instanceof HTMLElement)) return;
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target !== node) continue;
+          if (
+            shouldCollapseToolFoldWhenOutOfView(
+              entry.isIntersecting,
+              entry.intersectionRatio
+            )
+          ) {
+            onCollapse();
+          }
+        }
+      },
+      {
+        root,
+        threshold: [0, 0.05],
+      }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [detailsRef, enabled, onCollapse]);
 }
 
 export function isToolCallEffectivelyLive(

@@ -369,6 +369,20 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("Plan:");
   });
 
+  it("renders thinking bubble content with markdown formatting", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_thinking",
+        text: "**inspect** `query`",
+        live: true,
+        event_id: 20,
+      },
+    ]);
+
+    expect(html).toContain("<strong>inspect</strong>");
+    expect(html).toContain("<code>query</code>");
+  });
+
   it("renders plan entries as a structured plan card", () => {
     const html = renderConversation([
       {
