@@ -868,11 +868,16 @@ async fn apply_profile_patch_proposal(
             apply_profile_patch_to_team_spec(&mut team.spec, proposal)?;
             validate_team_spec(&team.spec)?;
             let after = extract_member_profile_override_from_spec(&team.spec, &proposal.member_id)?;
-            state
+            let update = state
                 .teams
-                .update_team_spec(&team.id, team.spec)
+                .update_team_spec_if_unchanged(&team.id, team.updated_at, team.spec)
                 .await
                 .map_err(map_team_internal_error)?;
+            if update.is_none() {
+                return Err(ApiError::conflict(
+                    "team profile changed concurrently; retry this profile patch",
+                ));
+            }
             state
                 .teams
                 .append_run_event(
@@ -900,11 +905,13 @@ async fn apply_profile_patch_proposal(
         }
         ProfilePatchTarget::Run => {
             let mut run_input = run.input.clone();
-            let before = extract_run_member_profile_overrides(&run_input)
+            let mut before_overrides = extract_run_member_profile_overrides(&run_input);
+            let before = before_overrides
                 .remove(&proposal.member_id)
                 .unwrap_or_default();
             apply_profile_patch_to_run_input(&mut run_input, proposal)?;
-            let after = extract_run_member_profile_overrides(&run_input)
+            let mut after_overrides = extract_run_member_profile_overrides(&run_input);
+            let after = after_overrides
                 .remove(&proposal.member_id)
                 .unwrap_or_default();
             state

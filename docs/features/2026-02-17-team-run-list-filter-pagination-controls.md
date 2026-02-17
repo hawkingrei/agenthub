@@ -50,4 +50,3 @@ cargo test --test web_assets styles_keep_acp_conversation_scoped
 
 - Evaluate adding server-driven cursor pagination in API contracts for very
   large run volumes.
-- Consider preserving per-team filter/offset state when switching between teams.

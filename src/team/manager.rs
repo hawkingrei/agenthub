@@ -974,29 +974,44 @@ impl TeamManager {
         parse_team_run_row(&row)
     }
 
-    pub async fn update_team_spec(
+    pub async fn update_team_spec_if_unchanged(
         &self,
         team_id: &str,
+        expected_updated_at: i64,
         spec: Value,
-    ) -> anyhow::Result<TeamDefinitionRecord> {
+    ) -> anyhow::Result<Option<TeamDefinitionRecord>> {
         let now = Utc::now().timestamp();
         let spec_json = serde_json::to_string(&spec)?;
         let update = sqlx::query(
             r#"
             UPDATE team_definitions
             SET spec_json = ?1, updated_at = ?2
-            WHERE id = ?3
+            WHERE id = ?3 AND updated_at = ?4
             "#,
         )
         .bind(spec_json)
         .bind(now)
         .bind(team_id)
+        .bind(expected_updated_at)
         .execute(&self.db)
         .await?;
         if update.rows_affected() == 0 {
-            return Err(sqlx::Error::RowNotFound.into());
+            let exists: Option<i64> = sqlx::query_scalar(
+                r#"
+                SELECT 1
+                FROM team_definitions
+                WHERE id = ?1
+                "#,
+            )
+            .bind(team_id)
+            .fetch_optional(&self.db)
+            .await?;
+            if exists.is_none() {
+                return Err(sqlx::Error::RowNotFound.into());
+            }
+            return Ok(None);
         }
-        self.get_team(team_id).await
+        self.get_team(team_id).await.map(Some)
     }
 
     pub async fn update_run_input(

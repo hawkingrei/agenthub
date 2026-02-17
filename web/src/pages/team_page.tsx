@@ -577,16 +577,25 @@ export function TeamPage(props: TeamPageProps) {
   const runStatusFilter = selectedTeamRunBrowserState.statusFilter;
   const runsHasMore = selectedTeamRunBrowserState.hasMore;
   const runsBeforeCreatedAt = selectedTeamRunBrowserState.beforeCreatedAt;
+  const totalLoadedRunsForTeam = useMemo(() => {
+    if (!selectedTeamId) return 0;
+    return runs.filter((run) => run.team_id === selectedTeamId).length;
+  }, [runs, selectedTeamId]);
 
   const visibleRuns = useMemo(() => {
     if (!selectedTeamId) return [];
     return runs.filter((run) => {
       if (run.team_id !== selectedTeamId) return false;
-      if (activeRun && run.id === activeRun.id) return true;
       if (runStatusFilter === "all") return true;
       return run.status === runStatusFilter;
     });
-  }, [activeRun, runStatusFilter, runs, selectedTeamId]);
+  }, [runStatusFilter, runs, selectedTeamId]);
+  const isActiveRunHiddenByFilter = useMemo(() => {
+    if (!activeRun || !selectedTeamId) return false;
+    if (activeRun.team_id !== selectedTeamId) return false;
+    if (runStatusFilter === "all") return false;
+    return activeRun.status !== runStatusFilter;
+  }, [activeRun, runStatusFilter, selectedTeamId]);
 
   const builtTeamSpec = useMemo(
     () =>
@@ -1737,6 +1746,11 @@ export function TeamPage(props: TeamPageProps) {
                   {visibleRuns.length === 0 && (
                     <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
                   )}
+                  {isActiveRunHiddenByFilter && activeRun && (
+                    <p className="muted">
+                      Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
+                    </p>
+                  )}
                   {visibleRuns.map((run) => (
                     <button
                       key={run.id}
@@ -1749,7 +1763,8 @@ export function TeamPage(props: TeamPageProps) {
                   ))}
                   <div className="teams-run-list-foot">
                     <span className="mono">
-                      loaded={visibleRuns.length} limit={TEAM_RUN_PAGE_LIMIT}
+                      showing={visibleRuns.length} loaded={totalLoadedRunsForTeam}
+                      {" "}limit={TEAM_RUN_PAGE_LIMIT}
                     </span>
                     <button
                       onClick={onLoadMoreRuns}
