@@ -54,6 +54,7 @@ type UseAcpConversationResult = {
   focusedConversationToolCallId: string | null;
   showConversationJump: boolean;
   showConversationBadge: boolean;
+  showConversationTopReachedHint: boolean;
   jumpToConversationBottom: () => void;
   jumpToConversationToolCall: (toolCallId: string) => boolean;
   handleConversationScroll: () => void;
@@ -80,6 +81,7 @@ const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
 const USER_SCROLL_UP_EPSILON_PX = 24;
+const LOAD_OLDER_TRIGGER_TOP_PX = 80;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -99,6 +101,21 @@ export function buildConversationTailKey(conversationMessages: ConversationItem[
     const rawInLen = estimateTailPayloadSize(tailCall?.raw_input);
     const rawOutLen = estimateTailPayloadSize(tailCall?.raw_output);
     return `${base}:count:${last.calls.length}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
+  }
+  if (last.kind === "explore_group") {
+    const calls = last.items.flatMap((item) =>
+      item.kind === "tool_call"
+        ? [item]
+        : item.kind === "tool_call_group"
+          ? item.calls
+          : []
+    );
+    const tailCall = calls[calls.length - 1];
+    const contentLen = tailCall?.content?.length ?? 0;
+    const terminalLen = tailCall?.terminal_output?.length ?? 0;
+    const rawInLen = estimateTailPayloadSize(tailCall?.raw_input);
+    const rawOutLen = estimateTailPayloadSize(tailCall?.raw_output);
+    return `${base}:count:${calls.length}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
   }
   return `${base}:${last.text?.length ?? 0}`;
 }
@@ -154,6 +171,23 @@ export function shouldLoadOlderFromMeta(
     return false;
   }
   return true;
+}
+
+export function hasReachedConversationTop(meta?: EventMeta | null): boolean {
+  if (!meta) return false;
+  if (!meta.loaded || meta.loading) return false;
+  return !meta.hasMore;
+}
+
+export function shouldShowConversationTopReachedHint(
+  scrollTop: number,
+  canLoadOlder: boolean,
+  meta?: EventMeta | null,
+  triggerTopPx: number = LOAD_OLDER_TRIGGER_TOP_PX
+): boolean {
+  if (scrollTop >= triggerTopPx) return false;
+  if (canLoadOlder) return false;
+  return hasReachedConversationTop(meta);
 }
 
 export function shouldUseConversationVirtualization(
@@ -255,6 +289,20 @@ export function findConversationToolCallIndex(
     }
     if (item.kind === "tool_call_group") {
       if (item.calls.some((call) => call.id === toolCallId)) return idx;
+      continue;
+    }
+    if (item.kind === "explore_group") {
+      if (
+        item.items.some((nested) =>
+          nested.kind === "tool_call"
+            ? nested.id === toolCallId
+            : nested.kind === "tool_call_group"
+              ? nested.calls.some((call) => call.id === toolCallId)
+              : false
+        )
+      ) {
+        return idx;
+      }
     }
   }
   return -1;
@@ -369,6 +417,7 @@ export function useAcpConversation({
     ConversationItem[]
   >([]);
   const [conversationPendingCount, setConversationPendingCount] = useState(0);
+  const [showConversationTopReachedHint, setShowConversationTopReachedHint] = useState(false);
   const [focusedConversationToolCallId, setFocusedConversationToolCallId] = useState<
     string | null
   >(null);
@@ -429,6 +478,11 @@ export function useAcpConversation({
 
   const shouldLoadOlder = useCallback(() => {
     return shouldLoadOlderFromMeta(activeAgent, activeSessionId, eventMeta);
+  }, [activeAgent, activeSessionId, eventMeta]);
+  const conversationMeta = useMemo<EventMeta | null>(() => {
+    if (!activeAgent) return null;
+    const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
+    return eventMeta[key] ?? null;
   }, [activeAgent, activeSessionId, eventMeta]);
 
   const syncConversationViewport = useCallback(() => {
@@ -620,7 +674,16 @@ export function useAcpConversation({
       }
       setConversationStickToBottom(stick);
     }
-    if (el.scrollTop < 80 && shouldLoadOlder()) {
+    const canLoadOlder = shouldLoadOlder();
+    const nextTopReachedHint = shouldShowConversationTopReachedHint(
+      el.scrollTop,
+      canLoadOlder,
+      conversationMeta
+    );
+    setShowConversationTopReachedHint((prev) =>
+      prev === nextTopReachedHint ? prev : nextTopReachedHint
+    );
+    if (el.scrollTop < LOAD_OLDER_TRIGGER_TOP_PX && canLoadOlder) {
       prepareForLoadOlder();
       onLoadOlder();
     }
@@ -630,6 +693,7 @@ export function useAcpConversation({
     onLoadOlder,
     syncConversationViewport,
     shouldLoadOlder,
+    conversationMeta,
   ]);
 
   const handleConversationScroll = useCallback(() => {
@@ -736,12 +800,29 @@ export function useAcpConversation({
     setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
+    setShowConversationTopReachedHint(false);
     setFocusedConversationToolCallId(null);
     setConversationViewport((prev) => ({
       top: 0,
       height: prev.height,
     }));
   }, [activeAgent, activeSessionId]);
+
+  useEffect(() => {
+    if (acpTab !== "conversation") {
+      setShowConversationTopReachedHint(false);
+      return;
+    }
+    const el = acpConversationRef.current;
+    if (!el) return;
+    const canLoadOlder = shouldLoadOlder();
+    const next = shouldShowConversationTopReachedHint(
+      el.scrollTop,
+      canLoadOlder,
+      conversationMeta
+    );
+    setShowConversationTopReachedHint((prev) => (prev === next ? prev : next));
+  }, [acpTab, conversationMeta, shouldLoadOlder]);
 
   useEffect(() => {
     if (acpTab !== "conversation") return;
@@ -906,6 +987,7 @@ export function useAcpConversation({
     focusedConversationToolCallId,
     showConversationJump,
     showConversationBadge,
+    showConversationTopReachedHint,
     jumpToConversationBottom,
     jumpToConversationToolCall,
     handleConversationScroll,

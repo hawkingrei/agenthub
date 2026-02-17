@@ -155,6 +155,28 @@ describe("buildConversationMessages", () => {
     expect(items[2].kind).toBe("agent_message");
   });
 
+  it("groups explore thinking with following tool calls into explore group", () => {
+    const messages: AcpMessage[] = [
+      msg("user_message", "u1", "s1", 1),
+      msg("agent_thought", "explore codebase structure", "s1", 2),
+      msg("agent_message", "m1", "s1", 5),
+    ];
+    const calls = [
+      toolCall("c1", "Read", "s1", 3),
+      toolCall("c2", "Search", "s1", 4),
+    ];
+    const items = buildConversationMessages(messages, calls, null, "s1");
+    expect(items).toHaveLength(3);
+    expect(items[0].kind).toBe("user_message");
+    expect(items[1].kind).toBe("explore_group");
+    if (items[1].kind === "explore_group") {
+      expect(items[1].items).toHaveLength(2);
+      expect(items[1].items[0].kind).toBe("agent_thinking");
+      expect(items[1].items[1].kind).toBe("tool_call_group");
+    }
+    expect(items[2].kind).toBe("agent_message");
+  });
+
   it("filters tool calls by session id", () => {
     const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const calls = [

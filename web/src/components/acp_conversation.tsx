@@ -1,9 +1,11 @@
 import React from "react";
 import {
   ConversationItem,
+  ExploreGroupConversationItem,
   ToolCallConversationItem,
   ToolCallGroupConversationItem,
   formatConversationPreview,
+  isExploreThinkingText,
   isToolCallLive,
 } from "../conversation";
 import { renderMarkdown } from "../markdown";
@@ -20,6 +22,7 @@ type AcpConversationProps = {
   stickToBottom: boolean;
   pendingCount: number;
   avgHeight: number;
+  topHint?: string | null;
   focusedToolCallId?: string | null;
   onScroll: () => void;
   containerRef: React.RefObject<HTMLDivElement>;
@@ -35,6 +38,18 @@ const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
   "processid",
   "source",
 ]);
+const TOOL_PAYLOAD_OUTPUT_PRIORITY_NORMALIZED = [
+  "aggregatedoutput",
+  "formattedoutput",
+  "stdout",
+] as const;
+const TOOL_PAYLOAD_OUTPUT_PRIORITY_KEY_NORMALIZED = new Set<string>(
+  TOOL_PAYLOAD_OUTPUT_PRIORITY_NORMALIZED
+);
+const TOOL_PAYLOAD_HIDE_EMPTY_STREAM_KEY_NORMALIZED = new Set<string>([
+  "stdout",
+  "stderr",
+]);
 const TOOL_TEXT_INITIAL_LINES = 120;
 const TOOL_TEXT_LINE_CHUNK = 220;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
@@ -49,6 +64,7 @@ const FAILED_TOOL_STATUSES = new Set([
   "interrupted",
   "stopped",
 ]);
+const SKILL_BLOCK_PATTERN = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
 
 const markdownHtmlCache = new Map<string, string>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
@@ -97,12 +113,36 @@ export function renderMarkdownCached(text: string): string {
     return cached;
   }
   markdownCacheMissCount += 1;
+  const normalized = normalizeSkillBlocksForMarkdown(text);
   return cacheWithLruEviction(
     markdownHtmlCache,
     text,
-    renderMarkdown(text),
+    renderMarkdown(normalized),
     MARKDOWN_CACHE_LIMIT
   );
+}
+
+function normalizeSkillBlocksForMarkdown(text: string): string {
+  return text.replace(SKILL_BLOCK_PATTERN, (block) => {
+    const name = extractSkillField(block, "name");
+    const path = extractSkillField(block, "path");
+    if (!name && !path) return block;
+    const lines = ["**Skill**"];
+    if (name) lines.push(`- Name: \`${escapeInlineCode(name)}\``);
+    if (path) lines.push(`- Path: \`${escapeInlineCode(path)}\``);
+    return `\n${lines.join("\n")}\n`;
+  });
+}
+
+function extractSkillField(block: string, tag: "name" | "path"): string {
+  const pattern = new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*<\\/${tag}>`, "i");
+  const match = block.match(pattern);
+  if (!match) return "";
+  return match[1].trim();
+}
+
+function escapeInlineCode(value: string): string {
+  return value.replace(/`/g, "\\`");
 }
 
 export function AcpConversation({
@@ -117,6 +157,7 @@ export function AcpConversation({
   stickToBottom,
   pendingCount,
   avgHeight,
+  topHint,
   focusedToolCallId,
   onScroll,
   containerRef,
@@ -125,6 +166,7 @@ export function AcpConversation({
   return (
     <div className="acp-conversation" ref={containerRef} onScroll={onScroll}>
       <div className="acp-conversation-inner">
+        {topHint ? <div className="acp-conversation-top-hint">{topHint}</div> : null}
         {virtualTopSpacer > 0 && (
           <div
             className="acp-conversation-spacer virtual-top"
@@ -201,27 +243,24 @@ const ConversationBubble = React.memo(
 
     if (msg.kind === "agent_thinking") {
       const thinkingLabel = deriveThinkingLabel(msg.text);
-      const preview = autoCollapse ? formatConversationPreview(msg.text, 80) : "";
-      const summary = msg.live
-        ? `${thinkingLabel} (live)`
-        : autoCollapse
-          ? `${thinkingLabel}: ${preview}`
-          : `${thinkingLabel} (collapsed)`;
+      const label = msg.live ? `${thinkingLabel} (live)` : thinkingLabel;
       return (
         <div className="acp-bubble agent_thinking">
-          <details className="acp-thought-fold" open={msg.live}>
-            <summary>{summary}</summary>
-            <div
-              className="acp-text"
-              dangerouslySetInnerHTML={{ __html: renderMarkdownCached(msg.text) }}
-            />
-          </details>
+          <div className="acp-thinking-title">{label}</div>
+          <div
+            className="acp-text"
+            dangerouslySetInnerHTML={{ __html: renderMarkdownCached(msg.text) }}
+          />
         </div>
       );
     }
 
     if (msg.kind === "agent_plan") {
       return <PlanBubble msg={msg} autoCollapse={autoCollapse} />;
+    }
+
+    if (msg.kind === "explore_group") {
+      return <ExploreGroupBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
     }
 
     if (msg.kind === "tool_call") {
@@ -250,7 +289,11 @@ function areConversationBubblePropsEqual(
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
   if (prev.ansi !== next.ansi) return false;
-  if (prev.msg.kind === "tool_call" || prev.msg.kind === "tool_call_group") {
+  if (
+    prev.msg.kind === "tool_call" ||
+    prev.msg.kind === "tool_call_group" ||
+    prev.msg.kind === "explore_group"
+  ) {
     return prev.runStatus === next.runStatus;
   }
   return true;
@@ -318,6 +361,7 @@ const ToolCallBubble = React.memo(
       [outputPayload]
     );
     const statusLabel = formatToolCallStatus(msg.status);
+    const statusMark = getToolCallStatusMark(msg.status);
 
     React.useEffect(() => {
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
@@ -345,6 +389,14 @@ const ToolCallBubble = React.memo(
         >
           <summary>
             <span className="acp-tool-title">
+              {statusMark && (
+                <span
+                  className={`acp-tool-status-mark ${statusMark.tone}`}
+                  aria-hidden="true"
+                >
+                  {statusMark.icon}
+                </span>
+              )}
               {title}
               {callHint ? ` · ${callHint}` : ""}
             </span>
@@ -370,6 +422,7 @@ const ToolCallBubble = React.memo(
               label="Input"
               preview={inputPreview}
               defaultOpen={false}
+              parentOpen={open}
               lazyRender={true}
             >
               <ToolPayloadView payload={inputPayload} />
@@ -380,6 +433,7 @@ const ToolCallBubble = React.memo(
               label="Output"
               preview={outputPreview}
               defaultOpen={!isLive}
+              parentOpen={open}
               lazyRender={true}
             >
               <ToolPayloadView payload={outputPayload} />
@@ -490,6 +544,159 @@ const ToolCallGroupBubble = React.memo(
     prev.runStatus === next.runStatus
 );
 
+type ExploreGroupBubbleProps = {
+  msg: ExploreGroupConversationItem;
+  ansi: (input: string) => string;
+  runStatus?: string | null;
+};
+
+const ExploreGroupBubble = React.memo(
+  function ExploreGroupBubble({ msg, ansi, runStatus }: ExploreGroupBubbleProps) {
+    const calls = React.useMemo(
+      () => flattenExploreGroupToolCalls(msg.items),
+      [msg.items]
+    );
+    const isLive = React.useMemo(
+      () => calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
+      [calls, runStatus]
+    );
+    const [open, setOpen] = React.useState(isLive);
+    const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
+    const handleAutoCollapse = React.useCallback(() => {
+      setOpen((prev) => (prev ? false : prev));
+    }, []);
+    const wasLiveRef = React.useRef(isLive);
+    const titlePreview = React.useMemo(
+      () => summarizeExploreGroupPreview(msg.items),
+      [msg.items]
+    );
+    const statusLabel = React.useMemo(
+      () => deriveToolGroupStatusLabel(calls, runStatus),
+      [calls, runStatus]
+    );
+
+    React.useEffect(() => {
+      setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
+      wasLiveRef.current = isLive;
+    }, [isLive]);
+    useAutoCollapseToolFoldWhenOutOfView({
+      detailsRef,
+      enabled: true,
+      onCollapse: handleAutoCollapse,
+    });
+
+    let thinkingIndex = 0;
+    let toolIndex = 0;
+    return (
+      <div className="acp-bubble tool_call tool_call_group explore_group tool-call-enter">
+        <details
+          className="acp-tool-group-fold acp-explore-group-fold"
+          ref={detailsRef}
+          open={open}
+          onToggle={(event) => {
+            setOpen(event.currentTarget.open);
+          }}
+        >
+          <summary>
+            <span className="acp-tool-title acp-tool-group-title">
+              Explore ({calls.length} tools)
+              {titlePreview ? ` · ${titlePreview}` : ""}
+            </span>
+            {statusLabel && (
+              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            )}
+          </summary>
+          <div className="acp-tool-group-list acp-explore-group-list">
+            {msg.items.map((item, idx) => {
+              if (item.kind === "agent_thinking") {
+                thinkingIndex += 1;
+                return (
+                  <ExploreThinkingEntry
+                    key={`thinking:${item.event_id ?? item.seq ?? idx}`}
+                    item={item}
+                    index={thinkingIndex}
+                  />
+                );
+              }
+              const groupedCalls = item.kind === "tool_call" ? [item] : item.calls;
+              return (
+                <div
+                  key={`tool:${item.event_id ?? item.seq ?? idx}`}
+                  className="acp-tool-group-item"
+                >
+                  {groupedCalls.map((call) => {
+                    toolIndex += 1;
+                    return (
+                      <div key={`${call.id}:${call.event_id ?? call.seq ?? toolIndex}`} data-tool-call-id={call.id}>
+                        <ToolCallBubble
+                          msg={call}
+                          ansi={ansi}
+                          runStatus={runStatus}
+                          grouped={true}
+                          indexLabel={`#${toolIndex}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.msg === next.msg &&
+    prev.ansi === next.ansi &&
+    prev.runStatus === next.runStatus
+);
+
+function ExploreThinkingEntry({
+  item,
+  index,
+}: {
+  item: Extract<ConversationItem, { kind: "agent_thinking" }>;
+  index: number;
+}) {
+  const label = item.live ? `Explore #${index} (live)` : `Explore #${index}`;
+  return (
+    <div className="acp-tool-group-item acp-explore-thinking-item">
+      <div className="acp-bubble agent_thinking acp-tool-group-entry">
+        <div className="acp-thinking-title">{label}</div>
+        <div
+          className="acp-text"
+          dangerouslySetInnerHTML={{ __html: renderMarkdownCached(item.text) }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function flattenExploreGroupToolCalls(
+  items: ExploreGroupConversationItem["items"]
+): ToolCallConversationItem[] {
+  const calls: ToolCallConversationItem[] = [];
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      calls.push(item);
+      continue;
+    }
+    if (item.kind === "tool_call_group") {
+      calls.push(...item.calls);
+    }
+  }
+  return calls;
+}
+
+function summarizeExploreGroupPreview(
+  items: ExploreGroupConversationItem["items"]
+): string {
+  const firstThought = items.find((item) => item.kind === "agent_thinking");
+  if (!firstThought) return "";
+  return formatConversationPreview(unescapeLineBreaks(firstThought.text), 72);
+}
+
 export function deriveToolCallOpenState(
   prevOpen: boolean,
   wasLive: boolean,
@@ -575,13 +782,13 @@ export function isRunTerminalStatus(status?: string | null): boolean {
 }
 
 function deriveThinkingLabel(text: string): string {
+  if (isExploreThinkingText(text)) return "Explore";
   const firstLine = text
     .split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0)
     ?.toLowerCase();
   if (!firstLine) return "Thinking";
-  if (firstLine.startsWith("explore")) return "Explore";
   if (firstLine.startsWith("plan")) return "Plan";
   if (firstLine.startsWith("reflect")) return "Reflection";
   return "Thinking";
@@ -651,6 +858,7 @@ type FoldSectionProps = {
   label: string;
   preview: string;
   defaultOpen: boolean;
+  parentOpen?: boolean;
   lazyRender?: boolean;
   children: React.ReactNode;
 };
@@ -659,6 +867,7 @@ function FoldSection({
   label,
   preview,
   defaultOpen,
+  parentOpen = true,
   lazyRender = false,
   children,
 }: FoldSectionProps) {
@@ -667,6 +876,12 @@ function FoldSection({
   React.useEffect(() => {
     setOpen(defaultOpen);
   }, [defaultOpen]);
+
+  React.useEffect(() => {
+    if (!parentOpen) {
+      setOpen(false);
+    }
+  }, [parentOpen]);
 
   const shouldRenderBody = !lazyRender || open;
   return (
@@ -944,6 +1159,20 @@ function formatToolCallStatus(status?: string): string {
   }
 }
 
+function getToolCallStatusMark(
+  status?: string
+): { icon: string; tone: "success" | "error" } | null {
+  if (!status) return null;
+  const normalized = normalizeToolCallStatus(status);
+  if (normalized === "completed") {
+    return { icon: "✅", tone: "success" };
+  }
+  if (FAILED_TOOL_STATUSES.has(normalized)) {
+    return { icon: "❌", tone: "error" };
+  }
+  return null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value == null) return false;
   if (Array.isArray(value)) return false;
@@ -959,10 +1188,56 @@ function isHiddenPayloadKey(key: string): boolean {
   return TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED.has(normalizePayloadKey(key));
 }
 
+function isPayloadValueEffectivelyEmpty(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string") {
+    return unescapeLineBreaks(value).trim().length === 0;
+  }
+  if (Array.isArray(value)) return value.length === 0;
+  if (isPlainObject(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+function isEmptyStdStreamPayloadField(key: string, value: unknown): boolean {
+  const normalized = normalizePayloadKey(key);
+  if (!TOOL_PAYLOAD_HIDE_EMPTY_STREAM_KEY_NORMALIZED.has(normalized)) return false;
+  return isPayloadValueEffectivelyEmpty(value);
+}
+
+function findPreferredOutputPayloadKey(
+  entries: Array<[string, unknown]>
+): string | null {
+  for (const normalizedKey of TOOL_PAYLOAD_OUTPUT_PRIORITY_NORMALIZED) {
+    const matched = entries.find(
+      ([key, value]) =>
+        normalizePayloadKey(key) === normalizedKey &&
+        !isPayloadValueEffectivelyEmpty(value)
+    );
+    if (matched) return matched[0];
+  }
+  return null;
+}
+
 function filterPayloadEntries(
   value: Record<string, unknown>
 ): Array<[string, unknown]> {
-  return Object.entries(value).filter(([key]) => !isHiddenPayloadKey(key));
+  const entries = Object.entries(value);
+  const preferredOutputKey = findPreferredOutputPayloadKey(entries);
+  return entries.filter(
+    ([key, item]) => {
+      const normalized = normalizePayloadKey(key);
+      if (
+        TOOL_PAYLOAD_OUTPUT_PRIORITY_KEY_NORMALIZED.has(normalized) &&
+        key !== preferredOutputKey
+      ) {
+        return false;
+      }
+      return (
+      !isHiddenPayloadKey(key) &&
+      !isEmptyStdStreamPayloadField(key, item)
+      );
+    }
+  );
 }
 
 function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
@@ -1369,6 +1644,13 @@ function getConversationItemKey(msg: ConversationItem, fallback: number): string
     const ids = msg.calls.map((call) => call.id).join(",");
     return `tool_call_group:${ids}`;
   }
+  if (msg.kind === "explore_group") {
+    const ids = flattenExploreGroupToolCalls(msg.items)
+      .map((call) => call.id)
+      .join(",");
+    const fallbackKey = msg.event_id ?? msg.seq ?? fallback;
+    return `explore_group:${ids || fallbackKey}`;
+  }
   if (msg.event_id != null) return `${msg.kind}:event:${msg.event_id}`;
   if (msg.seq) return `${msg.kind}:seq:${msg.seq}`;
   return `${msg.kind}:idx:${fallback}`;
@@ -1387,6 +1669,11 @@ function isConversationItemFocusedToolCall(
   if (msg.kind === "tool_call") return msg.id === focusedToolCallId;
   if (msg.kind === "tool_call_group") {
     return msg.calls.some((call) => call.id === focusedToolCallId);
+  }
+  if (msg.kind === "explore_group") {
+    return flattenExploreGroupToolCalls(msg.items).some(
+      (call) => call.id === focusedToolCallId
+    );
   }
   return false;
 }

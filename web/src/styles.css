@@ -864,6 +864,17 @@ select:not([class*="mantine-"]):focus-visible {
   display: block;
 }
 
+.acp-conversation-top-hint {
+  align-self: center;
+  margin: 6px 0 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #4d5a65;
+  background: #edf2f7;
+  border: 1px solid #d8e0ea;
+}
+
 .acp-conversation-item.is-focused > .acp-bubble {
   outline: 2px solid #5f84f8;
   outline-offset: 1px;
@@ -1790,6 +1801,12 @@ select:not([class*="mantine-"]):focus-visible {
   width: 100%;
 }
 
+.acp-thinking-title {
+  font-size: 12px;
+  color: #6a5a7a;
+  margin-bottom: 6px;
+}
+
 .acp-bubble.tool_call {
   background: #e9f7ea;
   border-color: #cdebd1;
@@ -1798,6 +1815,11 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-bubble.tool_call.tool_call_group {
   background: #edf8ef;
+}
+
+.acp-bubble.tool_call.tool_call_group.explore_group {
+  background: #edf4ff;
+  border-color: #ccddff;
 }
 
 .acp-thought-more {
@@ -1840,17 +1862,37 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 6px;
 }
 
+.acp-explore-group-fold summary {
+  color: #2b4f84;
+}
+
 .acp-tool-fold pre {
   margin: 0;
   white-space: pre-wrap;
 }
 
 .acp-tool-fold summary .acp-tool-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.acp-tool-status-mark {
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
+.acp-tool-status-mark.success {
+  filter: saturate(1.05);
+}
+
+.acp-tool-status-mark.error {
+  filter: saturate(1.1);
 }
 
 .acp-tool-fold summary .acp-tool-status {
@@ -1888,6 +1930,11 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-group-status {
   background: #d7ecde;
+}
+
+.acp-explore-thinking-item .acp-bubble.agent_thinking {
+  background: #fff8e6;
+  border-color: #f0d9a5;
 }
 
 @keyframes acp-tool-group-expand {

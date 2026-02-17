@@ -2188,6 +2188,9 @@ export function App() {
       stickToBottom: acpConversation.conversationStickToBottom,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
+      topHint: acpConversation.showConversationTopReachedHint
+        ? "Already at top"
+        : null,
       focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,
@@ -2204,6 +2207,7 @@ export function App() {
       acpConversation.conversationStickToBottom,
       acpConversation.conversationPendingCount,
       acpConversation.conversationAvgHeight,
+      acpConversation.showConversationTopReachedHint,
       acpConversation.focusedConversationToolCallId,
       acpConversation.handleConversationScroll,
       acpConversation.acpConversationRef,
