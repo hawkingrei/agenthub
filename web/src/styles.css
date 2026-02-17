@@ -361,8 +361,8 @@ section {
 
 .agents-rail-dot {
   position: absolute;
-  top: -2px;
-  right: -10px;
+  top: 0;
+  right: -4px;
   width: 9px;
   height: 9px;
   border-radius: 999px;
