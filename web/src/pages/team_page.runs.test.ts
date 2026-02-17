@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { TeamRunRecord } from "../api";
-import { mergeRunPages, mergeTeamRunList, resolveRunStatusFilter } from "./team_page";
+import type { TeamRunEventRecord, TeamRunRecord } from "../api";
+import {
+  mergeRunPages,
+  mergeTeamRunList,
+  resolveRunStatusFilter,
+  selectTeamPreviewEvents,
+} from "./team_page";
 
 function buildRun(
   id: string,
@@ -16,6 +21,17 @@ function buildRun(
     created_at: createdAt,
     started_at: null,
     ended_at: null,
+  };
+}
+
+function buildRunEvent(eventId: number): TeamRunEventRecord {
+  return {
+    event_id: eventId,
+    run_id: "run-1",
+    step_id: null,
+    event_type: "agent_message",
+    ts: 1_700_000_000 + eventId,
+    payload: { event_id: eventId },
   };
 }
 
@@ -48,5 +64,17 @@ describe("team run list helpers", () => {
     const merged = mergeTeamRunList(previous, incoming, "replace", "run-active");
     expect(merged.map((run) => run.id)).toEqual(["run-10", "run-11", "run-active"]);
     expect(merged.some((run) => run.id === "run-active")).toBe(true);
+  });
+
+  it("shows only latest five run records before selecting a member", () => {
+    const events = [1, 2, 3, 4, 5, 6, 7].map(buildRunEvent);
+    const preview = selectTeamPreviewEvents(events, "");
+    expect(preview.map((event) => event.event_id)).toEqual([3, 4, 5, 6, 7]);
+  });
+
+  it("shows full run records after selecting a specific member", () => {
+    const events = [1, 2, 3, 4, 5, 6, 7].map(buildRunEvent);
+    const fullList = selectTeamPreviewEvents(events, "agent-worker-1");
+    expect(fullList.map((event) => event.event_id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });

@@ -34,6 +34,7 @@ type StepAction =
 const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
 const TEAM_RUN_PAGE_LIMIT = 50;
+const TEAM_EVENT_PREVIEW_LIMIT = 5;
 const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
   value: TeamRunStatusFilter;
   label: string;
@@ -143,6 +144,20 @@ export function resolveRunStatusFilter(
   status: TeamRunStatusFilter
 ): TeamRunStatus | undefined {
   return status === "all" ? undefined : status;
+}
+
+export function selectTeamPreviewEvents(
+  events: TeamRunEventRecord[],
+  selectedMemberId: string,
+  limit = TEAM_EVENT_PREVIEW_LIMIT
+): TeamRunEventRecord[] {
+  if (selectedMemberId.trim().length > 0) {
+    return events;
+  }
+  if (events.length <= limit) {
+    return events;
+  }
+  return events.slice(events.length - limit);
 }
 
 function upsertEventList(
@@ -498,6 +513,11 @@ export function TeamPage(props: TeamPageProps) {
   const selectedMemberSnapshot = useMemo(
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
+  );
+  const previewMode = selectedMemberId.trim().length === 0;
+  const displayedRunEvents = useMemo(
+    () => selectTeamPreviewEvents(events, selectedMemberId),
+    [events, selectedMemberId]
   );
   const configuredWorkerCount = useMemo(
     () => workers.filter((worker) => worker.member_id.trim().length > 0).length,
@@ -1731,15 +1751,26 @@ export function TeamPage(props: TeamPageProps) {
                           </button>
                           <button
                             onClick={() => void refreshEvents(activeRun.id, "prepend")}
-                            disabled={eventsLoading || !eventsHasMore || oldestEventId == null}
+                            disabled={
+                              previewMode ||
+                              eventsLoading ||
+                              !eventsHasMore ||
+                              oldestEventId == null
+                            }
                           >
                             Load Older
                           </button>
                         </div>
                       </div>
-                      {events.length === 0 && <p className="muted">No events.</p>}
+                      {previewMode && (
+                        <p className="muted">
+                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} records. Select a member for
+                          full event history.
+                        </p>
+                      )}
+                      {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}
                       <ul className="teams-event-list">
-                        {events.map((event) => (
+                        {displayedRunEvents.map((event) => (
                           <li key={event.event_id}>
                             <div className="teams-event-head">
                               <span className="mono">#{event.event_id}</span>
@@ -2061,14 +2092,26 @@ export function TeamPage(props: TeamPageProps) {
                         <h3>Member Console</h3>
                         <div className="actions">
                           <button
-                            onClick={() => void loadMemberEvents("replace")}
-                            disabled={memberEventsLoading}
+                            onClick={() => {
+                              if (selectedMemberSnapshot) {
+                                void loadMemberEvents("replace");
+                                return;
+                              }
+                              if (activeRunId) {
+                                void refreshEvents(activeRunId);
+                              }
+                            }}
+                            disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
                           >
                             Refresh
                           </button>
                           <button
-                            onClick={() => void loadMemberEvents("prepend")}
+                            onClick={() => {
+                              if (!selectedMemberSnapshot) return;
+                              void loadMemberEvents("prepend");
+                            }}
                             disabled={
+                              !selectedMemberSnapshot ||
                               memberEventsLoading ||
                               !memberEventsHasMore ||
                               oldestMemberEventId == null
@@ -2117,7 +2160,10 @@ export function TeamPage(props: TeamPageProps) {
                       )}
 
                       {!selectedMemberSnapshot && (
-                        <p className="muted">Select a member to inspect output.</p>
+                        <p className="muted">
+                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} run records. Select a member
+                          for full member history.
+                        </p>
                       )}
 
                       {selectedMemberSnapshot &&
@@ -2133,18 +2179,39 @@ export function TeamPage(props: TeamPageProps) {
                           <p className="muted">No member events yet.</p>
                         )}
 
-                      <ul className="teams-event-list">
-                        {memberEvents.map((event) => (
-                          <li key={event.event_id}>
-                            <div className="teams-event-head">
-                              <span className="mono">#{event.event_id}</span>
-                              <span>{event.stream}</span>
-                              <span>{formatTs(event.ts)}</span>
-                            </div>
-                            <pre className="mono">{event.message}</pre>
-                          </li>
-                        ))}
-                      </ul>
+                      {!selectedMemberSnapshot && displayedRunEvents.length === 0 && (
+                        <p className="muted">No run records yet.</p>
+                      )}
+
+                      {selectedMemberSnapshot && (
+                        <ul className="teams-event-list">
+                          {memberEvents.map((event) => (
+                            <li key={event.event_id}>
+                              <div className="teams-event-head">
+                                <span className="mono">#{event.event_id}</span>
+                                <span>{event.stream}</span>
+                                <span>{formatTs(event.ts)}</span>
+                              </div>
+                              <pre className="mono">{event.message}</pre>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {!selectedMemberSnapshot && (
+                        <ul className="teams-event-list">
+                          {displayedRunEvents.map((event) => (
+                            <li key={event.event_id}>
+                              <div className="teams-event-head">
+                                <span className="mono">#{event.event_id}</span>
+                                <span>{event.event_type}</span>
+                                <span>{formatTs(event.ts)}</span>
+                              </div>
+                              <pre className="mono">{toPrettyJson(event.payload)}</pre>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )}
                 </>

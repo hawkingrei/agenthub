@@ -88,6 +88,7 @@
 - [ ] Verify Team run snapshot API (`GET /api/teams/runs/:run_id/snapshot`) and `/teams` Overview/Mailbox/Member Console tabs stay consistent under active run updates (see `docs/features/2026-02-16-team-snapshot-member-console.md`).
 - [ ] Verify Team run list API (`GET /api/teams/:id/runs`) pagination/filter behavior in staging with real run volumes (see `docs/features/2026-02-16-team-runs-list-api.md`).
 - [ ] Verify Team run list UI status filter + `Load More` paging controls keep active run selection stable while switching filters/teams (see `docs/features/2026-02-17-team-run-list-filter-pagination-controls.md`).
+- [ ] Verify Team output preview policy: before selecting a specific member, `/teams` `Events` and `Member Console` show only latest 5 run records; selecting a member restores full member history (see `docs/features/2026-02-17-team-output-preview-limit.md`).
 - [ ] Verify OpenAPI discovery endpoints (`/api/openapi.json`, `/api/openapi/docs`) auth behavior and docs-page token fetch flow in a real browser (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
 - [ ] Refactor `web/src/pages/team_page.tsx` into smaller feature-focused components (`TeamSidebar`, `RunPanel`, tab subviews) and a reducer-based state model for maintainability (see `docs/features/2026-02-16-team-workbench-ui.md`).
 - [ ] Refactor `src/api/openapi.rs` OpenAPI spec assembly into smaller helpers (`components`, `paths`) or a typed generator approach to reduce single-function complexity (see `docs/features/2026-02-16-openapi-discovery-endpoints.md`).
