@@ -252,8 +252,9 @@ section {
 .workspace {
   display: grid;
   grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 6px;
-  align-items: start;
+  align-items: stretch;
   padding: 0;
   flex: 1;
   min-height: 0;
@@ -363,6 +364,8 @@ section {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  overflow: hidden;
+  align-self: stretch;
 }
 
 input:not([class*="mantine-"]) {
