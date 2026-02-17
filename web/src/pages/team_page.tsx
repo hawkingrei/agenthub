@@ -582,10 +582,11 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) return [];
     return runs.filter((run) => {
       if (run.team_id !== selectedTeamId) return false;
+      if (activeRun && run.id === activeRun.id) return true;
       if (runStatusFilter === "all") return true;
       return run.status === runStatusFilter;
     });
-  }, [runStatusFilter, runs, selectedTeamId]);
+  }, [activeRun, runStatusFilter, runs, selectedTeamId]);
 
   const builtTeamSpec = useMemo(
     () =>
@@ -1260,7 +1261,7 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
-  const onLoadMoreRuns = async () => {
+  const onLoadMoreRuns = useCallback(async () => {
     if (!selectedTeamId || runsLoading || !runsHasMore) {
       return;
     }
@@ -1273,7 +1274,14 @@ export function TeamPage(props: TeamPageProps) {
     } catch (err) {
       setError(parseErrorMessage(err));
     }
-  };
+  }, [
+    refreshTeamRuns,
+    runStatusFilter,
+    runsBeforeCreatedAt,
+    runsHasMore,
+    runsLoading,
+    selectedTeamId,
+  ]);
 
   const onCancelRun = async () => {
     if (!activeRunId) return;
@@ -1894,8 +1902,8 @@ export function TeamPage(props: TeamPageProps) {
                       </div>
                       {previewMode && (
                         <p className="muted">
-                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} records. Select a member for
-                          full event history.
+                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} records. For full event
+                          history, select a member in the Member Console tab.
                         </p>
                       )}
                       {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}

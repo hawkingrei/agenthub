@@ -1135,12 +1135,13 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
                 let mut out = Vec::with_capacity(items.len());
                 let mut seen = HashSet::with_capacity(items.len());
                 for item in items {
-                    if let Some(skill) =
-                        item.as_str().map(str::trim).filter(|item| !item.is_empty())
+                    if let Some(skill) = item
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|item| !item.is_empty())
+                        && seen.insert(skill.to_string())
                     {
-                        if seen.insert(skill.to_string()) {
-                            out.push(skill.to_string());
-                        }
+                        out.push(skill.to_string());
                     }
                 }
                 out

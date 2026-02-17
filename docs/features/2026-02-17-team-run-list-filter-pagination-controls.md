@@ -25,7 +25,7 @@ in larger teams and provided no explicit pagination interaction in UI.
      `completed`, `failed`, `canceled`)
    - explicit `Refresh Runs` action
 2. Switch run list fetching to paged API requests:
-   - use `GET /api/teams/:id/runs` with `limit`, `offset`, and `status`
+   - use `GET /api/teams/:id/runs` with `limit`, `before_created_at`, and `status`
    - page size defaults to `50`
    - add `Load More` button with `runsHasMore` state
 3. Keep behavior safe for active run workflows:
