@@ -28,12 +28,13 @@ Team skills in the repository and provide a deterministic setup command.
    - `team-worker-executor`
 2. Add `scripts/setup_team_skills.sh`:
    - default target file: `~/.agenthub/skills.json`
-   - preserves existing `skills` entries
-   - appends Team skill paths and deduplicates via `jq`
-   - supports custom target via `--skills-file <path>`
+   - preserves existing `skills` entries (both string and object entries)
+   - appends Team skill paths and deduplicates while preserving order
+   - supports custom target via `--skills-file <path>` and `--skills-file=<path>`
 3. Keep runtime behavior unchanged:
    - ACP still loads skills from configured `skills.json`
    - Team runs only need a new ACP session/restart to pick up updates.
+   - Skill files must be under ACP `safe_paths`; otherwise they are skipped.
 
 ## Validation
 
