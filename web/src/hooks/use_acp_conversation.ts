@@ -12,6 +12,7 @@ import {
   buildConversationMessages,
   ConversationItem,
   deriveConversationFreezeCursor,
+  flattenExploreGroupToolCalls,
   windowConversation,
 } from "../conversation";
 import { isNearBottom } from "../scroll";
@@ -103,13 +104,7 @@ export function buildConversationTailKey(conversationMessages: ConversationItem[
     return `${base}:count:${last.calls.length}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
   }
   if (last.kind === "explore_group") {
-    const calls = last.items.flatMap((item) =>
-      item.kind === "tool_call"
-        ? [item]
-        : item.kind === "tool_call_group"
-          ? item.calls
-          : []
-    );
+    const calls = flattenExploreGroupToolCalls(last.items);
     const tailCall = calls[calls.length - 1];
     const contentLen = tailCall?.content?.length ?? 0;
     const terminalLen = tailCall?.terminal_output?.length ?? 0;
@@ -292,15 +287,7 @@ export function findConversationToolCallIndex(
       continue;
     }
     if (item.kind === "explore_group") {
-      if (
-        item.items.some((nested) =>
-          nested.kind === "tool_call"
-            ? nested.id === toolCallId
-            : nested.kind === "tool_call_group"
-              ? nested.calls.some((call) => call.id === toolCallId)
-              : false
-        )
-      ) {
+      if (flattenExploreGroupToolCalls(item.items).some((call) => call.id === toolCallId)) {
         return idx;
       }
     }

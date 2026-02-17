@@ -86,6 +86,22 @@ export function isExploreThinkingText(text: string): boolean {
   return Boolean(firstLine?.startsWith("explore"));
 }
 
+export function flattenExploreGroupToolCalls(
+  items: ExploreGroupConversationItem["items"]
+): ToolCallConversationItem[] {
+  const calls: ToolCallConversationItem[] = [];
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      calls.push(item);
+      continue;
+    }
+    if (item.kind === "tool_call_group") {
+      calls.push(...item.calls);
+    }
+  }
+  return calls;
+}
+
 export function buildConversationMessages(
   messages: AcpMessage[],
   toolCalls: AcpToolCall[],

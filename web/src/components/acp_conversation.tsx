@@ -4,6 +4,7 @@ import {
   ExploreGroupConversationItem,
   ToolCallConversationItem,
   ToolCallGroupConversationItem,
+  flattenExploreGroupToolCalls,
   formatConversationPreview,
   isExploreThinkingText,
   isToolCallLive,
@@ -128,8 +129,8 @@ function normalizeSkillBlocksForMarkdown(text: string): string {
     const path = extractSkillField(block, "path");
     if (!name && !path) return block;
     const lines = ["**Skill**"];
-    if (name) lines.push(`- Name: \`${escapeInlineCode(name)}\``);
-    if (path) lines.push(`- Path: \`${escapeInlineCode(path)}\``);
+    if (name) lines.push(`- Name: ${formatInlineCode(name)}`);
+    if (path) lines.push(`- Path: ${formatInlineCode(path)}`);
     return `\n${lines.join("\n")}\n`;
   });
 }
@@ -141,8 +142,30 @@ function extractSkillField(block: string, tag: "name" | "path"): string {
   return match[1].trim();
 }
 
-function escapeInlineCode(value: string): string {
-  return value.replace(/`/g, "\\`");
+function formatInlineCode(value: string): string {
+  const maxBacktickRun = maxBacktickSequenceLength(value);
+  const fence = "`".repeat(Math.max(1, maxBacktickRun + 1));
+  const needsPadding =
+    value.startsWith("`") ||
+    value.endsWith("`") ||
+    value.startsWith(" ") ||
+    value.endsWith(" ");
+  const content = needsPadding ? ` ${value} ` : value;
+  return `${fence}${content}${fence}`;
+}
+
+function maxBacktickSequenceLength(value: string): number {
+  let maxRun = 0;
+  let currentRun = 0;
+  for (const ch of value) {
+    if (ch === "`") {
+      currentRun += 1;
+      if (currentRun > maxRun) maxRun = currentRun;
+      continue;
+    }
+    currentRun = 0;
+  }
+  return maxRun;
 }
 
 export function AcpConversation({
@@ -672,22 +695,6 @@ function ExploreThinkingEntry({
       </div>
     </div>
   );
-}
-
-function flattenExploreGroupToolCalls(
-  items: ExploreGroupConversationItem["items"]
-): ToolCallConversationItem[] {
-  const calls: ToolCallConversationItem[] = [];
-  for (const item of items) {
-    if (item.kind === "tool_call") {
-      calls.push(item);
-      continue;
-    }
-    if (item.kind === "tool_call_group") {
-      calls.push(...item.calls);
-    }
-  }
-  return calls;
 }
 
 function summarizeExploreGroupPreview(

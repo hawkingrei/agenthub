@@ -584,6 +584,28 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("<code>/tmp/team-leader-orchestrator.SKILL.md</code>");
   });
 
+  it("keeps skill xml inline-code rendering safe when fields contain backticks or html", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_thinking",
+        text: [
+          "<skill>",
+          "<name>owner`name</name>",
+          "<path>/tmp/``skill``-path/<img src=x onerror=alert(1)></path>",
+          "</skill>",
+        ].join("\n"),
+        live: false,
+        event_id: 22,
+      },
+    ]);
+
+    expect(html).toContain("<strong>Skill</strong>");
+    expect((html.match(/<code>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+    expect(html).toContain("owner`name");
+  });
+
   it("renders plan entries as a structured plan card", () => {
     const html = renderConversation([
       {

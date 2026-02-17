@@ -37,7 +37,8 @@ npm --prefix web run test -- \
   src/acp_conversation_render.test.tsx \
   src/hooks/use_acp_conversation.test.ts \
   src/hooks/use_acp_conversation.interaction.test.tsx \
-  src/acp_conversation.test.ts
+  src/acp_conversation.test.ts \
+  src/acp_conversation.interaction.test.tsx
 
 npm --prefix web run test
 npm --prefix web run build
