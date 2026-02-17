@@ -6,21 +6,10 @@ import { fileURLToPath } from "node:url";
 import coverageLib from "istanbul-lib-coverage";
 import reportLib from "istanbul-lib-report";
 import reports from "istanbul-reports";
-import v8toIstanbul from "ast-v8-to-istanbul";
-
-type JsCoverageEntry = {
-  url: string;
-  source: string;
-  functions: Array<{
-    functionName: string;
-    isBlockCoverage: boolean;
-    ranges: Array<{
-      startOffset: number;
-      endOffset: number;
-      count: number;
-    }>;
-  }>;
-};
+import {
+  mergeCoverageEntries,
+  type JsCoverageEntry,
+} from "./coverage_merge";
 
 type CoverageState = {
   map: ReturnType<typeof coverageLib.createCoverageMap>;
@@ -65,24 +54,6 @@ function resolveCoverageFilePath(rawUrl: string): string | null {
   return resolved;
 }
 
-async function mergeCoverageEntries(entries: JsCoverageEntry[]): Promise<void> {
-  const map = coverageState.__agenthub_e2e_coverage__?.map;
-  if (!map) return;
-  for (const entry of entries) {
-    const filePath = resolveCoverageFilePath(entry.url);
-    if (!filePath) {
-      continue;
-    }
-    if (!entry.source || entry.functions.length === 0) {
-      continue;
-    }
-    const converter = v8toIstanbul(filePath, 0, { source: entry.source });
-    await converter.load();
-    converter.applyCoverage(entry.functions);
-    map.merge(converter.toIstanbul());
-  }
-}
-
 function writeCoverageArtifacts(): void {
   const map = coverageState.__agenthub_e2e_coverage__?.map;
   if (!map) return;
@@ -114,7 +85,14 @@ export const test = base.extend({
 
     if (collectCoverage) {
       const entries = (await page.coverage.stopJSCoverage()) as JsCoverageEntry[];
-      await mergeCoverageEntries(entries);
+      const map = coverageState.__agenthub_e2e_coverage__?.map;
+      if (map) {
+        await mergeCoverageEntries({
+          map,
+          entries,
+          resolveFilePath: resolveCoverageFilePath,
+        });
+      }
       writeCoverageArtifacts();
     }
   },
