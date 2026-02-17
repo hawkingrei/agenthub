@@ -263,8 +263,7 @@ section {
   grid-template-columns: 56px minmax(0, 1fr);
 }
 
-.workspace-left,
-.workspace-right {
+.workspace-left {
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: var(--radius-md);
@@ -372,10 +371,15 @@ section {
 }
 
 .workspace-right {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
