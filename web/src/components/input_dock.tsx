@@ -15,6 +15,11 @@ type InputDockProps = {
   isComposingRef: React.MutableRefObject<boolean>;
 };
 
+type VerticalRect = {
+  top: number;
+  bottom: number;
+};
+
 export type InputHistoryNavigationContext = {
   key: string;
   shiftKey: boolean;
@@ -107,6 +112,7 @@ export type InputDockKeyActionContext = {
 };
 
 const MOBILE_INPUT_BREAKPOINT = 720;
+const INPUT_VIEWPORT_SAFE_MARGIN = 12;
 
 type RuntimeWindowLike = Pick<Window, "innerWidth" | "addEventListener" | "removeEventListener">;
 
@@ -124,6 +130,20 @@ export function deriveInputPlaceholder(isMobileViewport: boolean): string {
     return "Type a message (tap Send; Enter = newline)";
   }
   return "Send input (Enter to send, Shift+Enter for newline)";
+}
+
+export function isInputRectOutsideViewport(
+  rect: VerticalRect,
+  viewportTop: number,
+  viewportHeight: number,
+  safeMargin: number = INPUT_VIEWPORT_SAFE_MARGIN
+): boolean {
+  if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return false;
+  if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportHeight)) return false;
+  if (viewportHeight <= 0) return false;
+  const visibleTop = viewportTop + safeMargin;
+  const visibleBottom = viewportTop + viewportHeight - safeMargin;
+  return rect.top < visibleTop || rect.bottom > visibleBottom;
 }
 
 function useMobileInputViewport(): boolean {
@@ -196,10 +216,70 @@ export function InputDock({
   isComposingRef,
 }: InputDockProps) {
   const [showHistory, setShowHistory] = React.useState(false);
+  const [inputFocused, setInputFocused] = React.useState(false);
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const inputDockRef = React.useRef<HTMLDivElement | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
   const mobileInputViewport = useMobileInputViewport();
   const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
+
+  const ensureInputVisible = React.useCallback(() => {
+    if (!mobileInputViewport) return;
+    if (typeof window === "undefined") return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const rect = textarea.getBoundingClientRect();
+    if (
+      !isInputRectOutsideViewport(
+        { top: rect.top, bottom: rect.bottom },
+        viewportTop,
+        viewportHeight
+      )
+    ) {
+      return;
+    }
+    textarea.scrollIntoView({ block: "nearest", inline: "nearest" });
+    inputDockRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
+  }, [mobileInputViewport]);
+
+  React.useEffect(() => {
+    if (!inputFocused || !mobileInputViewport) return;
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    const run = () => {
+      if (typeof window.requestAnimationFrame === "function") {
+        if (rafId != null && typeof window.cancelAnimationFrame === "function") {
+          window.cancelAnimationFrame(rafId);
+        }
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null;
+          ensureInputVisible();
+        });
+        return;
+      }
+      ensureInputVisible();
+    };
+    run();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", run);
+    viewport?.addEventListener("scroll", run);
+    window.addEventListener("resize", run);
+    return () => {
+      if (
+        rafId != null &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(rafId);
+      }
+      viewport?.removeEventListener("resize", run);
+      viewport?.removeEventListener("scroll", run);
+      window.removeEventListener("resize", run);
+    };
+  }, [ensureInputVisible, inputFocused, mobileInputViewport]);
 
   React.useEffect(() => {
     if (!showHistory) return;
@@ -210,7 +290,7 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className="input docked">
+    <div className="input docked" ref={inputDockRef}>
       <div className="input-row" role="group" aria-label="Input actions">
         {showInterrupt && (
           <button
@@ -266,8 +346,16 @@ export function InputDock({
       )}
       <div className="input-editor-row">
         <textarea
+          ref={textareaRef}
           placeholder={inputPlaceholder}
           value={input}
+          onFocus={() => {
+            setInputFocused(true);
+            ensureInputVisible();
+          }}
+          onBlur={() => {
+            setInputFocused(false);
+          }}
           onChange={(e) => {
             setShowHistory(false);
             onInputChange(e.target.value);

@@ -5,6 +5,7 @@ import {
   deriveInputDockKeyAction,
   deriveInputHistoryNavigation,
   isImeComposing,
+  isInputRectOutsideViewport,
   isMobileInputViewport,
   shouldCloseHistoryFromPointerTarget,
   type InputHistoryNavigationContext,
@@ -257,6 +258,26 @@ describe("deriveInputDockKeyAction", () => {
         selectionEnd: 0,
       })
     ).toEqual({ type: "none" });
+  });
+});
+
+describe("isInputRectOutsideViewport", () => {
+  it("returns false when input rect is fully inside visible viewport", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 220, bottom: 300 }, 0, 844)
+    ).toBe(false);
+  });
+
+  it("returns true when input bottom is covered by keyboard viewport", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 430, bottom: 492 }, 0, 480)
+    ).toBe(true);
+  });
+
+  it("returns true when viewport is shifted and input top is outside", () => {
+    expect(
+      isInputRectOutsideViewport({ top: 10, bottom: 72 }, 40, 420)
+    ).toBe(true);
   });
 });
 
