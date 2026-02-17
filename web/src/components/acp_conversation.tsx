@@ -1,5 +1,11 @@
 import React from "react";
-import { ConversationItem, formatConversationPreview, isToolCallLive } from "../conversation";
+import {
+  ConversationItem,
+  ToolCallConversationItem,
+  ToolCallGroupConversationItem,
+  formatConversationPreview,
+  isToolCallLive,
+} from "../conversation";
 import { renderMarkdown } from "../markdown";
 
 type AcpConversationProps = {
@@ -24,7 +30,11 @@ const MARKDOWN_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
 const TOOL_PAYLOAD_PREVIEW_LIMIT = 88;
 const TOOL_PAYLOAD_MAX_NESTED_DEPTH = 2;
-const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>(["turnid"]);
+const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
+  "turnid",
+  "processid",
+  "source",
+]);
 const TOOL_TEXT_INITIAL_LINES = 120;
 const TOOL_TEXT_LINE_CHUNK = 220;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
@@ -116,16 +126,16 @@ export function AcpConversation({
         {items.map((msg, idx) => {
           const globalIndex = windowOffset + idx;
           const key = getConversationItemKey(msg, globalIndex);
-          const isFocusedToolCall =
-            focusedToolCallId != null &&
-            msg.kind === "tool_call" &&
-            msg.id === focusedToolCallId;
+          const isFocusedToolCall = isConversationItemFocusedToolCall(
+            msg,
+            focusedToolCallId ?? null
+          );
           return (
             <div
               key={key}
               className={`acp-conversation-item${isFocusedToolCall ? " is-focused" : ""}`}
               data-conversation-item-key={key}
-              data-tool-call-id={msg.kind === "tool_call" ? msg.id : undefined}
+              data-tool-call-id={getConversationItemToolCallId(msg)}
             >
               <ConversationBubble
                 msg={msg}
@@ -208,6 +218,9 @@ const ConversationBubble = React.memo(
     if (msg.kind === "tool_call") {
       return <ToolCallBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
     }
+    if (msg.kind === "tool_call_group") {
+      return <ToolCallGroupBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
+    }
 
     if (msg.kind === "agent_message") {
       return <MarkdownBubble className="agent_message" text={msg.text} />;
@@ -228,7 +241,7 @@ function areConversationBubblePropsEqual(
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
   if (prev.ansi !== next.ansi) return false;
-  if (prev.msg.kind === "tool_call") {
+  if (prev.msg.kind === "tool_call" || prev.msg.kind === "tool_call_group") {
     return prev.runStatus === next.runStatus;
   }
   return true;
@@ -256,13 +269,21 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
 });
 
 type ToolCallBubbleProps = {
-  msg: Extract<ConversationItem, { kind: "tool_call" }>;
+  msg: ToolCallConversationItem;
   ansi: (input: string) => string;
   runStatus?: string | null;
+  grouped?: boolean;
+  indexLabel?: string;
 };
 
 const ToolCallBubble = React.memo(
-  function ToolCallBubble({ msg, ansi, runStatus }: ToolCallBubbleProps) {
+  function ToolCallBubble({
+    msg,
+    ansi,
+    runStatus,
+    grouped = false,
+    indexLabel,
+  }: ToolCallBubbleProps) {
     const isLive = isToolCallEffectivelyLive(msg.status, runStatus);
     const [open, setOpen] = React.useState(isLive);
     const wasLiveRef = React.useRef(isLive);
@@ -290,10 +311,14 @@ const ToolCallBubble = React.memo(
       wasLiveRef.current = isLive;
     }, [isLive]);
 
+    const title = grouped
+      ? `${indexLabel ? `${indexLabel} ` : ""}${msg.title || "Tool Call"}`
+      : `Tool Call${msg.title ? `: ${msg.title}` : ""}`;
+
     return (
-      <div className="acp-bubble tool_call">
+      <div className={`acp-bubble tool_call${grouped ? " acp-tool-group-entry" : " tool-call-enter"}`}>
         <details
-          className="acp-tool-fold"
+          className={`acp-tool-fold${grouped ? " acp-tool-fold-nested" : ""}`}
           open={open}
           onToggle={(event) => {
             setOpen(event.currentTarget.open);
@@ -301,8 +326,7 @@ const ToolCallBubble = React.memo(
         >
           <summary>
             <span className="acp-tool-title">
-              Tool Call
-              {msg.title ? `: ${msg.title}` : ""}
+              {title}
               {callHint ? ` · ${callHint}` : ""}
             </span>
             {msg.status && (
@@ -355,6 +379,78 @@ const ToolCallBubble = React.memo(
               />
             </FoldSection>
           )}
+        </details>
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.msg === next.msg &&
+    prev.ansi === next.ansi &&
+    prev.runStatus === next.runStatus &&
+    prev.grouped === next.grouped &&
+    prev.indexLabel === next.indexLabel
+);
+
+type ToolCallGroupBubbleProps = {
+  msg: ToolCallGroupConversationItem;
+  ansi: (input: string) => string;
+  runStatus?: string | null;
+};
+
+const ToolCallGroupBubble = React.memo(
+  function ToolCallGroupBubble({ msg, ansi, runStatus }: ToolCallGroupBubbleProps) {
+    const isLive = React.useMemo(
+      () => msg.calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
+      [msg.calls, runStatus]
+    );
+    const [open, setOpen] = React.useState(isLive);
+    const wasLiveRef = React.useRef(isLive);
+    const titlePreview = React.useMemo(() => summarizeToolGroupTitles(msg.calls), [msg.calls]);
+    const statusLabel = React.useMemo(
+      () => deriveToolGroupStatusLabel(msg.calls, runStatus),
+      [msg.calls, runStatus]
+    );
+
+    React.useEffect(() => {
+      setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
+      wasLiveRef.current = isLive;
+    }, [isLive]);
+
+    return (
+      <div className="acp-bubble tool_call tool_call_group tool-call-enter">
+        <details
+          className="acp-tool-group-fold"
+          open={open}
+          onToggle={(event) => {
+            setOpen(event.currentTarget.open);
+          }}
+        >
+          <summary>
+            <span className="acp-tool-title acp-tool-group-title">
+              Tool Calls ({msg.calls.length})
+              {titlePreview ? ` · ${titlePreview}` : ""}
+            </span>
+            {statusLabel && (
+              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            )}
+          </summary>
+          <div className="acp-tool-group-list">
+            {msg.calls.map((call, idx) => (
+              <div
+                key={`${call.id}:${call.event_id ?? call.seq ?? idx}`}
+                className="acp-tool-group-item"
+                data-tool-call-id={call.id}
+              >
+                <ToolCallBubble
+                  msg={call}
+                  ansi={ansi}
+                  runStatus={runStatus}
+                  grouped={true}
+                  indexLabel={`#${idx + 1}`}
+                />
+              </div>
+            ))}
+          </div>
         </details>
       </div>
     );
@@ -703,9 +799,53 @@ function summarizeScalarValue(value: unknown): string {
   return "";
 }
 
+function summarizeToolGroupTitles(calls: ToolCallConversationItem[]): string {
+  if (calls.length === 0) return "";
+  const previews = calls
+    .slice(0, 2)
+    .map((call) => call.title.trim())
+    .filter((title) => title.length > 0);
+  if (previews.length === 0) return "";
+  if (calls.length <= 2) return previews.join(" · ");
+  return `${previews.join(" · ")} +${calls.length - 2} more`;
+}
+
+function deriveToolGroupStatusLabel(
+  calls: ToolCallConversationItem[],
+  runStatus?: string | null
+): string {
+  if (calls.length === 0) return "";
+  let liveCount = 0;
+  let failedCount = 0;
+  for (const call of calls) {
+    if (isToolCallEffectivelyLive(call.status, runStatus)) {
+      liveCount += 1;
+      continue;
+    }
+    const normalized = normalizeToolCallStatus(call.status);
+    if (
+      normalized === "failed" ||
+      normalized === "cancelled" ||
+      normalized === "canceled" ||
+      normalized === "interrupted" ||
+      normalized === "stopped"
+    ) {
+      failedCount += 1;
+    }
+  }
+  if (liveCount > 0) return `${liveCount} running`;
+  if (failedCount > 0) return `${failedCount} failed`;
+  return `${calls.length} completed`;
+}
+
+function normalizeToolCallStatus(status?: string): string {
+  if (!status) return "";
+  return status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
 function formatToolCallStatus(status?: string): string {
   if (!status) return "";
-  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = normalizeToolCallStatus(status);
   switch (normalized) {
     case "in_progress":
       return "In Progress";
@@ -1150,9 +1290,30 @@ function ToolDiffView({ text }: { text: string }) {
 
 function getConversationItemKey(msg: ConversationItem, fallback: number): string {
   if (msg.kind === "tool_call") return `tool_call:${msg.id}`;
+  if (msg.kind === "tool_call_group") {
+    const ids = msg.calls.map((call) => call.id).join(",");
+    return `tool_call_group:${ids}`;
+  }
   if (msg.event_id != null) return `${msg.kind}:event:${msg.event_id}`;
   if (msg.seq) return `${msg.kind}:seq:${msg.seq}`;
   return `${msg.kind}:idx:${fallback}`;
+}
+
+function getConversationItemToolCallId(msg: ConversationItem): string | undefined {
+  if (msg.kind === "tool_call") return msg.id;
+  return undefined;
+}
+
+function isConversationItemFocusedToolCall(
+  msg: ConversationItem,
+  focusedToolCallId: string | null
+): boolean {
+  if (!focusedToolCallId) return false;
+  if (msg.kind === "tool_call") return msg.id === focusedToolCallId;
+  if (msg.kind === "tool_call_group") {
+    return msg.calls.some((call) => call.id === focusedToolCallId);
+  }
+  return false;
 }
 
 const ANSI_SPAN_TAG_PATTERN = /<\/?span(?: style="([a-zA-Z0-9:#;(),.%\s-]*)")?>/g;

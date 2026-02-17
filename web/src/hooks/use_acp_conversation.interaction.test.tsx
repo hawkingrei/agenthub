@@ -32,16 +32,18 @@ const baseAcpView: AcpView = {
 };
 
 function HookHarness({
+  acpView = baseAcpView,
   acpTab = "conversation",
   renderToolCallNode = true,
   onSnapshot,
 }: {
+  acpView?: AcpView;
   acpTab?: "conversation" | "debug";
   renderToolCallNode?: boolean;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }) {
   const snapshot = useAcpConversation({
-    acpView: baseAcpView,
+    acpView,
     activeAgent: "agent-1",
     activeSessionId: "session-1",
     acpTab,
@@ -53,12 +55,23 @@ function HookHarness({
   return (
     <div ref={snapshot.acpConversationRef}>
       {snapshot.conversationRenderItems.map((item, idx) => (
-        <div
-          key={`${item.kind}-${idx}`}
-          data-tool-call-id={
-            item.kind === "tool_call" && renderToolCallNode ? item.id : undefined
-          }
-        />
+        item.kind === "tool_call_group" ? (
+          <div key={`${item.kind}-${idx}`}>
+            {item.calls.map((call) => (
+              <div
+                key={call.id}
+                data-tool-call-id={renderToolCallNode ? call.id : undefined}
+              />
+            ))}
+          </div>
+        ) : (
+          <div
+            key={`${item.kind}-${idx}`}
+            data-tool-call-id={
+              item.kind === "tool_call" && renderToolCallNode ? item.id : undefined
+            }
+          />
+        )
       ))}
     </div>
   );
@@ -134,6 +147,41 @@ describe("useAcpConversation jump interaction", () => {
     });
     expect(result).toBe(false);
     expect(snapshot?.focusedConversationToolCallId).toBe("call-1");
+  });
+
+  it("jumps to grouped tool call bubble when target call is nested in a group", () => {
+    const groupedAcpView: AcpView = {
+      ...baseAcpView,
+      toolCalls: [
+        {
+          id: "call-1",
+          title: "Read file",
+          status: "completed",
+          event_id: 1,
+          seq: "1",
+          session_id: "session-1",
+        },
+        {
+          id: "call-2",
+          title: "Write file",
+          status: "completed",
+          event_id: 2,
+          seq: "2",
+          session_id: "session-1",
+        },
+      ],
+    };
+    act(() => {
+      root.render(<HookHarness onSnapshot={onSnapshot} acpView={groupedAcpView} />);
+    });
+
+    let result = false;
+    act(() => {
+      result = snapshot?.jumpToConversationToolCall("call-2") ?? false;
+    });
+
+    expect(result).toBe(true);
+    expect(snapshot?.focusedConversationToolCallId).toBe("call-2");
   });
 
   it("clears previous focus timer when re-jumping and resets focus at bottom jump", () => {

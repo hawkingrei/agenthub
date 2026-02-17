@@ -56,6 +56,39 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
+  it("renders grouped tool calls with a shared fold and nested tool entries", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call_group",
+        event_id: 12,
+        calls: [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            title: "Shell",
+            status: "completed",
+            raw_input: { cmd: "ls" },
+          },
+          {
+            kind: "tool_call",
+            id: "call-2",
+            title: "Read",
+            status: "in_progress",
+            content: "line1\\nline2",
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain("Tool Calls (2)");
+    expect(html).toContain("acp-tool-group-fold");
+    expect(html).toContain("acp-tool-group-list");
+    expect(html).toContain("#1 Shell");
+    expect(html).toContain("#2 Read");
+    expect(html).toContain("tool-call-enter");
+    expect(html).toContain("1 running");
+  });
+
   it("renders JSON-like payload strings as structured sections", () => {
     const html = renderConversation([
       {
@@ -256,7 +289,7 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("results");
   });
 
-  it("hides debug-only payload fields such as turn_id and turnId", () => {
+  it("hides debug-only payload fields such as turn_id/process_id/source", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
@@ -266,6 +299,8 @@ describe("AcpConversation rendering", () => {
         raw_output: {
           turn_id: "t-1",
           turnId: "t-2",
+          process_id: "p-1",
+          source: "agenthub",
           query: "agenthub",
           path: "src/main.rs",
         },
@@ -278,18 +313,22 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("src/main.rs");
     expect(html).not.toContain("turn_id");
     expect(html).not.toContain("turnId");
+    expect(html).not.toContain("process_id");
+    expect(html).not.toContain("source");
     expect(html).not.toContain("t-1");
     expect(html).not.toContain("t-2");
+    expect(html).not.toContain("p-1");
   });
 
-  it("hides turn_id fields for JSON-like string payloads as well", () => {
+  it("hides debug-only fields for JSON-like string payloads as well", () => {
     const html = renderConversation([
       {
         kind: "tool_call",
         id: "call-hidden-debug-fields-json-text",
         title: "Search",
         status: "completed",
-        raw_output: "{\"turn_id\":\"t-3\",\"query\":\"agenthub\",\"path\":\"src/app.tsx\"}",
+        raw_output:
+          "{\"turn_id\":\"t-3\",\"process_id\":\"p-2\",\"source\":\"agenthub\",\"query\":\"agenthub\",\"path\":\"src/app.tsx\"}",
       },
     ]);
 
@@ -298,7 +337,10 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("path");
     expect(html).toContain("src/app.tsx");
     expect(html).not.toContain("turn_id");
+    expect(html).not.toContain("process_id");
+    expect(html).not.toContain("source");
     expect(html).not.toContain("t-3");
+    expect(html).not.toContain("p-2");
   });
 
   it("renders auto-collapsed summaries for thinking and plan", () => {

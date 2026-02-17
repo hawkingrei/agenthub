@@ -134,6 +134,27 @@ describe("buildConversationMessages", () => {
     expect(items[3].kind).toBe("agent_message");
   });
 
+  it("groups consecutive tool calls into a single conversation item", () => {
+    const messages: AcpMessage[] = [
+      msg("user_message", "u1", "s1", 1),
+      msg("agent_message", "m1", "s1", 5),
+    ];
+    const calls = [
+      toolCall("c1", "Tool A", "s1", 2),
+      toolCall("c2", "Tool B", "s1", 3),
+      toolCall("c3", "Tool C", "s1", 4),
+    ];
+    const items = buildConversationMessages(messages, calls, null, "s1");
+    expect(items).toHaveLength(3);
+    expect(items[0].kind).toBe("user_message");
+    expect(items[1].kind).toBe("tool_call_group");
+    if (items[1].kind === "tool_call_group") {
+      expect(items[1].calls.map((call) => call.id)).toEqual(["c1", "c2", "c3"]);
+      expect(items[1].event_id).toBe(4);
+    }
+    expect(items[2].kind).toBe("agent_message");
+  });
+
   it("filters tool calls by session id", () => {
     const messages: AcpMessage[] = [msg("agent_message", "m1", "s1", 1)];
     const calls = [

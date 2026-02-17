@@ -3,29 +3,42 @@ import { compareEventOrder, type SeqComparable } from "./seq_order";
 
 export type PlanEntryView = Pick<AcpPlanEntry, "content" | "status" | "priority">;
 
+export type MessageConversationItem = {
+  kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
+  text: string;
+  plan_entries?: PlanEntryView[];
+  live?: boolean;
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
+export type ToolCallConversationItem = {
+  kind: "tool_call";
+  id: string;
+  title: string;
+  status?: string;
+  content?: string;
+  raw_input?: unknown;
+  raw_output?: unknown;
+  terminal_output?: string;
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
+export type ToolCallGroupConversationItem = {
+  kind: "tool_call_group";
+  calls: ToolCallConversationItem[];
+  seq?: string;
+  event_id?: number;
+  ts?: number;
+};
+
 export type ConversationItem =
-  | {
-      kind: "user_message" | "agent_message" | "agent_thinking" | "agent_plan";
-      text: string;
-      plan_entries?: PlanEntryView[];
-      live?: boolean;
-      seq?: string;
-      event_id?: number;
-      ts?: number;
-    }
-  | {
-      kind: "tool_call";
-      id: string;
-      title: string;
-      status?: string;
-      content?: string;
-      raw_input?: unknown;
-      raw_output?: unknown;
-      terminal_output?: string;
-      seq?: string;
-      event_id?: number;
-      ts?: number;
-    };
+  | MessageConversationItem
+  | ToolCallConversationItem
+  | ToolCallGroupConversationItem;
 
 export type ConversationWindow = {
   items: ConversationItem[];
@@ -244,7 +257,41 @@ export function buildConversationMessages(
       ts: pendingThoughtTs ?? undefined,
     });
   }
-  return items;
+  return groupConsecutiveToolCalls(items);
+}
+
+function groupConsecutiveToolCalls(items: ConversationItem[]): ConversationItem[] {
+  if (items.length < 2) return items;
+  const grouped: ConversationItem[] = [];
+  let pendingCalls: ToolCallConversationItem[] = [];
+
+  const flushPendingCalls = () => {
+    if (pendingCalls.length === 0) return;
+    if (pendingCalls.length === 1) {
+      grouped.push(pendingCalls[0]);
+    } else {
+      const tail = pendingCalls[pendingCalls.length - 1];
+      grouped.push({
+        kind: "tool_call_group",
+        calls: pendingCalls,
+        seq: tail.seq,
+        event_id: tail.event_id,
+        ts: tail.ts,
+      });
+    }
+    pendingCalls = [];
+  };
+
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      pendingCalls.push(item);
+      continue;
+    }
+    flushPendingCalls();
+    grouped.push(item);
+  }
+  flushPendingCalls();
+  return grouped;
 }
 
 export function windowConversation(

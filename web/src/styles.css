@@ -870,6 +870,22 @@ select:not([class*="mantine-"]):focus-visible {
   box-shadow: 0 0 0 3px rgba(95, 132, 248, 0.22);
 }
 
+.tool-call-enter {
+  animation: acp-tool-call-enter 220ms ease-out;
+}
+
+@keyframes acp-tool-call-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.992);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .output-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1249,17 +1265,20 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .acp-thought-fold > summary,
-.acp-tool-fold > summary {
+.acp-tool-fold > summary,
+.acp-tool-group-fold > summary {
   list-style: none;
 }
 
 .acp-thought-fold > summary::-webkit-details-marker,
-.acp-tool-fold > summary::-webkit-details-marker {
+.acp-tool-fold > summary::-webkit-details-marker,
+.acp-tool-group-fold > summary::-webkit-details-marker {
   display: none;
 }
 
 .acp-thought-fold > summary::before,
-.acp-tool-fold > summary::before {
+.acp-tool-fold > summary::before,
+.acp-tool-group-fold > summary::before {
   content: "▸";
   font-size: 12px;
   width: 12px;
@@ -1270,7 +1289,8 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .acp-thought-fold[open] > summary::before,
-.acp-tool-fold[open] > summary::before {
+.acp-tool-fold[open] > summary::before,
+.acp-tool-group-fold[open] > summary::before {
   content: "▾";
 }
 
@@ -1776,6 +1796,10 @@ select:not([class*="mantine-"]):focus-visible {
   width: 100%;
 }
 
+.acp-bubble.tool_call.tool_call_group {
+  background: #edf8ef;
+}
+
 .acp-thought-more {
   margin-top: 6px;
 }
@@ -1806,6 +1830,16 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 6px;
 }
 
+.acp-tool-group-fold summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #245a46;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .acp-tool-fold pre {
   margin: 0;
   white-space: pre-wrap;
@@ -1826,6 +1860,53 @@ select:not([class*="mantine-"]):focus-visible {
   border-radius: 999px;
   background: #dff2e2;
   color: #295d52;
+}
+
+.acp-tool-group-list {
+  display: grid;
+  gap: 8px;
+}
+
+.acp-tool-group-fold[open] > .acp-tool-group-list {
+  animation: acp-tool-group-expand 180ms ease-out;
+}
+
+.acp-tool-group-item + .acp-tool-group-item {
+  border-top: 1px dashed #c9e0cf;
+  padding-top: 8px;
+}
+
+.acp-tool-group-entry {
+  background: #f3fbf4;
+  border-color: #d3ead8;
+  padding: 8px 10px;
+}
+
+.acp-tool-fold-nested {
+  margin: 0;
+}
+
+.acp-tool-group-status {
+  background: #d7ecde;
+}
+
+@keyframes acp-tool-group-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-call-enter,
+  .acp-tool-group-fold[open] > .acp-tool-group-list {
+    animation: none !important;
+  }
 }
 
 .acp-subfold {
@@ -2529,20 +2610,27 @@ select:not([class*="mantine-"]):focus-visible {
     padding-left: 16px;
   }
 
-  .acp-tool-fold summary {
+  .acp-tool-fold summary,
+  .acp-tool-group-fold summary {
     align-items: flex-start;
     gap: 4px;
   }
 
-  .acp-tool-fold summary .acp-tool-title {
+  .acp-tool-fold summary .acp-tool-title,
+  .acp-tool-group-fold summary .acp-tool-title {
     white-space: normal;
     line-height: 1.35;
   }
 
-  .acp-tool-fold summary .acp-tool-status {
+  .acp-tool-fold summary .acp-tool-status,
+  .acp-tool-group-fold summary .acp-tool-status {
     margin-top: 1px;
     font-size: 10px;
     padding: 2px 5px;
+  }
+
+  .acp-tool-group-entry {
+    padding: 7px 8px;
   }
 
   .acp-subfold > summary {

@@ -92,6 +92,14 @@ export function buildConversationTailKey(conversationMessages: ConversationItem[
     const rawOutLen = estimateTailPayloadSize(last.raw_output);
     return `${base}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
   }
+  if (last.kind === "tool_call_group") {
+    const tailCall = last.calls[last.calls.length - 1];
+    const contentLen = tailCall?.content?.length ?? 0;
+    const terminalLen = tailCall?.terminal_output?.length ?? 0;
+    const rawInLen = estimateTailPayloadSize(tailCall?.raw_input);
+    const rawOutLen = estimateTailPayloadSize(tailCall?.raw_output);
+    return `${base}:count:${last.calls.length}:${contentLen}:${terminalLen}:${rawInLen}:${rawOutLen}`;
+  }
   return `${base}:${last.text?.length ?? 0}`;
 }
 
@@ -241,8 +249,13 @@ export function findConversationToolCallIndex(
   if (!toolCallId) return -1;
   for (let idx = 0; idx < items.length; idx += 1) {
     const item = items[idx];
-    if (item.kind !== "tool_call") continue;
-    if (item.id === toolCallId) return idx;
+    if (item.kind === "tool_call") {
+      if (item.id === toolCallId) return idx;
+      continue;
+    }
+    if (item.kind === "tool_call_group") {
+      if (item.calls.some((call) => call.id === toolCallId)) return idx;
+    }
   }
   return -1;
 }

@@ -116,6 +116,35 @@ describe("buildConversationTailKey", () => {
     expect(key).toContain("tool_call:8:");
     expect(key.length).toBeLessThan(120);
   });
+
+  it("builds key for grouped tool calls using trailing call payload lengths", () => {
+    const key = buildConversationTailKey([
+      {
+        kind: "tool_call_group",
+        calls: [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            title: "Search",
+            content: "first",
+            event_id: 9,
+          },
+          {
+            kind: "tool_call",
+            id: "call-2",
+            title: "Read",
+            content: "tail-content",
+            terminal_output: "ok",
+            raw_input: { path: "README.md" },
+            raw_output: { done: true },
+            event_id: 10,
+          },
+        ],
+        event_id: 10,
+      },
+    ]);
+    expect(key).toContain("tool_call_group:10:count:2:12:2:");
+  });
 });
 
 describe("findConversationToolCallIndex", () => {
@@ -135,6 +164,22 @@ describe("findConversationToolCallIndex", () => {
     ];
     expect(findConversationToolCallIndex(items, "")).toBe(-1);
     expect(findConversationToolCallIndex(items, "missing")).toBe(-1);
+  });
+
+  it("returns grouped item index when call is nested in tool_call_group", () => {
+    const items: ConversationItem[] = [
+      { kind: "agent_message", text: "a", event_id: 1 },
+      {
+        kind: "tool_call_group",
+        calls: [
+          { kind: "tool_call", id: "call-1", title: "Read", event_id: 2 },
+          { kind: "tool_call", id: "call-2", title: "Write", event_id: 3 },
+        ],
+        event_id: 3,
+      },
+      { kind: "agent_message", text: "b", event_id: 4 },
+    ];
+    expect(findConversationToolCallIndex(items, "call-2")).toBe(1);
   });
 });
 
