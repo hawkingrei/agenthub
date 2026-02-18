@@ -7,6 +7,10 @@ use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
     TeamRunStatus, TeamStepStatus,
 };
+use agenthub_team_actor::{
+    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
+    ActorServiceErrorCode,
+};
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode};
@@ -738,6 +742,114 @@ async fn actor_messages_support_inbox_and_ack_flow() {
             "actor_message_delivered"
         ]
     );
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_returns_contract_responses() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-service-team".to_string(),
+            description: Some("team for actor mailbox service contract".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-service"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-service-1".to_string()),
+        })
+        .await
+        .expect("actor send");
+    assert_eq!(sent.state, TeamActorMessageStatus::Pending);
+    assert!(!sent.deduped);
+
+    let deduped = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-service-1".to_string()),
+        })
+        .await
+        .expect("actor send deduped");
+    assert_eq!(sent.message_id, deduped.message_id);
+    assert!(deduped.deduped);
+
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(50),
+            states: None,
+        })
+        .await
+        .expect("actor inbox");
+    assert_eq!(inbox.messages.len(), 1);
+    assert_eq!(inbox.messages[0].message_id, sent.message_id);
+    assert_eq!(inbox.next_cursor, Some(sent.message_id));
+
+    let acked = service
+        .actor_ack(ActorAckRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            ack_token: None,
+            result: None,
+        })
+        .await
+        .expect("actor ack");
+    assert_eq!(acked.message_id, sent.message_id);
+    assert_eq!(acked.state, TeamActorMessageStatus::Delivered);
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_validates_required_fields() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let service = manager.actor_mailbox_service();
+
+    let err = service
+        .actor_send(ActorSendRequest {
+            run_id: " ".to_string(),
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: None,
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"invalid"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect_err("blank run_id should fail");
+    assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
 }
 
 #[tokio::test]

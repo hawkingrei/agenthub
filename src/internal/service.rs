@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
-use agenthub_team_actor::parse_actor_transport;
+use agenthub_team_actor::{
+    ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
+    ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
+};
 use serde_json::Value;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
-use crate::team::{SendActorMessageInput, TeamManager, TeamStepRecord, TeamStepStatus};
+use crate::team::{TeamStepRecord, TeamStepStatus};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
@@ -93,29 +96,23 @@ impl TeamInternalControl for TeamInternalControlService {
         let message = self
             .state
             .teams
-            .send_actor_message(SendActorMessageInput {
-                run_id,
-                from_actor_id,
-                to_actor_id,
-                channel,
-                transport,
+            .actor_mailbox_service()
+            .actor_send(ActorSendRequest {
+                run_id: run_id.to_string(),
+                from_actor_id: from_actor_id.to_string(),
+                to_actor_id: to_actor_id.to_string(),
+                channel: Some(channel.to_string()),
+                transport: Some(transport),
                 route,
                 payload: payload_json,
-                idempotency_key,
+                idempotency_key: idempotency_key.map(str::to_string),
             })
             .await
-            .map_err(|err| {
-                if TeamManager::is_actor_message_idempotency_conflict(&err) {
-                    return Status::already_exists(
-                        "idempotency key already exists with different payload",
-                    );
-                }
-                map_manager_error(err)
-            })?;
+            .map_err(map_actor_service_status)?;
 
         Ok(Response::new(SendActorMessageResponse {
             message_id: message.message_id,
-            status: message.status.as_str().to_string(),
+            status: message.state.as_str().to_string(),
             idempotency_key: idempotency_key.unwrap_or("").to_string(),
         }))
     }
@@ -143,13 +140,28 @@ impl TeamInternalControl for TeamInternalControlService {
             None
         };
 
+        let states = if payload.include_delivered {
+            Some(vec![
+                ActorMessageStatus::Pending,
+                ActorMessageStatus::Delivered,
+            ])
+        } else {
+            None
+        };
         let messages = self
             .state
             .teams
-            .list_actor_inbox(run_id, actor_id, limit, after_id, payload.include_delivered)
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                cursor: after_id,
+                limit: Some(limit),
+                states,
+            })
             .await
-            .map_err(map_manager_error)?;
-        let messages = messages
+            .map_err(map_actor_service_status)?
+            .messages
             .into_iter()
             .map(|message| ActorMessage {
                 message_id: message.message_id,
@@ -452,6 +464,21 @@ fn map_manager_error(err: anyhow::Error) -> Status {
         return Status::not_found("target record not found");
     }
     Status::internal(err.to_string())
+}
+
+fn map_actor_service_status(err: ActorServiceError) -> Status {
+    match err.code {
+        ActorServiceErrorCode::BadRequest | ActorServiceErrorCode::UnprocessableEntity => {
+            Status::invalid_argument(err.message)
+        }
+        ActorServiceErrorCode::Unauthorized => Status::unauthenticated(err.message),
+        ActorServiceErrorCode::Forbidden => Status::permission_denied(err.message),
+        ActorServiceErrorCode::NotFound => Status::not_found(err.message),
+        ActorServiceErrorCode::Conflict => Status::already_exists(err.message),
+        ActorServiceErrorCode::Gone => Status::failed_precondition(err.message),
+        ActorServiceErrorCode::TooManyRequests => Status::resource_exhausted(err.message),
+        ActorServiceErrorCode::Internal => Status::internal(err.message),
+    }
 }
 
 fn normalize_permission(raw: &str) -> Option<String> {

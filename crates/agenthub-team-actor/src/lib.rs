@@ -1,9 +1,14 @@
+mod contract;
 mod idempotency;
 mod mailbox;
 mod message;
 mod relay;
 mod transport;
 
+pub use contract::{
+    ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
+    ActorSendRequest, ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
+};
 pub use idempotency::{
     actor_message_fingerprint, build_default_actor_message_idempotency_key, canonical_json,
 };

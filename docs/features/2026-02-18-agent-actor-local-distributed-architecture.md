@@ -207,6 +207,23 @@ This note defines a shared actor protocol and two separate runtime architectures
 - Phase 4:
   - Promote distributed mode for selected runs and keep local fallback.
 
+## Implementation Snapshot (2026-02-18)
+
+- Added shared actor mailbox contract types in `crates/agenthub-team-actor`:
+  - `ActorSendRequest/Response`
+  - `ActorInboxRequest/Response`
+  - `ActorAckRequest/Response`
+  - `ActorServiceErrorCode`, `ActorServiceError`
+  - `ActorMailboxService` trait
+- Added `TeamActorMailboxService` adapter in `src/team/manager/mailbox.rs`:
+  - maps contract calls to existing `TeamManager` mailbox operations
+  - keeps idempotency conflict and row-not-found mapping explicit
+  - keeps inbox limit compatibility at `1..1000` for current runtime behavior
+- Wired internal gRPC mailbox paths to the new service skeleton:
+  - `TeamInternalControl.send_actor_message`
+  - `TeamInternalControl.list_actor_inbox`
+  - kept response payload shape unchanged for existing callers
+
 ## Testing Strategy
 
 - Local mode tests:
