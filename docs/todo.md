@@ -1,6 +1,7 @@
 # TODO
 
 - [ ] Verify ACP-native actor mailbox tools (`actor_send`/`actor_inbox`/`actor_ack`) can run agent collaboration flows in local mode without requiring `AGENTHUB_ACTOR_CLI` (see `docs/features/2026-02-18-agent-actor-local-distributed-architecture.md`).
+- [ ] Verify ACP actor runtime auto-injects `agenthub-actor-mailbox` MCP server (`actor-mcp`) and tool calls succeed end-to-end (`tools/list` + `tools/call`) in a real Codex ACP session (see `docs/features/2026-02-18-acp-actor-mailbox-native-tools.md`).
 - [ ] Verify distributed actor transport (A2A) keeps mailbox semantics consistent with local mode for idempotency, bounded retries (no infinite retry), and dead-letter transitions (see `docs/features/2026-02-18-agent-actor-local-distributed-architecture.md`).
 - [ ] Verify actor mailbox API implementation matches documented contract for `actor_send`/`actor_inbox`/`actor_ack` request fields, state transitions, and HTTP error mapping (`400/401/403/404/409/410/422/429`) (see `docs/features/2026-02-18-agent-actor-local-distributed-architecture.md`).
 - [ ] Verify Teams mailbox REST endpoints remain wire-compatible after switching to `ActorMailboxService` adapter (`send`/`inbox`/`ack` response payloads and idempotency behavior) (see `docs/features/2026-02-18-agent-actor-local-distributed-architecture.md`).

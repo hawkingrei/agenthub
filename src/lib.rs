@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 mod acp;
 mod actor_cli;
+mod actor_mcp;
 mod actor_runtime;
 mod agent;
 mod api;
@@ -39,6 +40,9 @@ fn split_log_path(path: &str) -> (std::path::PathBuf, String) {
 }
 
 pub async fn run() -> anyhow::Result<()> {
+    if let Some(result) = actor_mcp::maybe_run_from_args().await {
+        return result;
+    }
     if let Some(result) = actor_cli::maybe_run_from_args().await {
         return result;
     }

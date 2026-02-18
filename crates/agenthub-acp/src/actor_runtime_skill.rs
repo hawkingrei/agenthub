@@ -12,30 +12,30 @@ You are running inside an AgentHub actor session.
 - `actor_id`: `{actor_id}`
 - `default_channel`: `{default_channel}`
 
-Use the execute/terminal tool to interact with actor mailbox via CLI:
+Use MCP native actor mailbox tools (do not shell out to CLI):
 
 1. Pull inbox:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --limit 20`
+   `actor_inbox` with `{{"limit": 20}}`
 2. Acknowledge a message after processing:
-   `"$AGENTHUB_ACTOR_CLI" actor ack --message-id <message_id>`
+   `actor_ack` with `{{"message_id": 123}}`
 3. Send a local message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --to-actor-id <actor_id> --payload-json '{{"text":"..."}}'`
+   `actor_send` with `{{"to_actor_id":"worker","payload":{{"text":"..."}}}}`
 4. Send a remote message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --transport remote --to-actor-id <remote_actor_id> --route-json '{{"endpoint":"https://..."}}' --payload-json '{{"text":"..."}}'`
-5. Force a duplicate send when business logic requires repeated delivery:
-   `"$AGENTHUB_ACTOR_CLI" actor send --allow-duplicate --to-actor-id <actor_id> --payload-json '{{"text":"..."}}'`
-6. Use explicit idempotency key when coordinating retries across tools/workers:
-   `"$AGENTHUB_ACTOR_CLI" actor send --idempotency-key <stable_key> --to-actor-id <actor_id> --payload-json '{{"text":"..."}}'`
+   `actor_send` with `{{"to_actor_id":"remote-worker","transport":"remote","route":{{"endpoint":"https://..."}},"payload":{{"text":"..."}}}}`
+5. Force duplicate delivery when business logic requires repeated send:
+   `actor_send` with `{{"to_actor_id":"worker","allow_duplicate":true,"payload":{{"text":"..."}}}}`
+6. Use explicit idempotency key when coordinating retries across workers:
+   `actor_send` with `{{"to_actor_id":"worker","idempotency_key":"stable-key","payload":{{"text":"..."}}}}`
 
 Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
-- Use `--channel` only when a non-default channel is required.
-- By default, `actor send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
+- Use `channel` only when a non-default channel is required.
+- By default, `actor_send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
 - Reuse the same payload and routing fields when retrying; changing payload under the same idempotency key will be rejected.
-- Use `--allow-duplicate` only when you intentionally need repeated delivery of equivalent payloads.
+- Use `allow_duplicate=true` only when you intentionally need repeated delivery of equivalent payloads.
 "#,
         run_id = context.run_id,
         actor_id = context.actor_id,
@@ -53,7 +53,7 @@ mod tests {
     use super::{AcpActorSkillContext, build_actor_runtime_skill};
 
     #[test]
-    fn actor_runtime_skill_includes_context_and_cli_contract() {
+    fn actor_runtime_skill_includes_context_and_native_tool_contract() {
         let skill = build_actor_runtime_skill(&AcpActorSkillContext {
             run_id: "run-42".to_string(),
             actor_id: "planner".to_string(),
@@ -69,7 +69,9 @@ mod tests {
                 .instructions
                 .contains("default_channel`: `coordination`")
         );
-        assert!(skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
-        assert!(skill.instructions.contains("actor send --idempotency-key"));
+        assert!(skill.instructions.contains("actor_inbox"));
+        assert!(skill.instructions.contains("actor_ack"));
+        assert!(skill.instructions.contains("actor_send"));
+        assert!(!skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
     }
 }

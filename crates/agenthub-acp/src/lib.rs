@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
-    NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    ContentChunk, EnvVariable, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
+    McpServerStdio, NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest,
+    ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
     SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
     SetSessionModeRequest, SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate,
     ToolCallUpdateFields,
@@ -34,6 +34,10 @@ const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const ACTOR_MAILBOX_MCP_SERVER_NAME: &str = "agenthub-actor-mailbox";
+const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
+const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
+const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 #[derive(Debug, Clone)]
 pub struct AcpActorSkillContext {
@@ -192,29 +196,76 @@ fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
     false
 }
 
-fn load_mcp_servers() -> Vec<McpServer> {
+fn build_actor_mailbox_mcp_server(context: &AcpActorSkillContext) -> McpServer {
+    let env = vec![
+        EnvVariable::new(ACTOR_RUNTIME_RUN_ID_ENV.to_string(), context.run_id.clone()),
+        EnvVariable::new(
+            ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
+            context.actor_id.clone(),
+        ),
+        EnvVariable::new(
+            ACTOR_RUNTIME_CHANNEL_ENV.to_string(),
+            context.default_channel.clone(),
+        ),
+    ];
+    let args = vec![
+        "actor-mcp".to_string(),
+        "--run-id".to_string(),
+        context.run_id.clone(),
+        "--actor-id".to_string(),
+        context.actor_id.clone(),
+        "--channel".to_string(),
+        context.default_channel.clone(),
+    ];
+    let server = McpServerStdio::new(
+        ACTOR_MAILBOX_MCP_SERVER_NAME.to_string(),
+        PathBuf::from(context.actor_cli_path.clone()),
+    )
+    .args(args)
+    .env(env);
+    McpServer::Stdio(server)
+}
+
+fn load_mcp_servers(actor_context: Option<&AcpActorSkillContext>) -> Vec<McpServer> {
     let path = mcp_config_path();
     let contents = match fs::read_to_string(&path) {
         Ok(contents) => contents,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            if let Some(context) = actor_context {
+                return vec![build_actor_mailbox_mcp_server(context)];
+            }
+            return Vec::new();
+        }
         Err(err) => {
             tracing::warn!(
                 "mcp config read failed: path={} error={}",
                 path.display(),
                 err
             );
+            if let Some(context) = actor_context {
+                return vec![build_actor_mailbox_mcp_server(context)];
+            }
             return Vec::new();
         }
     };
     match parse_mcp_config(&contents) {
-        Ok(servers) => servers,
+        Ok(mut parsed_servers) => {
+            if let Some(context) = actor_context {
+                parsed_servers.push(build_actor_mailbox_mcp_server(context));
+            }
+            parsed_servers
+        }
         Err(err) => {
             tracing::warn!(
                 "mcp config parse failed: path={} error={}",
                 path.display(),
                 err
             );
-            Vec::new()
+            if let Some(context) = actor_context {
+                vec![build_actor_mailbox_mcp_server(context)]
+            } else {
+                Vec::new()
+            }
         }
     }
 }
@@ -517,7 +568,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     std::thread::spawn(move || {
-        let mcp_servers = load_mcp_servers();
+        let mcp_servers = load_mcp_servers(actor_context.as_ref());
         let mut skills = load_skills(&safe_paths);
         if let Some(ctx) = actor_context.as_ref() {
             skills.push(build_actor_runtime_skill(ctx));
@@ -1050,7 +1101,11 @@ impl AcpPermissionService {
 
 #[cfg(test)]
 mod tests {
-    use super::{AcpCommand, AcpHandle, AcpSendError};
+    use super::{
+        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle, AcpSendError,
+        build_actor_mailbox_mcp_server,
+    };
+    use agent_client_protocol::McpServer;
     use std::time::Duration;
     use tokio::sync::mpsc;
 
@@ -1098,5 +1153,35 @@ mod tests {
             err.to_string().contains("channel closed"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn build_actor_mailbox_mcp_server_uses_actor_runtime_binary_and_context() {
+        let context = AcpActorSkillContext {
+            run_id: "run-1".to_string(),
+            actor_id: "leader".to_string(),
+            default_channel: "coordination".to_string(),
+            actor_cli_path: "/tmp/agenthub".to_string(),
+        };
+        let server = build_actor_mailbox_mcp_server(&context);
+        match server {
+            McpServer::Stdio(server) => {
+                assert_eq!(server.name, ACTOR_MAILBOX_MCP_SERVER_NAME);
+                assert_eq!(server.command.to_string_lossy(), "/tmp/agenthub");
+                assert_eq!(
+                    server.args,
+                    vec![
+                        "actor-mcp".to_string(),
+                        "--run-id".to_string(),
+                        "run-1".to_string(),
+                        "--actor-id".to_string(),
+                        "leader".to_string(),
+                        "--channel".to_string(),
+                        "coordination".to_string(),
+                    ]
+                );
+            }
+            _ => panic!("expected stdio mcp server"),
+        }
     }
 }

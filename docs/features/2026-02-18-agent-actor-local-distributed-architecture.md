@@ -229,6 +229,10 @@ This note defines a shared actor protocol and two separate runtime architectures
   - `GET /api/teams/runs/:run_id/messages/inbox`
   - `POST /api/teams/runs/:run_id/messages/:message_id/ack`
   - kept API response payload shape unchanged for existing callers
+- Added ACP-native actor mailbox tool wiring for actor sessions:
+  - ACP runtime auto-injects stdio MCP server `agenthub-actor-mailbox`
+  - server command uses AgentHub binary `actor-mcp` subcommand with actor context args
+  - actor runtime skill now guides `actor_inbox` / `actor_ack` / `actor_send` native tool usage instead of CLI commands
 
 ## Testing Strategy
 
