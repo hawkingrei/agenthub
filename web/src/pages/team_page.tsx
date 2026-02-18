@@ -20,6 +20,11 @@ import {
   type AgentPresetId,
 } from "../agent_presets";
 import { isAgentActiveStatus } from "../agent_ws";
+import {
+  StatusBadge,
+  resolveTeamLifecycleStatusTone,
+  resolveTeamRunStatusTone,
+} from "../components/status_badge";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 
@@ -115,8 +120,24 @@ const DEFAULT_TEAM_WORKER_PROMPT = [
   "Use worker_status payload contract:",
   "{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}",
 ].join("\n");
-const DEFAULT_TEAM_LEADER_SKILLS = ["agenthub-actor-runtime", "team-leader-orchestrator"];
-const DEFAULT_TEAM_WORKER_SKILLS = ["agenthub-actor-runtime", "team-worker-executor"];
+const DEFAULT_TEAM_LEADER_SKILLS = [
+  "agenthub-actor-runtime",
+  "team-leader-orchestrator",
+  "team-deliberation-rules",
+];
+const DEFAULT_TEAM_WORKER_SKILLS = [
+  "agenthub-actor-runtime",
+  "team-worker-executor",
+  "team-deliberation-rules",
+];
+const REQUIRED_TEAM_LEADER_SKILLS = [
+  "agenthub-actor-runtime",
+  "team-leader-orchestrator",
+];
+const REQUIRED_TEAM_WORKER_SKILLS = [
+  "agenthub-actor-runtime",
+  "team-worker-executor",
+];
 const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];
 const TEAM_SKILL_OPTIONS = [
   ...new Set([...DEFAULT_TEAM_LEADER_SKILLS, ...DEFAULT_TEAM_WORKER_SKILLS]),
@@ -173,6 +194,24 @@ export type TeamMemberLiveState = {
   step_status: string;
   pending_inbox_count: number | null;
   current_work: string;
+};
+
+export type TeamCreateDraftState = {
+  leaderMemberId: string;
+  leaderModel: string;
+  leaderPrompt: string;
+  leaderSkills: string[];
+  leaderCustomSkills: string;
+  workers: Array<{
+    member_id: string;
+    model: string;
+    prompt: string;
+    skills: string[];
+    custom_skills: string;
+  }>;
+  useSpecOverride: boolean;
+  newTeamSpec: string;
+  teamForgeAgentIds: string[];
 };
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
@@ -237,6 +276,155 @@ export function selectTeamPreviewEvents(
   return events.slice(events.length - limit);
 }
 
+export type TeamMailboxChatActors = {
+  fromActorId: string;
+  toActorId: string;
+  inboxActorId: string;
+};
+
+export function resolveMailboxChatActors(
+  leaderMemberId: string | null | undefined,
+  memberIds: string[],
+  selectedMemberId: string
+): TeamMailboxChatActors {
+  if (memberIds.length === 0) {
+    return {
+      fromActorId: "",
+      toActorId: "",
+      inboxActorId: "",
+    };
+  }
+  const normalizedLeaderId = (leaderMemberId ?? "").trim();
+  const leaderId = normalizedLeaderId && memberIds.includes(normalizedLeaderId)
+    ? normalizedLeaderId
+    : memberIds[0] ?? "";
+  const normalizedSelectedId = selectedMemberId.trim();
+  const targetId = normalizedSelectedId && memberIds.includes(normalizedSelectedId)
+    ? normalizedSelectedId
+    : memberIds[0] ?? "";
+  return {
+    fromActorId: leaderId,
+    toActorId: targetId,
+    inboxActorId: targetId,
+  };
+}
+
+export function mergeMailboxMessages(
+  recentMessages: TeamActorMessageRecord[],
+  inboxMessages: TeamActorMessageRecord[]
+): TeamActorMessageRecord[] {
+  const byId = new Map<number, TeamActorMessageRecord>();
+  for (const message of [...recentMessages, ...inboxMessages]) {
+    byId.set(message.message_id, message);
+  }
+  return [...byId.values()].sort((a, b) => a.message_id - b.message_id);
+}
+
+export function selectMailboxConversation(
+  messages: TeamActorMessageRecord[],
+  actorA: string,
+  actorB: string
+): TeamActorMessageRecord[] {
+  const left = actorA.trim();
+  const right = actorB.trim();
+  if (!left || !right) {
+    return [];
+  }
+  return messages.filter(
+    (message) =>
+      (message.from_actor_id === left && message.to_actor_id === right) ||
+      (message.from_actor_id === right && message.to_actor_id === left)
+  );
+}
+
+export function buildMailboxChatPayload(text: string): {
+  type: "chat_message";
+  text: string;
+  source: "team_workbench";
+} {
+  return {
+    type: "chat_message",
+    text,
+    source: "team_workbench",
+  };
+}
+
+export function buildMailboxConversationKey(actorA: string, actorB: string): string {
+  const pair = [actorA.trim(), actorB.trim()].filter((value) => value.length > 0).sort();
+  if (pair.length < 2) {
+    return "";
+  }
+  return `${pair[0]}::${pair[1]}`;
+}
+
+export function resolveConversationMaxMessageId(
+  messages: TeamActorMessageRecord[]
+): number | null {
+  if (messages.length === 0) {
+    return null;
+  }
+  return messages.reduce(
+    (maxId, message) => (message.message_id > maxId ? message.message_id : maxId),
+    messages[0]?.message_id ?? 0
+  );
+}
+
+export function countUnreadConversationMessages(
+  messages: TeamActorMessageRecord[],
+  actorA: string,
+  actorB: string,
+  seenMessageId: number
+): number {
+  const left = actorA.trim();
+  const right = actorB.trim();
+  if (!left || !right) {
+    return 0;
+  }
+  return messages.filter((message) => {
+    if (message.message_id <= seenMessageId) {
+      return false;
+    }
+    const inConversation =
+      (message.from_actor_id === left && message.to_actor_id === right) ||
+      (message.from_actor_id === right && message.to_actor_id === left);
+    if (!inConversation) {
+      return false;
+    }
+    // Unread in chat list should reflect inbound messages to the current sender side.
+    if (left === right) {
+      return true;
+    }
+    return message.to_actor_id === left;
+  }).length;
+}
+
+export function selectTeamForgeAgents(
+  agents: AgentRecord[],
+  teamForgeAgentIds: string[]
+): AgentRecord[] {
+  if (teamForgeAgentIds.length === 0) {
+    return [];
+  }
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  return teamForgeAgentIds
+    .map((agentId) => byId.get(agentId))
+    .filter((agent): agent is AgentRecord => Boolean(agent));
+}
+
+export function createInitialTeamDraftState(): TeamCreateDraftState {
+  return {
+    leaderMemberId: "",
+    leaderModel: "",
+    leaderPrompt: DEFAULT_TEAM_LEADER_PROMPT,
+    leaderSkills: [...DEFAULT_TEAM_LEADER_SKILLS],
+    leaderCustomSkills: "",
+    workers: [],
+    useSpecOverride: false,
+    newTeamSpec: "{}",
+    teamForgeAgentIds: [],
+  };
+}
+
 function upsertEventList(
   prev: TeamRunEventRecord[],
   next: TeamRunEventRecord[],
@@ -280,7 +468,8 @@ function buildTeamSpecFromForm(
       skills: normalizeSkillSelection(
         worker.skills,
         worker.custom_skills,
-        DEFAULT_TEAM_WORKER_SKILLS
+        DEFAULT_TEAM_WORKER_SKILLS,
+        REQUIRED_TEAM_WORKER_SKILLS
       ),
     }))
     .filter((worker) => worker.member_id.length > 0);
@@ -298,7 +487,8 @@ function buildTeamSpecFromForm(
       skills: normalizeSkillSelection(
         leaderSkills,
         leaderCustomSkills,
-        DEFAULT_TEAM_LEADER_SKILLS
+        DEFAULT_TEAM_LEADER_SKILLS,
+        REQUIRED_TEAM_LEADER_SKILLS
       ),
     },
     ...normalizedWorkers.map((worker) => ({
@@ -418,9 +608,10 @@ function parseCsvList(raw: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-function ensureMandatorySkills(skills: string[]): string[] {
+function ensureMandatorySkills(skills: string[], requiredSkills: string[]): string[] {
   const deduped = [...new Set(skills.map((item) => item.trim()).filter(Boolean))];
-  const mandatory = MANDATORY_TEAM_SKILLS.filter((item) => !deduped.includes(item));
+  const required = [...new Set(requiredSkills.map((item) => item.trim()).filter(Boolean))];
+  const mandatory = required.filter((item) => !deduped.includes(item));
   if (mandatory.length === 0) {
     return deduped;
   }
@@ -430,7 +621,8 @@ function ensureMandatorySkills(skills: string[]): string[] {
 export function normalizeSkillSelection(
   selected: string[],
   customRaw: string,
-  fallback: string[]
+  fallback: string[],
+  requiredSkills: string[] = MANDATORY_TEAM_SKILLS
 ): string[] {
   const allowed = new Set(TEAM_SKILL_OPTIONS);
   const selectedSkills = [...new Set(selected.map((item) => item.trim()).filter(Boolean))].filter(
@@ -439,20 +631,31 @@ export function normalizeSkillSelection(
   const customSkills = parseCsvList(customRaw);
   const merged = [...new Set([...selectedSkills, ...customSkills])];
   if (merged.length > 0) {
-    return ensureMandatorySkills(merged);
+    return ensureMandatorySkills(merged, requiredSkills);
   }
-  return ensureMandatorySkills(fallback);
+  return ensureMandatorySkills(fallback, requiredSkills);
 }
 
-export function toggleSkillSelection(selected: string[], skill: string): string[] {
+export function toggleSkillSelection(
+  selected: string[],
+  skill: string,
+  requiredSkills: string[] = MANDATORY_TEAM_SKILLS
+): string[] {
   const normalized = skill.trim();
   if (!normalized || !TEAM_SKILL_OPTIONS.includes(normalized)) {
     return selected;
   }
-  if (selected.includes(normalized)) {
-    return selected.filter((item) => item !== normalized);
+  const required = new Set(
+    requiredSkills.map((item) => item.trim()).filter((item) => item.length > 0)
+  );
+  const normalizedSelected = ensureMandatorySkills(selected, [...required]);
+  if (normalizedSelected.includes(normalized)) {
+    if (required.has(normalized)) {
+      return normalizedSelected;
+    }
+    return normalizedSelected.filter((item) => item !== normalized);
   }
-  return [...selected, normalized];
+  return ensureMandatorySkills([...normalizedSelected, normalized], [...required]);
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -792,6 +995,7 @@ export function TeamPage(props: TeamPageProps) {
     useState<AgentPresetId>(DEFAULT_AGENT_PRESET_ID);
   const [forgeAgentCodeMode, setForgeAgentCodeMode] = useState(true);
   const [forgeAgentBusy, setForgeAgentBusy] = useState(false);
+  const [teamForgeAgentIds, setTeamForgeAgentIds] = useState<string[]>([]);
 
   const [runContextId, setRunContextId] = useState("");
   const [runInput, setRunInput] = useState("{}");
@@ -837,6 +1041,12 @@ export function TeamPage(props: TeamPageProps) {
   );
   const [msgPayload, setMsgPayload] = useState("{}");
   const [msgIdempotencyKey, setMsgIdempotencyKey] = useState("");
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatStickToBottom, setChatStickToBottom] = useState(true);
+  const [chatSeenByConversation, setChatSeenByConversation] = useState<
+    Record<string, number>
+  >({});
+  const chatMessagesRef = useRef<HTMLUListElement | null>(null);
 
   const [inboxActorId, setInboxActorId] = useState("");
   const [inboxLimit, setInboxLimit] = useState("100");
@@ -881,11 +1091,15 @@ export function TeamPage(props: TeamPageProps) {
     () => buildTeamMemberLiveStates(selectedTeamMemberStatuses, snapshot?.members),
     [selectedTeamMemberStatuses, snapshot]
   );
-  const leaderAgent = useMemo(
-    () => agents.find((agent) => agent.id === leaderMemberId) ?? null,
-    [agents, leaderMemberId]
+  const teamForgeAgents = useMemo(
+    () => selectTeamForgeAgents(agents, teamForgeAgentIds),
+    [agents, teamForgeAgentIds]
   );
-  const hasAgents = agents.length > 0;
+  const leaderAgent = useMemo(
+    () => teamForgeAgents.find((agent) => agent.id === leaderMemberId) ?? null,
+    [teamForgeAgents, leaderMemberId]
+  );
+  const hasForgeAgents = teamForgeAgents.length > 0;
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -951,6 +1165,62 @@ export function TeamPage(props: TeamPageProps) {
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
   );
+  const chatMemberIds = useMemo(
+    () => snapshot?.members.map((member) => member.member_id) ?? [],
+    [snapshot]
+  );
+  const chatActors = useMemo(
+    () =>
+      resolveMailboxChatActors(
+        snapshot?.leader_member_id,
+        chatMemberIds,
+        selectedMemberId
+      ),
+    [chatMemberIds, selectedMemberId, snapshot?.leader_member_id]
+  );
+  const mergedMailboxMessages = useMemo(
+    () => mergeMailboxMessages(snapshot?.mailbox.recent_messages ?? [], inbox),
+    [inbox, snapshot?.mailbox.recent_messages]
+  );
+  const conversationMessages = useMemo(
+    () =>
+      selectMailboxConversation(
+        mergedMailboxMessages,
+        chatActors.fromActorId,
+        chatActors.toActorId
+      ),
+    [chatActors.fromActorId, chatActors.toActorId, mergedMailboxMessages]
+  );
+  const conversationKey = useMemo(
+    () => buildMailboxConversationKey(chatActors.fromActorId, chatActors.toActorId),
+    [chatActors.fromActorId, chatActors.toActorId]
+  );
+  const conversationLatestMessageId = useMemo(
+    () => resolveConversationMaxMessageId(conversationMessages),
+    [conversationMessages]
+  );
+  const unreadByMemberId = useMemo(() => {
+    if (!snapshot || chatMemberIds.length === 0) {
+      return {} as Record<string, number>;
+    }
+    const counts: Record<string, number> = {};
+    for (const member of snapshot.members) {
+      const actors = resolveMailboxChatActors(
+        snapshot.leader_member_id,
+        chatMemberIds,
+        member.member_id
+      );
+      const key = buildMailboxConversationKey(actors.fromActorId, actors.toActorId);
+      const seenMessageId = key ? chatSeenByConversation[key] ?? 0 : 0;
+      counts[member.member_id] = countUnreadConversationMessages(
+        mergedMailboxMessages,
+        actors.fromActorId,
+        actors.toActorId,
+        seenMessageId
+      );
+    }
+    return counts;
+  }, [chatMemberIds, chatSeenByConversation, mergedMailboxMessages, snapshot]);
   const previewMode = selectedMemberId.trim().length === 0;
   const displayedRunEvents = useMemo(
     () => selectTeamPreviewEvents(events, selectedMemberId),
@@ -987,15 +1257,17 @@ export function TeamPage(props: TeamPageProps) {
   );
   const availableWorkerAgentCount = useMemo(() => {
     const used = new Set<string>([leaderMemberId.trim(), ...workerAgentIds]);
-    return agents.filter((agent) => !used.has(agent.id)).length;
-  }, [agents, leaderMemberId, workerAgentIds]);
+    return teamForgeAgents.filter((agent) => !used.has(agent.id)).length;
+  }, [leaderMemberId, teamForgeAgents, workerAgentIds]);
   const isMissionBriefReady = useMemo(
     () => newTeamName.trim().length > 0,
     [newTeamName]
   );
   const isLeaderForgeReady = useMemo(
-    () => leaderMemberId.trim().length > 0 && agents.some((agent) => agent.id === leaderMemberId),
-    [agents, leaderMemberId]
+    () =>
+      leaderMemberId.trim().length > 0 &&
+      teamForgeAgents.some((agent) => agent.id === leaderMemberId),
+    [leaderMemberId, teamForgeAgents]
   );
   const isRecruitWorkersReady = useMemo(
     () => !hasDuplicateMembers,
@@ -1095,47 +1367,43 @@ export function TeamPage(props: TeamPageProps) {
     () => getAgentPreset(forgeAgentPresetId),
     [forgeAgentPresetId]
   );
-  const leaderAgentOptions = useMemo(
+  const leaderForgeAgentOptions = useMemo(
     () =>
-      agents.map((agent) => ({
+      teamForgeAgents.map((agent) => ({
         value: agent.id,
         label: buildAgentLabel(agent),
       })),
-    [agents]
+    [teamForgeAgents]
   );
   const leaderAgentSelectOptions = useMemo(() => {
-    const options = [...leaderAgentOptions];
+    const options = [...leaderForgeAgentOptions];
     const hasSelected = options.some((option) => option.value === leaderMemberId);
     if (leaderMemberId && !hasSelected) {
       options.unshift({
         value: leaderMemberId,
-        label: `Missing agent (${leaderMemberId})`,
+        label: `Missing forged agent (${leaderMemberId})`,
       });
     }
     return options;
-  }, [leaderAgentOptions, leaderMemberId]);
+  }, [leaderForgeAgentOptions, leaderMemberId]);
 
   const oldestEventId = events.length > 0 ? events[0].event_id : null;
   const oldestMemberEventId =
     memberEvents.length > 0 ? memberEvents[0].event_id : null;
 
-  const resetTeamDraft = useCallback((agentPool: AgentRecord[]) => {
-    const leaderId = agentPool[0]?.id ?? "";
-    const excluded = new Set<string>();
-    if (leaderId) {
-      excluded.add(leaderId);
-    }
-    const firstWorkerId = pickNextWorkerAgentId(agentPool, excluded);
+  const resetTeamDraft = useCallback(() => {
+    const initial = createInitialTeamDraftState();
     setNewTeamName("");
     setNewTeamDescription("");
-    setLeaderMemberId(leaderId);
-    setLeaderModel("");
-    setLeaderPrompt(DEFAULT_TEAM_LEADER_PROMPT);
-    setLeaderSkills([...DEFAULT_TEAM_LEADER_SKILLS]);
-    setLeaderCustomSkills("");
-    setWorkers(firstWorkerId ? [buildDefaultWorkerDraft(firstWorkerId)] : []);
-    setUseSpecOverride(false);
-    setNewTeamSpec("{}");
+    setLeaderMemberId(initial.leaderMemberId);
+    setLeaderModel(initial.leaderModel);
+    setLeaderPrompt(initial.leaderPrompt);
+    setLeaderSkills(initial.leaderSkills);
+    setLeaderCustomSkills(initial.leaderCustomSkills);
+    setWorkers(initial.workers);
+    setUseSpecOverride(initial.useSpecOverride);
+    setNewTeamSpec(initial.newTeamSpec);
+    setTeamForgeAgentIds(initial.teamForgeAgentIds);
   }, []);
 
   const refreshAgents = useCallback(async () => {
@@ -1288,9 +1556,9 @@ export function TeamPage(props: TeamPageProps) {
     memberEventsRef.current = memberEvents;
   }, [memberEvents]);
 
-  const loadInbox = useCallback(async () => {
+  const loadInbox = useCallback(async (actorIdOverride?: string) => {
     if (!activeRunId) return;
-    const actorId = inboxActorId.trim();
+    const actorId = (actorIdOverride ?? inboxActorId).trim();
     if (!actorId) {
       throw new Error("Inbox actor_id is required");
     }
@@ -1303,14 +1571,44 @@ export function TeamPage(props: TeamPageProps) {
       include_delivered: inboxIncludeDelivered,
     });
     setInbox(list);
-  }, [
-    activeRunId,
-    inboxActorId,
-    inboxAfterId,
-    inboxIncludeDelivered,
-    inboxLimit,
-    props.token,
-  ]);
+  }, [activeRunId, inboxActorId, inboxAfterId, inboxIncludeDelivered, inboxLimit, props.token]);
+
+  const markConversationSeen = useCallback(
+    (key: string, messageId: number | null) => {
+      if (!key || messageId == null) {
+        return;
+      }
+      setChatSeenByConversation((prev) => {
+        const current = prev[key] ?? 0;
+        if (messageId <= current) {
+          return prev;
+        }
+        return { ...prev, [key]: messageId };
+      });
+    },
+    []
+  );
+
+  const scrollConversationToBottom = useCallback(() => {
+    const el = chatMessagesRef.current;
+    if (!el) {
+      return;
+    }
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const onConversationScroll = useCallback(() => {
+    const el = chatMessagesRef.current;
+    if (!el) {
+      return;
+    }
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const stick = gap <= 24;
+    setChatStickToBottom(stick);
+    if (stick) {
+      markConversationSeen(conversationKey, conversationLatestMessageId);
+    }
+  }, [conversationKey, conversationLatestMessageId, markConversationSeen]);
 
   const loadMemberEvents = useCallback(
     async (mode: "replace" | "prepend" = "replace") => {
@@ -1404,6 +1702,8 @@ export function TeamPage(props: TeamPageProps) {
       setSnapshot(null);
       setSelectedMemberId("");
       setMemberEvents([]);
+      setChatSeenByConversation({});
+      setChatStickToBottom(true);
       return;
     }
     let canceled = false;
@@ -1442,6 +1742,14 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     if (!activeRunId || !eventsAutoRefresh) return;
     const timer = window.setInterval(() => {
+      if (tab === "mailbox") {
+        void refreshSnapshot(activeRunId).catch(() => undefined);
+        const actorId = chatActors.inboxActorId.trim();
+        if (actorId) {
+          void loadInbox(actorId).catch(() => undefined);
+        }
+        return;
+      }
       void refreshRun(activeRunId).catch(() => undefined);
       void refreshEvents(activeRunId).catch(() => undefined);
       void refreshSnapshot(activeRunId).catch(() => undefined);
@@ -1449,7 +1757,16 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       window.clearInterval(timer);
     };
-  }, [activeRunId, eventsAutoRefresh, refreshEvents, refreshRun, refreshSnapshot]);
+  }, [
+    activeRunId,
+    chatActors.inboxActorId,
+    eventsAutoRefresh,
+    loadInbox,
+    refreshEvents,
+    refreshRun,
+    refreshSnapshot,
+    tab,
+  ]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -1466,6 +1783,46 @@ export function TeamPage(props: TeamPageProps) {
   }, [snapshot]);
 
   useEffect(() => {
+    const actorId = chatActors.inboxActorId.trim();
+    if (!activeRunId || !actorId) {
+      setInbox([]);
+      return;
+    }
+    setInboxActorId(actorId);
+    void loadInbox(actorId).catch((err) => {
+      setError(parseErrorMessage(err));
+    });
+  }, [activeRunId, chatActors.inboxActorId, loadInbox]);
+
+  useEffect(() => {
+    if (tab !== "mailbox") {
+      return;
+    }
+    setChatStickToBottom(true);
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+    });
+  }, [conversationKey, scrollConversationToBottom, tab]);
+
+  useEffect(() => {
+    if (tab !== "mailbox" || !chatStickToBottom) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+      markConversationSeen(conversationKey, conversationLatestMessageId);
+    });
+  }, [
+    chatStickToBottom,
+    conversationKey,
+    conversationLatestMessageId,
+    conversationMessages.length,
+    markConversationSeen,
+    scrollConversationToBottom,
+    tab,
+  ]);
+
+  useEffect(() => {
     void loadMemberEvents("replace").catch((err) => {
       setError(parseErrorMessage(err));
     });
@@ -1473,12 +1830,12 @@ export function TeamPage(props: TeamPageProps) {
 
   useEffect(() => {
     if (!showCreateTeamModal) return;
-    if (leaderMemberId && agents.some((agent) => agent.id === leaderMemberId)) {
+    if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
       return;
     }
-    const fallbackLeaderId = agents[0]?.id ?? "";
+    const fallbackLeaderId = teamForgeAgents[0]?.id ?? "";
     setLeaderMemberId(fallbackLeaderId);
-  }, [agents, leaderMemberId, showCreateTeamModal]);
+  }, [leaderMemberId, showCreateTeamModal, teamForgeAgents]);
 
   useEffect(() => {
     if (!showCreateTeamModal) return;
@@ -1498,7 +1855,7 @@ export function TeamPage(props: TeamPageProps) {
   const openCreateTeamModal = () => {
     setError(null);
     setCreateTeamStage(0);
-    resetTeamDraft(agents);
+    resetTeamDraft();
     setShowCreateTeamModal(true);
     setShowForgeAgentForm(false);
     void refreshAgents().catch((err) => {
@@ -1560,6 +1917,9 @@ export function TeamPage(props: TeamPageProps) {
         code_mode: forgeAgentCodeMode,
       });
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
+      setTeamForgeAgentIds((prev) =>
+        prev.includes(created.id) ? prev : [...prev, created.id]
+      );
       if (forgeAgentBindTarget === "leader") {
         setLeaderMemberId(created.id);
       } else if (forgeAgentBindTarget === "worker") {
@@ -1606,8 +1966,11 @@ export function TeamPage(props: TeamPageProps) {
       setError("Leader agent is required");
       return;
     }
-    if (!useSpecOverride && !agents.some((agent) => agent.id === leaderMemberId.trim())) {
-      setError("Leader must be selected from existing agents");
+    if (
+      !useSpecOverride &&
+      !teamForgeAgents.some((agent) => agent.id === leaderMemberId.trim())
+    ) {
+      setError("Leader must be selected from Team Forge agents");
       return;
     }
     if (!useSpecOverride && hasDuplicateMembers) {
@@ -1627,7 +1990,7 @@ export function TeamPage(props: TeamPageProps) {
       });
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedTeamId(created.id);
-      resetTeamDraft(agents);
+      resetTeamDraft();
       closeCreateTeamModal();
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -1846,6 +2209,42 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
+  const onSendChatMessage = async () => {
+    if (!activeRunId) {
+      setError("Select a run first");
+      return;
+    }
+    const fromActorId = chatActors.fromActorId.trim();
+    const toActorId = chatActors.toActorId.trim();
+    const text = chatDraft.trim();
+    if (!fromActorId || !toActorId) {
+      setError("Select a valid member conversation first");
+      return;
+    }
+    if (!text) {
+      setError("Chat message is required");
+      return;
+    }
+    setBusy("send-chat");
+    setError(null);
+    try {
+      await api.sendTeamRunMessage(props.token, activeRunId, {
+        from_actor_id: fromActorId,
+        to_actor_id: toActorId,
+        channel: "default",
+        transport: "local",
+        payload: buildMailboxChatPayload(text),
+      });
+      setChatDraft("");
+      await refreshSnapshot(activeRunId);
+      await loadInbox(toActorId);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onSendMessage = async () => {
     if (!activeRunId) {
       setError("Select a run first");
@@ -1869,9 +2268,13 @@ export function TeamPage(props: TeamPageProps) {
         payload: parseRequiredJson(msgPayload, "Message payload"),
         idempotency_key: msgIdempotencyKey.trim() || undefined,
       });
-      await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
-      if (inboxActorId.trim()) {
-        await loadInbox();
+      if (tab === "mailbox") {
+        await refreshSnapshot(activeRunId);
+        if (inboxActorId.trim()) {
+          await loadInbox();
+        }
+      } else {
+        await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
       }
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -1903,11 +2306,15 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     try {
       await api.ackTeamRunMessage(props.token, activeRunId, message.message_id, actorId);
-      await Promise.all([
-        loadInbox(),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
-      ]);
+      if (tab === "mailbox") {
+        await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunId)]);
+      } else {
+        await Promise.all([
+          loadInbox(),
+          refreshEvents(activeRunId),
+          refreshSnapshot(activeRunId),
+        ]);
+      }
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -1933,7 +2340,11 @@ export function TeamPage(props: TeamPageProps) {
         workerIndex === index
           ? {
               ...worker,
-              skills: toggleSkillSelection(worker.skills, skill),
+              skills: toggleSkillSelection(
+                worker.skills,
+                skill,
+                REQUIRED_TEAM_WORKER_SKILLS
+              ),
             }
           : worker
       )
@@ -1948,7 +2359,7 @@ export function TeamPage(props: TeamPageProps) {
           .map((worker) => worker.member_id.trim())
           .filter((memberId) => memberId.length > 0),
       ]);
-      const memberId = pickNextWorkerAgentId(agents, excluded);
+      const memberId = pickNextWorkerAgentId(teamForgeAgents, excluded);
       return [...prev, buildDefaultWorkerDraft(memberId)];
     });
   };
@@ -1962,7 +2373,7 @@ export function TeamPage(props: TeamPageProps) {
           .filter((memberId) => memberId.length > 0),
       ]);
       const next = [...prev];
-      for (const agent of agents) {
+      for (const agent of teamForgeAgents) {
         if (used.has(agent.id)) {
           continue;
         }
@@ -1989,7 +2400,7 @@ export function TeamPage(props: TeamPageProps) {
           used.add(memberId);
           return worker;
         }
-        const replacement = pickNextWorkerAgentId(agents, used);
+        const replacement = pickNextWorkerAgentId(teamForgeAgents, used);
         if (!replacement) {
           return { ...worker, member_id: "" };
         }
@@ -2121,9 +2532,14 @@ export function TeamPage(props: TeamPageProps) {
                                   {member.role}
                                 </span>
                                 <span className="team-member-row-id mono">{member.member_id}</span>
-                                <span className={`team-status-chip ${member.lifecycle_tone}`}>
-                                  {member.lifecycle_status}
-                                </span>
+                                <StatusBadge
+                                  label={member.lifecycle_status}
+                                  tone={resolveTeamLifecycleStatusTone(
+                                    member.lifecycle_tone
+                                  )}
+                                  className={`team-status-chip ${member.lifecycle_tone}`}
+                                  title={`lifecycle: ${member.lifecycle_status}`}
+                                />
                                 <span className="team-member-row-meta mono">
                                   {member.agent_name ?? "agent_not_found"}
                                 </span>
@@ -2228,7 +2644,12 @@ export function TeamPage(props: TeamPageProps) {
                       onClick={() => setActiveRunId(run.id)}
                     >
                       <span className="team-name mono">{run.id}</span>
-                      <span className="team-status">{run.status}</span>
+                      <StatusBadge
+                        label={run.status}
+                        tone={resolveTeamRunStatusTone(run.status)}
+                        className="team-status"
+                        title={`run status: ${run.status}`}
+                      />
                     </button>
                   ))}
                   <div className="teams-run-list-foot">
@@ -2275,7 +2696,13 @@ export function TeamPage(props: TeamPageProps) {
                         <strong>ID:</strong> <code>{activeRun.id}</code>
                       </span>
                       <span>
-                        <strong>Status:</strong> {activeRun.status}
+                        <strong>Status:</strong>{" "}
+                        <StatusBadge
+                          label={activeRun.status}
+                          tone={resolveTeamRunStatusTone(activeRun.status)}
+                          className="team-status"
+                          title={`run status: ${activeRun.status}`}
+                        />
                       </span>
                       <span>
                         <strong>Context:</strong> {activeRun.context_id}
@@ -2382,13 +2809,18 @@ export function TeamPage(props: TeamPageProps) {
                                 }
                                 onClick={() => {
                                   setSelectedMemberId(member.member_id);
-                                  setTab("member_console");
+                                  setTab("mailbox");
                                 }}
                               >
                                 <span className="team-name">
                                   {member.member_id} ({member.role})
                                 </span>
-                                <span className="team-status">{member.status}</span>
+                                <StatusBadge
+                                  label={member.status}
+                                  tone={resolveTeamRunStatusTone(member.status)}
+                                  className="team-status"
+                                  title={`member status: ${member.status}`}
+                                />
                                 <span className="team-id mono">
                                   {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                                 </span>
@@ -2629,149 +3061,250 @@ export function TeamPage(props: TeamPageProps) {
                         </div>
                       )}
 
-                      <div className="teams-message-grid">
-                        <div className="teams-message-panel">
-                          <h4>Send Message</h4>
-                          <input
-                            placeholder="from_actor_id"
-                            value={msgFromActorId}
-                            onChange={(event) => setMsgFromActorId(event.target.value)}
-                          />
-                          <input
-                            placeholder="to_actor_id"
-                            value={msgToActorId}
-                            onChange={(event) => setMsgToActorId(event.target.value)}
-                          />
-                          <input
-                            placeholder="channel (default)"
-                            value={msgChannel}
-                            onChange={(event) => setMsgChannel(event.target.value)}
-                          />
-                          <select
-                            value={msgTransport}
-                            onChange={(event) =>
-                              setMsgTransport(event.target.value as "local" | "remote")
-                            }
-                          >
-                            <option value="local">local</option>
-                            <option value="remote">remote</option>
-                          </select>
-                          <textarea
-                            className="mono"
-                            rows={3}
-                            placeholder="route JSON (required for remote)"
-                            value={msgRoute}
-                            onChange={(event) => setMsgRoute(event.target.value)}
-                          />
-                          <div className="form-row">
-                            <select
-                              value={msgTemplate}
-                              onChange={(event) =>
-                                setMsgTemplate(event.target.value as MailboxTemplateKey)
-                              }
-                            >
-                              {MAILBOX_TEMPLATE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            <button type="button" onClick={onApplyMessageTemplate}>
-                              Apply Template
-                            </button>
-                          </div>
-                          <textarea
-                            className="mono"
-                            rows={4}
-                            placeholder="payload JSON"
-                            value={msgPayload}
-                            onChange={(event) => setMsgPayload(event.target.value)}
-                          />
-                          <input
-                            placeholder="idempotency_key (optional)"
-                            value={msgIdempotencyKey}
-                            onChange={(event) =>
-                              setMsgIdempotencyKey(event.target.value)
-                            }
-                          />
-                          <button onClick={onSendMessage} disabled={busy === "send-message"}>
-                            Send Message
-                          </button>
+                      <div className="teams-chat-shell">
+                        <div className="teams-chat-members">
+                          <h4>Agents</h4>
+                          {snapshot?.members.map((member) => {
+                            const unread = unreadByMemberId[member.member_id] ?? 0;
+                            return (
+                              <button
+                                key={member.member_id}
+                                className={
+                                  selectedMemberId === member.member_id
+                                    ? "team-item active"
+                                    : "team-item"
+                                }
+                                onClick={() => setSelectedMemberId(member.member_id)}
+                              >
+                                <span className="team-name">
+                                  {member.member_id} ({member.role})
+                                </span>
+                                <StatusBadge
+                                  label={member.status}
+                                  tone={resolveTeamRunStatusTone(member.status)}
+                                  className="team-status"
+                                  title={`member status: ${member.status}`}
+                                />
+                                <span className="team-id mono">
+                                  pending={member.pending_inbox_count}
+                                </span>
+                                <span
+                                  className={
+                                    unread > 0
+                                      ? "teams-member-unread mono"
+                                      : "teams-member-unread mono muted"
+                                  }
+                                >
+                                  unread={unread}
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {(!snapshot || snapshot.members.length === 0) && (
+                            <p className="muted">No members available.</p>
+                          )}
                         </div>
 
-                        <div className="teams-message-panel">
-                          <h4>Inbox</h4>
-                          <input
-                            placeholder="actor_id"
-                            value={inboxActorId}
-                            onChange={(event) => setInboxActorId(event.target.value)}
-                          />
-                          <input
-                            placeholder="limit"
-                            value={inboxLimit}
-                            onChange={(event) => setInboxLimit(event.target.value)}
-                          />
-                          <input
-                            placeholder="after_id (optional)"
-                            value={inboxAfterId}
-                            onChange={(event) => setInboxAfterId(event.target.value)}
-                          />
-                          <label className="checkbox">
-                            <input
-                              type="checkbox"
-                              checked={inboxIncludeDelivered}
-                              onChange={(event) =>
-                                setInboxIncludeDelivered(event.target.checked)
-                              }
-                            />
-                            include_delivered
-                          </label>
-                          <button
-                            onClick={onRefreshInbox}
-                            disabled={busy === "refresh-inbox"}
+                        <div className="teams-chat-panel">
+                          <div className="teams-chat-head">
+                            <div>
+                              <strong>
+                                {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
+                              </strong>
+                            </div>
+                            <div className="mono">
+                              inbox_actor_id={chatActors.inboxActorId || "-"}
+                            </div>
+                            <div className="mono">
+                              auto_follow={chatStickToBottom ? "on" : "off"}
+                            </div>
+                          </div>
+                          <ul
+                            className="teams-chat-messages"
+                            ref={chatMessagesRef}
+                            onScroll={onConversationScroll}
                           >
-                            Refresh Inbox
-                          </button>
+                            {conversationMessages.map((message) => {
+                              const isOutgoing =
+                                message.from_actor_id === chatActors.fromActorId;
+                              const payload =
+                                typeof message.payload === "object" &&
+                                message.payload !== null &&
+                                "type" in message.payload &&
+                                (message.payload as { type?: unknown }).type === "chat_message" &&
+                                "text" in message.payload
+                                  ? String(
+                                      (message.payload as { text?: unknown }).text ?? ""
+                                    )
+                                  : toPrettyJson(message.payload);
+                              return (
+                                <li
+                                  key={message.message_id}
+                                  className={
+                                    isOutgoing
+                                      ? "teams-chat-bubble outgoing"
+                                      : "teams-chat-bubble incoming"
+                                  }
+                                >
+                                  <div className="teams-message-head">
+                                    <span className="mono">#{message.message_id}</span>
+                                    <span>
+                                      {message.from_actor_id} → {message.to_actor_id}
+                                    </span>
+                                    <span>{message.status}</span>
+                                    <span>{formatTs(message.created_at)}</span>
+                                  </div>
+                                  <pre className="mono">{payload}</pre>
+                                  {message.status !== "delivered" && (
+                                    <div className="actions">
+                                      <button
+                                        onClick={() => void onAckMessage(message)}
+                                        disabled={busy === `ack-${message.message_id}`}
+                                      >
+                                        Ack
+                                      </button>
+                                    </div>
+                                  )}
+                                </li>
+                              );
+                            })}
+                            {conversationMessages.length === 0 && (
+                              <li className="teams-chat-empty muted">
+                                No conversation records yet for this pair.
+                              </li>
+                            )}
+                          </ul>
+                          <div className="teams-chat-compose">
+                            <textarea
+                              rows={3}
+                              placeholder="Type a message to selected agent"
+                              value={chatDraft}
+                              onChange={(event) => setChatDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                                  event.preventDefault();
+                                  void onSendChatMessage();
+                                }
+                              }}
+                            />
+                            <div className="actions">
+                              <button
+                                onClick={onSendChatMessage}
+                                disabled={busy === "send-chat"}
+                              >
+                                Send Chat
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <ul className="teams-message-list">
-                        {snapshot?.mailbox.recent_messages.map((message) => (
-                          <li key={`snapshot-${message.message_id}`}>
-                            <div className="teams-message-head">
-                              <span className="mono">#{message.message_id}</span>
-                              <span>
-                                {message.from_actor_id} → {message.to_actor_id}
-                              </span>
-                              <span>{message.status}</span>
-                            </div>
-                            <pre className="mono">{toPrettyJson(message.payload)}</pre>
-                          </li>
-                        ))}
-                        {inbox.map((message) => (
-                          <li key={message.message_id}>
-                            <div className="teams-message-head">
-                              <span className="mono">#{message.message_id}</span>
-                              <span>
-                                {message.from_actor_id} → {message.to_actor_id}
-                              </span>
-                              <span>{message.status}</span>
-                            </div>
-                            <pre className="mono">{toPrettyJson(message.payload)}</pre>
-                            <div className="actions">
-                              <button
-                                onClick={() => void onAckMessage(message)}
-                                disabled={
-                                  message.status === "delivered" ||
-                                  busy === `ack-${message.message_id}`
+                      <details className="teams-message-advanced">
+                        <summary>Advanced mailbox controls</summary>
+                        <div className="teams-message-grid">
+                          <div className="teams-message-panel">
+                            <h4>Send Message (JSON)</h4>
+                            <input
+                              placeholder="from_actor_id"
+                              value={msgFromActorId}
+                              onChange={(event) => setMsgFromActorId(event.target.value)}
+                            />
+                            <input
+                              placeholder="to_actor_id"
+                              value={msgToActorId}
+                              onChange={(event) => setMsgToActorId(event.target.value)}
+                            />
+                            <input
+                              placeholder="channel (default)"
+                              value={msgChannel}
+                              onChange={(event) => setMsgChannel(event.target.value)}
+                            />
+                            <select
+                              value={msgTransport}
+                              onChange={(event) =>
+                                setMsgTransport(event.target.value as "local" | "remote")
+                              }
+                            >
+                              <option value="local">local</option>
+                              <option value="remote">remote</option>
+                            </select>
+                            <textarea
+                              className="mono"
+                              rows={3}
+                              placeholder="route JSON (required for remote)"
+                              value={msgRoute}
+                              onChange={(event) => setMsgRoute(event.target.value)}
+                            />
+                            <div className="form-row">
+                              <select
+                                value={msgTemplate}
+                                onChange={(event) =>
+                                  setMsgTemplate(event.target.value as MailboxTemplateKey)
                                 }
                               >
-                                Ack
+                                {MAILBOX_TEMPLATE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button type="button" onClick={onApplyMessageTemplate}>
+                                Apply Template
                               </button>
                             </div>
-                          </li>
-                        ))}
-                      </ul>
+                            <textarea
+                              className="mono"
+                              rows={4}
+                              placeholder="payload JSON"
+                              value={msgPayload}
+                              onChange={(event) => setMsgPayload(event.target.value)}
+                            />
+                            <input
+                              placeholder="idempotency_key (optional)"
+                              value={msgIdempotencyKey}
+                              onChange={(event) => setMsgIdempotencyKey(event.target.value)}
+                            />
+                            <button onClick={onSendMessage} disabled={busy === "send-message"}>
+                              Send Message
+                            </button>
+                          </div>
+
+                          <div className="teams-message-panel">
+                            <h4>Inbox (raw query)</h4>
+                            <input
+                              placeholder="actor_id"
+                              value={inboxActorId}
+                              onChange={(event) => setInboxActorId(event.target.value)}
+                            />
+                            <input
+                              placeholder="limit"
+                              value={inboxLimit}
+                              onChange={(event) => setInboxLimit(event.target.value)}
+                            />
+                            <input
+                              placeholder="after_id (optional)"
+                              value={inboxAfterId}
+                              onChange={(event) => setInboxAfterId(event.target.value)}
+                            />
+                            <label className="checkbox">
+                              <input
+                                type="checkbox"
+                                checked={inboxIncludeDelivered}
+                                onChange={(event) =>
+                                  setInboxIncludeDelivered(event.target.checked)
+                                }
+                              />
+                              include_delivered
+                            </label>
+                            <button
+                              onClick={onRefreshInbox}
+                              disabled={busy === "refresh-inbox"}
+                            >
+                              Refresh Inbox
+                            </button>
+                          </div>
+                        </div>
+                      </details>
                     </div>
                   )}
 
@@ -3117,26 +3650,24 @@ export function TeamPage(props: TeamPageProps) {
                 <div className="team-create-panel">
                   <h4>Leader Forge</h4>
                   <p className="muted">
-                    Choose the leader agent first. Its existing workdir/worktree config will be
-                    reused when this team run starts.
+                    Choose the leader from agents created in this Team Forge session only.
                   </p>
-                  {!isLeaderForgeReady && hasAgents && (
+                  {!isLeaderForgeReady && hasForgeAgents && (
                     <p className="team-create-stage-note">
-                      Select one leader agent to continue.
+                      Select one forged leader agent to continue.
                     </p>
                   )}
-                  {!hasAgents && (
+                  {!hasForgeAgents && (
                     <p className="muted">
-                      No agents available yet. Create one in the Agent Forge entry above, or in
-                      `Agents` mode first.
+                      No forged agents yet. Create one in the Agent Forge entry above.
                     </p>
                   )}
                   <select
                     value={leaderMemberId}
                     onChange={(event) => setLeaderMemberId(event.target.value)}
-                    disabled={useSpecOverride || !hasAgents}
+                    disabled={useSpecOverride || !hasForgeAgents}
                   >
-                    <option value="">Select leader agent</option>
+                    <option value="">Select forged leader agent</option>
                     {leaderAgentSelectOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -3161,15 +3692,23 @@ export function TeamPage(props: TeamPageProps) {
                   <div className="team-skill-tags">
                     {TEAM_SKILL_OPTIONS.map((skill) => {
                       const selected = leaderSkills.includes(skill);
+                      const isRequired = REQUIRED_TEAM_LEADER_SKILLS.includes(skill);
                       return (
                         <button
                           key={`leader-skill-${skill}`}
                           type="button"
                           className={selected ? "team-skill-tag selected" : "team-skill-tag"}
                           onClick={() =>
-                            setLeaderSkills((prev) => toggleSkillSelection(prev, skill))
+                            setLeaderSkills((prev) =>
+                              toggleSkillSelection(
+                                prev,
+                                skill,
+                                REQUIRED_TEAM_LEADER_SKILLS
+                              )
+                            )
                           }
-                          disabled={useSpecOverride}
+                          disabled={useSpecOverride || isRequired}
+                          title={isRequired ? "Required for leader role" : undefined}
                         >
                           {skill}
                         </button>
@@ -3198,12 +3737,14 @@ export function TeamPage(props: TeamPageProps) {
                   <div className="toolbar">
                     <h4>Recruit Workers</h4>
                     <div className="toolbar-actions">
-                      <button onClick={onAddWorker} disabled={useSpecOverride || !hasAgents}>
+                      <button onClick={onAddWorker} disabled={useSpecOverride || !hasForgeAgents}>
                         Add Worker
                       </button>
                       <button
                         onClick={onAddAllRemainingWorkers}
-                        disabled={useSpecOverride || !hasAgents || availableWorkerAgentCount === 0}
+                        disabled={
+                          useSpecOverride || !hasForgeAgents || availableWorkerAgentCount === 0
+                        }
                         type="button"
                       >
                         Auto Fill Party
@@ -3211,9 +3752,8 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
                   <p className="muted">
-                    Build your party. Each worker maps to an existing agent (and reuses its
-                    workdir/worktree config). Worker model/prompt/skills can still be customized
-                    at team level.
+                    Build your party from Team Forge agents only. Worker model/prompt/skills can
+                    still be customized at team level.
                   </p>
                   {unassignedWorkerSlots > 0 && (
                     <p className="team-create-stage-note">
@@ -3230,7 +3770,7 @@ export function TeamPage(props: TeamPageProps) {
                           .map((item) => item.member_id.trim())
                           .filter((item) => item.length > 0)
                       );
-                      const workerOptions = leaderAgentOptions.filter((option) => {
+                      const workerOptions = leaderForgeAgentOptions.filter((option) => {
                         if (option.value === worker.member_id) return true;
                         if (option.value === leaderMemberId.trim()) return false;
                         return !selectedByOthers.has(option.value);
@@ -3264,9 +3804,9 @@ export function TeamPage(props: TeamPageProps) {
                             onChange={(event) =>
                               onUpdateWorker(index, "member_id", event.target.value)
                             }
-                            disabled={useSpecOverride || !hasAgents}
+                            disabled={useSpecOverride || !hasForgeAgents}
                           >
-                            <option value="">Select worker agent</option>
+                            <option value="">Select forged worker agent</option>
                             {workerOptions.map((option) => (
                               <option key={option.value} value={option.value}>
                                 {option.label}
@@ -3293,6 +3833,7 @@ export function TeamPage(props: TeamPageProps) {
                           <div className="team-skill-tags">
                             {TEAM_SKILL_OPTIONS.map((skill) => {
                               const selected = worker.skills.includes(skill);
+                              const isRequired = REQUIRED_TEAM_WORKER_SKILLS.includes(skill);
                               return (
                                 <button
                                   key={`worker-skill-${index}-${skill}`}
@@ -3301,7 +3842,8 @@ export function TeamPage(props: TeamPageProps) {
                                     selected ? "team-skill-tag selected" : "team-skill-tag"
                                   }
                                   onClick={() => onToggleWorkerSkill(index, skill)}
-                                  disabled={useSpecOverride}
+                                  disabled={useSpecOverride || isRequired}
+                                  title={isRequired ? "Required for worker role" : undefined}
                                 >
                                   {skill}
                                 </button>
@@ -3416,7 +3958,7 @@ export function TeamPage(props: TeamPageProps) {
                   disabled={
                     busy === "create-team" ||
                     (!useSpecOverride &&
-                      (!hasAgents || !leaderMemberId.trim() || hasDuplicateMembers))
+                      (!hasForgeAgents || !leaderMemberId.trim() || hasDuplicateMembers))
                   }
                   type="button"
                 >

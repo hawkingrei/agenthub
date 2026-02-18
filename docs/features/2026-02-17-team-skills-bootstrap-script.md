@@ -7,7 +7,8 @@ updates AgentHub `skills.json` so these skills are injected in ACP sessions.
 
 ## Background
 
-Team defaults reference `team-leader-orchestrator` and `team-worker-executor`
+Team defaults reference `team-leader-orchestrator`, `team-worker-executor`, and
+`team-deliberation-rules`
 as skill names, but operators still needed manual, out-of-repo files and ad-hoc
 JSON edits in `~/.agenthub/skills.json`.
 
@@ -18,6 +19,7 @@ Team skills in the repository and provide a deterministic setup command.
 
 - `skills/team/team-leader-orchestrator.SKILL.md`
 - `skills/team/team-worker-executor.SKILL.md`
+- `skills/team/team-deliberation-rules.SKILL.md`
 - `scripts/setup_team_skills.sh`
 - `docs/todo.md`
 
@@ -26,6 +28,7 @@ Team skills in the repository and provide a deterministic setup command.
 1. Store Team skill content in `skills/team/` with stable names:
    - `team-leader-orchestrator`
    - `team-worker-executor`
+   - `team-deliberation-rules`
 2. Add `scripts/setup_team_skills.sh`:
    - default target file: `~/.agenthub/skills.json`
    - preserves existing `skills` entries (both string and object entries)

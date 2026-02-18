@@ -59,6 +59,7 @@ mod tests {
             actor_id: "planner".to_string(),
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
+            member_role: Some("leader".to_string()),
         });
         assert_eq!(skill.name, "agenthub-actor-runtime");
         assert_eq!(skill.path, "builtin://agenthub/actor-runtime/planner");

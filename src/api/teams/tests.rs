@@ -432,6 +432,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         actor_id: "planner".to_string(),
         default_channel: "coordination".to_string(),
         actor_cli_path: actor_cli_path.clone(),
+        member_role: Some("leader".to_string()),
     };
 
     let session_id = state

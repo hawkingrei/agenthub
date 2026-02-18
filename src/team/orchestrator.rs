@@ -319,11 +319,24 @@ impl TeamOrchestratorWorker {
     }
 
     async fn dispatch_step(&self, run_id: &str, step: &TeamStepRecord) -> anyhow::Result<()> {
+        let member_role = self
+            .resolve_member_role_for_step(run_id, &step.member_id)
+            .await
+            .unwrap_or_else(|err| {
+                tracing::warn!(
+                    run_id = %run_id,
+                    member_id = %step.member_id,
+                    "team orchestrator failed to resolve member role: {}",
+                    err
+                );
+                None
+            });
         let actor_context = AcpActorSkillContext {
             run_id: run_id.to_string(),
             actor_id: step.member_id.clone(),
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
             actor_cli_path: default_actor_cli_path()?,
+            member_role,
         };
         let start_result = self
             .agent_starter
@@ -388,6 +401,16 @@ impl TeamOrchestratorWorker {
             ));
         }
         Ok(())
+    }
+
+    async fn resolve_member_role_for_step(
+        &self,
+        run_id: &str,
+        member_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let run = self.teams.get_run(run_id).await?;
+        let team = self.teams.get_team(&run.team_id).await?;
+        Ok(parse_member_role(&team.spec, member_id))
     }
 }
 
@@ -490,6 +513,35 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
     }])
 }
 
+fn parse_member_role(spec: &Value, member_id: &str) -> Option<String> {
+    let normalized_member_id = member_id.trim();
+    if normalized_member_id.is_empty() {
+        return None;
+    }
+    spec.as_object()
+        .and_then(|spec_obj| spec_obj.get("members"))
+        .and_then(Value::as_array)
+        .and_then(|members| {
+            members.iter().find_map(|member| {
+                let member = member.as_object()?;
+                let id = member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())?;
+                if id != normalized_member_id {
+                    return None;
+                }
+                member
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_ascii_lowercase)
+            })
+        })
+}
+
 fn ensure_acyclic_step_specs(step_specs: &[OrchestratorStepSpec]) -> anyhow::Result<()> {
     let by_key: HashMap<&str, &OrchestratorStepSpec> = step_specs
         .iter()
@@ -560,7 +612,7 @@ mod tests {
 
     use super::{
         TeamMemberAgentStarter, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
-        is_step_ready, is_terminal_failure_session_status, parse_step_specs,
+        is_step_ready, is_terminal_failure_session_status, parse_member_role, parse_step_specs,
     };
     use crate::acp::AcpActorSkillContext;
     use crate::team::{
@@ -668,6 +720,42 @@ mod tests {
         assert!(
             message.contains("spec.entrypoint"),
             "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn parse_member_role_returns_expected_role() {
+        let role = parse_member_role(
+            &json!({
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+            "planner",
+        );
+        assert_eq!(role.as_deref(), Some("leader"));
+    }
+
+    #[test]
+    fn parse_member_role_returns_none_for_missing_member_or_role() {
+        assert!(
+            parse_member_role(
+                &json!({
+                    "members":[{"member_id":"reviewer","role":"worker"}]
+                }),
+                "planner",
+            )
+            .is_none()
+        );
+        assert!(
+            parse_member_role(
+                &json!({
+                    "members":[{"member_id":"planner"}]
+                }),
+                "planner",
+            )
+            .is_none()
         );
     }
 
@@ -895,7 +983,10 @@ mod tests {
                 description: Some("team for orchestrator dispatch test".to_string()),
                 spec: json!({
                     "entrypoint":"planner",
-                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
                 }),
             })
             .await
@@ -929,6 +1020,10 @@ mod tests {
         assert_eq!(calls[0].actor_context.run_id, run.id);
         assert_eq!(calls[0].actor_context.actor_id, "planner");
         assert_eq!(calls[0].actor_context.default_channel, "default");
+        assert_eq!(
+            calls[0].actor_context.member_role.as_deref(),
+            Some("leader")
+        );
 
         let started_step = teams.get_step(&step.id).await.expect("get started step");
         assert_eq!(started_step.status, TeamStepStatus::Working);

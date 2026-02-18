@@ -36,7 +36,7 @@ async fn teams_router_http_contract() {
             Some(json!({
                 "name": "router-team",
                 "description": "router-level contract",
-                "spec": {"entrypoint":"planner","members":[{"member_id":"planner"}]}
+                "spec": {"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}
             })),
         ))
         .await
@@ -66,7 +66,7 @@ async fn teams_router_http_contract() {
             Some(json!({
                 "name": "router-team",
                 "description": null,
-                "spec": {"entrypoint":"planner","members":[{"member_id":"planner"}]}
+                "spec": {"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}
             })),
         ))
         .await
@@ -806,7 +806,7 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
                 "description": "router orchestrator convergence with real executor",
                 "spec": {
                     "entrypoint":"step_run",
-                    "members":[{"member_id":member_agent.id}],
+                    "members":[{"member_id":member_agent.id,"role":"leader"}],
                     "steps":[{"step_key":"step_run","member_id":member_agent.id,"depends_on":[]}]
                 }
             })),

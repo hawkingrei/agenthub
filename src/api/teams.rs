@@ -50,9 +50,19 @@ Workflow:\n\
 5. If blocked, send blocker details and a proposed next action.\n\
 Use worker_status payload contract:\n\
 {\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
-const DEFAULT_TEAM_LEADER_SKILLS: [&str; 2] =
+const DEFAULT_TEAM_LEADER_SKILLS: [&str; 3] = [
+    "agenthub-actor-runtime",
+    "team-leader-orchestrator",
+    "team-deliberation-rules",
+];
+const DEFAULT_TEAM_WORKER_SKILLS: [&str; 3] = [
+    "agenthub-actor-runtime",
+    "team-worker-executor",
+    "team-deliberation-rules",
+];
+const REQUIRED_TEAM_LEADER_SKILLS: [&str; 2] =
     ["agenthub-actor-runtime", "team-leader-orchestrator"];
-const DEFAULT_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
+const REQUIRED_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -438,7 +448,7 @@ async fn get_team_run_snapshot(
         let role = if leader_member_id.as_deref() == Some(member.member_id.as_str()) {
             "leader"
         } else {
-            member.role.as_deref().unwrap_or("worker")
+            member.role.as_str()
         };
         let mut prompt = member.prompt.clone();
         let mut skills = member.skills.clone();
@@ -1450,7 +1460,7 @@ struct TeamStepSpec {
 #[derive(Debug, Clone)]
 struct TeamMemberSpec {
     member_id: String,
-    role: Option<String>,
+    role: String,
     model: Option<String>,
     prompt: Option<String>,
     skills: Vec<String>,
@@ -1499,6 +1509,10 @@ fn inject_team_spec_defaults(
     spec_obj: &mut serde_json::Map<String, Value>,
 ) -> Result<(), ApiError> {
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let member_specs_by_id = member_specs
+        .iter()
+        .map(|member| (member.member_id.as_str(), member))
+        .collect::<HashMap<_, _>>();
     let member_ids = member_specs
         .iter()
         .map(|member| member.member_id.as_str())
@@ -1526,13 +1540,11 @@ fn inject_team_spec_defaults(
             else {
                 continue;
             };
+            let Some(member_spec) = member_specs_by_id.get(member_id) else {
+                continue;
+            };
 
-            let is_leader = leader_member_id.as_deref() == Some(member_id)
-                || member_obj
-                    .get("role")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    == Some("leader");
+            let is_leader = member_spec.role == "leader";
             if is_missing_or_null(member_obj.get("prompt")) {
                 member_obj.insert(
                     "prompt".to_string(),
@@ -1543,22 +1555,23 @@ fn inject_team_spec_defaults(
                     }),
                 );
             }
-            if is_missing_or_null(member_obj.get("skills")) {
-                let defaults = if is_leader {
-                    DEFAULT_TEAM_LEADER_SKILLS.as_slice()
-                } else {
-                    DEFAULT_TEAM_WORKER_SKILLS.as_slice()
-                };
-                member_obj.insert(
-                    "skills".to_string(),
-                    Value::Array(
-                        defaults
-                            .iter()
-                            .map(|skill| Value::String((*skill).to_string()))
-                            .collect(),
-                    ),
-                );
-            }
+            let defaults = default_team_skills_for_role(&member_spec.role);
+            let required = required_team_skills_for_role(&member_spec.role);
+            let base_skills = if is_missing_or_null(member_obj.get("skills")) {
+                defaults.iter().map(|skill| (*skill).to_string()).collect()
+            } else {
+                member_spec.skills.clone()
+            };
+            let normalized_skills = ensure_required_role_skills(base_skills, required);
+            member_obj.insert(
+                "skills".to_string(),
+                Value::Array(
+                    normalized_skills
+                        .into_iter()
+                        .map(Value::String)
+                        .collect::<Vec<_>>(),
+                ),
+            );
         }
     }
 
@@ -1594,6 +1607,38 @@ fn inject_team_spec_defaults(
     }
 
     Ok(())
+}
+
+fn default_team_skills_for_role(role: &str) -> &'static [&'static str] {
+    if role == "leader" {
+        DEFAULT_TEAM_LEADER_SKILLS.as_slice()
+    } else {
+        DEFAULT_TEAM_WORKER_SKILLS.as_slice()
+    }
+}
+
+fn required_team_skills_for_role(role: &str) -> &'static [&'static str] {
+    if role == "leader" {
+        REQUIRED_TEAM_LEADER_SKILLS.as_slice()
+    } else {
+        REQUIRED_TEAM_WORKER_SKILLS.as_slice()
+    }
+}
+
+fn ensure_required_role_skills(mut skills: Vec<String>, required: &[&str]) -> Vec<String> {
+    let mut deduped = Vec::with_capacity(skills.len() + required.len());
+    let mut seen = HashSet::with_capacity(skills.len() + required.len());
+    for skill in required {
+        if seen.insert((*skill).to_string()) {
+            deduped.push((*skill).to_string());
+        }
+    }
+    for skill in skills.drain(..) {
+        if seen.insert(skill.clone()) {
+            deduped.push(skill);
+        }
+    }
+    deduped
 }
 
 fn is_missing_or_null(value: Option<&Value>) -> bool {
@@ -1744,7 +1789,7 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
             ));
         }
 
-        let role = parse_optional_member_role(member.get("role"))?;
+        let role = parse_required_member_role(member.get("role"))?;
         let model = parse_optional_member_text(member.get("model"), "model")?;
         let prompt = parse_optional_member_text(member.get("prompt"), "prompt")?;
         let skills = parse_optional_member_skills(member.get("skills"))?;
@@ -1781,25 +1826,31 @@ fn parse_optional_member_text(
     Ok(Some(trimmed.to_string()))
 }
 
-fn parse_optional_member_role(value: Option<&Value>) -> Result<Option<String>, ApiError> {
+fn parse_required_member_role(value: Option<&Value>) -> Result<String, ApiError> {
     let Some(value) = value else {
-        return Ok(None);
+        return Err(ApiError::bad_request(
+            "spec.members[].role is required and must be 'leader' or 'worker'",
+        ));
     };
     let raw = value
         .as_str()
-        .ok_or_else(|| ApiError::bad_request("spec.members[].role must be 'leader' or 'worker'"))?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "spec.members[].role is required and must be 'leader' or 'worker'",
+            )
+        })?
         .trim();
     if raw.is_empty() {
         return Err(ApiError::bad_request(
-            "spec.members[].role must be 'leader' or 'worker'",
+            "spec.members[].role is required and must be 'leader' or 'worker'",
         ));
     }
     if raw != "leader" && raw != "worker" {
         return Err(ApiError::bad_request(
-            "spec.members[].role must be 'leader' or 'worker'",
+            "spec.members[].role is required and must be 'leader' or 'worker'",
         ));
     }
-    Ok(Some(raw.to_string()))
+    Ok(raw.to_string())
 }
 
 fn parse_optional_member_skills(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
@@ -1858,8 +1909,8 @@ fn parse_spec_leader_member_id(
 
     let member_role_leaders = member_specs
         .iter()
-        .filter_map(|member| match member.role.as_deref() {
-            Some("leader") => Some(member.member_id.as_str()),
+        .filter_map(|member| match member.role.as_str() {
+            "leader" => Some(member.member_id.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>();
