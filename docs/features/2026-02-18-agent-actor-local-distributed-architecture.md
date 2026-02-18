@@ -54,6 +54,87 @@ This note defines a shared actor protocol and two separate runtime architectures
   - transition to `dead_letter` after max attempts
   - allow replay only via explicit operator/user requeue action
 
+## API Contract Draft
+
+### `actor_send`
+
+- Request:
+  - `run_id` (string, required)
+  - `from_actor_id` (string, required)
+  - `to_actor_id` (string, required)
+  - `channel` (string, required)
+  - `payload` (json, required)
+  - `idempotency_key` (string, optional; server derives deterministic key when absent)
+  - `transport` (`local|remote`, optional; default `local`)
+  - `route` (object, optional for `remote`)
+- Response:
+  - `message_id` (string)
+  - `state` (`pending|delivered`)
+  - `deduped` (bool)
+  - `created_at` (rfc3339 timestamp)
+
+### `actor_inbox`
+
+- Request:
+  - `run_id` (string, required)
+  - `actor_id` (string, required)
+  - `cursor` (string, optional)
+  - `limit` (int, optional, default `50`, max `200`)
+  - `states` (array of state filter, optional, default `pending`)
+- Response:
+  - `messages` (array of message records)
+  - `next_cursor` (string, optional)
+
+### `actor_ack`
+
+- Request:
+  - `run_id` (string, required)
+  - `actor_id` (string, required)
+  - `message_id` (string, required)
+  - `ack_token` (string, optional when optimistic-ack is disabled)
+  - `result` (json, optional, for evidence/status payload)
+- Response:
+  - `message_id` (string)
+  - `state` (`delivered`)
+  - `acked_at` (rfc3339 timestamp)
+
+### Error Contract
+
+- `400 bad_request`: invalid payload/field format.
+- `401 unauthorized`: auth/session invalid.
+- `403 forbidden`: actor capability missing.
+- `404 not_found`: actor or run not found.
+- `409 conflict`: state conflict (stale session/state mismatch/duplicate ack).
+- `410 gone`: message expired and no longer ackable.
+- `422 unprocessable_entity`: remote route invalid.
+- `429 too_many_requests`: mailbox throttled.
+- `5xx`: infrastructure/runtime error.
+
+## State Machine
+
+- Transitions:
+  - `pending -> delivered` by valid `actor_ack`.
+  - `pending -> pending` by retry scheduler on transient send failure.
+  - `pending -> dead_letter` on max-attempt reached or non-retryable failure.
+  - `dead_letter -> pending` only through explicit requeue operation.
+  - `delivered` is terminal.
+- Invariants:
+  - `actor_ack` must be idempotent by `(run_id, actor_id, message_id)`.
+  - `dead_letter` must never auto-transition to `pending`.
+  - duplicate `actor_send` with same idempotency key must return original `message_id`.
+
+## Retry And Backoff Parameters
+
+- Suggested config surface:
+  - `actor_retry.max_attempts`
+  - `actor_retry.base_delay_ms`
+  - `actor_retry.max_delay_ms`
+  - `actor_retry.jitter_ratio`
+  - `actor_retry.dead_letter_ttl_hours`
+- Backoff recommendation:
+  - `delay = min(max_delay_ms, base_delay_ms * 2^attempt) + jitter`
+  - jitter range should be symmetric to avoid coordinated retry spikes.
+
 ## Local Agents Architecture
 
 - Components:
