@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use agenthub_team_actor::{
-    ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
+    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
     ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
 };
 use serde_json::Value;
@@ -211,30 +211,49 @@ impl TeamInternalControl for TeamInternalControlService {
         let message = self
             .state
             .teams
-            .ack_actor_message(run_id, actor_id, payload.message_id)
+            .actor_mailbox_service()
+            .actor_ack(ActorAckRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id: payload.message_id,
+                ack_token: None,
+                result: None,
+            })
             .await
-            .map_err(map_manager_error)?;
+            .map_err(map_actor_service_status)?;
+        let acked_message = message.message;
+        let route_json = acked_message
+            .route
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let payload_json = serde_json::to_string(&acked_message.payload).unwrap_or_default();
+        let status = acked_message.status.as_str().to_string();
+        let delivered_at = acked_message.delivered_at.unwrap_or(message.acked_at);
+        let created_at = acked_message.created_at;
+        let message_id = acked_message.message_id;
+        let run_id = acked_message.run_id;
+        let from_actor_id = acked_message.from_actor_id;
+        let to_actor_id = acked_message.to_actor_id;
+        let channel = acked_message.channel;
+        let transport = acked_message.transport.as_str().to_string();
 
         Ok(Response::new(AckActorMessageResponse {
             message: Some(ActorMessage {
-                message_id: message.message_id,
-                run_id: message.run_id,
-                from_actor_id: message.from_actor_id,
-                to_actor_id: message.to_actor_id,
-                channel: message.channel,
-                transport: message.transport.as_str().to_string(),
-                route_json: message
-                    .route
-                    .as_ref()
-                    .map(serde_json::to_string)
-                    .transpose()
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                payload_json: serde_json::to_string(&message.payload).unwrap_or_default(),
-                status: message.status.as_str().to_string(),
-                created_at: message.created_at,
-                delivered_at: message.delivered_at.unwrap_or_default(),
+                message_id,
+                run_id,
+                from_actor_id,
+                to_actor_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                status,
+                created_at,
+                delivered_at,
                 idempotency_key: String::new(),
             }),
         }))

@@ -53,6 +53,7 @@ pub struct ActorAckResponse {
     pub message_id: i64,
     pub state: ActorMessageStatus,
     pub acked_at: i64,
+    pub message: ActorMessageRecord,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

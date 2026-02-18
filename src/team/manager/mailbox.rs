@@ -323,11 +323,14 @@ impl ActorMailboxService for TeamActorMailboxService {
             .ack_actor_message(run_id, actor_id, request.message_id)
             .await
             .map_err(map_actor_service_error)?;
+        let state = message.status.clone();
+        let acked_at = message.delivered_at.unwrap_or(message.created_at);
 
         Ok(ActorAckResponse {
             message_id: message.message_id,
-            state: message.status,
-            acked_at: message.delivered_at.unwrap_or(message.created_at),
+            state,
+            acked_at,
+            message,
         })
     }
 }

@@ -222,6 +222,7 @@ This note defines a shared actor protocol and two separate runtime architectures
 - Wired internal gRPC mailbox paths to the new service skeleton:
   - `TeamInternalControl.send_actor_message`
   - `TeamInternalControl.list_actor_inbox`
+  - `TeamInternalControl.ack_actor_message`
   - kept response payload shape unchanged for existing callers
 
 ## Testing Strategy
