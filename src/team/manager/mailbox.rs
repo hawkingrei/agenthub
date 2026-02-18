@@ -266,12 +266,16 @@ impl ActorMailboxService for TeamActorMailboxService {
             })
             .await
             .map_err(map_actor_service_error)?;
+        let message_id = message.message_id;
+        let state = message.status.clone();
+        let created_at = message.created_at;
 
         Ok(ActorSendResponse {
-            message_id: message.message_id,
-            state: message.status,
+            message_id,
+            state,
             deduped: !created,
-            created_at: message.created_at,
+            created_at,
+            message,
         })
     }
 

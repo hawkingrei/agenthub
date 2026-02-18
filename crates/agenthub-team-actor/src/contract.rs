@@ -22,6 +22,7 @@ pub struct ActorSendResponse {
     pub state: ActorMessageStatus,
     pub deduped: bool,
     pub created_at: i64,
+    pub message: ActorMessageRecord,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -224,6 +224,11 @@ This note defines a shared actor protocol and two separate runtime architectures
   - `TeamInternalControl.list_actor_inbox`
   - `TeamInternalControl.ack_actor_message`
   - kept response payload shape unchanged for existing callers
+- Wired Teams HTTP mailbox paths to the same service skeleton:
+  - `POST /api/teams/runs/:run_id/messages/send`
+  - `GET /api/teams/runs/:run_id/messages/inbox`
+  - `POST /api/teams/runs/:run_id/messages/:message_id/ack`
+  - kept API response payload shape unchanged for existing callers
 
 ## Testing Strategy
 

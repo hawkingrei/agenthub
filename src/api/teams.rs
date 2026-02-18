@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use agenthub_team_actor::parse_actor_transport;
+use agenthub_team_actor::{
+    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
+    ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
+};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -15,9 +18,9 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
-    SendActorMessageInput, TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord,
-    TeamActorMessageTransport, TeamDefinitionConfig, TeamDefinitionRecord, TeamManager,
-    TeamRunEventRecord, TeamRunRecord, TeamStepRecord, TeamStepStatus,
+    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
+    TeamStepStatus,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -642,40 +645,51 @@ async fn send_team_run_message(
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let (run, member_ids) = load_run_and_member_ids(&state, &run_id).await?;
-    let from_actor_id = normalize_required_field(payload.from_actor_id, "from_actor_id")?;
-    let to_actor_id = normalize_required_field(payload.to_actor_id, "to_actor_id")?;
-    let channel = payload
-        .channel
+    let SendTeamRunMessageRequest {
+        from_actor_id,
+        to_actor_id,
+        channel,
+        transport,
+        route,
+        payload,
+        idempotency_key,
+    } = payload;
+    let from_actor_id = normalize_required_field(from_actor_id, "from_actor_id")?;
+    let to_actor_id = normalize_required_field(to_actor_id, "to_actor_id")?;
+    let channel = channel
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("default")
         .to_string();
-    let idempotency_key = normalize_optional_idempotency_key(payload.idempotency_key.as_deref())?;
-    let transport = parse_message_transport(payload.transport.as_deref())?;
+    let idempotency_key = normalize_optional_idempotency_key(idempotency_key.as_deref())?;
+    let transport = parse_message_transport(transport.as_deref())?;
     validate_message_actors(
         &member_ids,
         &from_actor_id,
         &to_actor_id,
         &transport,
-        payload.route.as_ref(),
+        route.as_ref(),
     )?;
-    let patch_proposal = parse_profile_patch_proposal(&payload.payload, &from_actor_id)?;
-    let (message, created) = state
+    let patch_proposal = parse_profile_patch_proposal(&payload, &from_actor_id)?;
+    let message = state
         .teams
-        .send_actor_message_with_created(SendActorMessageInput {
-            run_id: &run.id,
-            from_actor_id: &from_actor_id,
-            to_actor_id: &to_actor_id,
-            channel: &channel,
-            transport,
-            route: payload.route,
-            payload: payload.payload,
-            idempotency_key: idempotency_key.as_deref(),
+        .actor_mailbox_service()
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: from_actor_id.clone(),
+            to_actor_id: to_actor_id.clone(),
+            channel: Some(channel),
+            transport: Some(transport),
+            route,
+            payload,
+            idempotency_key: idempotency_key.clone(),
         })
         .await
-        .map_err(map_send_actor_message_error)?;
-    if created && let Some(proposal) = patch_proposal {
+        .map_err(map_actor_service_api_error)?;
+    if !message.deduped
+        && let Some(proposal) = patch_proposal
+    {
         apply_profile_patch_proposal(
             &state,
             &run,
@@ -686,7 +700,7 @@ async fn send_team_run_message(
         )
         .await?;
     }
-    Ok(Json(message))
+    Ok(Json(message.message))
 }
 
 async fn list_team_run_inbox(
@@ -704,18 +718,28 @@ async fn list_team_run_inbox(
         ));
     }
     let limit = query.limit.unwrap_or(500).clamp(1, 1000);
+    let states = if query.include_delivered.unwrap_or(false) {
+        Some(vec![
+            ActorMessageStatus::Pending,
+            ActorMessageStatus::Delivered,
+            ActorMessageStatus::DeadLetter,
+        ])
+    } else {
+        None
+    };
     let messages = state
         .teams
-        .list_actor_inbox(
-            &run_id,
-            &actor_id,
-            limit,
-            query.after_id,
-            query.include_delivered.unwrap_or(false),
-        )
+        .actor_mailbox_service()
+        .actor_inbox(ActorInboxRequest {
+            run_id: run_id.clone(),
+            actor_id: actor_id.clone(),
+            cursor: query.after_id,
+            limit: Some(limit),
+            states,
+        })
         .await
-        .map_err(map_team_internal_error)?;
-    Ok(Json(messages))
+        .map_err(map_actor_service_api_error)?;
+    Ok(Json(messages.messages))
 }
 
 async fn ack_team_run_message(
@@ -734,10 +758,17 @@ async fn ack_team_run_message(
     }
     let message = state
         .teams
-        .ack_actor_message(&run_id, &actor_id, message_id)
+        .actor_mailbox_service()
+        .actor_ack(ActorAckRequest {
+            run_id: run_id.clone(),
+            actor_id: actor_id.clone(),
+            message_id,
+            ack_token: None,
+            result: None,
+        })
         .await
-        .map_err(|err| map_not_found_error(err, "message not found"))?;
-    Ok(Json(message))
+        .map_err(map_actor_service_api_error)?;
+    Ok(Json(message.message))
 }
 
 fn parse_profile_patch_proposal(
@@ -1215,11 +1246,22 @@ fn map_submit_step_error(err: anyhow::Error) -> ApiError {
     map_team_internal_error(err)
 }
 
-fn map_send_actor_message_error(err: anyhow::Error) -> ApiError {
-    if TeamManager::is_actor_message_idempotency_conflict(&err) {
-        return ApiError::conflict("idempotency_key conflicts with an existing message payload");
+fn map_actor_service_api_error(err: ActorServiceError) -> ApiError {
+    match err.code {
+        ActorServiceErrorCode::BadRequest | ActorServiceErrorCode::UnprocessableEntity => {
+            ApiError::bad_request(&err.message)
+        }
+        ActorServiceErrorCode::Unauthorized | ActorServiceErrorCode::Forbidden => {
+            ApiError::unauthorized(&err.message)
+        }
+        ActorServiceErrorCode::NotFound | ActorServiceErrorCode::Gone => {
+            ApiError::not_found(&err.message)
+        }
+        ActorServiceErrorCode::Conflict => ApiError::conflict(&err.message),
+        ActorServiceErrorCode::TooManyRequests | ActorServiceErrorCode::Internal => {
+            map_team_internal_error(anyhow::anyhow!("{}", err.message))
+        }
     }
-    map_team_internal_error(err)
 }
 
 fn map_not_found_error(err: anyhow::Error, msg: &str) -> ApiError {
