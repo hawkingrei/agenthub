@@ -123,6 +123,7 @@ type RuntimeEventTargetLike = {
 type RuntimeVisualViewportLike = RuntimeEventTargetLike & {
   height?: number;
   width?: number;
+  offsetTop?: number;
 };
 
 type RuntimeWindowLike = RuntimeEventTargetLike & {
@@ -173,7 +174,7 @@ export function resolveRuntimeViewportAxis(
 }
 
 export function resolveRuntimeViewportSize(
-  viewport: Pick<VisualViewport, "height" | "width"> | null | undefined,
+  viewport: Pick<VisualViewport, "height" | "width" | "offsetTop"> | null | undefined,
   innerHeight: number,
   innerWidth: number
 ): RuntimeViewportSize {
@@ -194,9 +195,13 @@ export function resolveRuntimeViewportSize(
     }
     return viewportValue;
   };
+  const viewportOffsetTop =
+    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
+      ? Math.max(0, viewport.offsetTop)
+      : 0;
   return {
     height: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.height, innerHeight),
+      toSafeViewportDimension(viewport?.height, innerHeight) + viewportOffsetTop,
       innerHeight
     ),
     width: resolveRuntimeViewportAxis(
@@ -212,6 +217,24 @@ export function shouldSyncRuntimeViewportSize(
 ): boolean {
   if (!previous) return true;
   return previous.height !== next.height || previous.width !== next.width;
+}
+
+export function resolveRuntimeKeyboardInset(
+  viewport: Pick<VisualViewport, "height" | "offsetTop"> | null | undefined,
+  innerHeight: number
+): number {
+  const safeInnerHeight =
+    typeof innerHeight === "number" && Number.isFinite(innerHeight) && innerHeight > 0
+      ? innerHeight
+      : 1;
+  const viewportHeight = resolveRuntimeViewportAxis(viewport?.height, safeInnerHeight);
+  const viewportOffsetTop =
+    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
+      ? Math.max(0, Math.round(viewport.offsetTop))
+      : 0;
+  const inset = safeInnerHeight - viewportHeight - viewportOffsetTop;
+  if (!Number.isFinite(inset)) return 0;
+  return inset > 0 ? inset : 0;
 }
 
 export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
@@ -352,18 +375,27 @@ export function setupRuntimeViewportVarSync(
   const viewport = runtimeWindow.visualViewport;
   let rafId: number | null = null;
   let previousSize: RuntimeViewportSize | null = null;
+  let previousKeyboardInset: number | null = null;
   const syncViewportSizeNow = () => {
     const nextSize = resolveRuntimeViewportSize(
       viewport,
       runtimeWindow.innerHeight,
       runtimeWindow.innerWidth
     );
-    if (!shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
+    if (shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
+      previousSize = nextSize;
+      styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
+      styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
+    }
+    const nextKeyboardInset = resolveRuntimeKeyboardInset(
+      viewport,
+      runtimeWindow.innerHeight
+    );
+    if (previousKeyboardInset === nextKeyboardInset) {
       return;
     }
-    previousSize = nextSize;
-    styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
-    styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
+    previousKeyboardInset = nextKeyboardInset;
+    styleTarget.setProperty("--agenthub-keyboard-inset", `${nextKeyboardInset}px`);
   };
   const scheduleSyncViewportSize = () => {
     if (

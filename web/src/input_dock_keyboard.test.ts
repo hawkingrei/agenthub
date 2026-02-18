@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bindHistoryOutsideClose,
+  deriveInputViewportOffset,
   deriveInputPlaceholder,
   deriveInputDockKeyAction,
   deriveInputHistoryNavigation,
@@ -311,6 +312,31 @@ describe("isInputRectOutsideViewport", () => {
     expect(
       isInputRectOutsideViewport({ top: 250, bottom: 318 }, 0, 320)
     ).toBe(true);
+  });
+});
+
+describe("deriveInputViewportOffset", () => {
+  it("returns zero when input rect is already visible", () => {
+    expect(deriveInputViewportOffset({ top: 260, bottom: 320 }, 0, 844)).toBe(0);
+  });
+
+  it("returns positive offset when keyboard viewport covers input bottom", () => {
+    expect(deriveInputViewportOffset({ top: 420, bottom: 500 }, 0, 460)).toBe(52);
+  });
+
+  it("respects custom safe margin while calculating offset", () => {
+    expect(deriveInputViewportOffset({ top: 420, bottom: 500 }, 0, 500, 0)).toBe(0);
+    expect(deriveInputViewportOffset({ top: 420, bottom: 500 }, 0, 500, 20)).toBe(20);
+  });
+
+  it("returns zero for invalid viewport values", () => {
+    expect(deriveInputViewportOffset({ top: 120, bottom: 180 }, 0, 0)).toBe(0);
+    expect(
+      deriveInputViewportOffset({ top: Number.NaN, bottom: 180 }, 0, 300)
+    ).toBe(0);
+    expect(
+      deriveInputViewportOffset({ top: 120, bottom: 180 }, Number.NaN, 300)
+    ).toBe(0);
   });
 });
 

@@ -7,6 +7,7 @@
   color: #161616;
   --agenthub-vh: 100vh;
   --agenthub-vw: 100vw;
+  --agenthub-keyboard-inset: 0px;
   --agenthub-header-height: 56px;
   --agenthub-workspace-top: calc(
     var(--agenthub-header-height) + env(safe-area-inset-top, 0px)
@@ -256,6 +257,7 @@ section {
   gap: 6px;
   align-items: stretch;
   padding: 0;
+  margin-bottom: 0;
   flex: 1;
   min-height: 0;
 }
@@ -2401,8 +2403,7 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 1024px) {
   .app {
-    padding: calc(2px + env(safe-area-inset-top, 0px)) 6px
-      calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 6px 0;
   }
 
   .workspace {
@@ -2436,7 +2437,7 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 720px) {
   .app {
-    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px 0;
   }
 
   header {
@@ -2494,10 +2495,14 @@ select:not([class*="mantine-"]):focus-visible {
     max-width: 46vw;
   }
 
-  .workspace-left,
-  .workspace-right {
+  .workspace-left {
     border-radius: 8px;
     padding: 4px;
+  }
+
+  .workspace > .workspace-right {
+    border-radius: 8px;
+    padding: 4px 4px 0;
   }
 
   .workspace.collapsed {
@@ -2945,6 +2950,118 @@ select:not([class*="mantine-"]):focus-visible {
   opacity: 0.88;
 }
 
+.team-member-summary {
+  opacity: 0.82;
+}
+
+.teams-member-status-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.teams-member-summary-line {
+  font-size: 11px;
+  color: #5e6d80;
+  text-align: right;
+}
+
+.teams-member-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.team-member-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  padding: 5px 8px 6px;
+}
+
+.team-member-row-main {
+  display: grid;
+  grid-template-columns: auto minmax(130px, auto) auto minmax(120px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.team-member-row-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2a37;
+}
+
+.team-member-row-meta {
+  font-size: 11px;
+  color: #5e6d80;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-member-workline {
+  font-size: 11px;
+  color: #5e6d80;
+  text-align: right;
+  padding-left: 48px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-role-chip {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 1px 7px;
+  text-transform: lowercase;
+}
+
+.team-role-chip.leader {
+  background: #e9f0ff;
+  border-color: #c5d4f7;
+  color: #274785;
+}
+
+.team-role-chip.worker {
+  background: #f4eefb;
+  border-color: #dcc8f5;
+  color: #5b3a83;
+}
+
+.team-status-chip {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 1px 7px;
+  text-transform: lowercase;
+}
+
+.team-status-chip.active {
+  background: #e9f8ef;
+  border-color: #b8e3c7;
+  color: #1d6f42;
+}
+
+.team-status-chip.inactive {
+  background: #f3f4f6;
+  border-color: #d2d8df;
+  color: #4f5a67;
+}
+
+.team-status-chip.missing {
+  background: #fff3f0;
+  border-color: #f0c5bb;
+  color: #9e3a27;
+}
+
 .team-create-modal-backdrop {
   z-index: 80;
 }
@@ -3008,6 +3125,27 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 10px;
 }
 
+.team-create-agent-entry {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d9e1ec;
+  background: #f7fbff;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.team-create-agent-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team-create-agent-entry-head h4 {
+  margin: 0;
+}
+
 .team-create-checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3051,6 +3189,40 @@ select:not([class*="mantine-"]):focus-visible {
   border-radius: 8px;
   padding: 6px 8px;
   font-size: 12px;
+}
+
+.team-create-forge-agent {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e0ee;
+  background: #f8fbff;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.team-create-forge-agent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team-create-forge-agent-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.team-create-forge-agent-meta {
+  display: grid;
+  gap: 4px;
+  color: #4d5f73;
+  font-size: 11px;
+}
+
+.team-create-forge-agent-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .team-create-worker-grid {
@@ -3104,6 +3276,28 @@ select:not([class*="mantine-"]):focus-visible {
 .team-create-warning p {
   margin: 0;
   flex: 1 1 360px;
+}
+
+.team-skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-skill-tag {
+  border: 1px solid #d2dbe8;
+  background: #fff;
+  color: #3f5166;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.team-skill-tag.selected {
+  border-color: #7ba4d9;
+  background: #eaf2ff;
+  color: #1f4a86;
 }
 
 .teams-run-meta {
@@ -3284,5 +3478,18 @@ select:not([class*="mantine-"]):focus-visible {
 
   .team-create-checklist {
     grid-template-columns: 1fr;
+  }
+
+  .team-member-row-main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .team-member-row-meta {
+    grid-column: 1 / -1;
+  }
+
+  .team-member-workline {
+    padding-left: 24px;
   }
 }

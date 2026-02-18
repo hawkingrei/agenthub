@@ -17,11 +17,13 @@ import { App } from "./app";
 class MockVisualViewport extends EventTarget {
   width: number;
   height: number;
+  offsetTop: number;
 
   constructor(width: number, height: number) {
     super();
     this.width = width;
     this.height = height;
+    this.offsetTop = 0;
   }
 }
 
@@ -74,6 +76,7 @@ describe("App runtime viewport effects", () => {
     }
     document.documentElement.style.removeProperty("--agenthub-vh");
     document.documentElement.style.removeProperty("--agenthub-vw");
+    document.documentElement.style.removeProperty("--agenthub-keyboard-inset");
     vi.restoreAllMocks();
   });
 
@@ -192,5 +195,26 @@ describe("App runtime viewport effects", () => {
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vw")
     ).toBe("358px");
+  });
+
+  it("accounts for visual viewport offsetTop when syncing viewport height", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    mockViewport.height = 650;
+    mockViewport.offsetTop = 24;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-vh")
+    ).toBe("674px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-keyboard-inset")
+    ).toBe("26px");
   });
 });

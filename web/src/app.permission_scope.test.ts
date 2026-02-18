@@ -11,6 +11,7 @@ import {
   resolveGlobalPermissionPollIntervalMs,
   resolveOutputHistoryKey,
   resolveSessionScopedEvents,
+  resolveRuntimeKeyboardInset,
   resolveRuntimeViewportAxis,
   resolveRuntimeViewportSize,
   schedulePermissionPollLoop,
@@ -337,6 +338,16 @@ describe("app helper decisions", () => {
       width: 1,
       height: 1,
     });
+    expect(
+      resolveRuntimeViewportSize(
+        { width: 390, height: 660, offsetTop: 32 },
+        844,
+        390
+      )
+    ).toEqual({
+      width: 390,
+      height: 692,
+    });
   });
 
   it("ignores implausibly tiny visual viewport values and keeps fallback axes", () => {
@@ -366,6 +377,21 @@ describe("app helper decisions", () => {
     expect(toNonNegativeRoundedPx(-4.2)).toBe(0);
     expect(toNonNegativeRoundedPx(null)).toBeNull();
     expect(toNonNegativeRoundedPx(Number.NaN)).toBeNull();
+  });
+
+  it("resolves keyboard inset from viewport height reduction", () => {
+    expect(
+      resolveRuntimeKeyboardInset({ height: 620, offsetTop: 0 } as VisualViewport, 844)
+    ).toBe(224);
+    expect(
+      resolveRuntimeKeyboardInset({ height: 844, offsetTop: 0 } as VisualViewport, 844)
+    ).toBe(0);
+    expect(
+      resolveRuntimeKeyboardInset(
+        { height: Number.NaN, offsetTop: 0 } as VisualViewport,
+        844
+      )
+    ).toBe(0);
   });
 
   it("decides permission jump phases", () => {
@@ -404,13 +430,18 @@ describe("app helper decisions", () => {
     const runtimeWindow = new MockEventTarget() as MockEventTarget & {
       innerHeight: number;
       innerWidth: number;
-      visualViewport: MockEventTarget & { height: number; width: number };
+      visualViewport: MockEventTarget & {
+        height: number;
+        width: number;
+        offsetTop: number;
+      };
     };
     runtimeWindow.innerHeight = 700;
     runtimeWindow.innerWidth = 390;
     runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
       height: 700,
       width: 390,
+      offsetTop: 0,
     });
     const style = createStyleTarget();
 
@@ -420,12 +451,14 @@ describe("app helper decisions", () => {
     );
     expect(style.values.get("--agenthub-vh")).toBe("700px");
     expect(style.values.get("--agenthub-vw")).toBe("390px");
+    expect(style.values.get("--agenthub-keyboard-inset")).toBe("0px");
 
     runtimeWindow.visualViewport.height = 666;
     runtimeWindow.visualViewport.width = 360;
     runtimeWindow.visualViewport.emit("resize");
     expect(style.values.get("--agenthub-vh")).toBe("666px");
     expect(style.values.get("--agenthub-vw")).toBe("360px");
+    expect(style.values.get("--agenthub-keyboard-inset")).toBe("34px");
 
     cleanup();
     expect(runtimeWindow.listenerCount("resize")).toBe(0);
@@ -438,7 +471,11 @@ describe("app helper decisions", () => {
     const runtimeWindow = new MockEventTarget() as MockEventTarget & {
       innerHeight: number;
       innerWidth: number;
-      visualViewport: MockEventTarget & { height: number; width: number };
+      visualViewport: MockEventTarget & {
+        height: number;
+        width: number;
+        offsetTop: number;
+      };
       requestAnimationFrame: (cb: (ts: number) => void) => number;
       cancelAnimationFrame: (id: number) => void;
     };
@@ -447,6 +484,7 @@ describe("app helper decisions", () => {
     runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
       height: 700,
       width: 390,
+      offsetTop: 0,
     });
     const style = createStyleTarget();
     const rafCallbacks: Array<(ts: number) => void> = [];
@@ -470,6 +508,7 @@ describe("app helper decisions", () => {
     rafCallbacks[0](0);
     expect(style.values.get("--agenthub-vh")).toBe("680px");
     expect(style.values.get("--agenthub-vw")).toBe("370px");
+    expect(style.values.get("--agenthub-keyboard-inset")).toBe("20px");
 
     runtimeWindow.visualViewport.height = 650;
     runtimeWindow.visualViewport.emit("resize");
@@ -482,13 +521,18 @@ describe("app helper decisions", () => {
     const runtimeWindow = new MockEventTarget() as MockEventTarget & {
       innerHeight: number;
       innerWidth: number;
-      visualViewport: MockEventTarget & { height: number; width: number };
+      visualViewport: MockEventTarget & {
+        height: number;
+        width: number;
+        offsetTop: number;
+      };
     };
     runtimeWindow.innerHeight = 700;
     runtimeWindow.innerWidth = 390;
     runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
       height: 700,
       width: 390,
+      offsetTop: 0,
     });
     const values = new Map<string, string>();
     const setProperty = vi.fn((name: string, value: string) => {
