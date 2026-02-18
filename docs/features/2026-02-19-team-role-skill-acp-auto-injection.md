@@ -45,3 +45,11 @@ Observed:
 - Team orchestrator dispatch test passed with role propagation in actor context.
 - Team API tests passed.
 - Team page helper tests stayed green.
+
+Re-verified on 2026-02-18 with:
+
+```bash
+cargo test -p agenthub-acp -- --nocapture
+cargo test dispatch_once_injects_actor_runtime_and_supports_inbox_ack_flow -- --nocapture
+cargo test parse_member_role_returns_expected_role -- --nocapture
+```

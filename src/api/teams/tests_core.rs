@@ -535,7 +535,7 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
         Json(CreateTeamRequest {
             name: "run-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor"}]}),
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
         }),
     )
     .await
@@ -2025,7 +2025,12 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
     assert_eq!(
         leader.skills,
-        vec!["planning".to_string(), "review".to_string()]
+        vec![
+            "agenthub-actor-runtime".to_string(),
+            "team-leader-orchestrator".to_string(),
+            "planning".to_string(),
+            "review".to_string()
+        ]
     );
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");

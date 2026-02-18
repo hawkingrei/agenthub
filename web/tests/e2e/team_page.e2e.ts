@@ -292,7 +292,12 @@ test("team forge modal creates team with leader/worker presets", async ({
 
   await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
   const leaderPanel = dialog.locator(".team-create-panel");
-  await leaderPanel.locator("select").first().selectOption("agent-leader-1");
+  await dialog.getByRole("button", { name: "New Agent" }).click();
+  const leaderForgeForm = dialog.locator(".team-create-forge-agent");
+  await expect(leaderForgeForm).toBeVisible();
+  await leaderForgeForm.getByPlaceholder("workdir").fill("/workspace/leader");
+  await leaderForgeForm.getByRole("button", { name: "Create Agent" }).click();
+  await expect(leaderPanel.locator("select").first()).toHaveValue(/agent-forge-/);
   await leaderPanel.locator("select").nth(1).selectOption("codex");
   await leaderPanel
     .getByPlaceholder("leader custom skills (comma separated, optional)")
@@ -301,8 +306,14 @@ test("team forge modal creates team with leader/worker presets", async ({
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Recruit Workers" })).toBeVisible();
+  await dialog.getByRole("button", { name: "New Agent" }).click();
+  const workerForgeForm = dialog.locator(".team-create-forge-agent");
+  await expect(workerForgeForm).toBeVisible();
+  await workerForgeForm.getByPlaceholder("workdir").fill("/workspace/worker");
+  await workerForgeForm.locator("select").first().selectOption("gemini");
+  await workerForgeForm.getByRole("button", { name: "Create Agent" }).click();
   const workerCard = dialog.locator(".teams-worker-card").first();
-  await workerCard.locator("select").first().selectOption("agent-worker-1");
+  await expect(workerCard.locator("select").first()).toHaveValue(/agent-forge-/);
   await workerCard.locator("select").nth(1).selectOption("gemini");
   await workerCard
     .getByPlaceholder("worker custom skills (comma separated, optional)")
@@ -312,7 +323,7 @@ test("team forge modal creates team with leader/worker presets", async ({
 
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
   const specEditor = dialog.locator(".team-create-panel textarea");
-  await expect(specEditor).toContainText("\"leader_member_id\": \"agent-leader-1\"");
+  await expect(specEditor).toContainText("\"leader_member_id\": \"agent-forge-");
   await expect(specEditor).toContainText("\"step_key\": \"leader_plan\"");
   await expect(specEditor).toContainText("\"step_key\": \"leader_synthesize\"");
 
@@ -324,13 +335,15 @@ test("team forge modal creates team with leader/worker presets", async ({
   expect(payload).not.toBeNull();
   const createdPayload = payload as CreateTeamPayload;
   expect(createdPayload.name).toBe("quest-team");
-  expect(createdPayload.spec.leader_member_id).toBe("agent-leader-1");
+  expect(createdPayload.spec.leader_member_id).toMatch(/^agent-forge-/);
   const leaderMember = createdPayload.spec.members.find(
     (member) => member.role === "leader"
   );
   const workerMember = createdPayload.spec.members.find(
     (member) => member.role === "worker"
   );
+  expect(leaderMember?.member_id).toMatch(/^agent-forge-/);
+  expect(workerMember?.member_id).toMatch(/^agent-forge-/);
   expect(leaderMember?.model).toBe("codex");
   expect(workerMember?.model).toBe("gemini");
   expect(leaderMember?.skills).toContain("agenthub-actor-runtime");
@@ -360,7 +373,13 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
 
   await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
   const leaderPanel = dialog.locator(".team-create-panel");
-  await leaderPanel.locator("select").first().selectOption("agent-worker-1");
+  await dialog.getByRole("button", { name: "New Agent" }).click();
+  const forgeForm = dialog.locator(".team-create-forge-agent");
+  await expect(forgeForm).toBeVisible();
+  await forgeForm.getByPlaceholder("workdir").fill("/workspace/dup");
+  await forgeForm.locator("select").nth(1).selectOption("worker");
+  await forgeForm.getByRole("button", { name: "Create Agent" }).click();
+  await leaderPanel.locator("select").first().selectOption({ index: 1 });
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Recruit Workers" })).toBeVisible();
@@ -387,15 +406,12 @@ test("team forge agent entry creates and binds leader in-place", async ({
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
-  await expect(dialog.getByText("No agents available yet.")).toBeVisible();
+  await expect(
+    dialog.getByText("No forged agents yet. Create one in the Agent Forge entry above.")
+  ).toBeVisible();
   await dialog.getByRole("button", { name: "New Agent" }).click();
 
   await dialog.getByPlaceholder("workdir").fill("/workspace/forge-leader");
-  await dialog
-    .locator(".team-create-forge-agent")
-    .locator("select")
-    .nth(1)
-    .selectOption("leader");
   await dialog.getByRole("button", { name: "Create Agent" }).click();
 
   await expect(dialog.getByText("agent_id: agent-forge-1")).toBeVisible();

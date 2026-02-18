@@ -30,13 +30,13 @@ Executed:
 
 ```bash
 cargo fmt
-cargo test teams_api_ -- --nocapture
+cargo test api::teams::tests:: -- --nocapture
 npm --prefix web run test -- src/pages/team_page.runs.test.ts
 npm --prefix web run build
 ```
 
 Observed:
 
-- Team API tests passed, including new role-skill enforcement coverage.
+- Team API tests passed, including role-skill enforcement and snapshot coverage.
 - Team page helper tests passed.
 - Web production build succeeded.

@@ -29,17 +29,10 @@ but there is no first-class UI to operate these flows from the web app.
 
 ## Validation
 
-Suggested checks:
+Executed (2026-02-18):
 
 ```bash
-npm --prefix web run lint
-npm --prefix web run test
+npm --prefix web run test -- src/pages/team_page.runs.test.ts
+/bin/zsh -lc 'set -euo pipefail; npm --prefix web run dev -- --host 127.0.0.1 --port 5173 --strictPort >/tmp/agenthub-vite.log 2>&1 & VITE_PID=$!; trap "kill $VITE_PID 2>/dev/null || true" EXIT; for i in {1..30}; do curl -sf http://127.0.0.1:5173 >/dev/null && break; sleep 1; done; PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts'
+npm --prefix web run build
 ```
-
-Manual checks:
-
-1. Create a team with valid JSON spec.
-2. Create a run and verify status/event updates.
-3. Submit a step and drive it through lifecycle transitions.
-4. Send actor message, fetch inbox, and ack it.
-5. Verify `/teams` can load an existing run by `run_id` after page refresh.
