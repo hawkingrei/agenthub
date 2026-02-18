@@ -15,6 +15,7 @@ This made leader-to-worker coordination slower than needed during active runs.
 
 - `web/src/pages/team_page.tsx`
 - `web/src/pages/team_page.runs.test.ts`
+- `web/tests/e2e/team_page.e2e.ts`
 - `web/src/styles.css`
 - `docs/todo.md`
 
@@ -38,19 +39,11 @@ This made leader-to-worker coordination slower than needed during active runs.
 
 ## Validation
 
-Executed:
+Executed (2026-02-18):
 
 ```bash
 npm --prefix web run test -- src/pages/team_page.runs.test.ts
-npm --prefix web run lint
+/bin/zsh -lc 'set -euo pipefail; npm --prefix web run dev -- --host 127.0.0.1 --port 5173 --strictPort >/tmp/agenthub-vite.log 2>&1 & VITE_PID=$!; trap "kill $VITE_PID 2>/dev/null || true" EXIT; for i in {1..30}; do curl -sf http://127.0.0.1:5173 >/dev/null && break; sleep 1; done; PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts -g "team mailbox IM mode supports conversation focus"'
+/bin/zsh -lc 'set -euo pipefail; npm --prefix web run dev -- --host 127.0.0.1 --port 5173 --strictPort >/tmp/agenthub-vite.log 2>&1 & VITE_PID=$!; trap "kill $VITE_PID 2>/dev/null || true" EXIT; for i in {1..30}; do curl -sf http://127.0.0.1:5173 >/dev/null && break; sleep 1; done; PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts'
 npm --prefix web run build
 ```
-
-Manual checks to run in browser:
-
-1. Open `/teams`, select a run, click a member card, and verify tab switches to `Mailbox` with selected conversation pair.
-2. Send `Send Chat` message and verify it appears in conversation immediately.
-3. Scroll chat upward, trigger new mailbox messages, and verify `auto_follow=off` with unread counter increase.
-4. Scroll back to bottom and verify unread clears for active conversation.
-5. Verify `Ack` from conversation list updates status and mailbox summary counters.
-6. Expand `Advanced mailbox controls` and verify legacy JSON send/inbox still works.
