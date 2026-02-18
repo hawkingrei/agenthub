@@ -2403,13 +2403,7 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 1024px) {
   .app {
-    padding: calc(2px + env(safe-area-inset-top, 0px)) 6px
-      calc(
-        max(
-          0px,
-          calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
-        )
-      );
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 6px 0;
   }
 
   .workspace {
@@ -2443,13 +2437,7 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 720px) {
   .app {
-    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px
-      calc(
-        max(
-          0px,
-          calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
-        )
-      );
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px 0;
   }
 
   header {

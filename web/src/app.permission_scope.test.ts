@@ -338,6 +338,16 @@ describe("app helper decisions", () => {
       width: 1,
       height: 1,
     });
+    expect(
+      resolveRuntimeViewportSize(
+        { width: 390, height: 660, offsetTop: 32 },
+        844,
+        390
+      )
+    ).toEqual({
+      width: 390,
+      height: 692,
+    });
   });
 
   it("ignores implausibly tiny visual viewport values and keeps fallback axes", () => {

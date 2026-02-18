@@ -174,7 +174,7 @@ export function resolveRuntimeViewportAxis(
 }
 
 export function resolveRuntimeViewportSize(
-  viewport: Pick<VisualViewport, "height" | "width"> | null | undefined,
+  viewport: Pick<VisualViewport, "height" | "width" | "offsetTop"> | null | undefined,
   innerHeight: number,
   innerWidth: number
 ): RuntimeViewportSize {
@@ -195,9 +195,13 @@ export function resolveRuntimeViewportSize(
     }
     return viewportValue;
   };
+  const viewportOffsetTop =
+    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
+      ? Math.max(0, viewport.offsetTop)
+      : 0;
   return {
     height: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.height, innerHeight),
+      toSafeViewportDimension(viewport?.height, innerHeight) + viewportOffsetTop,
       innerHeight
     ),
     width: resolveRuntimeViewportAxis(
