@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   getAdaptivePollInterval,
   getMaxEventCursor,
+  isSseConnectionStale,
   isCursorNewer,
+  shouldPollAgentEvents,
   updateLastEventCursor,
 } from "./event_polling";
 
@@ -18,6 +20,39 @@ describe("getAdaptivePollInterval", () => {
     expect(getAdaptivePollInterval(3)).toBe(8000);
     expect(getAdaptivePollInterval(4)).toBe(10000);
     expect(getAdaptivePollInterval(10)).toBe(10000);
+  });
+});
+
+describe("shouldPollAgentEvents", () => {
+  it("polls when SSE is not open", () => {
+    expect(shouldPollAgentEvents(false, null, 1000)).toBe(true);
+  });
+
+  it("polls during boost window even when SSE is open", () => {
+    expect(shouldPollAgentEvents(true, 5000, 1000)).toBe(true);
+  });
+
+  it("skips polling when SSE is open and boost window expired", () => {
+    expect(shouldPollAgentEvents(true, 1000, 1000)).toBe(false);
+    expect(shouldPollAgentEvents(true, null, 1000)).toBe(false);
+  });
+
+  it("polls when SSE connection is stale", () => {
+    expect(shouldPollAgentEvents(true, null, 1000, true)).toBe(true);
+  });
+});
+
+describe("isSseConnectionStale", () => {
+  it("returns false when SSE is not open", () => {
+    expect(isSseConnectionStale(false, 0, 1000, 30_000)).toBe(false);
+  });
+
+  it("returns true when SSE idle time exceeds stale threshold", () => {
+    expect(isSseConnectionStale(true, 0, 31_000, 30_000)).toBe(true);
+  });
+
+  it("returns false when SSE idle time is below stale threshold", () => {
+    expect(isSseConnectionStale(true, 2_000, 31_000, 30_000)).toBe(false);
   });
 });
 

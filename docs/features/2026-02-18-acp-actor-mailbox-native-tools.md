@@ -70,6 +70,19 @@ This made mailbox coordination depend on terminal commands instead of ACP-native
   - Confirm MCP tool list includes `actor_inbox`, `actor_ack`, `actor_send`.
   - Run a send/inbox/ack loop without shelling out to `AGENTHUB_ACTOR_CLI`.
 
+## Validation Evidence (2026-02-18)
+
+- Command:
+  - `cargo test jsonrpc_tools_list_and_call_drive_local_mailbox_flow -- --nocapture`
+  - `cargo test -p agenthub-acp build_actor_mailbox_mcp_server_uses_actor_runtime_binary_and_context -- --nocapture`
+  - `cargo test -p agenthub-acp actor_runtime_skill_includes_context_and_native_tool_contract -- --nocapture`
+- Result:
+  - passed `actor_mcp::tests::jsonrpc_tools_list_and_call_drive_local_mailbox_flow`:
+    - verified JSON-RPC `tools/list` returns `actor_inbox`/`actor_ack`/`actor_send`
+    - verified JSON-RPC `tools/call` executes local `send -> inbox -> ack -> inbox(include_delivered)` flow
+  - passed `agenthub_acp::tests::build_actor_mailbox_mcp_server_uses_actor_runtime_binary_and_context`
+  - passed `agenthub_acp::actor_runtime_skill::tests::actor_runtime_skill_includes_context_and_native_tool_contract`
+
 ## Risk Notes
 
 - `actor-mcp` currently accepts JSON-RPC methods needed by Codex MCP clients; unknown methods return JSON-RPC method-not-found.

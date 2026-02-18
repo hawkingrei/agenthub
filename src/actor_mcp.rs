@@ -97,7 +97,13 @@ fn take_optional(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn parse_actor_mcp_context(args: &[String]) -> anyhow::Result<ActorMcpContext> {
+fn parse_actor_mcp_context_with_env<F>(
+    args: &[String],
+    mut env_lookup: F,
+) -> anyhow::Result<ActorMcpContext>
+where
+    F: FnMut(&str) -> Option<String>,
+{
     let mut run_id = None;
     let mut actor_id = None;
     let mut channel = None;
@@ -143,10 +149,18 @@ fn parse_actor_mcp_context(args: &[String]) -> anyhow::Result<ActorMcpContext> {
         idx += 1;
     }
 
-    let run_id = take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?;
-    let actor_id = take_required(actor_id, Some(ACTOR_RUNTIME_ACTOR_ID_ENV), "actor_id")?;
+    let run_id = take_required(
+        run_id.or_else(|| env_lookup(ACTOR_RUNTIME_RUN_ID_ENV)),
+        None,
+        "run_id",
+    )?;
+    let actor_id = take_required(
+        actor_id.or_else(|| env_lookup(ACTOR_RUNTIME_ACTOR_ID_ENV)),
+        None,
+        "actor_id",
+    )?;
     let default_channel = take_optional(channel)
-        .or_else(|| normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV))
+        .or_else(|| env_lookup(ACTOR_RUNTIME_CHANNEL_ENV))
         .unwrap_or_else(|| DEFAULT_ACTOR_CHANNEL.to_string());
 
     Ok(ActorMcpContext {
@@ -154,6 +168,10 @@ fn parse_actor_mcp_context(args: &[String]) -> anyhow::Result<ActorMcpContext> {
         actor_id,
         default_channel,
     })
+}
+
+fn parse_actor_mcp_context(args: &[String]) -> anyhow::Result<ActorMcpContext> {
+    parse_actor_mcp_context_with_env(args, normalized_env_var)
 }
 
 fn actor_tools() -> Vec<Value> {
@@ -281,18 +299,22 @@ where
     serde_json::from_value(raw).map_err(|err| format!("invalid tool arguments: {err}"))
 }
 
-fn resolve_idempotency_key(
-    run_id: &str,
-    from_actor_id: &str,
-    to_actor_id: &str,
-    channel: &str,
-    transport: &ActorMessageTransport,
-    route: Option<&Value>,
-    payload: &Value,
+struct ResolveIdempotencyKeyInput<'a> {
+    run_id: &'a str,
+    from_actor_id: &'a str,
+    to_actor_id: &'a str,
+    channel: &'a str,
+    transport: &'a ActorMessageTransport,
+    route: Option<&'a Value>,
+    payload: &'a Value,
     explicit: Option<String>,
     allow_duplicate: bool,
+}
+
+fn resolve_idempotency_key(
+    input: ResolveIdempotencyKeyInput<'_>,
 ) -> Result<Option<String>, String> {
-    let explicit_idempotency_key = match explicit {
+    let explicit_idempotency_key = match input.explicit {
         Some(raw) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() {
@@ -305,21 +327,21 @@ fn resolve_idempotency_key(
         }
         None => None,
     };
-    if allow_duplicate && explicit_idempotency_key.is_some() {
+    if input.allow_duplicate && explicit_idempotency_key.is_some() {
         return Err("allow_duplicate cannot be used with idempotency_key".to_string());
     }
-    if allow_duplicate {
+    if input.allow_duplicate {
         return Ok(None);
     }
     Ok(Some(explicit_idempotency_key.unwrap_or_else(|| {
         build_default_actor_message_idempotency_key(
-            run_id,
-            from_actor_id,
-            to_actor_id,
-            channel,
-            transport.as_str(),
-            route,
-            payload,
+            input.run_id,
+            input.from_actor_id,
+            input.to_actor_id,
+            input.channel,
+            input.transport.as_str(),
+            input.route,
+            input.payload,
         )
     })))
 }
@@ -420,17 +442,17 @@ async fn tool_actor_send<S: ActorMailboxService>(
     let channel =
         take_optional(args.channel).unwrap_or_else(|| context.default_channel.to_string());
     let allow_duplicate = args.allow_duplicate.unwrap_or(false);
-    let idempotency_key = match resolve_idempotency_key(
-        &context.run_id,
-        &context.actor_id,
-        &to_actor_id,
-        &channel,
-        &transport,
-        route.as_ref(),
-        &payload,
-        args.idempotency_key,
+    let idempotency_key = match resolve_idempotency_key(ResolveIdempotencyKeyInput {
+        run_id: &context.run_id,
+        from_actor_id: &context.actor_id,
+        to_actor_id: &to_actor_id,
+        channel: &channel,
+        transport: &transport,
+        route: route.as_ref(),
+        payload: &payload,
+        explicit: args.idempotency_key,
         allow_duplicate,
-    ) {
+    }) {
         Ok(idempotency_key) => idempotency_key,
         Err(err) => return tool_result_error(err, None),
     };
@@ -654,36 +676,27 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn restore_env(key: &str, value: Option<String>) {
-        if let Some(value) = value {
-            unsafe { std::env::set_var(key, value) }
-        } else {
-            unsafe { std::env::remove_var(key) }
-        }
-    }
+    use crate::api::team_tests::build_test_state;
+    use crate::team::TeamDefinitionConfig;
+    use uuid::Uuid;
 
     #[test]
     fn parse_actor_mcp_context_uses_env_fallback() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
-        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
-        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
-        let prev_channel = std::env::var(ACTOR_RUNTIME_CHANNEL_ENV).ok();
-        unsafe {
-            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-x");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
-            std::env::set_var(ACTOR_RUNTIME_CHANNEL_ENV, "coord");
-        }
-        let context = parse_actor_mcp_context(&[]).expect("parse actor mcp context");
+        let env = [
+            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (
+                ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
+                "planner".to_string(),
+            ),
+            (ACTOR_RUNTIME_CHANNEL_ENV.to_string(), "coord".to_string()),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+        let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
+            .expect("parse actor mcp context");
         assert_eq!(context.run_id, "run-x");
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.default_channel, "coord");
-        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
-        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
-        restore_env(ACTOR_RUNTIME_CHANNEL_ENV, prev_channel);
     }
 
     #[test]
@@ -698,18 +711,178 @@ mod tests {
 
     #[test]
     fn resolve_idempotency_key_rejects_conflicting_options() {
-        let err = resolve_idempotency_key(
-            "run-1",
-            "leader",
-            "worker",
-            "default",
-            &ActorMessageTransport::Local,
-            None,
-            &json!({"task":"x"}),
-            Some("k-1".to_string()),
-            true,
-        )
+        let err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Local,
+            route: None,
+            payload: &json!({"task":"x"}),
+            explicit: Some("k-1".to_string()),
+            allow_duplicate: true,
+        })
         .expect_err("allow_duplicate and explicit key should conflict");
         assert!(err.contains("allow_duplicate"));
+    }
+
+    #[tokio::test]
+    async fn jsonrpc_tools_list_and_call_drive_local_mailbox_flow() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-jsonrpc-{}", Uuid::new_v4()),
+                description: Some("actor mcp jsonrpc mailbox flow".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-jsonrpc"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let service = state.teams.actor_mailbox_service();
+
+        let mut planner_initialized = false;
+        let planner_context = ActorMcpContext {
+            run_id: run.id.clone(),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+        let init_resp = handle_jsonrpc_request(
+            &service,
+            &planner_context,
+            &mut planner_initialized,
+            "initialize",
+            json!(1),
+            Some(&json!({"protocolVersion":"2025-03-26"})),
+        )
+        .await;
+        assert_eq!(
+            init_resp["result"]["serverInfo"]["name"],
+            "agenthub-actor-mailbox"
+        );
+        assert!(planner_initialized);
+
+        let list_resp = handle_jsonrpc_request(
+            &service,
+            &planner_context,
+            &mut planner_initialized,
+            "tools/list",
+            json!(2),
+            None,
+        )
+        .await;
+        let tool_names = list_resp["result"]["tools"]
+            .as_array()
+            .expect("tool array")
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(tool_names, vec!["actor_inbox", "actor_ack", "actor_send"]);
+
+        let send_resp = handle_jsonrpc_request(
+            &service,
+            &planner_context,
+            &mut planner_initialized,
+            "tools/call",
+            json!(3),
+            Some(&json!({
+                "name":"actor_send",
+                "arguments":{
+                    "to_actor_id":"reviewer",
+                    "payload":{"task":"review patch"}
+                }
+            })),
+        )
+        .await;
+        assert_eq!(send_resp["result"]["isError"], false);
+        let message_id = send_resp["result"]["structuredContent"]["message_id"]
+            .as_i64()
+            .expect("message id");
+        assert!(message_id > 0);
+
+        let reviewer_context = ActorMcpContext {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+        let mut reviewer_initialized = false;
+        let _ = handle_jsonrpc_request(
+            &service,
+            &reviewer_context,
+            &mut reviewer_initialized,
+            "initialize",
+            json!(4),
+            Some(&json!({"protocolVersion":"2025-03-26"})),
+        )
+        .await;
+        assert!(reviewer_initialized);
+
+        let inbox_resp = handle_jsonrpc_request(
+            &service,
+            &reviewer_context,
+            &mut reviewer_initialized,
+            "tools/call",
+            json!(5),
+            Some(&json!({
+                "name":"actor_inbox",
+                "arguments":{"limit":20}
+            })),
+        )
+        .await;
+        assert_eq!(inbox_resp["result"]["isError"], false);
+        let inbox_messages = inbox_resp["result"]["structuredContent"]["messages"]
+            .as_array()
+            .expect("inbox messages");
+        assert_eq!(inbox_messages.len(), 1);
+        assert_eq!(inbox_messages[0]["message_id"].as_i64(), Some(message_id));
+        assert_eq!(inbox_messages[0]["status"], "pending");
+
+        let ack_resp = handle_jsonrpc_request(
+            &service,
+            &reviewer_context,
+            &mut reviewer_initialized,
+            "tools/call",
+            json!(6),
+            Some(&json!({
+                "name":"actor_ack",
+                "arguments":{"message_id":message_id}
+            })),
+        )
+        .await;
+        assert_eq!(ack_resp["result"]["isError"], false);
+        assert_eq!(
+            ack_resp["result"]["structuredContent"]["state"],
+            "delivered"
+        );
+
+        let delivered_resp = handle_jsonrpc_request(
+            &service,
+            &reviewer_context,
+            &mut reviewer_initialized,
+            "tools/call",
+            json!(7),
+            Some(&json!({
+                "name":"actor_inbox",
+                "arguments":{"limit":20,"include_delivered":true}
+            })),
+        )
+        .await;
+        assert_eq!(delivered_resp["result"]["isError"], false);
+        let delivered_messages = delivered_resp["result"]["structuredContent"]["messages"]
+            .as_array()
+            .expect("delivered messages");
+        assert_eq!(delivered_messages.len(), 1);
+        assert_eq!(delivered_messages[0]["status"], "delivered");
     }
 }

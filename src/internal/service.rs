@@ -559,3 +559,280 @@ fn security_mode_to_str(mode: InternalGrpcSecurityMode) -> &'static str {
         InternalGrpcSecurityMode::Mtls => "mtls",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use tonic::{Code, Request, metadata::MetadataValue};
+    use uuid::Uuid;
+
+    use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
+    use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
+    use super::super::proto::agenthub::internal::v1::{
+        AckActorMessageRequest, ListActorInboxRequest, SendActorMessageRequest,
+    };
+    use super::{TeamInternalControlService, map_actor_service_status};
+    use crate::api::team_tests::build_test_state;
+    use crate::team::TeamDefinitionConfig;
+
+    const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";
+
+    fn build_authz() -> InternalAuthz {
+        InternalAuthz::new(InternalAuthzConfig {
+            shared_secret: TEST_INTERNAL_SHARED_SECRET.to_string(),
+            expected_issuer: Some("agenthub".to_string()),
+            expected_audience: Some("agenthub-internal".to_string()),
+        })
+    }
+
+    fn issue_token(
+        authz: &InternalAuthz,
+        role: InternalRole,
+        actor_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> String {
+        let permissions = vec![
+            InternalAction::MessageSend.as_str().to_string(),
+            InternalAction::InboxList.as_str().to_string(),
+            InternalAction::MessageAck.as_str().to_string(),
+        ];
+        let (token, _expires_at) = authz
+            .issue_access_token(role, actor_id, run_id, permissions, 600)
+            .expect("issue internal token");
+        token
+    }
+
+    fn authenticated_request<T>(payload: T, token: &str) -> Request<T> {
+        let mut request = Request::new(payload);
+        request.metadata_mut().insert(
+            "authorization",
+            MetadataValue::try_from(format!("Bearer {token}")).expect("authorization metadata"),
+        );
+        request
+    }
+
+    async fn create_team_run(state: &crate::state::AppState) -> crate::team::TeamRunRecord {
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("internal-grpc-mailbox-{}", Uuid::new_v4()),
+                description: Some("internal grpc mailbox test team".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                }),
+            })
+            .await
+            .expect("create test team");
+        state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-internal-grpc-mailbox"),
+                json!({"prompt":"validate internal grpc mailbox"}),
+            )
+            .await
+            .expect("create test run")
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let send = TeamInternalControl::send_actor_message(
+            &service,
+            authenticated_request(
+                SendActorMessageRequest {
+                    run_id: run.id.clone(),
+                    from_actor_id: "planner".to_string(),
+                    to_actor_id: "reviewer".to_string(),
+                    channel: "coordination".to_string(),
+                    transport: "local".to_string(),
+                    route_json: r#"{"topic":"review"}"#.to_string(),
+                    payload_json: r#"{"text":"please review"}"#.to_string(),
+                    idempotency_key: "internal-grpc-msg-1".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("send actor message")
+        .into_inner();
+        assert!(send.message_id > 0);
+        assert_eq!(send.status, "pending");
+        assert_eq!(send.idempotency_key, "internal-grpc-msg-1");
+
+        let pending_inbox = TeamInternalControl::list_actor_inbox(
+            &service,
+            authenticated_request(
+                ListActorInboxRequest {
+                    run_id: run.id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    limit: 100,
+                    after_message_id: 0,
+                    include_delivered: false,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list pending inbox")
+        .into_inner();
+        assert_eq!(pending_inbox.messages.len(), 1);
+        let pending = &pending_inbox.messages[0];
+        assert_eq!(pending.message_id, send.message_id);
+        assert_eq!(pending.run_id, run.id);
+        assert_eq!(pending.from_actor_id, "planner");
+        assert_eq!(pending.to_actor_id, "reviewer");
+        assert_eq!(pending.channel, "coordination");
+        assert_eq!(pending.transport, "local");
+        assert_eq!(pending.route_json, r#"{"topic":"review"}"#);
+        assert_eq!(pending.payload_json, r#"{"text":"please review"}"#);
+        assert_eq!(pending.status, "pending");
+
+        let acked = TeamInternalControl::ack_actor_message(
+            &service,
+            authenticated_request(
+                AckActorMessageRequest {
+                    run_id: run.id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    message_id: send.message_id,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("ack actor message")
+        .into_inner();
+        let acked_message = acked.message.expect("acked message");
+        assert_eq!(acked_message.message_id, send.message_id);
+        assert_eq!(acked_message.status, "delivered");
+        assert!(acked_message.delivered_at >= acked_message.created_at);
+
+        let pending_after_ack = TeamInternalControl::list_actor_inbox(
+            &service,
+            authenticated_request(
+                ListActorInboxRequest {
+                    run_id: run.id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    limit: 100,
+                    after_message_id: 0,
+                    include_delivered: false,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list pending inbox after ack")
+        .into_inner();
+        assert!(pending_after_ack.messages.is_empty());
+
+        let inbox_with_delivered = TeamInternalControl::list_actor_inbox(
+            &service,
+            authenticated_request(
+                ListActorInboxRequest {
+                    run_id: run.id,
+                    actor_id: "reviewer".to_string(),
+                    limit: 100,
+                    after_message_id: 0,
+                    include_delivered: true,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list inbox including delivered")
+        .into_inner();
+        assert_eq!(inbox_with_delivered.messages.len(), 1);
+        assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    }
+
+    #[tokio::test]
+    async fn ack_actor_message_rejects_non_positive_message_id() {
+        let state = build_test_state().await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, None, None);
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let err = TeamInternalControl::ack_actor_message(
+            &service,
+            authenticated_request(
+                AckActorMessageRequest {
+                    run_id: "run-id".to_string(),
+                    actor_id: "actor-id".to_string(),
+                    message_id: 0,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("message_id <= 0 should fail");
+        assert_eq!(err.code(), Code::InvalidArgument);
+        assert_eq!(err.message(), "message_id must be positive");
+    }
+
+    #[test]
+    fn actor_service_error_code_maps_to_expected_grpc_status() {
+        let cases = [
+            (
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                Code::InvalidArgument,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::UnprocessableEntity,
+                Code::InvalidArgument,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::Unauthorized,
+                Code::Unauthenticated,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::Forbidden,
+                Code::PermissionDenied,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::NotFound,
+                Code::NotFound,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::Conflict,
+                Code::AlreadyExists,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::Gone,
+                Code::FailedPrecondition,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::TooManyRequests,
+                Code::ResourceExhausted,
+            ),
+            (
+                agenthub_team_actor::ActorServiceErrorCode::Internal,
+                Code::Internal,
+            ),
+        ];
+
+        for (actor_code, grpc_code) in cases {
+            let status = map_actor_service_status(agenthub_team_actor::ActorServiceError::new(
+                actor_code, "boom",
+            ));
+            assert_eq!(status.code(), grpc_code);
+        }
+    }
+}

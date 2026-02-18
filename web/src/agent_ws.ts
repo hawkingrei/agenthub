@@ -4,6 +4,18 @@ export function isAgentActiveStatus(status: string | null): boolean {
   return status === "running" || status === "idle";
 }
 
+export function isAgentUnexpectedExitStatus(status: string | null): boolean {
+  return status === "failed" || status === "exited";
+}
+
+export function shouldShowUnexpectedExitNotice(
+  previousStatus: string | null,
+  nextStatus: string | null
+): boolean {
+  if (!isAgentActiveStatus(previousStatus)) return false;
+  return isAgentUnexpectedExitStatus(nextStatus);
+}
+
 export function shouldOpenAgentSocket(status: string | null): boolean {
   return isAgentActiveStatus(status);
 }

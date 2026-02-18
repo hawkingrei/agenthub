@@ -248,7 +248,14 @@ fn spawn_output_forwarder(
                                 }
                             }
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            let _ = disconnect_tx.send(true);
+                            tracing::warn!(
+                                skipped,
+                                "sse output stream lagged; closing stream for replay recovery"
+                            );
+                            break;
+                        }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }
@@ -654,6 +661,32 @@ mod tests {
         assert!(
             next.is_none(),
             "stream should close after sustained backpressure timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn output_stream_closes_after_broadcast_lagged() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(1);
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send first output");
+        tx.send(sample_output(OutputStream::Stdout))
+            .expect("send second output");
+
+        let mut stream = std::pin::pin!(super::output_stream_with_limits(
+            vec![rx],
+            8,
+            std::time::Duration::from_secs(1),
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let next = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("poll stream after lagged");
+        assert!(
+            next.is_none(),
+            "stream should close when broadcast receiver reports lagged"
         );
     }
 

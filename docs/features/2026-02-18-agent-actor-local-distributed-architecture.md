@@ -233,6 +233,11 @@ This note defines a shared actor protocol and two separate runtime architectures
   - ACP runtime auto-injects stdio MCP server `agenthub-actor-mailbox`
   - server command uses AgentHub binary `actor-mcp` subcommand with actor context args
   - actor runtime skill now guides `actor_inbox` / `actor_ack` / `actor_send` native tool usage instead of CLI commands
+- Added internal gRPC mailbox wire-compat unit coverage in `src/internal/service.rs`:
+  - `internal_grpc_mailbox_send_list_ack_are_wire_compatible`
+  - `ack_actor_message_rejects_non_positive_message_id`
+  - `actor_service_error_code_maps_to_expected_grpc_status`
+  - verifies payload mapping, delivered visibility toggle, and gRPC error-code mapping through `ActorMailboxService`
 
 ## Testing Strategy
 
@@ -247,6 +252,17 @@ This note defines a shared actor protocol and two separate runtime architectures
 - End-to-end tests:
   - multi-agent delegation chain with evidence-return payloads
   - mixed local/remote actor routing in one run
+
+## Validation Evidence (2026-02-18)
+
+- Command:
+  - `cargo test teams_router_http_contract -- --nocapture`
+  - `cargo test internal::service::tests -- --nocapture`
+- Result:
+  - passed `api::teams::tests::teams_router_http_contract` (covers mailbox REST `send/inbox/ack` and idempotency compatibility)
+  - passed `internal::service::tests::internal_grpc_mailbox_send_list_ack_are_wire_compatible`
+  - passed `internal::service::tests::ack_actor_message_rejects_non_positive_message_id`
+  - passed `internal::service::tests::actor_service_error_code_maps_to_expected_grpc_status`
 
 ## Open Questions
 

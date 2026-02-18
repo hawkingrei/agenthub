@@ -80,3 +80,30 @@ export function getAdaptivePollInterval(idleCount: number): number {
   if (idleCount <= 0) return base;
   return Math.min(max, base * (1 + idleCount));
 }
+
+export function shouldPollAgentEvents(
+  isSseOpen: boolean,
+  boostUntil: number | null,
+  now: number,
+  sseStale = false
+): boolean {
+  const boostActive = boostUntil != null && boostUntil > now;
+  if (boostActive) {
+    return true;
+  }
+  if (sseStale) {
+    return true;
+  }
+  return !isSseOpen;
+}
+
+export function isSseConnectionStale(
+  isSseOpen: boolean,
+  lastSseActivityAt: number,
+  now: number,
+  staleThresholdMs: number
+): boolean {
+  if (!isSseOpen) return false;
+  if (staleThresholdMs <= 0) return false;
+  return now - lastSseActivityAt >= staleThresholdMs;
+}
