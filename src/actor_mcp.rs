@@ -700,6 +700,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_actor_mcp_context_requires_run_id_without_env_fallback() {
+        let err = parse_actor_mcp_context_with_env(&[], |_| None).expect_err("run_id is required");
+        assert!(
+            err.to_string().contains("run_id is required"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_actor_mcp_context_defaults_channel_when_missing() {
+        let env = [
+            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (
+                ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
+                "planner".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+        let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
+            .expect("parse actor mcp context");
+        assert_eq!(context.default_channel, DEFAULT_ACTOR_CHANNEL);
+    }
+
+    #[test]
+    fn parse_actor_mcp_context_rejects_unknown_flag() {
+        let args = vec!["--unknown".to_string()];
+        let err = parse_actor_mcp_context_with_env(&args, |_| None).expect_err("unknown flag");
+        assert!(
+            err.to_string().contains("unknown flag for actor-mcp"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn actor_tools_exposes_expected_tool_names() {
         let tools = actor_tools();
         let names = tools
@@ -724,6 +759,141 @@ mod tests {
         })
         .expect_err("allow_duplicate and explicit key should conflict");
         assert!(err.contains("allow_duplicate"));
+    }
+
+    #[test]
+    fn resolve_idempotency_key_supports_allow_duplicate_without_explicit_key() {
+        let key = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Local,
+            route: None,
+            payload: &json!({"task":"x"}),
+            explicit: None,
+            allow_duplicate: true,
+        })
+        .expect("allow duplicate should be accepted");
+        assert!(key.is_none());
+    }
+
+    #[test]
+    fn resolve_idempotency_key_rejects_blank_and_too_long_explicit_key() {
+        let blank_err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Local,
+            route: None,
+            payload: &json!({"task":"x"}),
+            explicit: Some("   ".to_string()),
+            allow_duplicate: false,
+        })
+        .expect_err("blank key should fail");
+        assert!(blank_err.contains("non-empty"));
+
+        let long_err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Local,
+            route: None,
+            payload: &json!({"task":"x"}),
+            explicit: Some("x".repeat(129)),
+            allow_duplicate: false,
+        })
+        .expect_err("too long key should fail");
+        assert!(long_err.contains("at most 128"));
+    }
+
+    #[test]
+    fn resolve_idempotency_key_generates_stable_default_key() {
+        let route = json!({"endpoint":"https://node-a"});
+        let payload = json!({"task":"x"});
+        let first = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Remote,
+            route: Some(&route),
+            payload: &payload,
+            explicit: None,
+            allow_duplicate: false,
+        })
+        .expect("default key should be generated")
+        .expect("idempotency key");
+
+        let second = resolve_idempotency_key(ResolveIdempotencyKeyInput {
+            run_id: "run-1",
+            from_actor_id: "leader",
+            to_actor_id: "worker",
+            channel: "default",
+            transport: &ActorMessageTransport::Remote,
+            route: Some(&route),
+            payload: &payload,
+            explicit: None,
+            allow_duplicate: false,
+        })
+        .expect("default key should be generated")
+        .expect("idempotency key");
+
+        assert_eq!(first, second);
+        assert!(!first.is_empty());
+    }
+
+    #[tokio::test]
+    async fn jsonrpc_rejects_tools_before_initialize() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-pre-init-{}", Uuid::new_v4()),
+                description: Some("actor mcp pre initialize guard".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-pre-init"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let service = state.teams.actor_mailbox_service();
+        let context = ActorMcpContext {
+            run_id: run.id,
+            actor_id: "planner".to_string(),
+            default_channel: "default".to_string(),
+        };
+
+        let mut initialized = false;
+        let response = handle_jsonrpc_request(
+            &service,
+            &context,
+            &mut initialized,
+            "tools/list",
+            json!(1),
+            None,
+        )
+        .await;
+
+        assert_eq!(response["error"]["code"], JSONRPC_INVALID_REQUEST);
+        assert!(
+            response["error"]["message"]
+                .as_str()
+                .is_some_and(|msg| msg.contains("initialize must be called")),
+            "unexpected error response: {response}"
+        );
     }
 
     #[tokio::test]
