@@ -16,6 +16,7 @@ import {
   schedulePermissionPollLoop,
   setupLayoutAnchorVarSync,
   setupRuntimeViewportVarSync,
+  shouldSuppressRuntimeBottomSafeInset,
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
 } from "./app";
@@ -420,12 +421,18 @@ describe("app helper decisions", () => {
     );
     expect(style.values.get("--agenthub-vh")).toBe("700px");
     expect(style.values.get("--agenthub-vw")).toBe("390px");
+    expect(style.values.get("--agenthub-safe-bottom")).toBe(
+      "env(safe-area-inset-bottom, 0px)"
+    );
 
     runtimeWindow.visualViewport.height = 666;
     runtimeWindow.visualViewport.width = 360;
     runtimeWindow.visualViewport.emit("resize");
     expect(style.values.get("--agenthub-vh")).toBe("666px");
     expect(style.values.get("--agenthub-vw")).toBe("360px");
+    expect(style.values.get("--agenthub-safe-bottom")).toBe(
+      "env(safe-area-inset-bottom, 0px)"
+    );
 
     cleanup();
     expect(runtimeWindow.listenerCount("resize")).toBe(0);
@@ -501,10 +508,54 @@ describe("app helper decisions", () => {
     );
     expect(values.get("--agenthub-vh")).toBe("700px");
     expect(values.get("--agenthub-vw")).toBe("390px");
+    expect(values.get("--agenthub-safe-bottom")).toBe(
+      "env(safe-area-inset-bottom, 0px)"
+    );
     setProperty.mockClear();
 
     runtimeWindow.visualViewport.emit("resize");
     expect(setProperty).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("suppresses bottom safe inset when keyboard overlap is large", () => {
+    expect(shouldSuppressRuntimeBottomSafeInset(520, 700)).toBe(true);
+    expect(shouldSuppressRuntimeBottomSafeInset(666, 700)).toBe(false);
+    expect(shouldSuppressRuntimeBottomSafeInset(Number.NaN, 700)).toBe(false);
+    expect(shouldSuppressRuntimeBottomSafeInset(520, Number.NaN)).toBe(false);
+  });
+
+  it("updates safe bottom inset css var during keyboard transitions", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & { height: number; width: number };
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+    });
+    const style = createStyleTarget();
+
+    const cleanup = setupRuntimeViewportVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupRuntimeViewportVarSync>[0],
+      style.target
+    );
+    expect(style.values.get("--agenthub-safe-bottom")).toBe(
+      "env(safe-area-inset-bottom, 0px)"
+    );
+
+    runtimeWindow.visualViewport.height = 500;
+    runtimeWindow.visualViewport.emit("resize");
+    expect(style.values.get("--agenthub-safe-bottom")).toBe("0px");
+
+    runtimeWindow.visualViewport.height = 680;
+    runtimeWindow.visualViewport.emit("resize");
+    expect(style.values.get("--agenthub-safe-bottom")).toBe(
+      "env(safe-area-inset-bottom, 0px)"
+    );
     cleanup();
   });
 

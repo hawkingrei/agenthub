@@ -2,6 +2,7 @@
 
 - [x] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
 - [x] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
+- [ ] Verify mobile keyboard open/close transitions suppress app-shell bottom safe-area inset while keeping normal inset on non-keyboard states, so input dock stays flush to viewport bottom without large white gaps (see `docs/features/2026-02-18-mobile-input-safe-bottom-inset-suppression.md`).
 - [x] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).
 - [x] Verify Playwright E2E coverage upload publishes `web-e2e` flag with `web/coverage/e2e/lcov.info` in CI push/PR runs (see `docs/features/2026-02-17-playwright-e2e-coverage-codecov.md`).
 - [x] Verify ACP conversation groups consecutive tool calls under one shared fold, preserves nested tool-call jump targeting, and keeps fold animation lightweight (`conversation.test.ts`, `acp_conversation_render.test.tsx`, `use_acp_conversation*.test.ts`) (see `docs/features/2026-02-17-acp-tool-call-group-fold-animation.md`).
