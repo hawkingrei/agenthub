@@ -77,13 +77,10 @@ pub(super) fn is_acp_message(line: &str) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
-    let Some(ty) = obj.get("type").and_then(|v| v.as_str()) else {
-        return false;
-    };
-    matches!(
-        ty,
-        "tool_call" | "tool_call_update" | "agent_message" | "agent_thought" | "user_message"
-    )
+    obj.get("type")
+        .and_then(|v| v.as_str())
+        .map(|ty| !ty.trim().is_empty())
+        .unwrap_or(false)
 }
 
 impl AgentManager {

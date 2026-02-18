@@ -15,6 +15,7 @@ import {
   shouldIgnoreAgentWsError,
   sanitizeAgentError,
   isAgentActiveStatus,
+  shouldShowUnexpectedExitNotice,
 } from "./agent_ws";
 import { ErrorBanner } from "./error_banner";
 import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
@@ -30,7 +31,9 @@ import {
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
+  isSseConnectionStale,
   isCursorNewer,
+  shouldPollAgentEvents,
   updateLastEventCursor,
 } from "./event_polling";
 import { compareEventOrder } from "./seq_order";
@@ -99,6 +102,7 @@ const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
 const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
+const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 
 type PendingPermissionJumpState = {
   toolCallId: string;
@@ -622,6 +626,7 @@ export function App() {
   const [inputHistoryCursor, setInputHistoryCursor] = useState(-1);
   const inputHistoryDraftRef = useRef("");
   const sseRef = useRef<EventSource | null>(null);
+  const lastSseActivityAtRef = useRef<number>(Date.now());
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalStickToBottomRef = useRef(true);
   const [eventMeta, setEventMeta] = useState<
@@ -678,6 +683,7 @@ export function App() {
   const activeAgentRef = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const activeAgentStatusRef = useRef<string | null>(null);
+  const activeAgentPrevStatusRef = useRef<Record<string, string | null>>({});
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -857,6 +863,16 @@ export function App() {
   useEffect(() => {
     activeAgentStatusRef.current = activeAgentStatus;
   }, [activeAgentStatus]);
+  useEffect(() => {
+    if (!activeAgent) return;
+    const prev = activeAgentPrevStatusRef.current[activeAgent] ?? null;
+    const next = activeAgentStatus;
+    activeAgentPrevStatusRef.current[activeAgent] = next;
+    if (!shouldShowUnexpectedExitNotice(prev, next)) return;
+    setError(
+      `Agent process exited unexpectedly (status: ${next}). Please restart the agent.`
+    );
+  }, [activeAgent, activeAgentStatus]);
   useEffect(() => {
     setAcpPermissions([]);
     setAcpPermissionHistory([]);
@@ -1308,6 +1324,7 @@ export function App() {
       );
       sseRef.current = source;
       source.onopen = () => {
+        lastSseActivityAtRef.current = Date.now();
         reconnectAttempt = 0;
         setNetworkOnline(true);
         setSseState("connected");
@@ -1317,6 +1334,7 @@ export function App() {
         }
       };
       source.onmessage = (event) => {
+        lastSseActivityAtRef.current = Date.now();
         if (event.data === "heartbeat") return;
         try {
           const parsed = JSON.parse(event.data);
@@ -1410,28 +1428,70 @@ export function App() {
       if (pollState.timer) {
         window.clearTimeout(pollState.timer);
       }
-      if (sseRef.current?.readyState === EventSource.OPEN) {
-        pollState.timer = null;
-        return;
-      }
       const now = Date.now();
       const boostUntil = pollState.boostUntil;
       const boostActive = boostUntil != null && boostUntil > now;
+      const isSseOpen = sseRef.current?.readyState === EventSource.OPEN;
+      const sseStale = isSseConnectionStale(
+        Boolean(isSseOpen),
+        lastSseActivityAtRef.current,
+        now,
+        SSE_STALE_RECONNECT_THRESHOLD_MS
+      );
+      if (isSseOpen && sseStale) {
+        const current = sseRef.current;
+        if (current) {
+          current.close();
+          if (sseRef.current === current) {
+            sseRef.current = null;
+          }
+        }
+        setSseState("reconnecting");
+        scheduleReconnect();
+      }
+      if (isSseOpen && !boostActive && !sseStale) {
+        pollState.timer = null;
+        return;
+      }
       const nextDelay = boostActive ? 1000 : delay;
       pollState.timer = window.setTimeout(async () => {
         if (cancelled) return;
         const current = sseRef.current;
         const isOpen =
           current != null && current.readyState === EventSource.OPEN;
+        const callbackNow = Date.now();
+        const callbackSseStale = isSseConnectionStale(
+          isOpen,
+          lastSseActivityAtRef.current,
+          callbackNow,
+          SSE_STALE_RECONNECT_THRESHOLD_MS
+        );
+        if (isOpen && callbackSseStale) {
+          current?.close();
+          if (sseRef.current === current) {
+            sseRef.current = null;
+          }
+          setSseState("reconnecting");
+          scheduleReconnect();
+        }
+        const shouldPoll = shouldPollAgentEvents(
+          isOpen,
+          pollState.boostUntil,
+          callbackNow,
+          callbackSseStale
+        );
+        if (!shouldPoll && pollState.boostUntil != null) {
+          pollState.boostUntil = null;
+        }
         let hasNew = false;
-        if (!isOpen) {
+        if (shouldPoll) {
           hasNew = (await pollActiveAgent()) === true;
         } else {
           pollState.idleCount = 0;
         }
         if (hasNew) {
           pollState.idleCount = 0;
-        } else if (!isOpen) {
+        } else if (shouldPoll) {
           pollState.idleCount += 1;
         }
         if (!cancelled) {
@@ -1910,14 +1970,46 @@ export function App() {
           ? crypto.randomUUID()
           : `local-${Date.now()}`;
     }
+    const sendInputForSession = (sessionId: string | null) =>
+      api.sendInput(
+        token,
+        activeAgent,
+        text,
+        messageId ?? undefined,
+        sessionId ?? undefined
+      );
     try {
-      await api.sendInput(token, activeAgent, text, messageId ?? undefined);
+      await sendInputForSession(activeSessionId);
       setInputHistory((prev) => pushInputHistory(prev, text));
       setInputHistoryCursor(-1);
       inputHistoryDraftRef.current = "";
       setInput("");
     } catch (err) {
-      const msg = String(err || "websocket not connected");
+      const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
+      const mismatch = parseSendInputSessionMismatch(msg);
+      if (mismatch) {
+        const runningSessionId = mismatch.running;
+        setActiveSessionId(runningSessionId);
+        setAgentSessions((prev) => ({ ...prev, [activeAgent]: runningSessionId }));
+        await loadAgentEvents(activeAgent, runningSessionId);
+        try {
+          await sendInputForSession(runningSessionId);
+          setInputHistory((prev) => pushInputHistory(prev, text));
+          setInputHistoryCursor(-1);
+          inputHistoryDraftRef.current = "";
+          setInput("");
+          return;
+        } catch (retryErr) {
+          const retryMsg =
+            parseApiErrorMessage(retryErr) ??
+            String(retryErr || "websocket not connected");
+          setError(retryMsg);
+          if (retryMsg.includes(AGENT_NOT_RUNNING_ERROR)) {
+            await refreshAgents();
+          }
+          return;
+        }
+      }
       setError(msg);
       if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
         await refreshAgents();
@@ -1929,6 +2021,7 @@ export function App() {
     activeAgent,
     activeSessionId,
     acpConversation,
+    loadAgentEvents,
     refreshAgents,
   ]);
 
@@ -2566,6 +2659,19 @@ function parseApiErrorMessage(err: unknown): string | null {
     return raw;
   }
   return null;
+}
+
+export function parseSendInputSessionMismatch(
+  message: string
+): { expected: string; running: string } | null {
+  const match = message.match(
+    /agent session mismatch:\s*expected=([^\s]+)\s+running=([^\s]+)/
+  );
+  if (!match) return null;
+  const expected = match[1]?.trim();
+  const running = match[2]?.trim();
+  if (!expected || !running) return null;
+  return { expected, running };
 }
 
 function getNavigatorOnline(): boolean {

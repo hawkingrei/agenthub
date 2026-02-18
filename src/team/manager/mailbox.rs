@@ -3,10 +3,12 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use agenthub_team_actor::{
-    AckActorMessageCommand, AckActorMessageResult, ActorMailbox, ActorMailboxError,
-    ActorMailboxStore, ActorMessageRelay, ActorRelayError, CreatePendingMessageResult,
-    ListActorInboxQuery, PendingRemoteRelayRecord, RelayRemotePendingCommand,
-    RelayRemotePendingResult, SendActorMessageCommand, actor_message_fingerprint,
+    AckActorMessageCommand, AckActorMessageResult, ActorAckRequest, ActorAckResponse,
+    ActorInboxRequest, ActorInboxResponse, ActorMailbox, ActorMailboxError, ActorMailboxService,
+    ActorMailboxStore, ActorMessageRelay, ActorRelayError, ActorSendRequest, ActorSendResponse,
+    ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
+    PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
+    SendActorMessageCommand, actor_message_fingerprint,
 };
 use async_trait::async_trait;
 use base64::encode_config;
@@ -16,7 +18,7 @@ use reqwest::{Method, Url, header};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Sha256;
-use sqlx::{Row, Sqlite, SqlitePool};
+use sqlx::{Error as SqlxError, Row, Sqlite, SqlitePool};
 use thiserror::Error;
 
 use super::TeamManager;
@@ -53,6 +55,10 @@ impl TeamManager {
     pub fn is_actor_message_idempotency_conflict(err: &anyhow::Error) -> bool {
         err.downcast_ref::<SqlActorMailboxStoreError>()
             .is_some_and(|cause| matches!(cause, SqlActorMailboxStoreError::IdempotencyConflict))
+    }
+
+    pub fn actor_mailbox_service(&self) -> TeamActorMailboxService {
+        TeamActorMailboxService::new(self.clone())
     }
 
     pub fn spawn_remote_relay_worker(self: Arc<Self>, settings: TeamRemoteRelayWorkerSettings) {
@@ -213,6 +219,124 @@ pub struct SendActorMessageInput<'a> {
     pub route: Option<Value>,
     pub payload: Value,
     pub idempotency_key: Option<&'a str>,
+}
+
+#[derive(Clone)]
+pub struct TeamActorMailboxService {
+    manager: TeamManager,
+}
+
+impl TeamActorMailboxService {
+    pub fn new(manager: TeamManager) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl ActorMailboxService for TeamActorMailboxService {
+    async fn actor_send(
+        &self,
+        request: ActorSendRequest,
+    ) -> Result<ActorSendResponse, ActorServiceError> {
+        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
+        let from_actor_id = required_trimmed_field(&request.from_actor_id, "from_actor_id")?;
+        let to_actor_id = required_trimmed_field(&request.to_actor_id, "to_actor_id")?;
+        let channel = request
+            .channel
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("default");
+        let transport = request
+            .transport
+            .unwrap_or(TeamActorMessageTransport::Local);
+        let idempotency_key = optional_trimmed(request.idempotency_key.as_deref());
+
+        let (message, created) = self
+            .manager
+            .send_actor_message_with_created(SendActorMessageInput {
+                run_id,
+                from_actor_id,
+                to_actor_id,
+                channel,
+                transport,
+                route: request.route,
+                payload: request.payload,
+                idempotency_key,
+            })
+            .await
+            .map_err(map_actor_service_error)?;
+        let message_id = message.message_id;
+        let state = message.status.clone();
+        let created_at = message.created_at;
+
+        Ok(ActorSendResponse {
+            message_id,
+            state,
+            deduped: !created,
+            created_at,
+            message,
+        })
+    }
+
+    async fn actor_inbox(
+        &self,
+        request: ActorInboxRequest,
+    ) -> Result<ActorInboxResponse, ActorServiceError> {
+        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
+        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
+        let limit = request.limit.unwrap_or(50).clamp(1, 1000);
+        let include_delivered = request
+            .states
+            .as_ref()
+            .is_some_and(|states| states.contains(&TeamActorMessageStatus::Delivered));
+        let states = request
+            .states
+            .unwrap_or_else(|| vec![TeamActorMessageStatus::Pending]);
+        let messages = self
+            .manager
+            .list_actor_inbox(run_id, actor_id, limit, request.cursor, include_delivered)
+            .await
+            .map_err(map_actor_service_error)?
+            .into_iter()
+            .filter(|message| states.contains(&message.status))
+            .collect::<Vec<_>>();
+        let next_cursor = messages.last().map(|message| message.message_id);
+
+        Ok(ActorInboxResponse {
+            messages,
+            next_cursor,
+        })
+    }
+
+    async fn actor_ack(
+        &self,
+        request: ActorAckRequest,
+    ) -> Result<ActorAckResponse, ActorServiceError> {
+        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
+        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
+        if request.message_id <= 0 {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "message_id must be positive",
+            ));
+        }
+
+        let message = self
+            .manager
+            .ack_actor_message(run_id, actor_id, request.message_id)
+            .await
+            .map_err(map_actor_service_error)?;
+        let state = message.status.clone();
+        let acked_at = message.delivered_at.unwrap_or(message.created_at);
+
+        Ok(ActorAckResponse {
+            message_id: message.message_id,
+            state,
+            acked_at,
+            message,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -1058,6 +1182,47 @@ fn ensure_idempotency_compatible(
         return Err(SqlActorMailboxStoreError::IdempotencyConflict);
     }
     Ok(())
+}
+
+fn required_trimmed_field<'a>(
+    value: &'a str,
+    field: &'static str,
+) -> Result<&'a str, ActorServiceError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            format!("{field} is required"),
+        ));
+    }
+    Ok(trimmed)
+}
+
+fn optional_trimmed(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|raw| !raw.is_empty())
+}
+
+fn is_row_not_found(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    )
+}
+
+fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
+    if TeamManager::is_actor_message_idempotency_conflict(&err) {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::Conflict,
+            "idempotency_key conflicts with an existing message payload",
+        );
+    }
+    if is_row_not_found(&err) {
+        return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
+    }
+    ActorServiceError::new(
+        ActorServiceErrorCode::Internal,
+        "internal actor mailbox error",
+    )
 }
 
 fn map_actor_mailbox_store_error(

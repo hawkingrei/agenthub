@@ -13,6 +13,9 @@ mod push;
 mod settings;
 mod teams;
 
+#[cfg(test)]
+pub(crate) use self::teams::tests as team_tests;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/agents", agents::router(state.clone()))

@@ -17,8 +17,6 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 
-const ACTOR_CONTEXT_RUNNING_CONFLICT: &str = "cannot start with new actor context";
-
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
     pub name: String,
@@ -65,6 +63,7 @@ pub struct SetCodeModeRequest {
 pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -176,24 +175,12 @@ async fn start_agent(
 ) -> Result<Json<StartAgentResponse>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     let actor_context = parse_start_actor_runtime_context(payload.map(|Json(body)| body))?;
-    let session_id = if let Some(actor_context) = actor_context {
-        match state
-            .agents
-            .start_agent_with_actor_context(&agent_id, Some(actor_context))
-            .await
-        {
-            Ok(session_id) => session_id,
-            Err(err) => {
-                let message = err.to_string();
-                if message.contains(ACTOR_CONTEXT_RUNNING_CONFLICT) {
-                    return Err(ApiError::conflict(&message));
-                }
-                return Err(err.into());
-            }
-        }
-    } else {
-        state.agents.start_agent(&agent_id).await?
-    };
+    if actor_context.is_some() {
+        return Err(ApiError::bad_request(
+            "actor_runtime is reserved for team orchestrator and is not supported by /api/agents/:id/start",
+        ));
+    }
+    let session_id = state.agents.start_agent(&agent_id).await?;
     Ok(Json(StartAgentResponse { session_id }))
 }
 
@@ -225,10 +212,25 @@ async fn send_input(
     Json(payload): Json<SendInputRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    state
+    match state
         .agents
-        .send_input(&agent_id, &payload.input, payload.message_id.as_deref())
-        .await?;
+        .send_input(
+            &agent_id,
+            &payload.input,
+            payload.message_id.as_deref(),
+            payload.session_id.as_deref(),
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(err) => {
+            let message = err.to_string();
+            if message.contains("agent session mismatch:") {
+                return Err(ApiError::conflict(&message));
+            }
+            return Err(err.into());
+        }
+    }
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
@@ -1308,7 +1310,95 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_route_with_actor_runtime_payload_injects_actor_envs() {
+    async fn send_input_rejects_stale_session_id_with_conflict() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir = std::env::temp_dir().join(format!("agenthub-send-input-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "send-input-session-guard",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start agent");
+        assert_eq!(start_resp.status(), StatusCode::OK);
+        let started = decode_json_body(start_resp).await;
+        let running_session_id = started["session_id"]
+            .as_str()
+            .expect("running session id")
+            .to_string();
+
+        let input_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/input"),
+                Some(&token),
+                Some(json!({
+                    "input": "hello",
+                    "message_id": "msg-1",
+                    "session_id": format!("{running_session_id}-stale")
+                })),
+            ))
+            .await
+            .expect("send input");
+        assert_eq!(input_resp.status(), StatusCode::CONFLICT);
+        let conflict_body = decode_text_body(input_resp).await;
+        assert!(
+            conflict_body.contains("agent session mismatch:"),
+            "unexpected conflict body: {conflict_body}"
+        );
+
+        let stop_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop agent");
+        assert_eq!(stop_resp.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn start_route_rejects_actor_runtime_payload_for_agent_mode() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
@@ -1373,40 +1463,21 @@ mod tests {
                 })),
             ))
             .await
-            .expect("start agent with actor runtime context");
-        assert_eq!(start_resp.status(), StatusCode::OK);
-
-        let mut wrote_env = false;
-        for _ in 0..50 {
-            if env_file.exists() {
-                wrote_env = true;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        assert!(wrote_env, "agent did not write actor runtime env file");
-
-        let contents = std::fs::read_to_string(&env_file).expect("read actor env file");
-        let lines: Vec<&str> = contents.lines().collect();
-        assert_eq!(lines.len(), 4, "unexpected actor env file format");
-        assert_eq!(lines[0], "run-api-start");
-        assert_eq!(lines[1], "planner");
-        assert_eq!(lines[2], "coordination");
-        assert_eq!(
-            lines[3],
-            default_actor_cli_path().expect("resolve default cli path")
+            .expect("start agent with actor runtime context should be rejected");
+        assert_eq!(start_resp.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(start_resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|msg| msg.contains("actor_runtime is reserved")),
+            "unexpected error body: {body}"
         );
 
-        let stop_resp = app
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/stop"),
-                Some(&token),
-                None,
-            ))
-            .await
-            .expect("stop agent");
-        assert_eq!(stop_resp.status(), StatusCode::OK);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(
+            !env_file.exists(),
+            "agent mode should reject actor_runtime payload and must not spawn process"
+        );
 
         remove_dir_best_effort(&workdir);
     }

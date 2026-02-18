@@ -1,3 +1,4 @@
+use super::codec::is_acp_message;
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
     acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
@@ -112,4 +113,29 @@ fn acp_provider_for_agent_requires_expected_args() {
 fn default_actor_cli_path_returns_non_empty_value() {
     let path = default_actor_cli_path().expect("resolve default actor cli path");
     assert!(!path.trim().is_empty());
+}
+
+#[test]
+fn is_acp_message_accepts_latest_codex_event_types() {
+    assert!(is_acp_message(r#"{"type":"agent_message","message":"ok"}"#));
+    assert!(is_acp_message(
+        r#"{"type":"plan","steps":[{"title":"Investigate"}]}"#
+    ));
+    assert!(is_acp_message(
+        r#"{"type":"available_commands","commands":["/compact","/undo"]}"#
+    ));
+    assert!(is_acp_message(
+        r#"{"type":"current_mode","current_mode_id":"code"}"#
+    ));
+    assert!(is_acp_message(
+        r#"{"type":"run_status","status":"completed","session_id":"s-1"}"#
+    ));
+}
+
+#[test]
+fn is_acp_message_rejects_non_acp_shapes() {
+    assert!(!is_acp_message("plain text"));
+    assert!(!is_acp_message(r#"{"message":"missing type"}"#));
+    assert!(!is_acp_message(r#"{"type":123}"#));
+    assert!(!is_acp_message(r#"{"type":"   "}"#));
 }

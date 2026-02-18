@@ -15,6 +15,7 @@ struct WsClientMessage {
     r#type: String,
     data: Option<String>,
     message_id: Option<String>,
+    session_id: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -81,7 +82,12 @@ async fn handle_socket(state: AppState, agent_id: String, token: String, socket:
                         if let Some(data) = parsed.data {
                             let _ = inbound_state
                                 .agents
-                                .send_input(&inbound_agent, &data, parsed.message_id.as_deref())
+                                .send_input(
+                                    &inbound_agent,
+                                    &data,
+                                    parsed.message_id.as_deref(),
+                                    parsed.session_id.as_deref(),
+                                )
                                 .await;
                         }
                     }
