@@ -233,7 +233,6 @@ export function InputDock({
 }: InputDockProps) {
   const [showHistory, setShowHistory] = React.useState(false);
   const [inputFocused, setInputFocused] = React.useState(false);
-  const [inputViewportOffset, setInputViewportOffset] = React.useState(0);
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const inputDockRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -255,10 +254,9 @@ export function InputDock({
       viewportTop,
       viewportHeight
     );
-    setInputViewportOffset((previous) =>
-      previous === nextOffset ? previous : nextOffset
-    );
     if (nextOffset > 0) {
+      textarea.scrollIntoView({ block: "nearest", inline: "nearest" });
+      inputDockRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
       return;
     }
     if (
@@ -272,11 +270,6 @@ export function InputDock({
     }
     inputDockRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
   }, [mobileInputViewport]);
-
-  React.useEffect(() => {
-    if (inputFocused && mobileInputViewport) return;
-    setInputViewportOffset((previous) => (previous === 0 ? previous : 0));
-  }, [inputFocused, mobileInputViewport]);
 
   React.useEffect(() => {
     if (!inputFocused || !mobileInputViewport) return;
@@ -321,15 +314,8 @@ export function InputDock({
     });
   }, [showHistory]);
 
-  const inputDockStyle =
-    inputViewportOffset > 0
-      ? ({
-          transform: `translateY(-${inputViewportOffset}px)`,
-        } satisfies React.CSSProperties)
-      : undefined;
-
   return (
-    <div className="input docked" ref={inputDockRef} style={inputDockStyle}>
+    <div className="input docked" ref={inputDockRef}>
       <div className="input-row" role="group" aria-label="Input actions">
         {showInterrupt && (
           <button
@@ -394,7 +380,6 @@ export function InputDock({
           }}
           onBlur={() => {
             setInputFocused(false);
-            setInputViewportOffset(0);
           }}
           onChange={(e) => {
             setShowHistory(false);
