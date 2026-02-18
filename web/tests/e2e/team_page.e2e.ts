@@ -26,6 +26,7 @@ type TeamSpecMember = {
   member_id: string;
   role?: string;
   model?: string;
+  skills?: string[];
 };
 
 type TeamSpecStep = {
@@ -174,11 +175,37 @@ async function mockTeamPageApis(
   });
 
   await page.route("**/api/agents", async (route, request) => {
-    if (request.method() !== "GET") {
-      await route.fallback();
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as {
+        name: string;
+        workdir: string;
+        command: string;
+        args?: string[];
+        code_mode?: boolean;
+      };
+      const created: E2eAgentRecord = {
+        id: `agent-forge-${agents.length + 1}`,
+        name: payload.name,
+        workdir: payload.workdir,
+        command: payload.command,
+        args: payload.args ?? [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: payload.code_mode ?? true,
+        status: "idle",
+        created_at: now,
+        updated_at: now,
+      };
+      agents.push(created);
+      await route.fulfill(jsonResponse(created));
       return;
     }
-    await route.fulfill(jsonResponse(agents));
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(agents));
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/teams", async (route, request) => {
@@ -267,6 +294,9 @@ test("team forge modal creates team with leader/worker presets", async ({
   const leaderPanel = dialog.locator(".team-create-panel");
   await leaderPanel.locator("select").first().selectOption("agent-leader-1");
   await leaderPanel.locator("select").nth(1).selectOption("codex");
+  await leaderPanel
+    .getByPlaceholder("leader custom skills (comma separated, optional)")
+    .fill("custom-leader-skill");
   await expect(leaderPanel.getByText("workdir: /workspace/leader")).toBeVisible();
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
@@ -274,6 +304,9 @@ test("team forge modal creates team with leader/worker presets", async ({
   const workerCard = dialog.locator(".teams-worker-card").first();
   await workerCard.locator("select").first().selectOption("agent-worker-1");
   await workerCard.locator("select").nth(1).selectOption("gemini");
+  await workerCard
+    .getByPlaceholder("worker custom skills (comma separated, optional)")
+    .fill("custom-worker-skill");
   await expect(workerCard.getByText("workdir: /workspace/worker")).toBeVisible();
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
@@ -300,6 +333,10 @@ test("team forge modal creates team with leader/worker presets", async ({
   );
   expect(leaderMember?.model).toBe("codex");
   expect(workerMember?.model).toBe("gemini");
+  expect(leaderMember?.skills).toContain("agenthub-actor-runtime");
+  expect(leaderMember?.skills).toContain("custom-leader-skill");
+  expect(workerMember?.skills).toContain("agenthub-actor-runtime");
+  expect(workerMember?.skills).toContain("custom-worker-skill");
   expect(
     createdPayload.spec.steps.some((step) => step.step_key === "leader_plan")
   ).toBe(true);
@@ -335,6 +372,34 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+});
+
+test("team forge agent entry creates and binds leader in-place", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.agents.splice(0, fixture.agents.length);
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "Create Team" }).click();
+  const dialog = page.getByRole("dialog", { name: "Team Forge" });
+  await dialog.getByPlaceholder("team name").fill("forge-team");
+  await dialog.getByRole("button", { name: "Next Stage" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
+  await expect(dialog.getByText("No agents available yet.")).toBeVisible();
+  await dialog.getByRole("button", { name: "New Agent" }).click();
+
+  await dialog.getByPlaceholder("workdir").fill("/workspace/forge-leader");
+  await dialog
+    .locator(".team-create-forge-agent")
+    .locator("select")
+    .nth(1)
+    .selectOption("leader");
+  await dialog.getByRole("button", { name: "Create Agent" }).click();
+
+  await expect(dialog.getByText("agent_id: agent-forge-1")).toBeVisible();
+  await expect(dialog.getByText("workdir: /workspace/forge-leader")).toBeVisible();
 });
 
 test("team list supports deleting selected team", async ({ page }) => {

@@ -146,6 +146,22 @@ export function isInputRectOutsideViewport(
   return rect.top < visibleTop || rect.bottom > visibleBottom;
 }
 
+export function deriveInputViewportOffset(
+  rect: VerticalRect,
+  viewportTop: number,
+  viewportHeight: number,
+  safeMargin: number = INPUT_VIEWPORT_SAFE_MARGIN
+): number {
+  if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return 0;
+  if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportHeight)) return 0;
+  if (viewportHeight <= 0) return 0;
+  const visibleBottom = viewportTop + viewportHeight - safeMargin;
+  if (!Number.isFinite(visibleBottom)) return 0;
+  const overflow = rect.bottom - visibleBottom;
+  if (overflow <= 0) return 0;
+  return Math.ceil(overflow);
+}
+
 function useMobileInputViewport(): boolean {
   const runtimeWindow = resolveRuntimeWindow();
   const [isMobileViewport, setIsMobileViewport] = React.useState(() =>
@@ -217,6 +233,7 @@ export function InputDock({
 }: InputDockProps) {
   const [showHistory, setShowHistory] = React.useState(false);
   const [inputFocused, setInputFocused] = React.useState(false);
+  const [inputViewportOffset, setInputViewportOffset] = React.useState(0);
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const inputDockRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -233,6 +250,17 @@ export function InputDock({
     const viewportTop = viewport?.offsetTop ?? 0;
     const viewportHeight = viewport?.height ?? window.innerHeight;
     const rect = textarea.getBoundingClientRect();
+    const nextOffset = deriveInputViewportOffset(
+      { top: rect.top, bottom: rect.bottom },
+      viewportTop,
+      viewportHeight
+    );
+    setInputViewportOffset((previous) =>
+      previous === nextOffset ? previous : nextOffset
+    );
+    if (nextOffset > 0) {
+      return;
+    }
     if (
       !isInputRectOutsideViewport(
         { top: rect.top, bottom: rect.bottom },
@@ -244,6 +272,11 @@ export function InputDock({
     }
     inputDockRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
   }, [mobileInputViewport]);
+
+  React.useEffect(() => {
+    if (inputFocused && mobileInputViewport) return;
+    setInputViewportOffset((previous) => (previous === 0 ? previous : 0));
+  }, [inputFocused, mobileInputViewport]);
 
   React.useEffect(() => {
     if (!inputFocused || !mobileInputViewport) return;
@@ -288,8 +321,15 @@ export function InputDock({
     });
   }, [showHistory]);
 
+  const inputDockStyle =
+    inputViewportOffset > 0
+      ? ({
+          transform: `translateY(-${inputViewportOffset}px)`,
+        } satisfies React.CSSProperties)
+      : undefined;
+
   return (
-    <div className="input docked" ref={inputDockRef}>
+    <div className="input docked" ref={inputDockRef} style={inputDockStyle}>
       <div className="input-row" role="group" aria-label="Input actions">
         {showInterrupt && (
           <button
@@ -354,10 +394,12 @@ export function InputDock({
           }}
           onBlur={() => {
             setInputFocused(false);
+            setInputViewportOffset(0);
           }}
           onChange={(e) => {
             setShowHistory(false);
             onInputChange(e.target.value);
+            ensureInputVisible();
           }}
           onCompositionStart={() => {
             isComposingRef.current = true;

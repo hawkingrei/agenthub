@@ -11,7 +11,15 @@ import {
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
-import { formatAgentModelLabel, listAgentPresets } from "../agent_presets";
+import {
+  DEFAULT_AGENT_PRESET_ID,
+  formatAgentModelLabel,
+  getAgentPreset,
+  isAgentPresetId,
+  listAgentPresets,
+  type AgentPresetId,
+} from "../agent_presets";
+import { isAgentActiveStatus } from "../agent_ws";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 
@@ -42,6 +50,7 @@ type StepAction =
   | "fail"
   | "input_required"
   | "resume";
+type TeamForgeBindTarget = "none" | "leader" | "worker";
 
 const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
@@ -108,8 +117,10 @@ const DEFAULT_TEAM_WORKER_PROMPT = [
 ].join("\n");
 const DEFAULT_TEAM_LEADER_SKILLS = ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const DEFAULT_TEAM_WORKER_SKILLS = ["agenthub-actor-runtime", "team-worker-executor"];
-const DEFAULT_TEAM_LEADER_SKILLS_TEXT = DEFAULT_TEAM_LEADER_SKILLS.join(", ");
-const DEFAULT_TEAM_WORKER_SKILLS_TEXT = DEFAULT_TEAM_WORKER_SKILLS.join(", ");
+const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];
+const TEAM_SKILL_OPTIONS = [
+  ...new Set([...DEFAULT_TEAM_LEADER_SKILLS, ...DEFAULT_TEAM_WORKER_SKILLS]),
+];
 const TEAM_MODEL_PRESET_OPTIONS = listAgentPresets().map((preset) => ({
   value: preset.id,
   label: preset.label,
@@ -122,13 +133,46 @@ type WorkerDraft = {
   member_id: string;
   model: string;
   prompt: string;
-  skills: string;
+  skills: string[];
+  custom_skills: string;
 };
 
 type TeamStepDraft = {
   step_key: string;
   member_id: string;
   depends_on: string[];
+};
+
+export type TeamSpecMember = {
+  member_id: string;
+  role: string;
+};
+
+export type TeamMemberAgentStatus = {
+  member_id: string;
+  role: string;
+  agent_name?: string;
+  status: string;
+  missing_agent: boolean;
+};
+
+export type TeamMemberAgentStatusSummary = {
+  active: number;
+  inactive: number;
+  missing: number;
+  total: number;
+};
+
+export type TeamMemberLiveState = {
+  member_id: string;
+  role: string;
+  agent_name?: string;
+  lifecycle_status: string;
+  lifecycle_tone: "active" | "inactive" | "missing";
+  run_status: string;
+  step_status: string;
+  pending_inbox_count: number | null;
+  current_work: string;
 };
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
@@ -223,7 +267,8 @@ function buildTeamSpecFromForm(
   leaderMemberId: string,
   leaderModel: string,
   leaderPrompt: string,
-  leaderSkills: string,
+  leaderSkills: string[],
+  leaderCustomSkills: string,
   workers: WorkerDraft[]
 ): unknown {
   const leaderId = leaderMemberId.trim();
@@ -232,7 +277,11 @@ function buildTeamSpecFromForm(
       member_id: worker.member_id.trim(),
       model: worker.model.trim(),
       prompt: worker.prompt.trim() || DEFAULT_TEAM_WORKER_PROMPT,
-      skills: parseCsvListWithFallback(worker.skills, DEFAULT_TEAM_WORKER_SKILLS),
+      skills: normalizeSkillSelection(
+        worker.skills,
+        worker.custom_skills,
+        DEFAULT_TEAM_WORKER_SKILLS
+      ),
     }))
     .filter((worker) => worker.member_id.length > 0);
   const steps = buildDefaultWorkflowSteps(
@@ -246,7 +295,11 @@ function buildTeamSpecFromForm(
       role: "leader",
       model: leaderModel.trim() || undefined,
       prompt: leaderPrompt.trim() || DEFAULT_TEAM_LEADER_PROMPT,
-      skills: parseCsvListWithFallback(leaderSkills, DEFAULT_TEAM_LEADER_SKILLS),
+      skills: normalizeSkillSelection(
+        leaderSkills,
+        leaderCustomSkills,
+        DEFAULT_TEAM_LEADER_SKILLS
+      ),
     },
     ...normalizedWorkers.map((worker) => ({
       member_id: worker.member_id,
@@ -365,9 +418,217 @@ function parseCsvList(raw: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-function parseCsvListWithFallback(raw: string, fallback: string[]): string[] {
-  const parsed = parseCsvList(raw);
-  return parsed.length > 0 ? parsed : [...fallback];
+function ensureMandatorySkills(skills: string[]): string[] {
+  const deduped = [...new Set(skills.map((item) => item.trim()).filter(Boolean))];
+  const mandatory = MANDATORY_TEAM_SKILLS.filter((item) => !deduped.includes(item));
+  if (mandatory.length === 0) {
+    return deduped;
+  }
+  return [...mandatory, ...deduped];
+}
+
+export function normalizeSkillSelection(
+  selected: string[],
+  customRaw: string,
+  fallback: string[]
+): string[] {
+  const allowed = new Set(TEAM_SKILL_OPTIONS);
+  const selectedSkills = [...new Set(selected.map((item) => item.trim()).filter(Boolean))].filter(
+    (item) => allowed.has(item)
+  );
+  const customSkills = parseCsvList(customRaw);
+  const merged = [...new Set([...selectedSkills, ...customSkills])];
+  if (merged.length > 0) {
+    return ensureMandatorySkills(merged);
+  }
+  return ensureMandatorySkills(fallback);
+}
+
+export function toggleSkillSelection(selected: string[], skill: string): string[] {
+  const normalized = skill.trim();
+  if (!normalized || !TEAM_SKILL_OPTIONS.includes(normalized)) {
+    return selected;
+  }
+  if (selected.includes(normalized)) {
+    return selected.filter((item) => item !== normalized);
+  }
+  return [...selected, normalized];
+}
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeLifecycleStatus(status: string | null | undefined): string {
+  const normalized = status?.trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : "unknown";
+}
+
+export function parseTeamSpecMembers(spec: unknown): TeamSpecMember[] {
+  const specRecord = asObjectRecord(spec);
+  if (!specRecord) return [];
+  const membersRaw = specRecord.members;
+  if (!Array.isArray(membersRaw)) return [];
+
+  const deduped = new Map<string, TeamSpecMember>();
+  for (const item of membersRaw) {
+    const memberRecord = asObjectRecord(item);
+    if (!memberRecord) continue;
+    const memberIdRaw = memberRecord.member_id;
+    if (typeof memberIdRaw !== "string") continue;
+    const memberId = memberIdRaw.trim();
+    if (!memberId) continue;
+    if (deduped.has(memberId)) continue;
+    const roleRaw = memberRecord.role;
+    const role =
+      typeof roleRaw === "string" && roleRaw.trim().length > 0
+        ? roleRaw.trim()
+        : "member";
+    deduped.set(memberId, { member_id: memberId, role });
+  }
+  return [...deduped.values()];
+}
+
+export function resolveTeamMemberAgentStatuses(
+  spec: unknown,
+  agents: AgentRecord[]
+): TeamMemberAgentStatus[] {
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  return parseTeamSpecMembers(spec).map((member) => {
+    const agent = byId.get(member.member_id);
+    if (!agent) {
+      return {
+        member_id: member.member_id,
+        role: member.role,
+        status: "missing",
+        missing_agent: true,
+      };
+    }
+    return {
+      member_id: member.member_id,
+      role: member.role,
+      agent_name: agent.name,
+      status: normalizeLifecycleStatus(agent.status),
+      missing_agent: false,
+    };
+  });
+}
+
+export function summarizeTeamMemberAgentStatuses(
+  members: TeamMemberAgentStatus[]
+): TeamMemberAgentStatusSummary {
+  let active = 0;
+  let missing = 0;
+  for (const member of members) {
+    if (member.missing_agent) {
+      missing += 1;
+      continue;
+    }
+    if (isAgentActiveStatus(member.status)) {
+      active += 1;
+    }
+  }
+  const total = members.length;
+  const inactive = total - active - missing;
+  return {
+    active,
+    inactive,
+    missing,
+    total,
+  };
+}
+
+function resolveTeamRoleWeight(role: string): number {
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "leader") return 0;
+  if (normalized === "worker") return 1;
+  return 2;
+}
+
+function toCompactWorkPreview(value: unknown, maxLength = 72): string {
+  if (value == null) {
+    return "";
+  }
+  const raw =
+    typeof value === "string"
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })();
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function resolveTeamMemberCurrentWork(
+  snapshotMember?: TeamRunSnapshotRecord["members"][number]
+): string {
+  if (!snapshotMember) {
+    return "No active run context.";
+  }
+  const step = snapshotMember.latest_step;
+  if (!step) {
+    return `run_status=${snapshotMember.status}`;
+  }
+  const stepLabel = step.step_key || step.id;
+  const payloadPreview =
+    toCompactWorkPreview(step.input) ||
+    toCompactWorkPreview(step.output) ||
+    toCompactWorkPreview(step.error_text);
+  if (!payloadPreview) {
+    return `${stepLabel} (${step.status})`;
+  }
+  return `${stepLabel}: ${payloadPreview}`;
+}
+
+export function resolveTeamMemberLifecycleTone(
+  member: TeamMemberAgentStatus
+): "active" | "inactive" | "missing" {
+  if (member.missing_agent) {
+    return "missing";
+  }
+  return isAgentActiveStatus(member.status) ? "active" : "inactive";
+}
+
+export function buildTeamMemberLiveStates(
+  members: TeamMemberAgentStatus[],
+  snapshotMembers?: TeamRunSnapshotRecord["members"]
+): TeamMemberLiveState[] {
+  const snapshotByMemberId = new Map(
+    (snapshotMembers ?? []).map((member) => [member.member_id, member])
+  );
+  return [...members]
+    .map((member) => {
+      const snapshotMember = snapshotByMemberId.get(member.member_id);
+      return {
+        member_id: member.member_id,
+        role: member.role,
+        agent_name: member.agent_name,
+        lifecycle_status: member.status,
+        lifecycle_tone: resolveTeamMemberLifecycleTone(member),
+        run_status: snapshotMember?.status ?? "-",
+        step_status: snapshotMember?.latest_step?.status ?? "-",
+        pending_inbox_count: snapshotMember?.pending_inbox_count ?? null,
+        current_work: resolveTeamMemberCurrentWork(snapshotMember),
+      };
+    })
+    .sort((a, b) => {
+      const roleGap = resolveTeamRoleWeight(a.role) - resolveTeamRoleWeight(b.role);
+      if (roleGap !== 0) return roleGap;
+      return a.member_id.localeCompare(b.member_id);
+    });
 }
 
 export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
@@ -438,8 +699,31 @@ function buildDefaultWorkerDraft(memberId: string): WorkerDraft {
     member_id: memberId,
     model: "",
     prompt: DEFAULT_TEAM_WORKER_PROMPT,
-    skills: DEFAULT_TEAM_WORKER_SKILLS_TEXT,
+    skills: [...DEFAULT_TEAM_WORKER_SKILLS],
+    custom_skills: "",
   };
+}
+
+export function assignCreatedWorkerToDraft(
+  workers: WorkerDraft[],
+  createdMemberId: string
+): WorkerDraft[] {
+  const memberId = createdMemberId.trim();
+  if (!memberId) {
+    return workers;
+  }
+  if (workers.some((worker) => worker.member_id.trim() === memberId)) {
+    return workers;
+  }
+  const firstUnassigned = workers.findIndex(
+    (worker) => worker.member_id.trim().length === 0
+  );
+  if (firstUnassigned >= 0) {
+    return workers.map((worker, index) =>
+      index === firstUnassigned ? { ...worker, member_id: memberId } : worker
+    );
+  }
+  return [...workers, buildDefaultWorkerDraft(memberId)];
 }
 
 function clampCreateTeamStage(next: number): CreateTeamStage {
@@ -494,8 +778,20 @@ export function TeamPage(props: TeamPageProps) {
   const [leaderMemberId, setLeaderMemberId] = useState("");
   const [leaderModel, setLeaderModel] = useState("");
   const [leaderPrompt, setLeaderPrompt] = useState(DEFAULT_TEAM_LEADER_PROMPT);
-  const [leaderSkills, setLeaderSkills] = useState(DEFAULT_TEAM_LEADER_SKILLS_TEXT);
+  const [leaderSkills, setLeaderSkills] = useState<string[]>([
+    ...DEFAULT_TEAM_LEADER_SKILLS,
+  ]);
+  const [leaderCustomSkills, setLeaderCustomSkills] = useState("");
   const [workers, setWorkers] = useState<WorkerDraft[]>([]);
+  const [forgeAgentBindTarget, setForgeAgentBindTarget] =
+    useState<TeamForgeBindTarget>("none");
+  const [showForgeAgentForm, setShowForgeAgentForm] = useState(false);
+  const [forgeAgentName, setForgeAgentName] = useState("");
+  const [forgeAgentWorkdir, setForgeAgentWorkdir] = useState("");
+  const [forgeAgentPresetId, setForgeAgentPresetId] =
+    useState<AgentPresetId>(DEFAULT_AGENT_PRESET_ID);
+  const [forgeAgentCodeMode, setForgeAgentCodeMode] = useState(true);
+  const [forgeAgentBusy, setForgeAgentBusy] = useState(false);
 
   const [runContextId, setRunContextId] = useState("");
   const [runInput, setRunInput] = useState("{}");
@@ -558,6 +854,33 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  const teamMemberStatusByTeamId = useMemo(() => {
+    const next = new Map<string, TeamMemberAgentStatus[]>();
+    for (const team of teams) {
+      next.set(team.id, resolveTeamMemberAgentStatuses(team.spec, agents));
+    }
+    return next;
+  }, [agents, teams]);
+  const teamMemberSummaryByTeamId = useMemo(() => {
+    const next = new Map<string, TeamMemberAgentStatusSummary>();
+    for (const team of teams) {
+      const members = teamMemberStatusByTeamId.get(team.id) ?? [];
+      next.set(team.id, summarizeTeamMemberAgentStatuses(members));
+    }
+    return next;
+  }, [teamMemberStatusByTeamId, teams]);
+  const selectedTeamMemberStatuses = useMemo(
+    () => (selectedTeam ? teamMemberStatusByTeamId.get(selectedTeam.id) ?? [] : []),
+    [selectedTeam, teamMemberStatusByTeamId]
+  );
+  const selectedTeamMemberSummary = useMemo(
+    () => summarizeTeamMemberAgentStatuses(selectedTeamMemberStatuses),
+    [selectedTeamMemberStatuses]
+  );
+  const selectedTeamMemberLiveStates = useMemo(
+    () => buildTeamMemberLiveStates(selectedTeamMemberStatuses, snapshot?.members),
+    [selectedTeamMemberStatuses, snapshot]
+  );
   const leaderAgent = useMemo(
     () => agents.find((agent) => agent.id === leaderMemberId) ?? null,
     [agents, leaderMemberId]
@@ -604,9 +927,17 @@ export function TeamPage(props: TeamPageProps) {
         leaderModel,
         leaderPrompt,
         leaderSkills,
+        leaderCustomSkills,
         workers
       ),
-    [leaderMemberId, leaderModel, leaderPrompt, leaderSkills, workers]
+    [
+      leaderMemberId,
+      leaderModel,
+      leaderPrompt,
+      leaderSkills,
+      leaderCustomSkills,
+      workers,
+    ]
   );
 
   const displayedTeamSpec = useMemo(() => {
@@ -752,6 +1083,18 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveTeamModelOptions(leaderModel),
     [leaderModel]
   );
+  const forgeAgentPresetOptions = useMemo(
+    () =>
+      listAgentPresets().map((preset) => ({
+        value: preset.id,
+        label: preset.label,
+      })),
+    []
+  );
+  const forgeAgentPreset = useMemo(
+    () => getAgentPreset(forgeAgentPresetId),
+    [forgeAgentPresetId]
+  );
   const leaderAgentOptions = useMemo(
     () =>
       agents.map((agent) => ({
@@ -788,7 +1131,8 @@ export function TeamPage(props: TeamPageProps) {
     setLeaderMemberId(leaderId);
     setLeaderModel("");
     setLeaderPrompt(DEFAULT_TEAM_LEADER_PROMPT);
-    setLeaderSkills(DEFAULT_TEAM_LEADER_SKILLS_TEXT);
+    setLeaderSkills([...DEFAULT_TEAM_LEADER_SKILLS]);
+    setLeaderCustomSkills("");
     setWorkers(firstWorkerId ? [buildDefaultWorkerDraft(firstWorkerId)] : []);
     setUseSpecOverride(false);
     setNewTeamSpec("{}");
@@ -1156,6 +1500,7 @@ export function TeamPage(props: TeamPageProps) {
     setCreateTeamStage(0);
     resetTeamDraft(agents);
     setShowCreateTeamModal(true);
+    setShowForgeAgentForm(false);
     void refreshAgents().catch((err) => {
       setError(parseErrorMessage(err));
     });
@@ -1164,6 +1509,68 @@ export function TeamPage(props: TeamPageProps) {
   const closeCreateTeamModal = () => {
     setShowCreateTeamModal(false);
     setCreateTeamStage(0);
+    setShowForgeAgentForm(false);
+  };
+
+  const openForgeAgentForm = () => {
+    setError(null);
+    setShowForgeAgentForm(true);
+    const target: TeamForgeBindTarget =
+      createTeamStage === 1 ? "leader" : createTeamStage === 2 ? "worker" : "none";
+    setForgeAgentBindTarget(target);
+    const teamToken = newTeamName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const prefix = teamToken || "team";
+    const defaultName =
+      target === "leader"
+        ? `${prefix}-leader`
+        : target === "worker"
+          ? `${prefix}-worker-${Math.max(1, workers.length + 1)}`
+          : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
+    setForgeAgentName(defaultName);
+    setForgeAgentWorkdir("");
+    setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+    setForgeAgentCodeMode(true);
+  };
+
+  const closeForgeAgentForm = () => {
+    if (forgeAgentBusy) return;
+    setShowForgeAgentForm(false);
+  };
+
+  const onCreateForgeAgent = async () => {
+    if (forgeAgentBusy) return;
+    const name = forgeAgentName.trim() || "agent";
+    const workdir = forgeAgentWorkdir.trim();
+    if (!workdir) {
+      setError("Forge agent workdir is required");
+      return;
+    }
+    setForgeAgentBusy(true);
+    setError(null);
+    try {
+      const preset = getAgentPreset(forgeAgentPresetId);
+      const created = await api.createAgent(props.token, {
+        name,
+        workdir,
+        command: preset.command,
+        args: preset.args.slice(),
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: forgeAgentCodeMode,
+      });
+      setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
+      if (forgeAgentBindTarget === "leader") {
+        setLeaderMemberId(created.id);
+      } else if (forgeAgentBindTarget === "worker") {
+        setWorkers((prev) => assignCreatedWorkerToDraft(prev, created.id));
+      }
+      setShowForgeAgentForm(false);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setForgeAgentBusy(false);
+    }
   };
 
   const onSelectCreateTeamStage = (target: CreateTeamStage) => {
@@ -1510,12 +1917,25 @@ export function TeamPage(props: TeamPageProps) {
 
   const onUpdateWorker = (
     index: number,
-    field: keyof WorkerDraft,
+    field: "member_id" | "model" | "prompt" | "custom_skills",
     value: string
   ) => {
     setWorkers((prev) =>
       prev.map((worker, workerIndex) =>
         workerIndex === index ? { ...worker, [field]: value } : worker
+      )
+    );
+  };
+
+  const onToggleWorkerSkill = (index: number, skill: string) => {
+    setWorkers((prev) =>
+      prev.map((worker, workerIndex) =>
+        workerIndex === index
+          ? {
+              ...worker,
+              skills: toggleSkillSelection(worker.skills, skill),
+            }
+          : worker
       )
     );
   };
@@ -1630,19 +2050,27 @@ export function TeamPage(props: TeamPageProps) {
 
           <div className="teams-list">
             {teams.length === 0 && <p className="muted">No teams yet.</p>}
-            {teams.map((team) => (
-              <button
-                key={team.id}
-                className={team.id === selectedTeamId ? "team-item active" : "team-item"}
-                onClick={() => {
-                  setSelectedTeamId(team.id);
-                  setRunLookupId("");
-                }}
-              >
-                <span className="team-name">{team.name}</span>
-                <span className="team-id mono">{team.id}</span>
-              </button>
-            ))}
+            {teams.map((team) => {
+              const summary = teamMemberSummaryByTeamId.get(team.id);
+              return (
+                <button
+                  key={team.id}
+                  className={team.id === selectedTeamId ? "team-item active" : "team-item"}
+                  onClick={() => {
+                    setSelectedTeamId(team.id);
+                    setRunLookupId("");
+                  }}
+                >
+                  <span className="team-name">{team.name}</span>
+                  <span className="team-id mono">{team.id}</span>
+                  {summary && (
+                    <span className="team-id mono team-member-summary">
+                      {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </aside>
 
@@ -1670,6 +2098,48 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
                 </div>
                 <div className="teams-run-create">
+                  <div className="teams-member-status-panel">
+                    <div className="teams-member-summary-line mono">
+                      {`active=${selectedTeamMemberSummary.active} inactive=${selectedTeamMemberSummary.inactive} missing=${selectedTeamMemberSummary.missing} total=${selectedTeamMemberSummary.total}`}
+                    </div>
+                    {selectedTeamMemberLiveStates.length === 0 ? (
+                      <p className="muted">No members declared in team spec.</p>
+                    ) : (
+                      <div className="teams-member-strip">
+                        {selectedTeamMemberLiveStates.map((member) => {
+                          const roleTone =
+                            member.role.trim().toLowerCase() === "leader"
+                              ? "leader"
+                              : "worker";
+                          return (
+                            <article
+                              key={`${selectedTeam.id}:${member.member_id}`}
+                              className="team-member-row"
+                            >
+                              <div className="team-member-row-main">
+                                <span className={`team-role-chip ${roleTone}`}>
+                                  {member.role}
+                                </span>
+                                <span className="team-member-row-id mono">{member.member_id}</span>
+                                <span className={`team-status-chip ${member.lifecycle_tone}`}>
+                                  {member.lifecycle_status}
+                                </span>
+                                <span className="team-member-row-meta mono">
+                                  {member.agent_name ?? "agent_not_found"}
+                                </span>
+                                <span className="team-member-row-meta mono">
+                                  {`run=${member.run_status} step=${member.step_status} inbox=${member.pending_inbox_count ?? "-"}`}
+                                </span>
+                              </div>
+                              <div className="team-member-workline mono">
+                                {member.current_work}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <h3>Create / Load Run</h3>
                   <p className="muted">
                     <strong>Create Run</strong> starts a new execution for this team spec.
@@ -2519,6 +2989,105 @@ export function TeamPage(props: TeamPageProps) {
                 ))}
               </div>
 
+              <div className="team-create-agent-entry">
+                <div className="team-create-agent-entry-head">
+                  <h4>Agent Forge</h4>
+                  <button
+                    onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
+                    disabled={useSpecOverride || forgeAgentBusy}
+                    type="button"
+                  >
+                    {showForgeAgentForm ? "Hide" : "New Agent"}
+                  </button>
+                </div>
+                <p className="muted">
+                  Use one unified entry to create an agent, then optionally bind it to leader or
+                  workers.
+                </p>
+                {showForgeAgentForm && (
+                  <div className="team-create-forge-agent">
+                    <div className="team-create-forge-agent-head">
+                      <strong>Create Agent</strong>
+                      <button
+                        onClick={closeForgeAgentForm}
+                        disabled={forgeAgentBusy}
+                        type="button"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="team-create-forge-agent-grid">
+                      <input
+                        placeholder="agent name"
+                        value={forgeAgentName}
+                        onChange={(event) => setForgeAgentName(event.target.value)}
+                        disabled={forgeAgentBusy}
+                      />
+                      <input
+                        placeholder="workdir"
+                        value={forgeAgentWorkdir}
+                        onChange={(event) => setForgeAgentWorkdir(event.target.value)}
+                        disabled={forgeAgentBusy}
+                      />
+                      <select
+                        value={forgeAgentPresetId}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          if (isAgentPresetId(next)) {
+                            setForgeAgentPresetId(next);
+                          }
+                        }}
+                        disabled={forgeAgentBusy}
+                      >
+                        {forgeAgentPresetOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={forgeAgentBindTarget}
+                        onChange={(event) =>
+                          setForgeAgentBindTarget(event.target.value as TeamForgeBindTarget)
+                        }
+                        disabled={forgeAgentBusy}
+                      >
+                        <option value="none">Create only (no binding)</option>
+                        <option value="leader">Create and bind as leader</option>
+                        <option value="worker">Create and bind as worker</option>
+                      </select>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={forgeAgentCodeMode}
+                          onChange={(event) => setForgeAgentCodeMode(event.target.checked)}
+                          disabled={forgeAgentBusy}
+                        />
+                        code_mode
+                      </label>
+                    </div>
+                    <div className="team-create-forge-agent-meta mono">
+                      <span>{`command=${forgeAgentPreset.command}`}</span>
+                      <span>{`args=${
+                        forgeAgentPreset.args.length > 0
+                          ? forgeAgentPreset.args.join(" ")
+                          : "-"
+                      }`}</span>
+                      <span>{`bind_target=${forgeAgentBindTarget}`}</span>
+                    </div>
+                    <div className="team-create-forge-agent-actions">
+                      <button
+                        onClick={onCreateForgeAgent}
+                        disabled={forgeAgentBusy}
+                        type="button"
+                      >
+                        {forgeAgentBusy ? "Creating..." : "Create Agent"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {createTeamStage === 0 && (
                 <div className="team-create-panel">
                   <h4>Mission Brief</h4>
@@ -2558,7 +3127,8 @@ export function TeamPage(props: TeamPageProps) {
                   )}
                   {!hasAgents && (
                     <p className="muted">
-                      No agents available yet. Create at least one agent in `Agents` mode first.
+                      No agents available yet. Create one in the Agent Forge entry above, or in
+                      `Agents` mode first.
                     </p>
                   )}
                   <select
@@ -2588,10 +3158,28 @@ export function TeamPage(props: TeamPageProps) {
                       </option>
                     ))}
                   </select>
+                  <div className="team-skill-tags">
+                    {TEAM_SKILL_OPTIONS.map((skill) => {
+                      const selected = leaderSkills.includes(skill);
+                      return (
+                        <button
+                          key={`leader-skill-${skill}`}
+                          type="button"
+                          className={selected ? "team-skill-tag selected" : "team-skill-tag"}
+                          onClick={() =>
+                            setLeaderSkills((prev) => toggleSkillSelection(prev, skill))
+                          }
+                          disabled={useSpecOverride}
+                        >
+                          {skill}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <input
-                    placeholder="leader skills (comma separated)"
-                    value={leaderSkills}
-                    onChange={(event) => setLeaderSkills(event.target.value)}
+                    placeholder="leader custom skills (comma separated, optional)"
+                    value={leaderCustomSkills}
+                    onChange={(event) => setLeaderCustomSkills(event.target.value)}
                     disabled={useSpecOverride}
                   />
                   <textarea
@@ -2702,11 +3290,29 @@ export function TeamPage(props: TeamPageProps) {
                               </option>
                             ))}
                           </select>
+                          <div className="team-skill-tags">
+                            {TEAM_SKILL_OPTIONS.map((skill) => {
+                              const selected = worker.skills.includes(skill);
+                              return (
+                                <button
+                                  key={`worker-skill-${index}-${skill}`}
+                                  type="button"
+                                  className={
+                                    selected ? "team-skill-tag selected" : "team-skill-tag"
+                                  }
+                                  onClick={() => onToggleWorkerSkill(index, skill)}
+                                  disabled={useSpecOverride}
+                                >
+                                  {skill}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <input
-                            placeholder="worker skills (comma separated)"
-                            value={worker.skills}
+                            placeholder="worker custom skills (comma separated, optional)"
+                            value={worker.custom_skills}
                             onChange={(event) =>
-                              onUpdateWorker(index, "skills", event.target.value)
+                              onUpdateWorker(index, "custom_skills", event.target.value)
                             }
                             disabled={useSpecOverride}
                           />

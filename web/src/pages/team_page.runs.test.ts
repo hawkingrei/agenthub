@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { TeamRunEventRecord, TeamRunRecord } from "../api";
+import type { AgentRecord, TeamRunEventRecord, TeamRunRecord } from "../api";
 import {
+  assignCreatedWorkerToDraft,
+  buildTeamMemberLiveStates,
   buildMailboxPayloadTemplate,
   mergeRunPages,
   mergeTeamRunList,
+  normalizeSkillSelection,
+  parseTeamSpecMembers,
+  toggleSkillSelection,
+  resolveTeamMemberLifecycleTone,
+  resolveTeamMemberAgentStatuses,
   resolveRunStatusFilter,
   selectTeamPreviewEvents,
+  summarizeTeamMemberAgentStatuses,
 } from "./team_page";
 
 function buildRun(
@@ -33,6 +41,23 @@ function buildRunEvent(eventId: number): TeamRunEventRecord {
     event_type: "agent_message",
     ts: 1_700_000_000 + eventId,
     payload: { event_id: eventId },
+  };
+}
+
+function buildAgent(id: string, status: string): AgentRecord {
+  return {
+    id,
+    name: id,
+    workdir: "/tmp",
+    command: "codex",
+    args: [],
+    worktree_mode: "use_existing",
+    worktree_repo: null,
+    worktree_ref: null,
+    code_mode: false,
+    status,
+    created_at: 1_700_000_000,
+    updated_at: 1_700_000_000,
   };
 }
 
@@ -113,5 +138,269 @@ describe("team run list helpers", () => {
     };
     expect(blocked.status).toBe("blocked");
     expect(blocked.next_action.length).toBeGreaterThan(0);
+  });
+
+  it("parses team spec members with dedupe and invalid-entry filtering", () => {
+    const members = parseTeamSpecMembers({
+      members: [
+        { member_id: "leader-agent", role: "leader" },
+        { member_id: "worker-agent", role: "worker" },
+        { member_id: "worker-agent", role: "worker" },
+        { member_id: "  " },
+        { role: "worker" },
+        "invalid",
+      ],
+    });
+    expect(members).toEqual([
+      { member_id: "leader-agent", role: "leader" },
+      { member_id: "worker-agent", role: "worker" },
+    ]);
+  });
+
+  it("maps team members to lifecycle statuses and marks missing members", () => {
+    const statuses = resolveTeamMemberAgentStatuses(
+      {
+        members: [
+          { member_id: "leader-agent", role: "leader" },
+          { member_id: "worker-agent", role: "worker" },
+          { member_id: "missing-agent", role: "worker" },
+        ],
+      },
+      [buildAgent("leader-agent", "running"), buildAgent("worker-agent", "stopped")]
+    );
+    expect(statuses).toEqual([
+      {
+        member_id: "leader-agent",
+        role: "leader",
+        agent_name: "leader-agent",
+        status: "running",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-agent",
+        role: "worker",
+        agent_name: "worker-agent",
+        status: "stopped",
+        missing_agent: false,
+      },
+      {
+        member_id: "missing-agent",
+        role: "worker",
+        status: "missing",
+        missing_agent: true,
+      },
+    ]);
+  });
+
+  it("summarizes active/inactive/missing team member counts", () => {
+    const summary = summarizeTeamMemberAgentStatuses([
+      {
+        member_id: "leader-agent",
+        role: "leader",
+        status: "running",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-agent-1",
+        role: "worker",
+        status: "idle",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-agent-2",
+        role: "worker",
+        status: "stopped",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-agent-3",
+        role: "worker",
+        status: "missing",
+        missing_agent: true,
+      },
+    ]);
+    expect(summary).toEqual({
+      active: 2,
+      inactive: 1,
+      missing: 1,
+      total: 4,
+    });
+  });
+
+  it("maps lifecycle tone to active, inactive, and missing", () => {
+    expect(
+      resolveTeamMemberLifecycleTone({
+        member_id: "leader-agent",
+        role: "leader",
+        status: "running",
+        missing_agent: false,
+      })
+    ).toBe("active");
+    expect(
+      resolveTeamMemberLifecycleTone({
+        member_id: "worker-agent",
+        role: "worker",
+        status: "stopped",
+        missing_agent: false,
+      })
+    ).toBe("inactive");
+    expect(
+      resolveTeamMemberLifecycleTone({
+        member_id: "missing-agent",
+        role: "worker",
+        status: "missing",
+        missing_agent: true,
+      })
+    ).toBe("missing");
+  });
+
+  it("builds live states with leader first and snapshot run info", () => {
+    const liveStates = buildTeamMemberLiveStates(
+      [
+        {
+          member_id: "worker-agent-2",
+          role: "worker",
+          agent_name: "worker-agent-2",
+          status: "stopped",
+          missing_agent: false,
+        },
+        {
+          member_id: "leader-agent",
+          role: "leader",
+          agent_name: "leader-agent",
+          status: "running",
+          missing_agent: false,
+        },
+        {
+          member_id: "worker-agent-1",
+          role: "worker",
+          status: "missing",
+          missing_agent: true,
+        },
+      ],
+      [
+        {
+          member_id: "leader-agent",
+          role: "leader",
+          model: null,
+          prompt: null,
+          skills: [],
+          pending_inbox_count: 2,
+          status: "working",
+          latest_step: null,
+          session_status: null,
+        },
+        {
+          member_id: "worker-agent-2",
+          role: "worker",
+          model: null,
+          prompt: null,
+          skills: [],
+          pending_inbox_count: 0,
+          status: "submitted",
+          latest_step: {
+            id: "step-worker-2",
+            run_id: "run-1",
+            step_key: "worker_2",
+            member_id: "worker-agent-2",
+            remote_task_id: null,
+            status: "working",
+            attempt: 1,
+            depends_on: [],
+            input: {},
+            output: {},
+            error_text: null,
+            started_at: null,
+            ended_at: null,
+          },
+          session_status: null,
+        },
+      ]
+    );
+    expect(liveStates.map((member) => member.member_id)).toEqual([
+      "leader-agent",
+      "worker-agent-1",
+      "worker-agent-2",
+    ]);
+    expect(liveStates[0]?.run_status).toBe("working");
+    expect(liveStates[0]?.pending_inbox_count).toBe(2);
+    expect(liveStates[1]?.run_status).toBe("-");
+    expect(liveStates[1]?.lifecycle_tone).toBe("missing");
+    expect(liveStates[1]?.current_work).toBe("No active run context.");
+    expect(liveStates[2]?.step_status).toBe("working");
+    expect(liveStates[2]?.lifecycle_tone).toBe("inactive");
+    expect(liveStates[2]?.current_work).toContain("worker_2");
+  });
+
+  it("normalizes selected skills with allowlist and fallback", () => {
+    expect(
+      normalizeSkillSelection(
+        ["agenthub-actor-runtime", "unknown-skill", "team-worker-executor"],
+        "",
+        ["team-leader-orchestrator"]
+      )
+    ).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
+    expect(normalizeSkillSelection(["unknown-skill"], "", ["team-worker-executor"])).toEqual([
+      "agenthub-actor-runtime",
+      "team-worker-executor",
+    ]);
+    expect(normalizeSkillSelection([], "", ["team-worker-executor"])).toEqual([
+      "agenthub-actor-runtime",
+      "team-worker-executor",
+    ]);
+    expect(
+      normalizeSkillSelection(
+        ["team-worker-executor"],
+        "custom-skill-a, custom-skill-b",
+        ["team-worker-executor"]
+      )
+    ).toEqual([
+      "agenthub-actor-runtime",
+      "team-worker-executor",
+      "custom-skill-a",
+      "custom-skill-b",
+    ]);
+  });
+
+  it("toggles allowed skills while ignoring unknown entries", () => {
+    const added = toggleSkillSelection(["agenthub-actor-runtime"], "team-worker-executor");
+    expect(added).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
+    const removed = toggleSkillSelection(added, "agenthub-actor-runtime");
+    expect(removed).toEqual(["team-worker-executor"]);
+    const unchanged = toggleSkillSelection(removed, "custom-skill");
+    expect(unchanged).toEqual(["team-worker-executor"]);
+  });
+
+  it("assigns newly created worker agent to first empty slot or appends", () => {
+    const filled = assignCreatedWorkerToDraft(
+      [
+        {
+          member_id: "",
+          model: "",
+          prompt: "worker prompt",
+          skills: ["team-worker-executor"],
+          custom_skills: "",
+        },
+      ],
+      "worker-1"
+    );
+    expect(filled[0]?.member_id).toBe("worker-1");
+
+    const appended = assignCreatedWorkerToDraft(
+      [
+        {
+          member_id: "worker-1",
+          model: "",
+          prompt: "worker prompt",
+          skills: ["team-worker-executor"],
+          custom_skills: "",
+        },
+      ],
+      "worker-2"
+    );
+    expect(appended.map((item) => item.member_id)).toEqual(["worker-1", "worker-2"]);
+
+    const unchanged = assignCreatedWorkerToDraft(appended, "worker-1");
+    expect(unchanged).toEqual(appended);
   });
 });
