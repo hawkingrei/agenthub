@@ -61,6 +61,40 @@ async function mountWorkspaceWithDock(
   `);
 }
 
+async function mountAppShellWithDock(
+  page: import("@playwright/test").Page,
+  options: { collapsed?: boolean } = {}
+): Promise<void> {
+  const collapsed = options.collapsed ?? true;
+  const workspaceClass = collapsed ? "workspace collapsed" : "workspace";
+  const workspaceLeftClass = collapsed ? "workspace-left collapsed" : "workspace-left";
+  await page.setContent(`
+    <style>${styles}</style>
+    <div class="app">
+      <section class="${workspaceClass}" style="height: 100%;">
+        <div class="${workspaceLeftClass}">
+          <div class="agent-layout">
+            <h2>Agents</h2>
+          </div>
+        </div>
+        <div class="workspace-right" style="height: 100%;">
+          <div class="output-header"><h2>Output</h2></div>
+          <div class="output-body" style="overflow: auto;">
+            <div style="height: 1200px; background: linear-gradient(#f6f8fb, #e8edf6);"></div>
+          </div>
+          <div class="input docked">
+            <div class="input-row" role="group" aria-label="Input actions"></div>
+            <div class="input-editor-row">
+              <textarea rows="2">echo hello</textarea>
+              <button class="input-send-button">Send</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  `);
+}
+
 async function assertDockAnchoredToWorkspaceBottom(
   page: import("@playwright/test").Page,
   tolerance = 6
@@ -194,4 +228,15 @@ test("keeps docked input anchored through simulated keyboard open/close viewport
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await assertDockAnchoredToWorkspaceBottom(page);
+});
+
+test("keeps docked input flush with viewport bottom in app shell on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mountAppShellWithDock(page, { collapsed: true });
+  const dockBox = await page.locator(".input.docked").boundingBox();
+  expect(dockBox).not.toBeNull();
+  const dock = dockBox!;
+  expect(dock.y + dock.height).toBeGreaterThanOrEqual(844 - 3);
 });

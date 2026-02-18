@@ -257,6 +257,7 @@ section {
   gap: 6px;
   align-items: stretch;
   padding: 0;
+  margin-bottom: 0;
   flex: 1;
   min-height: 0;
 }
@@ -2404,11 +2405,10 @@ select:not([class*="mantine-"]):focus-visible {
   .app {
     padding: calc(2px + env(safe-area-inset-top, 0px)) 6px
       calc(
-        6px +
-          max(
-            0px,
-            calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
-          )
+        max(
+          0px,
+          calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
+        )
       );
   }
 
@@ -2445,11 +2445,10 @@ select:not([class*="mantine-"]):focus-visible {
   .app {
     padding: calc(2px + env(safe-area-inset-top, 0px)) 4px
       calc(
-        4px +
-          max(
-            0px,
-            calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
-          )
+        max(
+          0px,
+          calc(env(safe-area-inset-bottom, 0px) - var(--agenthub-keyboard-inset, 0px))
+        )
       );
   }
 
@@ -2508,10 +2507,14 @@ select:not([class*="mantine-"]):focus-visible {
     max-width: 46vw;
   }
 
-  .workspace-left,
-  .workspace-right {
+  .workspace-left {
     border-radius: 8px;
     padding: 4px;
+  }
+
+  .workspace > .workspace-right {
+    border-radius: 8px;
+    padding: 4px 4px 0;
   }
 
   .workspace.collapsed {
