@@ -47,6 +47,23 @@ scripts/setup_team_skills.sh --skills-file /tmp/agenthub-skills.json
 cat /tmp/agenthub-skills.json
 ```
 
+2026-02-18 local verification:
+
+```bash
+tmp_skills="/tmp/agenthub-team-skills-test.json"
+cat > "$tmp_skills" <<'EOF'
+{"skills":["/existing/skill-a.SKILL.md",{"path":"/Users/weizhenwang/devel/opensource/agenthub/skills/team/team-leader-orchestrator.SKILL.md"},"/existing/skill-b.SKILL.md"]}
+EOF
+scripts/setup_team_skills.sh --skills-file "$tmp_skills"
+jq -c '.skills' "$tmp_skills"
+```
+
+Observed:
+
+- existing entries remained intact;
+- leader skill path was not duplicated when already present as object entry;
+- worker and deliberation skill paths were appended.
+
 ## Follow-ups
 
 - Consider adding a startup check endpoint/UI hint for missing Team skill names

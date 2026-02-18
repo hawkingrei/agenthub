@@ -47,7 +47,7 @@
 - [ ] Verify ACP debug runtime metrics refresh cache hit/miss counters when conversation rendered window changes (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
 - [ ] Verify login shell E2E remains stable after render-isolation hook ordering fix (no blank page / no TDZ during initial App render) (see `docs/features/2026-02-16-web-render-isolation-memoization.md`).
 - [ ] Verify `Connection unavailable (gateway response). Reconnecting...` is hidden from `ErrorBanner` and only reflected by connection badge state transitions (`connecting`/`reconnecting`) (see `docs/features/2026-02-16-connection-unavailable-banner-filter.md`).
-- [ ] Verify `scripts/check_team_proto_codegen.sh` fails fast when `team.proto` generated symbols drift and when generated protobuf Rust files are accidentally tracked (see `docs/features/2026-02-15-team-proto-codegen-check.md`).
+- [x] Verify `scripts/check_team_proto_codegen.sh` fails fast when `team.proto` generated symbols drift and when generated protobuf Rust files are accidentally tracked (see `docs/features/2026-02-15-team-proto-codegen-check.md`).
 - [ ] Verify new `userdocs` information architecture and cross-page navigation links after content expansion (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify newly added `userdocs` practical pages (`configuration`, `review`, `security`, `daily checklist`) align with current UI labels and runtime behavior (see `docs/features/2026-02-15-userdocs-content-expansion.md`).
 - [ ] Verify `userdocs` build no longer reports broken `/` links and deprecation warnings after root-slug/config migration (see `docs/features/2026-02-15-userdocs-build-root-link-fix.md`).
@@ -102,7 +102,7 @@
 - [ ] Verify `codex_acp.default_mode` only applies to Codex and not Gemini/Kimi (see `docs/features/2026-02-10-acp-gemini-kimi.md`).
 - [ ] Verify MCP servers from `mcp.json` are injected for Codex/Gemini/Kimi ACP sessions (see `docs/features/2026-02-12-mcp-skills-injection.md`).
 - [ ] Verify skills from `skills.json` are injected into ACP prompts for Codex/Gemini/Kimi (see `docs/features/2026-02-12-mcp-skills-injection.md`).
-- [ ] Verify `scripts/setup_team_skills.sh` appends Team leader/worker skill entries into `~/.agenthub/skills.json` without dropping existing skills and that new ACP sessions receive both `team-leader-orchestrator` and `team-worker-executor` blocks (see `docs/features/2026-02-17-team-skills-bootstrap-script.md`).
+- [x] Verify `scripts/setup_team_skills.sh` appends Team leader/worker skill entries into `~/.agenthub/skills.json` without dropping existing skills and that new ACP sessions receive both `team-leader-orchestrator` and `team-worker-executor` blocks (see `docs/features/2026-02-17-team-skills-bootstrap-script.md`).
 - [x] Verify Codecov uploads Rust and web coverage artifacts (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Restore `npm ci` in workflows after updating `web/package-lock.json` (see `docs/features/2026-02-12-codecov-ci.md`).
 - [x] Verify A2A Agent Team phase-1 APIs and event ordering (see `docs/features/2026-02-12-a2a-agent-team-phase1.md`).

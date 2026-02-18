@@ -42,6 +42,7 @@ expectations and cause review/CI confusion.
 
 ```bash
 make proto-check
+scripts/check_team_proto_codegen.sh --check
 ```
 
 Expected outcomes:
@@ -49,6 +50,10 @@ Expected outcomes:
 - command succeeds when `team.proto` and codegen pipeline are healthy;
 - command fails when generated symbols are missing;
 - command fails when checked-in generated protobuf Rust files are detected.
+
+2026-02-18 local verification:
+
+- `scripts/check_team_proto_codegen.sh --check` passed and reported tracked file is up to date.
 
 ## Follow-ups
 
