@@ -74,6 +74,7 @@ describe("App runtime viewport effects", () => {
     }
     document.documentElement.style.removeProperty("--agenthub-vh");
     document.documentElement.style.removeProperty("--agenthub-vw");
+    document.documentElement.style.removeProperty("--agenthub-safe-bottom");
     vi.restoreAllMocks();
   });
 
@@ -91,6 +92,9 @@ describe("App runtime viewport effects", () => {
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vw")
     ).toBe("390px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-safe-bottom")
+    ).toBe("env(safe-area-inset-bottom, 0px)");
 
     mockViewport.height = 666;
     mockViewport.width = 360;
@@ -105,6 +109,36 @@ describe("App runtime viewport effects", () => {
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vw")
     ).toBe("360px");
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-safe-bottom")
+    ).toBe("env(safe-area-inset-bottom, 0px)");
+  });
+
+  it("suppresses bottom safe inset while keyboard overlap is large", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    mockViewport.height = 500;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-safe-bottom")
+    ).toBe("0px");
+
+    mockViewport.height = 680;
+    await act(async () => {
+      mockViewport.dispatchEvent(new Event("resize"));
+      await Promise.resolve();
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--agenthub-safe-bottom")
+    ).toBe("env(safe-area-inset-bottom, 0px)");
   });
 
   it("does not collapse runtime viewport vars when visual viewport reports tiny transient values", async () => {

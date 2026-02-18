@@ -7,6 +7,7 @@
   color: #161616;
   --agenthub-vh: 100vh;
   --agenthub-vw: 100vw;
+  --agenthub-safe-bottom: env(safe-area-inset-bottom, 0px);
   --agenthub-header-height: 56px;
   --agenthub-workspace-top: calc(
     var(--agenthub-header-height) + env(safe-area-inset-top, 0px)
@@ -256,6 +257,7 @@ section {
   gap: 6px;
   align-items: stretch;
   padding: 0;
+  margin-bottom: 0;
   flex: 1;
   min-height: 0;
 }
@@ -2255,7 +2257,7 @@ select:not([class*="mantine-"]):focus-visible {
 @media (max-width: 1024px) {
   .app {
     padding: calc(2px + env(safe-area-inset-top, 0px)) 6px
-      calc(6px + env(safe-area-inset-bottom, 0px));
+      calc(6px + var(--agenthub-safe-bottom, env(safe-area-inset-bottom, 0px)));
   }
 
   .workspace {
@@ -2289,7 +2291,8 @@ select:not([class*="mantine-"]):focus-visible {
 
 @media (max-width: 720px) {
   .app {
-    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 4px
+      calc(4px + var(--agenthub-safe-bottom, env(safe-area-inset-bottom, 0px)));
   }
 
   header {

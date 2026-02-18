@@ -99,6 +99,7 @@ const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
 const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
+const BOTTOM_SAFE_INSET_SUPPRESSION_THRESHOLD_PX = 120;
 
 type PendingPermissionJumpState = {
   toolCallId: string;
@@ -212,6 +213,21 @@ export function shouldSyncRuntimeViewportSize(
 ): boolean {
   if (!previous) return true;
   return previous.height !== next.height || previous.width !== next.width;
+}
+
+export function shouldSuppressRuntimeBottomSafeInset(
+  viewportHeight: number,
+  layoutHeight: number
+): boolean {
+  if (!Number.isFinite(viewportHeight) || !Number.isFinite(layoutHeight)) {
+    return false;
+  }
+  if (viewportHeight <= 0 || layoutHeight <= 0) {
+    return false;
+  }
+  return (
+    layoutHeight - viewportHeight >= BOTTOM_SAFE_INSET_SUPPRESSION_THRESHOLD_PX
+  );
 }
 
 export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
@@ -352,12 +368,24 @@ export function setupRuntimeViewportVarSync(
   const viewport = runtimeWindow.visualViewport;
   let rafId: number | null = null;
   let previousSize: RuntimeViewportSize | null = null;
+  let previousBottomSafeInset: string | null = null;
   const syncViewportSizeNow = () => {
     const nextSize = resolveRuntimeViewportSize(
       viewport,
       runtimeWindow.innerHeight,
       runtimeWindow.innerWidth
     );
+    const suppressBottomSafeInset = shouldSuppressRuntimeBottomSafeInset(
+      nextSize.height,
+      runtimeWindow.innerHeight
+    );
+    const nextBottomSafeInset = suppressBottomSafeInset
+      ? "0px"
+      : "env(safe-area-inset-bottom, 0px)";
+    if (previousBottomSafeInset !== nextBottomSafeInset) {
+      previousBottomSafeInset = nextBottomSafeInset;
+      styleTarget.setProperty("--agenthub-safe-bottom", nextBottomSafeInset);
+    }
     if (!shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
       return;
     }
