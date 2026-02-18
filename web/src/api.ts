@@ -552,10 +552,16 @@ export const api = {
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
-  sendInput: (token: string, id: string, input: string, message_id?: string) =>
+  sendInput: (
+    token: string,
+    id: string,
+    input: string,
+    message_id?: string,
+    session_id?: string
+  ) =>
     apiFetch<{ status: string }>(`/api/agents/${id}/input`, token, {
       method: "POST",
-      body: JSON.stringify({ input, message_id }),
+      body: JSON.stringify({ input, message_id, session_id }),
     }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {

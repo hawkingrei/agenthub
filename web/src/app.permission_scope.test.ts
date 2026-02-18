@@ -7,6 +7,7 @@ import {
   decidePermissionJump,
   filterPermissionsForAgent,
   mergePendingPermissionCountMap,
+  parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
   resolveGlobalPermissionPollIntervalMs,
   resolveOutputHistoryKey,
@@ -760,5 +761,22 @@ describe("app helper decisions", () => {
     expect(scheduledCallbacks).toHaveLength(1);
     expect(clearSpy).not.toHaveBeenCalled();
     expect(pollState.timer).toBeNull();
+  });
+});
+
+describe("parseSendInputSessionMismatch", () => {
+  it("extracts expected/running session ids from conflict message", () => {
+    expect(
+      parseSendInputSessionMismatch(
+        "agent session mismatch: expected=session-old running=session-new"
+      )
+    ).toEqual({
+      expected: "session-old",
+      running: "session-new",
+    });
+  });
+
+  it("returns null for non-mismatch message", () => {
+    expect(parseSendInputSessionMismatch("agent not running")).toBeNull();
   });
 });

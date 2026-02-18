@@ -65,6 +65,7 @@ pub struct SetCodeModeRequest {
 pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -225,10 +226,25 @@ async fn send_input(
     Json(payload): Json<SendInputRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    state
+    match state
         .agents
-        .send_input(&agent_id, &payload.input, payload.message_id.as_deref())
-        .await?;
+        .send_input(
+            &agent_id,
+            &payload.input,
+            payload.message_id.as_deref(),
+            payload.session_id.as_deref(),
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(err) => {
+            let message = err.to_string();
+            if message.contains("agent session mismatch:") {
+                return Err(ApiError::conflict(&message));
+            }
+            return Err(err.into());
+        }
+    }
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
@@ -1305,6 +1321,94 @@ mod tests {
         );
 
         remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn send_input_rejects_stale_session_id_with_conflict() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir = std::env::temp_dir().join(format!("agenthub-send-input-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "send-input-session-guard",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start agent");
+        assert_eq!(start_resp.status(), StatusCode::OK);
+        let started = decode_json_body(start_resp).await;
+        let running_session_id = started["session_id"]
+            .as_str()
+            .expect("running session id")
+            .to_string();
+
+        let input_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/input"),
+                Some(&token),
+                Some(json!({
+                    "input": "hello",
+                    "message_id": "msg-1",
+                    "session_id": format!("{running_session_id}-stale")
+                })),
+            ))
+            .await
+            .expect("send input");
+        assert_eq!(input_resp.status(), StatusCode::CONFLICT);
+        let conflict_body = decode_text_body(input_resp).await;
+        assert!(
+            conflict_body.contains("agent session mismatch:"),
+            "unexpected conflict body: {conflict_body}"
+        );
+
+        let stop_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop agent");
+        assert_eq!(stop_resp.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&workdir);
     }
 
     #[tokio::test]

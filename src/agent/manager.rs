@@ -714,6 +714,7 @@ impl AgentManager {
                 OutputStream::Stdout,
                 stdout,
                 output_tx.clone(),
+                false,
             )
             .await;
         }
@@ -725,6 +726,7 @@ impl AgentManager {
                 OutputStream::Stderr,
                 stderr,
                 output_tx.clone(),
+                is_acp,
             )
             .await;
         }
@@ -862,12 +864,18 @@ impl AgentManager {
         agent_id: &str,
         input: &str,
         message_id: Option<&str>,
+        expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         let handle_snapshot = {
             let guard = self.inner.read().await;
             guard.get(agent_id).map(|handle| match &handle.input {
-                AgentInput::Stdin(stdin) => (Some(stdin.clone()), None, None, None),
+                AgentInput::Stdin(stdin) => (
+                    Some(stdin.clone()),
+                    None,
+                    None,
+                    Some(handle.session_id.clone()),
+                ),
                 AgentInput::Acp(acp) => (
                     None,
                     Some(acp.clone()),
@@ -904,6 +912,16 @@ impl AgentManager {
                 return Err(anyhow::anyhow!("agent not running"));
             }
         };
+        let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
+        if let Some(expected_session_id) = expected_session_id
+            && expected_session_id != session_id
+        {
+            anyhow::bail!(
+                "agent session mismatch: expected={} running={}",
+                expected_session_id,
+                session_id
+            );
+        }
 
         if let Some(stdin) = stdin {
             let mut stdin_guard = stdin.lock().await;
@@ -917,7 +935,6 @@ impl AgentManager {
 
         let acp = acp.ok_or_else(|| anyhow::anyhow!("agent not running"))?;
         let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
-        let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
 
         let seq = Uuid::now_v7().to_string();
         let message_id = message_id

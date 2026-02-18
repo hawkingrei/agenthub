@@ -1910,14 +1910,46 @@ export function App() {
           ? crypto.randomUUID()
           : `local-${Date.now()}`;
     }
+    const sendInputForSession = (sessionId: string | null) =>
+      api.sendInput(
+        token,
+        activeAgent,
+        text,
+        messageId ?? undefined,
+        sessionId ?? undefined
+      );
     try {
-      await api.sendInput(token, activeAgent, text, messageId ?? undefined);
+      await sendInputForSession(activeSessionId);
       setInputHistory((prev) => pushInputHistory(prev, text));
       setInputHistoryCursor(-1);
       inputHistoryDraftRef.current = "";
       setInput("");
     } catch (err) {
-      const msg = String(err || "websocket not connected");
+      const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
+      const mismatch = parseSendInputSessionMismatch(msg);
+      if (mismatch) {
+        const runningSessionId = mismatch.running;
+        setActiveSessionId(runningSessionId);
+        setAgentSessions((prev) => ({ ...prev, [activeAgent]: runningSessionId }));
+        await loadAgentEvents(activeAgent, runningSessionId);
+        try {
+          await sendInputForSession(runningSessionId);
+          setInputHistory((prev) => pushInputHistory(prev, text));
+          setInputHistoryCursor(-1);
+          inputHistoryDraftRef.current = "";
+          setInput("");
+          return;
+        } catch (retryErr) {
+          const retryMsg =
+            parseApiErrorMessage(retryErr) ??
+            String(retryErr || "websocket not connected");
+          setError(retryMsg);
+          if (retryMsg.includes(AGENT_NOT_RUNNING_ERROR)) {
+            await refreshAgents();
+          }
+          return;
+        }
+      }
       setError(msg);
       if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
         await refreshAgents();
@@ -1929,6 +1961,7 @@ export function App() {
     activeAgent,
     activeSessionId,
     acpConversation,
+    loadAgentEvents,
     refreshAgents,
   ]);
 
@@ -2566,6 +2599,19 @@ function parseApiErrorMessage(err: unknown): string | null {
     return raw;
   }
   return null;
+}
+
+export function parseSendInputSessionMismatch(
+  message: string
+): { expected: string; running: string } | null {
+  const match = message.match(
+    /agent session mismatch:\s*expected=([^\s]+)\s+running=([^\s]+)/
+  );
+  if (!match) return null;
+  const expected = match[1]?.trim();
+  const running = match[2]?.trim();
+  if (!expected || !running) return null;
+  return { expected, running };
 }
 
 function getNavigatorOnline(): boolean {

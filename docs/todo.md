@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify stale-session `send input` auto-recovery in real browser sessions: when frontend posts an outdated `session_id`, backend returns `409 conflict`, UI switches to running session, retries once, and message flow resumes without manual refresh (see `docs/features/2026-02-18-send-input-session-guard-and-acp-type-compat.md`).
+- [ ] Verify latest codex ACP event types (`plan`, `available_commands`, `current_mode`, `run_status`) are persisted/rendered as ACP stream (not stderr/system) for ACP agents while non-ACP agents keep stderr classification unchanged (see `docs/features/2026-02-18-send-input-session-guard-and-acp-type-compat.md`).
 - [x] Verify mobile/tablet expanded agents drawer exposes an in-panel `Hide agents` control and can be collapsed without tapping backdrop (see `docs/features/2026-02-17-mobile-agents-collapse-access.md`).
 - [x] Verify focused message textarea remains visible during mobile virtual-keyboard viewport transitions (resize/pan) and does not drop below visible area while typing (see `docs/features/2026-02-17-mobile-input-focus-visibility.md`).
 - [x] Verify conversation auto-stick keeps following bottom during live content growth when user has not intentionally scrolled up, and only detaches after meaningful upward movement (see `docs/features/2026-02-17-conversation-stickiness-hysteresis.md`).

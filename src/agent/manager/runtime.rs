@@ -190,6 +190,7 @@ impl AgentManager {
         stream: OutputStream,
         reader: R,
         output_tx: broadcast::Sender<AgentOutput>,
+        detect_acp_messages: bool,
     ) where
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
@@ -197,7 +198,7 @@ impl AgentManager {
         tokio::spawn(async move {
             let mut lines = BufReader::new(reader).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let is_acp = is_acp_message(&line);
+                let is_acp = detect_acp_messages && is_acp_message(&line);
                 let stream = if is_acp {
                     OutputStream::Acp
                 } else {
