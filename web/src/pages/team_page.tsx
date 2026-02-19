@@ -166,6 +166,7 @@ type TeamPageProps = {
   token: string;
   onLogout: () => void;
 };
+type TeamCreateEntryMode = "wizard" | "manual_spec";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
 export function TeamPage(props: TeamPageProps) {
@@ -789,6 +790,9 @@ export function TeamPage(props: TeamPageProps) {
   }, [createStageReadiness, createTeamStage]);
   const canEnterCreateStage = useCallback(
     (target: CreateTeamStage): boolean => {
+      if (useSpecOverride && target !== 0 && target !== 3) {
+        return false;
+      }
       if (target <= createTeamStage) {
         return true;
       }
@@ -800,7 +804,7 @@ export function TeamPage(props: TeamPageProps) {
       }
       return true;
     },
-    [createStageReadiness, createTeamStage]
+    [createStageReadiness, createTeamStage, useSpecOverride]
   );
   const questChecklist = useMemo(
     () => [
@@ -1387,17 +1391,38 @@ export function TeamPage(props: TeamPageProps) {
     };
   }, [busy, setCreateTeamStage, setShowCreateTeamModal, showCreateTeamModal]);
 
-  const openCreateTeamModal = () => {
-    setError(null);
-    setCreateTeamStage(0);
-    resetTeamDraft();
-    setShowCreateTeamModal(true);
-    setShowForgeAgentForm(false);
-    setForgeAgentWorktreeError(null);
-    void refreshAgents().catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  };
+  const openCreateTeamModal = useCallback(
+    (mode: TeamCreateEntryMode) => {
+      const isManualSpec = mode === "manual_spec";
+      setError(null);
+      setCreateTeamStage(0);
+      resetTeamDraft();
+      setUseSpecOverride(isManualSpec);
+      setShowCreateTeamModal(true);
+      setShowForgeAgentForm(false);
+      setForgeAgentWorktreeError(null);
+      void refreshAgents().catch((err) => {
+        setError(parseErrorMessage(err));
+      });
+    },
+    [
+      refreshAgents,
+      resetTeamDraft,
+      setCreateTeamStage,
+      setShowCreateTeamModal,
+      setShowForgeAgentForm,
+      setForgeAgentWorktreeError,
+      setUseSpecOverride,
+    ]
+  );
+
+  const openCreateTeamWizardModal = useCallback(() => {
+    openCreateTeamModal("wizard");
+  }, [openCreateTeamModal]);
+
+  const openCreateTeamManualModal = useCallback(() => {
+    openCreateTeamModal("manual_spec");
+  }, [openCreateTeamModal]);
 
   const closeCreateTeamModal = () => {
     setShowCreateTeamModal(false);
@@ -1528,7 +1553,12 @@ export function TeamPage(props: TeamPageProps) {
 
   const goToPrevCreateTeamStage = () => {
     setError(null);
-    setCreateTeamStage((prev) => clampCreateTeamStage(prev - 1));
+    setCreateTeamStage((prev) => {
+      if (useSpecOverride && prev === 3) {
+        return 0;
+      }
+      return clampCreateTeamStage(prev - 1);
+    });
   };
 
   const onCreateTeam = async () => {
@@ -2087,7 +2117,8 @@ export function TeamPage(props: TeamPageProps) {
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
-          onOpenCreateTeamModal={openCreateTeamModal}
+          onOpenCreateTeamWizard={openCreateTeamWizardModal}
+          onOpenCreateTeamManual={openCreateTeamManualModal}
           draftTeamName={newTeamName}
           leaderMemberId={leaderMemberId}
           configuredWorkerCount={configuredWorkerCount}
@@ -2385,9 +2416,14 @@ export function TeamPage(props: TeamPageProps) {
           >
             <div className="modal-head">
               <h3 id="team-create-title">Team Forge</h3>
-              <span className="badge">
-                Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
-              </span>
+              <div className="team-create-head-meta">
+                <span className="badge">
+                  Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
+                </span>
+                <span className="badge">
+                  {useSpecOverride ? "Manual Spec" : "Guided Wizard"}
+                </span>
+              </div>
             </div>
 
             <div className="team-create-progress">
@@ -2395,7 +2431,9 @@ export function TeamPage(props: TeamPageProps) {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
                 const isCompleted = stageIndex < createTeamStage;
-                const isLocked = !canEnterCreateStage(stageIndex);
+                const isManualSkipped =
+                  useSpecOverride && stageIndex !== 0 && stageIndex !== 3;
+                const isLocked = isManualSkipped || !canEnterCreateStage(stageIndex);
                 return (
                   <button
                     key={title}
@@ -2413,7 +2451,9 @@ export function TeamPage(props: TeamPageProps) {
                     aria-disabled={isLocked && !isActive && !isCompleted}
                     title={
                       isLocked && !isActive && !isCompleted
-                        ? "Complete previous stage requirements first"
+                        ? isManualSkipped
+                          ? "Manual spec mode skips this stage"
+                          : "Complete previous stage requirements first"
                         : undefined
                     }
                   >
@@ -2446,36 +2486,38 @@ export function TeamPage(props: TeamPageProps) {
                 ))}
               </div>
 
-              <div className="team-create-agent-entry">
-                <div className="team-create-agent-entry-head">
-                  <h4>Agent Forge</h4>
-                  <button
-                    onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
-                    disabled={!canForgeAgentsInStage || forgeAgentBusy}
-                    type="button"
-                  >
-                    {showForgeAgentForm ? "Hide" : "New Agent"}
-                  </button>
-                </div>
-                <p className="muted">
-                  Role tag follows the current stage. Leader stage creates leader agents, worker
-                  stage creates worker agents.
-                </p>
-                <div className="team-create-forge-agent-meta mono">
-                  <span>role_tag</span>
-                  <span>{forgeRoleTag ?? "-"}</span>
-                </div>
-                {!canForgeAgentsInStage && (
-                  <div className="team-create-stage-note">
-                    Agent Forge is available only in Leader Forge or Recruit Workers stage.
+              {createTeamStage !== 0 && (
+                <div className="team-create-agent-entry">
+                  <div className="team-create-agent-entry-head">
+                    <h4>Agent Forge</h4>
+                    <button
+                      onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
+                      disabled={!canForgeAgentsInStage || forgeAgentBusy}
+                      type="button"
+                    >
+                      {showForgeAgentForm ? "Hide" : "New Agent"}
+                    </button>
                   </div>
-                )}
-                {showForgeAgentForm && (
-                  <div className="team-create-stage-note">
-                    Agent create modal is open. Submit to create and auto-assign by role tag.
+                  <p className="muted">
+                    Role tag follows the current stage. Leader stage creates leader agents, worker
+                    stage creates worker agents.
+                  </p>
+                  <div className="team-create-forge-agent-meta mono">
+                    <span>role_tag</span>
+                    <span>{forgeRoleTag ?? "-"}</span>
                   </div>
-                )}
-              </div>
+                  {!canForgeAgentsInStage && (
+                    <div className="team-create-stage-note">
+                      Agent Forge is available only in Leader Forge or Recruit Workers stage.
+                    </div>
+                  )}
+                  {showForgeAgentForm && (
+                    <div className="team-create-stage-note">
+                      Agent create modal is open. Submit to create and auto-assign by role tag.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {createTeamStage === 0 && (
                 <div className="team-create-panel">
@@ -2486,27 +2528,11 @@ export function TeamPage(props: TeamPageProps) {
                       the workbench.
                     </p>
                   </div>
-                  <div className="team-create-mode-toggle">
-                    <label className="checkbox team-create-mode-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={useSpecOverride}
-                        onChange={(event) => setUseSpecOverride(event.target.checked)}
-                      />
-                      <span className="team-create-mode-copy">
-                        <span className="team-create-mode-title">Manual spec mode</span>
-                        <span className="team-create-mode-hint">
-                          Skip Leader/Workers wizard stages.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                  {useSpecOverride && (
-                    <p className="team-create-stage-note">
-                      Manual spec mode is enabled. Next step jumps directly to Launch Team where
-                      you can edit JSON spec.
-                    </p>
-                  )}
+                  <p className="team-create-stage-note">
+                    {useSpecOverride
+                      ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
+                      : "Guided Wizard entry selected. Continue to Leader Forge next."}
+                  </p>
                   {!isMissionBriefReady && (
                     <p className="team-create-stage-note">
                       Team name is required before entering the next stage.
@@ -2772,25 +2798,23 @@ export function TeamPage(props: TeamPageProps) {
                 <div className="team-create-panel">
                   <h4>Launch Team</h4>
                   <p className="muted">
-                    Final review before deployment. You can still override spec JSON manually.
+                    Final review before deployment.
                   </p>
                   <div className="teams-run-meta mono">
                     <span>team={newTeamName.trim() || "-"}</span>
                     <span>leader={leaderMemberId.trim() || "-"}</span>
                     <span>workers={configuredWorkerCount}</span>
                   </div>
-                  <p className="muted">
-                    Default workflow is generated automatically:
-                    `leader_plan` → `worker_*` → `leader_synthesize`.
-                  </p>
-                  <label className="checkbox">
-                    <input
-                      type="checkbox"
-                      checked={useSpecOverride}
-                      onChange={(event) => setUseSpecOverride(event.target.checked)}
-                    />
-                    Edit spec JSON manually
-                  </label>
+                  {useSpecOverride ? (
+                    <p className="muted">
+                      Manual Spec mode: edit full team spec JSON directly.
+                    </p>
+                  ) : (
+                    <p className="muted">
+                      Guided wizard generated this spec:
+                      `leader_plan` → `worker_*` → `leader_synthesize`.
+                    </p>
+                  )}
                   <textarea
                     className="mono"
                     rows={12}

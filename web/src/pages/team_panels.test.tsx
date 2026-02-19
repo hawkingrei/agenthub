@@ -223,7 +223,8 @@ describe("team panels interactions", () => {
 
   it("TeamSidebar renders summary and triggers refresh/create/select callbacks", () => {
     const onRefreshTeams = vi.fn();
-    const onOpenCreateTeamModal = vi.fn();
+    const onOpenCreateTeamWizard = vi.fn();
+    const onOpenCreateTeamManual = vi.fn();
     const onSelectTeam = vi.fn();
 
     act(() => {
@@ -231,7 +232,8 @@ describe("team panels interactions", () => {
         <TeamSidebar
           busy={null}
           onRefreshTeams={onRefreshTeams}
-          onOpenCreateTeamModal={onOpenCreateTeamModal}
+          onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+          onOpenCreateTeamManual={onOpenCreateTeamManual}
           draftTeamName="alpha"
           leaderMemberId="leader-agent"
           configuredWorkerCount={2}
@@ -254,11 +256,13 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByText(container, "Refresh"));
-    clickElement(findButtonByText(container, "Create Team"));
+    clickElement(findButtonByText(container, "Guided Wizard"));
+    clickElement(findButtonByText(container, "Manual Spec"));
     clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
-    expect(onOpenCreateTeamModal).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-1");
     expect(container.textContent).toContain("active=1 inactive=1 missing=0 total=2");
 
@@ -267,7 +271,8 @@ describe("team panels interactions", () => {
         <TeamSidebar
           busy={null}
           onRefreshTeams={() => {}}
-          onOpenCreateTeamModal={() => {}}
+          onOpenCreateTeamWizard={() => {}}
+          onOpenCreateTeamManual={() => {}}
           draftTeamName=""
           leaderMemberId=""
           configuredWorkerCount={0}

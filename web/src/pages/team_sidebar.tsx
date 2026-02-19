@@ -11,7 +11,8 @@ type TeamMemberSummary = {
 type TeamSidebarProps = {
   busy: string | null;
   onRefreshTeams: () => Promise<void> | void;
-  onOpenCreateTeamModal: () => void;
+  onOpenCreateTeamWizard: () => void;
+  onOpenCreateTeamManual: () => void;
   draftTeamName: string;
   leaderMemberId: string;
   configuredWorkerCount: number;
@@ -25,7 +26,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
   const {
     busy,
     onRefreshTeams,
-    onOpenCreateTeamModal,
+    onOpenCreateTeamWizard,
+    onOpenCreateTeamManual,
     draftTeamName,
     leaderMemberId,
     configuredWorkerCount,
@@ -59,8 +61,13 @@ export function TeamSidebar(props: TeamSidebarProps) {
 
       <div className="teams-form teams-create-launch">
         <h3>Team Forge</h3>
-        <p className="muted">Open the creation quest to set up Leader and Workers in stages.</p>
-        <button onClick={onOpenCreateTeamModal}>Create Team</button>
+        <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
+        <div className="teams-create-entry-actions">
+          <button onClick={onOpenCreateTeamWizard}>Guided Wizard</button>
+          <button className="ghost" onClick={onOpenCreateTeamManual}>
+            Manual Spec
+          </button>
+        </div>
         <div className="teams-create-launch-meta mono">
           <span>draft_team={draftTeamName.trim() || "-"}</span>
           <span>leader={leaderMemberId.trim() || "-"}</span>

@@ -309,8 +309,8 @@ test("team forge modal creates team with leader/worker presets", async ({
   await page.goto("/teams");
 
   await expect(page.getByRole("heading", { name: "AgentHub Teams" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Team" })).toBeVisible();
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await expect(page.getByRole("button", { name: "Guided Wizard" })).toBeVisible();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await expect(dialog).toBeVisible();
@@ -387,14 +387,10 @@ test("team forge manual spec mode skips leader/worker stages", async ({
   const fixture = await mockTeamPageApis(page);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Manual Spec" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("manual-spec-team");
-  await dialog
-    .getByLabel("Manual spec mode (skip Leader/Workers wizard stages)")
-    .check();
-
   await dialog.getByRole("button", { name: "Next Stage" }).click();
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
   await expect(dialog.getByText("Stage 4/4")).toBeVisible();
@@ -427,7 +423,7 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await mockTeamPageApis(page);
   await page.goto("/teams");
 
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("dup-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -517,7 +513,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
   fixture.agents.splice(0, fixture.agents.length);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("forge-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -785,16 +781,13 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   };
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Manual Spec" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("quant-alpha-desk");
   await dialog
     .getByPlaceholder("description (optional)")
     .fill("leader manages resources; workers optimize portfolio + crypto trading");
-  await dialog
-    .getByLabel("Manual spec mode (skip Leader/Workers wizard stages)")
-    .check();
   await dialog.getByRole("button", { name: "Next Stage" }).click();
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
 

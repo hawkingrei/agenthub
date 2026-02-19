@@ -2933,6 +2933,12 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0 0 4px;
 }
 
+.teams-create-entry-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .teams-create-launch-meta {
   display: grid;
   gap: 4px;
@@ -3234,6 +3240,12 @@ select:not([class*="mantine-"]):focus-visible {
 
 .team-create-panel h4 {
   margin: 0;
+}
+
+.team-create-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .team-create-mission-intro {
