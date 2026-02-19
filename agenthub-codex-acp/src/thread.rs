@@ -2868,8 +2868,7 @@ mod tests {
 
     use agent_client_protocol::TextContent;
     use codex_core::{
-        config::ConfigOverrides, models_manager::model_presets::all_model_presets,
-        protocol::AgentMessageEvent,
+        config::ConfigOverrides, protocol::AgentMessageEvent, test_support::all_model_presets,
     };
     use tokio::{
         sync::{Mutex, mpsc::UnboundedSender},
