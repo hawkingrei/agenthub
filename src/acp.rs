@@ -1,5 +1,6 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
+use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -15,6 +16,7 @@ pub struct AgenthubAcpEventSink {
     output_tx: broadcast::Sender<AgentOutput>,
     agent_id: String,
     session_id: String,
+    runtime_handle: Handle,
 }
 
 impl AgenthubAcpEventSink {
@@ -29,6 +31,7 @@ impl AgenthubAcpEventSink {
             output_tx,
             agent_id,
             session_id,
+            runtime_handle: Handle::current(),
         }
     }
 
@@ -46,25 +49,45 @@ impl AcpEventSink for AgenthubAcpEventSink {
         let seq = Uuid::now_v7().to_string();
         let ts = Utc::now().timestamp();
         let output_stream = Self::map_stream(stream);
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(&self.agent_id)
-        .bind(&self.session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&output_stream))
-        .bind(&message)
-        .execute(&self.db)
-        .await;
+        let db = self.db.clone();
+        let agent_id = self.agent_id.clone();
+        let session_id = self.session_id.clone();
+        let stream_name = stream_to_str(&output_stream).to_string();
+        let message_for_db = message.clone();
+        let seq_for_db = seq.clone();
+        let result = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(session_id)
+                .bind(seq_for_db)
+                .bind(ts)
+                .bind(stream_name)
+                .bind(message_for_db)
+                .execute(&db)
+                .await
+            })
+            .await;
         let result = match result {
-            Ok(result) => result,
-            Err(err) => {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => {
                 tracing::error!(
                     "acp emit_raw: failed to persist event: agent_id={} session_id={} error={}",
+                    self.agent_id,
+                    self.session_id,
+                    err
+                );
+                return;
+            }
+            Err(err) => {
+                tracing::error!(
+                    "acp emit_raw: db task join failed: agent_id={} session_id={} error={}",
                     self.agent_id,
                     self.session_id,
                     err

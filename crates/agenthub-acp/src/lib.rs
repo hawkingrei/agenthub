@@ -21,6 +21,7 @@ use chrono::Utc;
 use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
+use tokio::runtime::Handle;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use uuid::Uuid;
@@ -935,6 +936,7 @@ fn apply_tool_call_update_fields(obj: &mut Map<String, Value>, fields: &ToolCall
 pub struct AcpPermissionService {
     db: SqlitePool,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<RequestPermissionOutcome>>>>,
+    runtime_handle: Handle,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -975,6 +977,7 @@ impl AcpPermissionService {
         Self {
             db,
             pending: Arc::new(Mutex::new(HashMap::new())),
+            runtime_handle: Handle::current(),
         }
     }
 
@@ -993,25 +996,36 @@ impl AcpPermissionService {
         let options_json = serde_json::to_string(&options)?;
         let tool_call_json = serde_json::to_string(&args.tool_call)?;
         let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO acp_permission_requests (
-                id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
-                status, created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
-            "#,
-        )
-        .bind(&id)
-        .bind(agent_id)
-        .bind(agent_session_id)
-        .bind(args.session_id.to_string())
-        .bind(args.tool_call.tool_call_id.to_string())
-        .bind(options_json)
-        .bind(tool_call_json)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
+        let db = self.db.clone();
+        let id_for_db = id.clone();
+        let agent_id = agent_id.to_string();
+        let agent_session_id = agent_session_id.to_string();
+        let acp_session_id = args.session_id.to_string();
+        let tool_call_id = args.tool_call.tool_call_id.to_string();
+        self.runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO acp_permission_requests (
+                        id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                        status, created_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+                    "#,
+                )
+                .bind(id_for_db)
+                .bind(agent_id)
+                .bind(agent_session_id)
+                .bind(acp_session_id)
+                .bind(tool_call_id)
+                .bind(options_json)
+                .bind(tool_call_json)
+                .bind(now)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission create join failed: {err}"))??;
 
         let (tx, rx) = oneshot::channel();
         let mut pending = self.pending.lock().await;
@@ -1026,18 +1040,25 @@ impl AcpPermissionService {
         selected_option_id: Option<String>,
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            UPDATE acp_permission_requests
-            SET status = 'responded', selected_option_id = ?1, responded_at = ?2
-            WHERE id = ?3
-            "#,
-        )
-        .bind(selected_option_id)
-        .bind(now)
-        .bind(request_id)
-        .execute(&self.db)
-        .await?;
+        let db = self.db.clone();
+        let request_id_for_db = request_id.to_string();
+        self.runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE acp_permission_requests
+                    SET status = 'responded', selected_option_id = ?1, responded_at = ?2
+                    WHERE id = ?3
+                    "#,
+                )
+                .bind(selected_option_id)
+                .bind(now)
+                .bind(request_id_for_db)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission respond join failed: {err}"))??;
 
         let mut pending = self.pending.lock().await;
         if let Some(sender) = pending.remove(request_id) {
@@ -1058,18 +1079,25 @@ impl AcpPermissionService {
             }
             _ => None,
         };
-        sqlx::query(
-            r#"
-            UPDATE acp_permission_requests
-            SET status = 'timeout', selected_option_id = ?1, responded_at = ?2
-            WHERE id = ?3
-            "#,
-        )
-        .bind(selected_option_id)
-        .bind(now)
-        .bind(request_id)
-        .execute(&self.db)
-        .await?;
+        let db = self.db.clone();
+        let request_id_for_db = request_id.to_string();
+        self.runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE acp_permission_requests
+                    SET status = 'timeout', selected_option_id = ?1, responded_at = ?2
+                    WHERE id = ?3
+                    "#,
+                )
+                .bind(selected_option_id)
+                .bind(now)
+                .bind(request_id_for_db)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission timeout join failed: {err}"))??;
         let mut pending = self.pending.lock().await;
         pending.remove(request_id);
         Ok(())
@@ -1080,21 +1108,43 @@ impl AcpPermissionService {
         agent_id: &str,
         status: Option<&str>,
     ) -> anyhow::Result<Vec<AcpPermissionRecord>> {
-        let mut builder = sqlx::QueryBuilder::new(
-            r#"
-            SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
-                   status, selected_option_id, created_at, responded_at
-            FROM acp_permission_requests
-            WHERE agent_id = 
-            "#,
-        );
-        builder.push_bind(agent_id);
-        if let Some(status) = status {
-            builder.push(" AND status = ");
-            builder.push_bind(status);
-        }
-        builder.push(" ORDER BY created_at DESC");
-        let rows = builder.build().fetch_all(&self.db).await?;
+        let db = self.db.clone();
+        let agent_id = agent_id.to_string();
+        let status = status.map(str::to_string);
+        let rows = self
+            .runtime_handle
+            .spawn(async move {
+                if let Some(status) = status {
+                    sqlx::query(
+                        r#"
+                        SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                               status, selected_option_id, created_at, responded_at
+                        FROM acp_permission_requests
+                        WHERE agent_id = ?1 AND status = ?2
+                        ORDER BY created_at DESC
+                        "#,
+                    )
+                    .bind(agent_id)
+                    .bind(status)
+                    .fetch_all(&db)
+                    .await
+                } else {
+                    sqlx::query(
+                        r#"
+                        SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                               status, selected_option_id, created_at, responded_at
+                        FROM acp_permission_requests
+                        WHERE agent_id = ?1
+                        ORDER BY created_at DESC
+                        "#,
+                    )
+                    .bind(agent_id)
+                    .fetch_all(&db)
+                    .await
+                }
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission list join failed: {err}"))??;
 
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
