@@ -743,7 +743,7 @@ mod tests {
     use chrono::Utc;
     use sqlx::{Row, SqlitePool};
     use tokio::io::AsyncWriteExt;
-    use tokio::time::{Duration, sleep, timeout};
+    use tokio::time::{Duration, timeout};
     use uuid::Uuid;
 
     async fn insert_agent_and_session(db: &SqlitePool, suffix: &str) -> (String, String) {
@@ -785,41 +785,11 @@ mod tests {
         (agent_id, session_id)
     }
 
-    async fn wait_for_event_count(
-        db: &SqlitePool,
-        agent_id: &str,
-        session_id: &str,
-        expected: i64,
-    ) {
-        timeout(Duration::from_secs(2), async {
-            loop {
-                let count: i64 = sqlx::query_scalar(
-                    r#"
-                    SELECT COUNT(*)
-                    FROM agent_events
-                    WHERE agent_id = ?1 AND session_id = ?2
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(session_id)
-                .fetch_one(db)
-                .await
-                .expect("count events");
-                if count >= expected {
-                    return;
-                }
-                sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .expect("timed out waiting for output reader to persist events");
-    }
-
     async fn collect_streams_for_lines(detect_acp_messages: bool, lines: &[&str]) -> Vec<String> {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, session_id) = insert_agent_and_session(&state.db, "stream-classify").await;
         let (mut writer, reader) = tokio::io::duplex(4096);
-        let (output_tx, _output_rx) = tokio::sync::broadcast::channel(32);
+        let (output_tx, mut output_rx) = tokio::sync::broadcast::channel((lines.len() + 1).max(1));
 
         state
             .agents
@@ -840,7 +810,12 @@ mod tests {
         writer.shutdown().await.expect("shutdown writer");
         drop(writer);
 
-        wait_for_event_count(&state.db, &agent_id, &session_id, lines.len() as i64).await;
+        for _ in 0..lines.len() {
+            timeout(Duration::from_secs(2), output_rx.recv())
+                .await
+                .expect("timed out waiting for output reader to broadcast event")
+                .expect("broadcast channel closed unexpectedly");
+        }
         sqlx::query(
             r#"
             SELECT stream
