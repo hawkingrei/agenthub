@@ -7,6 +7,7 @@ After syncing `agenthub-codex-acp` with newer `codex` dependencies, Linux builds
 - `failed to compile vendored bubblewrap for Linux target`
 - `libcap not available via pkg-config`
 - missing `libcap.pc`
+- Bazel runfiles error: `expected vendored bubblewrap .../../vendor/bubblewrap, but it was not found`
 
 The dependency chain remains intentionally unchanged (`codex-arg0` + `codex-mcp-server` kept), so the fix is in CI runtime environment instead of Cargo dependency pruning.
 
@@ -17,13 +18,15 @@ The dependency chain remains intentionally unchanged (`codex-arg0` + `codex-mcp-
   - `.github/workflows/clippy.yml`
   - `.github/workflows/bazel.yml`
 - Add `libcap-dev` to existing apt install commands.
+- In `.github/workflows/bazel.yml`, resolve codex git `rev` from `Cargo.lock`, fetch that exact upstream commit, and export `CODEX_BWRAP_SOURCE_DIR` to `codex-rs/vendor/bubblewrap` before `bazel build/test`.
 - Keep `agenthub-codex-acp` dependency graph and `arg0_dispatch_or_else` entry behavior unchanged.
 
 ## Key Decisions
 
 - Preserve upstream-compatible `codex` entrypoint behavior (`arg0_dispatch_or_else`) and helper binary dispatch semantics.
 - Solve build breakage via environment provisioning (`libcap-dev`) because the failure is from missing system `pkg-config` metadata (`libcap.pc`) on CI runners.
-- Apply consistently across Rust/Cargo and Bazel workflows to avoid split-brain CI behavior.
+- Solve Bazel-only runfiles layout mismatch by explicitly supplying `CODEX_BWRAP_SOURCE_DIR` from a checked-out upstream codex source tree at the lockfile-pinned revision.
+- Apply fixes consistently across Rust/Cargo and Bazel workflows to avoid split-brain CI behavior.
 
 ## Validation
 
