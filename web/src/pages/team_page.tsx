@@ -15,7 +15,6 @@ import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
   getAgentPreset,
-  isAgentPresetId,
   listAgentPresets,
   type AgentPresetId,
 } from "../agent_presets";
@@ -24,8 +23,15 @@ import {
   StatusBadge,
   resolveTeamRunStatusTone,
 } from "../components/status_badge";
+import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import {
+  normalizeRuntimeWorktreeRoot,
+  normalizeWorkdirInput,
+  resolveWorkdirForModeChange,
+  resolveWorkdirForModalOpen,
+} from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
@@ -121,7 +127,11 @@ type TeamCreateState = TeamCreateDraftState & {
   forgeAgentName: string;
   forgeAgentWorkdir: string;
   forgeAgentPresetId: AgentPresetId;
+  forgeAgentWorktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
+  forgeAgentWorktreeRepo: string;
+  forgeAgentWorktreeRef: string;
   forgeAgentCodeMode: boolean;
+  forgeAgentWorktreeError: string | null;
   forgeAgentBusy: boolean;
 };
 type TeamCreateAction = { type: "patch"; patch: Partial<TeamCreateState> };
@@ -130,6 +140,7 @@ const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
 const TEAM_RUN_PAGE_LIMIT = 50;
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
+const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
   statusFilter: "all",
   hasMore: false,
@@ -625,7 +636,11 @@ function createInitialTeamCreateState(): TeamCreateState {
     forgeAgentName: "",
     forgeAgentWorkdir: "",
     forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+    forgeAgentWorktreeMode: "use_existing",
+    forgeAgentWorktreeRepo: "",
+    forgeAgentWorktreeRef: "",
     forgeAgentCodeMode: true,
+    forgeAgentWorktreeError: null,
     forgeAgentBusy: false,
   };
 }
@@ -768,6 +783,28 @@ function parseErrorMessage(err: unknown): string {
     }
   }
   return String(err);
+}
+
+function formatTeamForgeWorktreeError(err: unknown): string | null {
+  const msg = parseErrorMessage(err);
+  const lower = msg.toLowerCase();
+  if (!lower.includes("worktree") && !lower.includes("workdir")) return null;
+  if (lower.includes("workdir not allowed")) {
+    return "Workdir not allowed. Add the path to Safe Paths before creating this agent.";
+  }
+  if (lower.includes("worktree repo is required") || lower.includes("worktree_repo required")) {
+    return "Worktree repo is required for the selected mode.";
+  }
+  if (lower.includes("worktree does not exist")) {
+    return "Worktree does not exist. Use Create Worktree or choose an existing workdir.";
+  }
+  if (lower.includes("workdir is not empty")) {
+    return "Workdir is not empty. Choose an empty directory for Create Worktree.";
+  }
+  if (lower.includes("git worktree add failed")) {
+    return `Git worktree add failed. ${msg}`;
+  }
+  return msg;
 }
 
 function parseRequiredJson(raw: string, field: string): unknown {
@@ -1292,9 +1329,16 @@ export function TeamPage(props: TeamPageProps) {
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
   const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
+  const forgeAgentWorktreeMode = teamCreateState.forgeAgentWorktreeMode;
+  const forgeAgentWorktreeRepo = teamCreateState.forgeAgentWorktreeRepo;
+  const forgeAgentWorktreeRef = teamCreateState.forgeAgentWorktreeRef;
   const forgeAgentCodeMode = teamCreateState.forgeAgentCodeMode;
+  const forgeAgentWorktreeError = teamCreateState.forgeAgentWorktreeError;
   const forgeAgentBusy = teamCreateState.forgeAgentBusy;
   const teamForgeAgentIds = teamCreateState.teamForgeAgentIds;
+  const [forgeDefaultWorktreeRoot, setForgeDefaultWorktreeRoot] = useState(
+    DEFAULT_WORKTREE_ROOT
+  );
   const patchTeamCreate = useCallback((patch: Partial<TeamCreateState>) => {
     dispatchTeamCreate({ type: "patch", patch });
   }, []);
@@ -1362,15 +1406,33 @@ export function TeamPage(props: TeamPageProps) {
     [patchTeamCreate]
   );
   const setForgeAgentWorkdir = useCallback(
-    (next: string) => patchTeamCreate({ forgeAgentWorkdir: next }),
-    [patchTeamCreate]
+    (next: string | ((prev: string) => string)) =>
+      patchTeamCreate({ forgeAgentWorkdir: resolveUpdater(forgeAgentWorkdir, next) }),
+    [forgeAgentWorkdir, patchTeamCreate]
   );
   const setForgeAgentPresetId = useCallback(
     (next: AgentPresetId) => patchTeamCreate({ forgeAgentPresetId: next }),
     [patchTeamCreate]
   );
+  const setForgeAgentWorktreeMode = useCallback(
+    (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
+      patchTeamCreate({ forgeAgentWorktreeMode: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeRepo = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentWorktreeRepo: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeRef = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentWorktreeRef: next }),
+    [patchTeamCreate]
+  );
   const setForgeAgentCodeMode = useCallback(
     (next: boolean) => patchTeamCreate({ forgeAgentCodeMode: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeError = useCallback(
+    (next: string | null) => patchTeamCreate({ forgeAgentWorktreeError: next }),
     [patchTeamCreate]
   );
   const setForgeAgentBusy = useCallback(
@@ -1381,6 +1443,20 @@ export function TeamPage(props: TeamPageProps) {
     (next: string[] | ((prev: string[]) => string[])) =>
       patchTeamCreate({ teamForgeAgentIds: resolveUpdater(teamForgeAgentIds, next) }),
     [patchTeamCreate, teamForgeAgentIds]
+  );
+  const handleForgeWorktreeModeChange = useCallback(
+    (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
+      setForgeAgentWorktreeMode(nextMode);
+      setForgeAgentWorkdir((prev) =>
+        resolveWorkdirForModeChange(
+          prev,
+          nextMode,
+          forgeDefaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    },
+    [forgeDefaultWorktreeRoot, setForgeAgentWorkdir, setForgeAgentWorktreeMode]
   );
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
@@ -1704,13 +1780,14 @@ export function TeamPage(props: TeamPageProps) {
   );
   const isLeaderForgeReady = useMemo(
     () =>
+      useSpecOverride ||
       leaderMemberId.trim().length > 0 &&
       teamForgeAgents.some((agent) => agent.id === leaderMemberId),
-    [leaderMemberId, teamForgeAgents]
+    [leaderMemberId, teamForgeAgents, useSpecOverride]
   );
   const isRecruitWorkersReady = useMemo(
-    () => !hasDuplicateMembers,
-    [hasDuplicateMembers]
+    () => useSpecOverride || !hasDuplicateMembers,
+    [hasDuplicateMembers, useSpecOverride]
   );
   const createStageReadiness = useMemo(
     () =>
@@ -1766,12 +1843,16 @@ export function TeamPage(props: TeamPageProps) {
       },
       {
         key: "leader",
-        label: "Leader selected",
+        label: useSpecOverride
+          ? "Leader/worker forge skipped (manual spec mode)"
+          : "Leader selected",
         ready: isLeaderForgeReady,
       },
       {
         key: "party",
-        label: hasDuplicateMembers
+        label: useSpecOverride
+          ? "Member assignments provided in manual spec JSON"
+          : hasDuplicateMembers
           ? "Resolve duplicate member assignments"
           : "Party assignments are unique",
         ready: isRecruitWorkersReady,
@@ -1793,18 +1874,6 @@ export function TeamPage(props: TeamPageProps) {
   const leaderModelOptions = useMemo(
     () => resolveTeamModelOptions(leaderModel),
     [leaderModel]
-  );
-  const forgeAgentPresetOptions = useMemo(
-    () =>
-      listAgentPresets().map((preset) => ({
-        value: preset.id,
-        label: preset.label,
-      })),
-    []
-  );
-  const forgeAgentPreset = useMemo(
-    () => getAgentPreset(forgeAgentPresetId),
-    [forgeAgentPresetId]
   );
   const leaderForgeAgentOptions = useMemo(
     () =>
@@ -1844,6 +1913,17 @@ export function TeamPage(props: TeamPageProps) {
       useSpecOverride: initial.useSpecOverride,
       newTeamSpec: initial.newTeamSpec,
       teamForgeAgentIds: initial.teamForgeAgentIds,
+      forgeAgentBindTarget: "none",
+      showForgeAgentForm: false,
+      forgeAgentName: "",
+      forgeAgentWorkdir: "",
+      forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+      forgeAgentWorktreeMode: "use_existing",
+      forgeAgentWorktreeRepo: "",
+      forgeAgentWorktreeRef: "",
+      forgeAgentCodeMode: true,
+      forgeAgentWorktreeError: null,
+      forgeAgentBusy: false,
     });
   }, [patchTeamCreate]);
 
@@ -2059,6 +2139,20 @@ export function TeamPage(props: TeamPageProps) {
     conversationKey,
     conversationLatestMessageId,
     markConversationSeen,
+    setChatStickToBottom,
+  ]);
+
+  const onJumpConversationToBottom = useCallback(() => {
+    setChatStickToBottom(true);
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+      markConversationSeen(conversationKey, conversationLatestMessageId);
+    });
+  }, [
+    conversationKey,
+    conversationLatestMessageId,
+    markConversationSeen,
+    scrollConversationToBottom,
     setChatStickToBottom,
   ]);
 
@@ -2286,6 +2380,23 @@ export function TeamPage(props: TeamPageProps) {
   }, [loadMemberEvents]);
 
   useEffect(() => {
+    if (!props.token) {
+      setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      return;
+    }
+    api
+      .getRuntimeDefaults(props.token)
+      .then((defaults) => {
+        const root = normalizeRuntimeWorktreeRoot(
+          defaults.default_worktree_root,
+          DEFAULT_WORKTREE_ROOT
+        );
+        setForgeDefaultWorktreeRoot(root);
+      })
+      .catch(() => undefined);
+  }, [props.token]);
+
+  useEffect(() => {
     if (!showCreateTeamModal) return;
     if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
       return;
@@ -2315,6 +2426,7 @@ export function TeamPage(props: TeamPageProps) {
     resetTeamDraft();
     setShowCreateTeamModal(true);
     setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
     void refreshAgents().catch((err) => {
       setError(parseErrorMessage(err));
     });
@@ -2324,10 +2436,12 @@ export function TeamPage(props: TeamPageProps) {
     setShowCreateTeamModal(false);
     setCreateTeamStage(0);
     setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
   };
 
   const openForgeAgentForm = () => {
     setError(null);
+    setForgeAgentWorktreeError(null);
     setShowForgeAgentForm(true);
     const target: TeamForgeBindTarget =
       createTeamStage === 1 ? "leader" : createTeamStage === 2 ? "worker" : "none";
@@ -2341,7 +2455,17 @@ export function TeamPage(props: TeamPageProps) {
           ? `${prefix}-worker-${Math.max(1, workers.length + 1)}`
           : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
     setForgeAgentName(defaultName);
-    setForgeAgentWorkdir("");
+    setForgeAgentWorktreeMode("use_existing");
+    setForgeAgentWorkdir((prev) =>
+      resolveWorkdirForModalOpen(
+        prev,
+        "use_existing",
+        forgeDefaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      )
+    );
+    setForgeAgentWorktreeRepo("");
+    setForgeAgentWorktreeRef("");
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
     setForgeAgentCodeMode(true);
   };
@@ -2349,28 +2473,41 @@ export function TeamPage(props: TeamPageProps) {
   const closeForgeAgentForm = () => {
     if (forgeAgentBusy) return;
     setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
   };
 
   const onCreateForgeAgent = async () => {
     if (forgeAgentBusy) return;
     const name = forgeAgentName.trim() || "agent";
-    const workdir = forgeAgentWorkdir.trim();
-    if (!workdir) {
+    const workdir = normalizeWorkdirInput(forgeAgentWorkdir);
+    const normalizedRoot = normalizeWorkdirInput(forgeDefaultWorktreeRoot);
+    const workdirPayload =
+      forgeAgentWorktreeMode === "create_worktree" &&
+      normalizedRoot &&
+      workdir === normalizedRoot
+        ? ""
+        : workdir;
+    if (!workdirPayload && forgeAgentWorktreeMode !== "create_worktree") {
       setError("Forge agent workdir is required");
+      return;
+    }
+    if (forgeAgentWorktreeMode !== "use_existing" && !forgeAgentWorktreeRepo.trim()) {
+      setError("Worktree repo is required");
       return;
     }
     setForgeAgentBusy(true);
     setError(null);
+    setForgeAgentWorktreeError(null);
     try {
       const preset = getAgentPreset(forgeAgentPresetId);
       const created = await api.createAgent(props.token, {
         name,
-        workdir,
+        workdir: workdirPayload,
         command: preset.command,
         args: preset.args.slice(),
-        worktree_mode: "use_existing",
-        worktree_repo: null,
-        worktree_ref: null,
+        worktree_mode: forgeAgentWorktreeMode,
+        worktree_repo: forgeAgentWorktreeRepo.trim() || null,
+        worktree_ref: forgeAgentWorktreeRef.trim() || null,
         code_mode: forgeAgentCodeMode,
       });
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
@@ -2383,8 +2520,11 @@ export function TeamPage(props: TeamPageProps) {
         setWorkers((prev) => assignCreatedWorkerToDraft(prev, created.id));
       }
       setShowForgeAgentForm(false);
+      setForgeAgentWorktreeError(null);
     } catch (err) {
-      setError(parseErrorMessage(err));
+      const hint = formatTeamForgeWorktreeError(err);
+      setForgeAgentWorktreeError(hint);
+      setError(hint ?? parseErrorMessage(err));
     } finally {
       setForgeAgentBusy(false);
     }
@@ -2405,7 +2545,12 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     setError(null);
-    setCreateTeamStage((prev) => clampCreateTeamStage(prev + 1));
+    setCreateTeamStage((prev) => {
+      if (useSpecOverride && prev === 0) {
+        return 3;
+      }
+      return clampCreateTeamStage(prev + 1);
+    });
   };
 
   const goToPrevCreateTeamStage = () => {
@@ -3181,6 +3326,7 @@ export function TeamPage(props: TeamPageProps) {
                       chatStickToBottom={chatStickToBottom}
                       chatMessagesRef={chatMessagesRef}
                       onConversationScroll={onConversationScroll}
+                      onJumpToBottom={onJumpConversationToBottom}
                       conversationMessages={conversationMessages}
                       toPrettyJson={toPrettyJson}
                       formatTs={formatTs}
@@ -3342,86 +3488,23 @@ export function TeamPage(props: TeamPageProps) {
                   Use one unified entry to create an agent, then optionally bind it to leader or
                   workers.
                 </p>
+                <div className="team-create-forge-agent-meta mono">
+                  <span>bind_target</span>
+                  <select
+                    value={forgeAgentBindTarget}
+                    onChange={(event) =>
+                      setForgeAgentBindTarget(event.target.value as TeamForgeBindTarget)
+                    }
+                    disabled={forgeAgentBusy}
+                  >
+                    <option value="none">none</option>
+                    <option value="leader">leader</option>
+                    <option value="worker">worker</option>
+                  </select>
+                </div>
                 {showForgeAgentForm && (
-                  <div className="team-create-forge-agent">
-                    <div className="team-create-forge-agent-head">
-                      <strong>Create Agent</strong>
-                      <button
-                        onClick={closeForgeAgentForm}
-                        disabled={forgeAgentBusy}
-                        type="button"
-                      >
-                        Close
-                      </button>
-                    </div>
-                    <div className="team-create-forge-agent-grid">
-                      <input
-                        placeholder="agent name"
-                        value={forgeAgentName}
-                        onChange={(event) => setForgeAgentName(event.target.value)}
-                        disabled={forgeAgentBusy}
-                      />
-                      <input
-                        placeholder="workdir"
-                        value={forgeAgentWorkdir}
-                        onChange={(event) => setForgeAgentWorkdir(event.target.value)}
-                        disabled={forgeAgentBusy}
-                      />
-                      <select
-                        value={forgeAgentPresetId}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          if (isAgentPresetId(next)) {
-                            setForgeAgentPresetId(next);
-                          }
-                        }}
-                        disabled={forgeAgentBusy}
-                      >
-                        {forgeAgentPresetOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={forgeAgentBindTarget}
-                        onChange={(event) =>
-                          setForgeAgentBindTarget(event.target.value as TeamForgeBindTarget)
-                        }
-                        disabled={forgeAgentBusy}
-                      >
-                        <option value="none">Create only (no binding)</option>
-                        <option value="leader">Create and bind as leader</option>
-                        <option value="worker">Create and bind as worker</option>
-                      </select>
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={forgeAgentCodeMode}
-                          onChange={(event) => setForgeAgentCodeMode(event.target.checked)}
-                          disabled={forgeAgentBusy}
-                        />
-                        code_mode
-                      </label>
-                    </div>
-                    <div className="team-create-forge-agent-meta mono">
-                      <span>{`command=${forgeAgentPreset.command}`}</span>
-                      <span>{`args=${
-                        forgeAgentPreset.args.length > 0
-                          ? forgeAgentPreset.args.join(" ")
-                          : "-"
-                      }`}</span>
-                      <span>{`bind_target=${forgeAgentBindTarget}`}</span>
-                    </div>
-                    <div className="team-create-forge-agent-actions">
-                      <button
-                        onClick={onCreateForgeAgent}
-                        disabled={forgeAgentBusy}
-                        type="button"
-                      >
-                        {forgeAgentBusy ? "Creating..." : "Create Agent"}
-                      </button>
-                    </div>
+                  <div className="team-create-stage-note">
+                    Agent create modal is open. Complete fields there to forge and bind agent.
                   </div>
                 )}
               </div>
@@ -3433,6 +3516,20 @@ export function TeamPage(props: TeamPageProps) {
                     Pick a team name and description first. This is the party identity shown in
                     the workbench.
                   </p>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={useSpecOverride}
+                      onChange={(event) => setUseSpecOverride(event.target.checked)}
+                    />
+                    Manual spec mode (skip Leader/Workers wizard stages)
+                  </label>
+                  {useSpecOverride && (
+                    <p className="team-create-stage-note">
+                      Manual spec mode is enabled. Next step jumps directly to Launch Team where
+                      you can edit JSON spec.
+                    </p>
+                  )}
                   {!isMissionBriefReady && (
                     <p className="team-create-stage-note">
                       Team name is required before entering the next stage.
@@ -3772,6 +3869,30 @@ export function TeamPage(props: TeamPageProps) {
               )}
             </div>
           </div>
+          {showForgeAgentForm && (
+            <CreateAgentModal
+              agentName={forgeAgentName}
+              setAgentName={setForgeAgentName}
+              agentWorkdir={forgeAgentWorkdir}
+              setAgentWorkdir={setForgeAgentWorkdir}
+              agentPresetId={forgeAgentPresetId}
+              setAgentPresetId={setForgeAgentPresetId}
+              worktreeMode={forgeAgentWorktreeMode}
+              setWorktreeMode={handleForgeWorktreeModeChange}
+              worktreeRepo={forgeAgentWorktreeRepo}
+              setWorktreeRepo={setForgeAgentWorktreeRepo}
+              worktreeRef={forgeAgentWorktreeRef}
+              setWorktreeRef={setForgeAgentWorktreeRef}
+              codeMode={forgeAgentCodeMode}
+              setCodeMode={setForgeAgentCodeMode}
+              worktreeError={forgeAgentWorktreeError}
+              createBusy={forgeAgentBusy}
+              workdirPlaceholder={forgeDefaultWorktreeRoot}
+              withinPortal
+              onCreateAgent={onCreateForgeAgent}
+              onClose={closeForgeAgentForm}
+            />
+          )}
         </div>
       )}
     </div>

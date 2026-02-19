@@ -828,6 +828,7 @@ describe("team panels interactions", () => {
   it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {
     const onSelectMember = vi.fn();
     const onConversationScroll = vi.fn();
+    const onJumpToBottom = vi.fn();
     const onAckMessage = vi.fn();
     const onChatDraftChange = vi.fn();
     const onSendChatMessage = vi.fn();
@@ -872,6 +873,7 @@ describe("team panels interactions", () => {
           chatStickToBottom={true}
           chatMessagesRef={React.createRef<HTMLUListElement>()}
           onConversationScroll={onConversationScroll}
+          onJumpToBottom={onJumpToBottom}
           conversationMessages={[pendingMessage, deliveredMessage]}
           toPrettyJson={toPrettyJson}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -924,6 +926,7 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByText(container, "Ack"));
+    clickElement(findButtonByText(container, "Jump to bottom"));
 
     const chatDraft = required(
       container.querySelector('textarea[placeholder="Type a message to selected agent"]') as
@@ -1010,6 +1013,7 @@ describe("team panels interactions", () => {
 
     expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
+    expect(onJumpToBottom).toHaveBeenCalledTimes(1);
     expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
@@ -1041,6 +1045,7 @@ describe("team panels interactions", () => {
           chatStickToBottom={false}
           chatMessagesRef={React.createRef<HTMLUListElement>()}
           onConversationScroll={() => {}}
+          onJumpToBottom={() => {}}
           conversationMessages={[]}
           toPrettyJson={(value) => JSON.stringify(value)}
           formatTs={(ts) => String(ts)}

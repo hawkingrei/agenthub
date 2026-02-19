@@ -22,6 +22,7 @@ type TeamMailboxPanelProps = {
   chatStickToBottom: boolean;
   chatMessagesRef: React.RefObject<HTMLUListElement | null>;
   onConversationScroll: () => void;
+  onJumpToBottom: () => void;
   conversationMessages: TeamActorMessageRecord[];
   toPrettyJson: (value: unknown) => string;
   formatTs: (ts?: number | null) => string;
@@ -70,6 +71,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     chatStickToBottom,
     chatMessagesRef,
     onConversationScroll,
+    onJumpToBottom,
     conversationMessages,
     toPrettyJson,
     formatTs,
@@ -178,6 +180,15 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             </div>
             <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
             <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
+            <button
+              type="button"
+              className="ghost teams-chat-jump-bottom"
+              onClick={onJumpToBottom}
+              disabled={conversationMessages.length === 0}
+              title="Jump to latest message"
+            >
+              Jump to bottom
+            </button>
           </div>
           <ul
             className="teams-chat-messages"

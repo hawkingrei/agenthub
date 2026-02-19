@@ -3275,6 +3275,10 @@ select:not([class*="mantine-"]):focus-visible {
   font-size: 11px;
 }
 
+.team-create-forge-agent-meta select {
+  width: min(260px, 100%);
+}
+
 .team-create-forge-agent-actions {
   display: flex;
   justify-content: flex-end;
@@ -3479,6 +3483,12 @@ select:not([class*="mantine-"]):focus-visible {
   align-items: center;
 }
 
+.teams-chat-jump-bottom {
+  margin-left: auto;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
 .teams-chat-messages {
   max-height: 420px;
   overflow: auto;
@@ -3544,6 +3554,80 @@ select:not([class*="mantine-"]):focus-visible {
 
 .muted {
   color: #6f6f6f;
+}
+
+@media (max-width: 960px) {
+  .teams-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-sidebar,
+  .teams-main {
+    min-width: 0;
+  }
+
+  .teams-run-list-head .actions {
+    width: 100%;
+  }
+
+  .teams-run-list-head .actions select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .teams-run-meta {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .teams-step-grid,
+  .teams-message-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-chat-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-chat-members {
+    max-height: 220px;
+  }
+
+  .team-member-row-main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .team-member-row-meta {
+    grid-column: 1 / -1;
+  }
+
+  .team-member-workline {
+    text-align: left;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .teams-create-launch,
+  .teams-run-create,
+  .teams-run-list,
+  .teams-step-panel,
+  .teams-message-panel,
+  .teams-chat-panel,
+  .teams-chat-members {
+    padding: 8px;
+  }
+
+  .teams-event-list,
+  .teams-step-list,
+  .teams-message-list,
+  .teams-chat-messages {
+    max-height: 320px;
+  }
+
+  .team-item {
+    padding: 7px 9px;
+  }
 }
 
 @media (max-width: 600px) {

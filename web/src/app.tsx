@@ -531,9 +531,39 @@ export function schedulePermissionPollLoop(
       pollOnce,
       isCancelled,
       scheduleTimeout,
-      clearTimeoutFn
+    clearTimeoutFn
     );
   }, delay);
+}
+
+type InputDockJumpModeArgs = {
+  hasAcp: boolean;
+  showConversationJump: boolean;
+  jumpToConversationBottom: () => void;
+  showTerminalJump: boolean;
+  jumpToTerminalBottom: () => void;
+};
+
+export function resolveInputDockJumpMode({
+  hasAcp,
+  showConversationJump,
+  jumpToConversationBottom,
+  showTerminalJump,
+  jumpToTerminalBottom,
+}: InputDockJumpModeArgs): {
+  showConversationJump: boolean;
+  onJumpToBottom: () => void;
+} {
+  if (hasAcp) {
+    return {
+      showConversationJump,
+      onJumpToBottom: jumpToConversationBottom,
+    };
+  }
+  return {
+    showConversationJump: showTerminalJump,
+    onJumpToBottom: jumpToTerminalBottom,
+  };
 }
 
 export function App() {
@@ -629,6 +659,7 @@ export function App() {
   const lastSseActivityAtRef = useRef<number>(Date.now());
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminalStickToBottomRef = useRef(true);
+  const [terminalShowJump, setTerminalShowJump] = useState(false);
   const [eventMeta, setEventMeta] = useState<
     Record<
       string,
@@ -754,6 +785,14 @@ export function App() {
     const stick = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
     if (stick === terminalStickToBottomRef.current) return;
     terminalStickToBottomRef.current = stick;
+    setTerminalShowJump(!stick);
+  }, []);
+  const jumpToTerminalBottom = useCallback(() => {
+    const el = terminalRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    terminalStickToBottomRef.current = true;
+    setTerminalShowJump(false);
   }, []);
   const updateOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
@@ -1532,12 +1571,14 @@ export function App() {
     if (!el) return;
     if (terminalStickToBottomRef.current) {
       el.scrollTop = el.scrollHeight;
+      setTerminalShowJump(false);
       return;
     }
   }, [outputs, acpView.hasAcp]);
 
   useEffect(() => {
     terminalStickToBottomRef.current = true;
+    setTerminalShowJump(false);
   }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
@@ -2401,6 +2442,23 @@ export function App() {
     ]
   );
   const showInputDock = !(acpTab === "debug" && acpView.hasAcp);
+  const inputDockJumpMode = useMemo(
+    () =>
+      resolveInputDockJumpMode({
+        hasAcp: acpView.hasAcp,
+        showConversationJump: acpConversation.showConversationJump,
+        jumpToConversationBottom: acpConversation.jumpToConversationBottom,
+        showTerminalJump: terminalShowJump,
+        jumpToTerminalBottom,
+      }),
+    [
+      acpView.hasAcp,
+      acpConversation.showConversationJump,
+      acpConversation.jumpToConversationBottom,
+      terminalShowJump,
+      jumpToTerminalBottom,
+    ]
+  );
 
   if (location.pathname.startsWith("/join")) {
     return <JoinPage onComplete={(next) => setAuth(next)} />;
@@ -2573,8 +2631,8 @@ export function App() {
                 onInterrupt={onAcpCancel}
                 onNavigateHistory={onNavigateInputHistory}
                 onSelectHistoryCommand={onSelectInputHistory}
-                onJumpToBottom={acpConversation.jumpToConversationBottom}
-                showConversationJump={acpConversation.showConversationJump}
+                onJumpToBottom={inputDockJumpMode.onJumpToBottom}
+                showConversationJump={inputDockJumpMode.showConversationJump}
                 isComposingRef={isComposingRef}
               />
             )}
