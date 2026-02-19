@@ -2224,10 +2224,8 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = SubmissionState::Prompt(Box::new(PromptState::new(
-            self.thread.clone(),
-            response_tx,
-        )));
+        let state =
+            SubmissionState::Prompt(Box::new(PromptState::new(self.thread.clone(), response_tx)));
 
         self.submissions.insert(submission_id, state);
 
