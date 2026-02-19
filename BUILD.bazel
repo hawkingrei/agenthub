@@ -3,6 +3,15 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(
+    [
+        "skills/team/team-leader-orchestrator.SKILL.md",
+        "skills/team/team-worker-executor.SKILL.md",
+        "skills/team/team-deliberation-rules.SKILL.md",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 rust_library(
     name = "agenthub_lib",
     srcs = glob(
