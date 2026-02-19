@@ -82,6 +82,7 @@ import {
   upsertRun,
 } from "./team/page_helpers";
 import {
+  mergeRunPages,
   mergeTeamRunList,
   resolveRunStatusFilter,
   selectTeamPreviewEvents,
@@ -960,7 +961,7 @@ export function TeamPage(props: TeamPageProps) {
             mode,
             activeRunIdRef.current
           );
-          return sortRuns([...otherTeamRuns, ...merged]);
+          return mergeRunPages(otherTeamRuns, merged);
         });
         const hasMore = list.length >= TEAM_RUN_PAGE_LIMIT;
         const nextBeforeCreatedAt =
