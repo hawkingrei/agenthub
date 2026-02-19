@@ -1,5 +1,8 @@
 # TODO
 
+- [x] Verify Team page helper extraction keeps run/mailbox/member/state/create/page helper contracts stable after splitting into `web/src/pages/team/*` modules, while preserving existing `team_page.runs.test.ts` imports via `team_page.tsx` re-export (see `docs/features/2026-02-19-team-page-helper-modularization.md`).
+- [x] Verify Team create wizard removes manual `bind_target` for Agent Forge, derives `role_tag` from current stage (`Leader Forge` => leader, `Recruit Workers` => worker), and blocks forge action in Mission/Launch stages (see `docs/features/2026-02-19-team-forge-role-tag-no-bind.md`).
+- [x] Verify Team Forge-created agents are tagged with `source=team_forge` and hidden from `/api/agents` list while manual-created agents remain visible (see `docs/features/2026-02-19-agent-source-separation-team-forge.md`).
 - [ ] Verify Team runtime reuses agent `context` and `memory` state across runs without reusing agent process instances, and define upgrade path for stronger context/memory continuity controls (see `docs/features/2026-02-19-team-context-memory-reuse-strategy.md`).
 - [x] Verify Team quant full-flow E2E (create team with leader resource-control + portfolio worker + crypto-algo worker, then launch run) and keep existing Team page regressions green (see `docs/features/2026-02-19-team-quant-full-flow-e2e.md`).
 - [x] Verify Agents page terminal mode restores `Jump to bottom` visibility/behavior after scrolling up (non-ACP sessions) while preserving ACP jump behavior (see `docs/features/2026-02-19-agents-terminal-jump-bottom-restore.md`).

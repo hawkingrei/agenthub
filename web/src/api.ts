@@ -8,6 +8,7 @@ export type AgentConfig = {
   workdir: string;
   command: string;
   args: string[];
+  source?: "manual" | "team_forge";
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;

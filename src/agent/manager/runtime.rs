@@ -919,4 +919,64 @@ branch refs/heads/agent-a
         .await;
         assert_eq!(streams, vec!["stderr", "stderr"]);
     }
+
+    #[tokio::test]
+    async fn send_input_does_not_mark_running_session_exited_while_agent_is_starting() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "send-input-starting").await;
+
+        {
+            let mut starting = state.agents.starting.lock().await;
+            starting.insert(agent_id.clone());
+        }
+
+        let err = state
+            .agents
+            .send_input(&agent_id, "hello", None, None)
+            .await
+            .expect_err("send_input should fail without a running handle");
+        assert!(
+            err.to_string().contains("agent not running"),
+            "unexpected error: {err}"
+        );
+
+        let session_row = sqlx::query(
+            r#"
+            SELECT status, ended_at
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&session_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load session row");
+        assert_eq!(
+            session_row.get::<String, _>("status"),
+            "running",
+            "session should stay running during startup window"
+        );
+        assert!(
+            session_row.get::<Option<i64>, _>("ended_at").is_none(),
+            "session ended_at should stay NULL during startup window"
+        );
+
+        let agent_row = sqlx::query(
+            r#"
+            SELECT status
+            FROM agents
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load agent row");
+        assert_eq!(
+            agent_row.get::<String, _>("status"),
+            "running",
+            "agent should stay running during startup window"
+        );
+    }
 }

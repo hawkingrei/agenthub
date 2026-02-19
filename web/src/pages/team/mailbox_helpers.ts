@@ -1,0 +1,181 @@
+import { TeamActorMessageRecord } from "../../api";
+
+export type MailboxTemplateKey =
+  | "leader_task_assignment"
+  | "clarification_request"
+  | "clarification_response"
+  | "worker_done"
+  | "worker_blocked"
+  | "profile_patch_proposal";
+
+export type TeamMailboxChatActors = {
+  fromActorId: string;
+  toActorId: string;
+  inboxActorId: string;
+};
+
+export function resolveMailboxChatActors(
+  leaderMemberId: string | null | undefined,
+  memberIds: string[],
+  selectedMemberId: string
+): TeamMailboxChatActors {
+  if (memberIds.length === 0) {
+    return {
+      fromActorId: "",
+      toActorId: "",
+      inboxActorId: "",
+    };
+  }
+  const normalizedLeaderId = (leaderMemberId ?? "").trim();
+  const leaderId = normalizedLeaderId && memberIds.includes(normalizedLeaderId)
+    ? normalizedLeaderId
+    : memberIds[0] ?? "";
+  const normalizedSelectedId = selectedMemberId.trim();
+  const targetId = normalizedSelectedId && memberIds.includes(normalizedSelectedId)
+    ? normalizedSelectedId
+    : memberIds[0] ?? "";
+  return {
+    fromActorId: leaderId,
+    toActorId: targetId,
+    inboxActorId: targetId,
+  };
+}
+
+export function mergeMailboxMessages(
+  recentMessages: TeamActorMessageRecord[],
+  inboxMessages: TeamActorMessageRecord[]
+): TeamActorMessageRecord[] {
+  const byId = new Map<number, TeamActorMessageRecord>();
+  for (const message of [...recentMessages, ...inboxMessages]) {
+    byId.set(message.message_id, message);
+  }
+  return [...byId.values()].sort((a, b) => a.message_id - b.message_id);
+}
+
+export function selectMailboxConversation(
+  messages: TeamActorMessageRecord[],
+  actorA: string,
+  actorB: string
+): TeamActorMessageRecord[] {
+  const left = actorA.trim();
+  const right = actorB.trim();
+  if (!left || !right) {
+    return [];
+  }
+  return messages.filter(
+    (message) =>
+      (message.from_actor_id === left && message.to_actor_id === right) ||
+      (message.from_actor_id === right && message.to_actor_id === left)
+  );
+}
+
+export function buildMailboxChatPayload(text: string): {
+  type: "chat_message";
+  text: string;
+  source: "team_workbench";
+} {
+  return {
+    type: "chat_message",
+    text,
+    source: "team_workbench",
+  };
+}
+
+export function buildMailboxConversationKey(actorA: string, actorB: string): string {
+  const pair = [actorA.trim(), actorB.trim()].filter((value) => value.length > 0).sort();
+  if (pair.length < 2) {
+    return "";
+  }
+  return `${pair[0]}::${pair[1]}`;
+}
+
+export function resolveConversationMaxMessageId(
+  messages: TeamActorMessageRecord[]
+): number | null {
+  if (messages.length === 0) {
+    return null;
+  }
+  return messages.reduce(
+    (maxId, message) => (message.message_id > maxId ? message.message_id : maxId),
+    messages[0]?.message_id ?? 0
+  );
+}
+
+export function countUnreadConversationMessages(
+  messages: TeamActorMessageRecord[],
+  actorA: string,
+  actorB: string,
+  seenMessageId: number
+): number {
+  const left = actorA.trim();
+  const right = actorB.trim();
+  if (!left || !right) {
+    return 0;
+  }
+  return messages.filter((message) => {
+    if (message.message_id <= seenMessageId) {
+      return false;
+    }
+    const inConversation =
+      (message.from_actor_id === left && message.to_actor_id === right) ||
+      (message.from_actor_id === right && message.to_actor_id === left);
+    if (!inConversation) {
+      return false;
+    }
+    if (left === right) {
+      return true;
+    }
+    return message.to_actor_id === left;
+  }).length;
+}
+
+export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
+  switch (template) {
+    case "leader_task_assignment":
+      return {
+        type: "leader_task_assignment",
+        task: "Implement the requested change in a focused scope.",
+        acceptance: "All listed checks pass and artifacts are updated.",
+        deadline: "asap",
+      };
+    case "clarification_request":
+      return {
+        type: "clarification_request",
+        question: "Need one product decision before continuing.",
+        choices: ["option_a", "option_b"],
+        blocking_scope: "run",
+        context: {},
+      };
+    case "clarification_response":
+      return {
+        type: "clarification_response",
+        request_id: "fill_request_id",
+        answer: "option_a",
+        rationale: "Fits current constraints and priority.",
+      };
+    case "worker_done":
+      return {
+        type: "worker_status",
+        status: "done",
+        result: "Implemented scoped change and verified behavior.",
+        evidence: ["path/to/file:123", "test_name"],
+      };
+    case "worker_blocked":
+      return {
+        type: "worker_status",
+        status: "blocked",
+        result: "Blocked by missing requirement detail.",
+        evidence: ["blocking_input_missing"],
+        next_action: "Please provide target behavior for edge case X.",
+      };
+    case "profile_patch_proposal":
+      return {
+        type: "profile_patch_proposal",
+        target: "run",
+        prompt_append: "Add missing domain constraint and output contract.",
+        skills_add: ["team-leader-orchestrator"],
+      };
+    default:
+      return {};
+  }
+}

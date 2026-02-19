@@ -51,6 +51,8 @@ const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
+const AGENT_SOURCE_MANUAL: &str = "manual";
+const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -88,6 +90,18 @@ impl AgentManager {
     }
 
     pub async fn create_agent(&self, config: AgentConfig) -> anyhow::Result<AgentRecord> {
+        self.create_agent_with_source(config, AGENT_SOURCE_MANUAL)
+            .await
+    }
+
+    pub async fn create_agent_with_source(
+        &self,
+        config: AgentConfig,
+        source: &str,
+    ) -> anyhow::Result<AgentRecord> {
+        if source != AGENT_SOURCE_MANUAL && source != AGENT_SOURCE_TEAM_FORGE {
+            return Err(anyhow::anyhow!("invalid agent source: {source}"));
+        }
         let workdir = expand_tilde(&config.workdir);
         let worktree_repo = config.worktree_repo.as_deref().map(expand_tilde);
         self.ensure_safe_path(&workdir).await?;
@@ -96,39 +110,77 @@ impl AgentManager {
         let args_json = serde_json::to_string(&config.args)?;
         let status = AgentStatus::Created;
 
-        sqlx::query(
-            r#"
-            INSERT INTO agents (
-                id,
-                name,
-                workdir,
-                command,
-                args,
-                worktree_mode,
-                worktree_repo,
-                worktree_ref,
-                code_mode,
-                status,
-                created_at,
-                updated_at
+        if self.has_agents_source_column().await? {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id,
+                    name,
+                    workdir,
+                    command,
+                    args,
+                    worktree_mode,
+                    worktree_repo,
+                    worktree_ref,
+                    code_mode,
+                    source,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                "#,
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-            "#,
-        )
-        .bind(&id)
-        .bind(&config.name)
-        .bind(&workdir)
-        .bind(&config.command)
-        .bind(&args_json)
-        .bind(worktree_mode_to_str(&config.worktree_mode))
-        .bind(&worktree_repo)
-        .bind(&config.worktree_ref)
-        .bind(if config.code_mode { 1 } else { 0 })
-        .bind(status_to_str(&status))
-        .bind(now)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
+            .bind(&id)
+            .bind(&config.name)
+            .bind(&workdir)
+            .bind(&config.command)
+            .bind(&args_json)
+            .bind(worktree_mode_to_str(&config.worktree_mode))
+            .bind(&worktree_repo)
+            .bind(&config.worktree_ref)
+            .bind(if config.code_mode { 1 } else { 0 })
+            .bind(source)
+            .bind(status_to_str(&status))
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id,
+                    name,
+                    workdir,
+                    command,
+                    args,
+                    worktree_mode,
+                    worktree_repo,
+                    worktree_ref,
+                    code_mode,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                "#,
+            )
+            .bind(&id)
+            .bind(&config.name)
+            .bind(&workdir)
+            .bind(&config.command)
+            .bind(&args_json)
+            .bind(worktree_mode_to_str(&config.worktree_mode))
+            .bind(&worktree_repo)
+            .bind(&config.worktree_ref)
+            .bind(if config.code_mode { 1 } else { 0 })
+            .bind(status_to_str(&status))
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        }
 
         Ok(AgentRecord {
             id,
@@ -148,15 +200,29 @@ impl AgentManager {
 
     pub async fn list_agents(&self) -> anyhow::Result<Vec<AgentRecord>> {
         let active_team_member_agents = self.list_active_team_member_agents().await?;
-        let rows = sqlx::query(
-            r#"
-            SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
-            FROM agents
-            ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let rows = if self.has_agents_source_column().await? {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+                FROM agents
+                WHERE COALESCE(source, 'manual') != ?1
+                ORDER BY created_at DESC
+                "#,
+            )
+            .bind(AGENT_SOURCE_TEAM_FORGE)
+            .fetch_all(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+                FROM agents
+                ORDER BY created_at DESC
+                "#,
+            )
+            .fetch_all(&self.db)
+            .await?
+        };
 
         let mut agents = Vec::with_capacity(rows.len());
         for row in rows {
@@ -183,6 +249,20 @@ impl AgentManager {
             });
         }
         Ok(agents)
+    }
+
+    async fn has_agents_source_column(&self) -> anyhow::Result<bool> {
+        let rows = sqlx::query(
+            r#"
+            SELECT name
+            FROM pragma_table_info('agents')
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .any(|row| row.get::<String, _>("name") == "source"))
     }
 
     async fn list_active_team_member_agents(&self) -> anyhow::Result<HashSet<String>> {
@@ -927,6 +1007,17 @@ impl AgentManager {
         let (stdin, acp, output_tx, session_id) = match handle_snapshot {
             Some(snapshot) => snapshot,
             None => {
+                let is_starting = {
+                    let starting = self.starting.lock().await;
+                    starting.contains(agent_id)
+                };
+                if is_starting {
+                    tracing::debug!(
+                        "send_input: skip exited fallback while agent is in startup window: {}",
+                        agent_id
+                    );
+                    return Err(anyhow::anyhow!("agent not running"));
+                }
                 let _ = sqlx::query(
                     r#"
                     UPDATE agent_sessions

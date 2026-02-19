@@ -3236,6 +3236,53 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0;
 }
 
+.team-create-mission-intro {
+  border: 1px solid #dbe4ef;
+  background: #f8fbff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.team-create-mission-intro p {
+  margin: 0;
+}
+
+.team-create-mode-toggle {
+  border: 1px solid #dbe4ef;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.team-create-mode-checkbox {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.team-create-mode-checkbox input {
+  margin-top: 2px;
+}
+
+.team-create-mode-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.team-create-mode-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #233446;
+  line-height: 1.35;
+}
+
+.team-create-mode-hint {
+  font-size: 12px;
+  color: #5d6f82;
+  line-height: 1.45;
+}
+
 .team-create-stage-note {
   margin: 0;
   border-left: 3px solid #d59c2f;
