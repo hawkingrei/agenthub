@@ -123,6 +123,20 @@ function buildTeamRun(
   };
 }
 
+async function createForgeAgentFromModal(
+  page: import("@playwright/test").Page,
+  workdir: string
+): Promise<void> {
+  const forgeDialog = page
+    .locator(".mantine-Modal-content")
+    .filter({ hasText: "Create Agent" })
+    .last();
+  await expect(forgeDialog).toBeVisible();
+  await forgeDialog.getByLabel(/Workdir/).fill(workdir);
+  await forgeDialog.getByRole("button", { name: "Create Agent" }).click();
+  await expect(forgeDialog).toBeHidden();
+}
+
 async function mockTeamPageApis(
   page: import("@playwright/test").Page
 ): Promise<TeamPageFixture> {
@@ -295,8 +309,8 @@ test("team forge modal creates team with leader/worker presets", async ({
   await page.goto("/teams");
 
   await expect(page.getByRole("heading", { name: "AgentHub Teams" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Team" })).toBeVisible();
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await expect(page.getByRole("button", { name: "Guided Wizard" })).toBeVisible();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await expect(dialog).toBeVisible();
@@ -307,10 +321,7 @@ test("team forge modal creates team with leader/worker presets", async ({
   await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
   const leaderPanel = dialog.locator(".team-create-panel");
   await dialog.getByRole("button", { name: "New Agent" }).click();
-  const leaderForgeForm = dialog.locator(".team-create-forge-agent");
-  await expect(leaderForgeForm).toBeVisible();
-  await leaderForgeForm.getByPlaceholder("workdir").fill("/workspace/leader");
-  await leaderForgeForm.getByRole("button", { name: "Create Agent" }).click();
+  await createForgeAgentFromModal(page, "/workspace/leader");
   await expect(leaderPanel.locator("select").first()).toHaveValue(/agent-forge-/);
   await leaderPanel.locator("select").nth(1).selectOption("codex");
   await leaderPanel
@@ -321,11 +332,7 @@ test("team forge modal creates team with leader/worker presets", async ({
 
   await expect(dialog.getByRole("heading", { name: "Recruit Workers" })).toBeVisible();
   await dialog.getByRole("button", { name: "New Agent" }).click();
-  const workerForgeForm = dialog.locator(".team-create-forge-agent");
-  await expect(workerForgeForm).toBeVisible();
-  await workerForgeForm.getByPlaceholder("workdir").fill("/workspace/worker");
-  await workerForgeForm.locator("select").first().selectOption("gemini");
-  await workerForgeForm.getByRole("button", { name: "Create Agent" }).click();
+  await createForgeAgentFromModal(page, "/workspace/worker");
   const workerCard = dialog.locator(".teams-worker-card").first();
   await expect(workerCard.locator("select").first()).toHaveValue(/agent-forge-/);
   await workerCard.locator("select").nth(1).selectOption("gemini");
@@ -374,13 +381,49 @@ test("team forge modal creates team with leader/worker presets", async ({
   ).toBe(true);
 });
 
+test("team forge manual spec mode skips leader/worker stages", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "Manual Spec" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Team Forge" });
+  await dialog.getByPlaceholder("team name").fill("manual-spec-team");
+  await dialog.getByRole("button", { name: "Next Stage" }).click();
+  await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+  await expect(dialog.getByText("Stage 4/4")).toBeVisible();
+
+  const customSpec = {
+    spec_version: 1,
+    entrypoint: "leader_plan",
+    leader_member_id: "leader-manual",
+    members: [{ member_id: "leader-manual", role: "leader", model: "codex" }],
+    steps: [{ step_key: "leader_plan", member_id: "leader-manual", depends_on: [] }],
+  };
+
+  await dialog
+    .locator(".team-create-panel textarea")
+    .fill(JSON.stringify(customSpec, null, 2));
+  await dialog.getByRole("button", { name: "Create Team" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".team-item", { hasText: "manual-spec-team" })).toBeVisible();
+
+  const payload = fixture.getCreatePayload();
+  expect(payload).not.toBeNull();
+  const createdPayload = payload as CreateTeamPayload;
+  expect(createdPayload.name).toBe("manual-spec-team");
+  expect(createdPayload.spec).toEqual(customSpec);
+});
+
 test("team forge blocks stage advance when duplicate assignments exist", async ({
   page,
 }) => {
   await mockTeamPageApis(page);
   await page.goto("/teams");
 
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("dup-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -388,15 +431,27 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
   const leaderPanel = dialog.locator(".team-create-panel");
   await dialog.getByRole("button", { name: "New Agent" }).click();
-  const forgeForm = dialog.locator(".team-create-forge-agent");
-  await expect(forgeForm).toBeVisible();
-  await forgeForm.getByPlaceholder("workdir").fill("/workspace/dup");
-  await forgeForm.locator("select").nth(1).selectOption("worker");
-  await forgeForm.getByRole("button", { name: "Create Agent" }).click();
-  await leaderPanel.locator("select").first().selectOption({ index: 1 });
+  await createForgeAgentFromModal(page, "/workspace/dup-a");
+  await dialog.getByRole("button", { name: "New Agent" }).click();
+  await createForgeAgentFromModal(page, "/workspace/dup-b");
+  const leaderSelect = leaderPanel.locator("select").first();
+  await leaderSelect.selectOption({ index: 1 });
   await dialog.getByRole("button", { name: "Next Stage" }).click();
 
   await expect(dialog.getByRole("heading", { name: "Recruit Workers" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Add Worker" }).click();
+  const workerCard = dialog.locator(".teams-worker-card").first();
+  const workerSelect = workerCard.locator("select").first();
+  await workerSelect.selectOption({ index: 1 });
+  const workerMemberId = await workerSelect.inputValue();
+  await expect(dialog.getByText("Duplicate assignments detected:")).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Back" }).click();
+  await expect(dialog.getByRole("heading", { name: "Leader Forge" })).toBeVisible();
+  await leaderSelect.selectOption(workerMemberId);
+  await dialog.getByRole("button", { name: "Next Stage" }).click();
+  await expect(dialog.getByRole("heading", { name: "Recruit Workers" })).toBeVisible();
+
   await expect(dialog.getByText("Duplicate assignments detected:")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Next Stage" })).toBeDisabled();
   await dialog.getByRole("button", { name: "Resolve Duplicates" }).click();
@@ -407,6 +462,50 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
 });
 
+test("team page keeps single-column proportions on mobile viewport", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push({
+    id: "team-mobile",
+    name: "Team Mobile",
+    description: "mobile layout regression guard",
+    spec: {
+      leader_member_id: "agent-leader-1",
+      members: [
+        { member_id: "agent-leader-1", role: "leader", model: "codex" },
+        { member_id: "agent-worker-1", role: "worker", model: "gemini" },
+      ],
+      steps: [{ step_key: "leader_plan" }],
+    },
+    created_at: fixture.now,
+    updated_at: fixture.now,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/teams");
+
+  await expect(page.getByRole("heading", { name: "Team Mobile" })).toBeVisible();
+
+  const layoutColumns = await page.locator(".teams-layout").evaluate((element) => {
+    return window.getComputedStyle(element).gridTemplateColumns;
+  });
+  expect(layoutColumns.trim().split(/\s+/).length).toBe(1);
+
+  const runFilterWidth = await page
+    .locator(".teams-run-list-head .actions select")
+    .first()
+    .evaluate((element) => {
+      return element.getBoundingClientRect().width;
+    });
+  expect(runFilterWidth).toBeGreaterThan(240);
+
+  const memberColumns = await page.locator(".team-member-row-main").first().evaluate((element) => {
+    return window.getComputedStyle(element).gridTemplateColumns;
+  });
+  expect(memberColumns.trim().split(/\s+/).length).toBe(3);
+});
+
 test("team forge agent entry creates and binds leader in-place", async ({
   page,
 }) => {
@@ -414,7 +513,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
   fixture.agents.splice(0, fixture.agents.length);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Guided Wizard" }).click();
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("forge-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -424,12 +523,306 @@ test("team forge agent entry creates and binds leader in-place", async ({
     dialog.getByText("No forged agents yet. Create one in the Agent Forge entry above.")
   ).toBeVisible();
   await dialog.getByRole("button", { name: "New Agent" }).click();
-
-  await dialog.getByPlaceholder("workdir").fill("/workspace/forge-leader");
-  await dialog.getByRole("button", { name: "Create Agent" }).click();
+  await createForgeAgentFromModal(page, "/workspace/forge-leader");
 
   await expect(dialog.getByText("agent_id: agent-forge-1")).toBeVisible();
   await expect(dialog.getByText("workdir: /workspace/forge-leader")).toBeVisible();
+});
+
+test("team quant workflow creates team and launches run", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  const runsByTeamId = new Map<string, TeamRunRecord[]>();
+  const runById = new Map<string, TeamRunRecord>();
+  const runStepsById = new Map<string, Array<Record<string, unknown>>>();
+  const runEventsById = new Map<string, Array<Record<string, unknown>>>();
+  const nextRunIndexByTeamId = new Map<string, number>();
+
+  await page.route(/\/api\/teams\/[^/]+\/runs(?:\?.*)?$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runs$/)?.[1] ?? "";
+    if (!teamId) {
+      await route.fallback();
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as {
+        context_id?: string;
+        input?: Record<string, unknown>;
+      };
+      const nextIndex = (nextRunIndexByTeamId.get(teamId) ?? 0) + 1;
+      nextRunIndexByTeamId.set(teamId, nextIndex);
+      const createdAt = fixture.now + 1_000 + nextIndex;
+      const run: TeamRunRecord = {
+        id: `${teamId}-quant-run-${nextIndex}`,
+        team_id: teamId,
+        context_id: payload.context_id ?? `ctx-${teamId}-${nextIndex}`,
+        status: "working",
+        input: payload.input ?? {},
+        created_at: createdAt,
+        started_at: createdAt + 1,
+        ended_at: null,
+      };
+      const prev = runsByTeamId.get(teamId) ?? [];
+      runsByTeamId.set(teamId, [run, ...prev]);
+      runById.set(run.id, run);
+      runStepsById.set(run.id, [
+        {
+          id: `${run.id}-step-1`,
+          run_id: run.id,
+          step_key: "leader_plan",
+          member_id: "quant-leader",
+          remote_task_id: "task-leader-plan",
+          status: "working",
+          attempt: 1,
+          depends_on: [],
+          input: run.input,
+          output: null,
+          error_text: null,
+          started_at: createdAt + 2,
+          ended_at: null,
+        },
+        {
+          id: `${run.id}-step-2`,
+          run_id: run.id,
+          step_key: "worker_portfolio_optimize",
+          member_id: "portfolio-worker",
+          remote_task_id: null,
+          status: "submitted",
+          attempt: 1,
+          depends_on: ["leader_plan"],
+          input: {},
+          output: null,
+          error_text: null,
+          started_at: null,
+          ended_at: null,
+        },
+        {
+          id: `${run.id}-step-3`,
+          run_id: run.id,
+          step_key: "worker_crypto_algo_trade",
+          member_id: "crypto-worker",
+          remote_task_id: null,
+          status: "submitted",
+          attempt: 1,
+          depends_on: ["leader_plan"],
+          input: {},
+          output: null,
+          error_text: null,
+          started_at: null,
+          ended_at: null,
+        },
+      ]);
+      runEventsById.set(run.id, [
+        {
+          event_id: 1,
+          run_id: run.id,
+          step_id: null,
+          event_type: "run_submitted",
+          ts: createdAt,
+          payload: { status: "submitted" },
+        },
+        {
+          event_id: 2,
+          run_id: run.id,
+          step_id: `${run.id}-step-1`,
+          event_type: "run_working",
+          ts: createdAt + 1,
+          payload: { status: "working" },
+        },
+      ]);
+      await route.fulfill(jsonResponse(run));
+      return;
+    }
+    if (request.method() === "GET") {
+      const status = url.searchParams.get("status");
+      const beforeCreatedAtRaw = url.searchParams.get("before_created_at");
+      const beforeCreatedAt =
+        beforeCreatedAtRaw == null ? null : Number(beforeCreatedAtRaw);
+      const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50;
+      const base = runsByTeamId.get(teamId) ?? [];
+      const filtered = base
+        .filter((run) => (status && status !== "all" ? run.status === status : true))
+        .filter((run) =>
+          beforeCreatedAt == null ? true : run.created_at < beforeCreatedAt
+        );
+      await route.fulfill(jsonResponse(filtered.slice(0, limit)));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const runId = request.url().match(/\/api\/teams\/runs\/([^/?]+)/)?.[1] ?? "";
+    const run = runById.get(runId);
+    if (!run) {
+      await route.fulfill(jsonResponse({ error: "run not found" }, 404));
+      return;
+    }
+    await route.fulfill(jsonResponse(run));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/steps$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const runId = request.url().match(/\/api\/teams\/runs\/([^/]+)\/steps$/)?.[1] ?? "";
+    await route.fulfill(jsonResponse(runStepsById.get(runId) ?? []));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const runId = request.url().match(/\/api\/teams\/runs\/([^/]+)\/events/ )?.[1] ?? "";
+    await route.fulfill(jsonResponse(runEventsById.get(runId) ?? []));
+  });
+
+  await page.route(
+    /\/api\/teams\/runs\/[^/]+\/snapshot(?:\?.*)?$/,
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const runId =
+        request.url().match(/\/api\/teams\/runs\/([^/]+)\/snapshot/)?.[1] ?? "";
+      const run = runById.get(runId);
+      if (!run) {
+        await route.fulfill(jsonResponse({ error: "run not found" }, 404));
+        return;
+      }
+      const team = fixture.teams.find((item) => item.id === run.team_id);
+      if (!team) {
+        await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+        return;
+      }
+      const members = (team.spec.members ?? []).map((member, index) => ({
+        member_id: member.member_id,
+        role: member.role ?? "worker",
+        model: member.model ?? null,
+        prompt: null,
+        skills: member.skills ?? [],
+        pending_inbox_count: 0,
+        status: index === 0 ? "working" : "submitted",
+        latest_step: null,
+        session_status: index === 0 ? "working" : "idle",
+      }));
+      await route.fulfill(
+        jsonResponse({
+          run,
+          team,
+          leader_member_id: team.spec.leader_member_id,
+          members,
+          steps: runStepsById.get(run.id) ?? [],
+          latest_events: runEventsById.get(run.id) ?? [],
+          mailbox: {
+            pending: 0,
+            delivered: 0,
+            dead_letter: 0,
+            recent_messages: [],
+          },
+        })
+      );
+    }
+  );
+
+  const quantSpec = {
+    spec_version: 1,
+    entrypoint: "leader_plan",
+    leader_member_id: "quant-leader",
+    members: [
+      {
+        member_id: "quant-leader",
+        role: "leader",
+        model: "codex",
+        prompt: "Own run-level planning, risk budget, and compute/resource control.",
+        skills: ["agenthub-actor-runtime", "team-leader-orchestrator"],
+      },
+      {
+        member_id: "portfolio-worker",
+        role: "worker",
+        model: "gemini",
+        prompt: "Do portfolio optimization with risk-parity and exposure constraints.",
+        skills: ["agenthub-actor-runtime", "team-worker-executor"],
+      },
+      {
+        member_id: "crypto-worker",
+        role: "worker",
+        model: "kimi",
+        prompt: "Run crypto algo trading simulation and report pnl/drawdown.",
+        skills: ["agenthub-actor-runtime", "team-worker-executor"],
+      },
+    ],
+    steps: [
+      { step_key: "leader_plan", member_id: "quant-leader", depends_on: [] },
+      {
+        step_key: "worker_portfolio_optimize",
+        member_id: "portfolio-worker",
+        depends_on: ["leader_plan"],
+      },
+      {
+        step_key: "worker_crypto_algo_trade",
+        member_id: "crypto-worker",
+        depends_on: ["leader_plan"],
+      },
+      {
+        step_key: "leader_synthesize",
+        member_id: "quant-leader",
+        depends_on: ["worker_portfolio_optimize", "worker_crypto_algo_trade"],
+      },
+    ],
+  };
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "Manual Spec" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Team Forge" });
+  await dialog.getByPlaceholder("team name").fill("quant-alpha-desk");
+  await dialog
+    .getByPlaceholder("description (optional)")
+    .fill("leader manages resources; workers optimize portfolio + crypto trading");
+  await dialog.getByRole("button", { name: "Next Stage" }).click();
+  await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+
+  await dialog
+    .locator(".team-create-panel textarea")
+    .fill(JSON.stringify(quantSpec, null, 2));
+  await dialog.getByRole("button", { name: "Create Team" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".team-item", { hasText: "quant-alpha-desk" })).toBeVisible();
+
+  const createPayload = fixture.getCreatePayload();
+  expect(createPayload).not.toBeNull();
+  expect((createPayload as CreateTeamPayload).spec).toEqual(quantSpec);
+
+  await page
+    .getByPlaceholder("context_id (optional, auto-generated when empty)")
+    .fill("quant-run-ctx");
+  await page
+    .locator(".teams-run-create textarea")
+    .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
+  await page.getByRole("button", { name: "Create Run" }).click();
+
+  await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
+    "quant-run-1"
+  );
+  await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
+    "working"
+  );
+  await expect(page.locator(".team-member-row", { hasText: "quant-leader" })).toBeVisible();
+  await expect(
+    page.locator(".team-member-row", { hasText: "portfolio-worker" })
+  ).toBeVisible();
+  await expect(
+    page.locator(".team-member-row", { hasText: "crypto-worker" })
+  ).toBeVisible();
 });
 
 test("team mailbox IM mode supports conversation focus, unread, auto-follow and advanced controls", async ({

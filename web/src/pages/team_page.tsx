@@ -7,25 +7,27 @@ import {
   TeamDefinitionRecord,
   TeamRunEventRecord,
   TeamRunRecord,
-  TeamRunStatus,
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
 import {
   DEFAULT_AGENT_PRESET_ID,
-  formatAgentModelLabel,
   getAgentPreset,
-  isAgentPresetId,
-  listAgentPresets,
   type AgentPresetId,
 } from "../agent_presets";
-import { isAgentActiveStatus } from "../agent_ws";
 import {
   StatusBadge,
   resolveTeamRunStatusTone,
 } from "../components/status_badge";
+import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import {
+  normalizeRuntimeWorktreeRoot,
+  normalizeWorkdirInput,
+  resolveWorkdirForModeChange,
+  resolveWorkdirForModalOpen,
+} from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
@@ -33,1141 +35,141 @@ import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
+import {
+  buildTeamSpecFromForm,
+  clampCreateTeamStage,
+  formatTeamForgeWorktreeError,
+  parseErrorMessage,
+  parseOptionalInteger,
+  parseOptionalJson,
+  parseRequiredJson,
+  resolveTeamModelOptions,
+} from "./team/create_helpers";
+import {
+  MailboxTemplateKey,
+  buildMailboxChatPayload,
+  buildMailboxConversationKey,
+  buildMailboxPayloadTemplate,
+  countUnreadConversationMessages,
+  mergeMailboxMessages,
+  resolveConversationMaxMessageId,
+  resolveMailboxChatActors,
+  selectMailboxConversation,
+} from "./team/mailbox_helpers";
+import {
+  REQUIRED_TEAM_LEADER_SKILLS,
+  REQUIRED_TEAM_WORKER_SKILLS,
+  TEAM_SKILL_OPTIONS,
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  buildDefaultWorkerDraft,
+  buildTeamMemberLiveStates,
+  createInitialTeamDraftState,
+  resolveTeamMemberAgentStatuses,
+  selectTeamForgeAgents,
+  summarizeTeamMemberAgentStatuses,
+  toggleSkillSelection,
+  type WorkerDraft,
+  assignCreatedWorkerToDraft,
+} from "./team/member_helpers";
+import {
+  buildAgentLabel,
+  formatTs,
+  pickNextWorkerAgentId,
+  toPrettyJson,
+  upsertAgentEventList,
+  upsertEventList,
+  upsertRun,
+} from "./team/page_helpers";
+import {
+  mergeRunPages,
+  mergeTeamRunList,
+  resolveRunStatusFilter,
+  selectTeamPreviewEvents,
+  type TeamRunStatusFilter,
+} from "./team/run_helpers";
+import {
+  CREATE_TEAM_STAGE_TITLES,
+  DEFAULT_TEAM_CONTROL_STATE,
+  DEFAULT_TEAM_MAILBOX_STATE,
+  DEFAULT_TEAM_RUN_BROWSER_STATE,
+  DEFAULT_TEAM_UI_STATE,
+  DEFAULT_WORKTREE_ROOT,
+  EVENT_PAGE_LIMIT,
+  MAILBOX_TEMPLATE_OPTIONS,
+  MEMBER_EVENT_PAGE_LIMIT,
+  TEAM_RUN_STATUS_FILTER_OPTIONS,
+  TEAM_RUN_PAGE_LIMIT,
+  createInitialTeamCreateState,
+  reduceTeamControlState,
+  reduceTeamCreateState,
+  reduceTeamMailboxState,
+  reduceTeamUiState,
+  resolveUpdater,
+  type TeamTab,
+  type CreateTeamStage,
+  type StepAction,
+  type TeamControlState,
+  type TeamCreateState,
+  type TeamForgeRoleTag,
+  type TeamMailboxState,
+  type TeamRunBrowserState,
+} from "./team/state";
+
+export {
+  buildMailboxChatPayload,
+  buildMailboxConversationKey,
+  buildMailboxPayloadTemplate,
+  countUnreadConversationMessages,
+  mergeMailboxMessages,
+  resolveConversationMaxMessageId,
+  resolveMailboxChatActors,
+  selectMailboxConversation,
+} from "./team/mailbox_helpers";
+export {
+  DEFAULT_TEAM_LEADER_PROMPT,
+  DEFAULT_TEAM_LEADER_SKILLS,
+  DEFAULT_TEAM_WORKER_PROMPT,
+  DEFAULT_TEAM_WORKER_SKILLS,
+  REQUIRED_TEAM_LEADER_SKILLS,
+  REQUIRED_TEAM_WORKER_SKILLS,
+  TEAM_SKILL_OPTIONS,
+  assignCreatedWorkerToDraft,
+  buildDefaultWorkerDraft,
+  buildTeamMemberLiveStates,
+  createInitialTeamDraftState,
+  normalizeSkillSelection,
+  parseTeamSpecMembers,
+  resolveTeamMemberAgentStatuses,
+  resolveTeamMemberLifecycleTone,
+  selectTeamForgeAgents,
+  summarizeTeamMemberAgentStatuses,
+  toggleSkillSelection,
+} from "./team/member_helpers";
+export {
+  mergeRunPages,
+  mergeTeamRunList,
+  resolveRunStatusFilter,
+  selectTeamPreviewEvents,
+} from "./team/run_helpers";
+export type { MailboxTemplateKey, TeamMailboxChatActors } from "./team/mailbox_helpers";
+export type {
+  TeamCreateDraftState,
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  TeamMemberLiveState,
+  TeamSpecMember,
+  WorkerDraft,
+} from "./team/member_helpers";
 
 type TeamPageProps = {
   auth: AuthState;
   token: string;
   onLogout: () => void;
 };
+type TeamCreateEntryMode = "wizard" | "manual_spec";
 
-type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
-type CreateTeamStage = 0 | 1 | 2 | 3;
-type TeamRunStatusFilter = TeamRunStatus | "all";
-type TeamRunBrowserState = {
-  statusFilter: TeamRunStatusFilter;
-  beforeCreatedAt?: number;
-  hasMore: boolean;
-};
-type MailboxTemplateKey =
-  | "leader_task_assignment"
-  | "clarification_request"
-  | "clarification_response"
-  | "worker_done"
-  | "worker_blocked"
-  | "profile_patch_proposal";
-type StepAction =
-  | "start"
-  | "complete"
-  | "fail"
-  | "input_required"
-  | "resume";
-type TeamForgeBindTarget = "none" | "leader" | "worker";
-type TeamUiState = {
-  tab: TeamTab;
-  runLookupId: string;
-  eventsAutoRefresh: boolean;
-};
-type TeamUiAction =
-  | { type: "set_tab"; tab: TeamTab }
-  | { type: "set_run_lookup_id"; runLookupId: string }
-  | { type: "set_events_auto_refresh"; eventsAutoRefresh: boolean };
-type TeamControlState = {
-  runContextId: string;
-  runInput: string;
-  stepKey: string;
-  stepMemberId: string;
-  stepDependsOn: string;
-  stepInput: string;
-  selectedStepId: string;
-  stepAction: StepAction;
-  stepRemoteTaskId: string;
-  stepOutput: string;
-  stepFailText: string;
-  stepInputReason: string;
-  stepInputRequiredPayload: string;
-  stepResumePayload: string;
-};
-type TeamControlAction = { type: "patch"; patch: Partial<TeamControlState> };
-type TeamMailboxState = {
-  msgFromActorId: string;
-  msgToActorId: string;
-  msgChannel: string;
-  msgTransport: "local" | "remote";
-  msgRoute: string;
-  msgTemplate: MailboxTemplateKey;
-  msgPayload: string;
-  msgIdempotencyKey: string;
-  chatDraft: string;
-  chatStickToBottom: boolean;
-  chatSeenByConversation: Record<string, number>;
-  inboxActorId: string;
-  inboxLimit: string;
-  inboxAfterId: string;
-  inboxIncludeDelivered: boolean;
-  inbox: TeamActorMessageRecord[];
-  selectedMemberId: string;
-};
-type TeamMailboxAction =
-  | { type: "patch"; patch: Partial<TeamMailboxState> }
-  | { type: "mark_conversation_seen"; key: string; messageId: number }
-  | { type: "reset_chat_seen" };
-type TeamCreateState = TeamCreateDraftState & {
-  newTeamName: string;
-  newTeamDescription: string;
-  showCreateTeamModal: boolean;
-  createTeamStage: CreateTeamStage;
-  forgeAgentBindTarget: TeamForgeBindTarget;
-  showForgeAgentForm: boolean;
-  forgeAgentName: string;
-  forgeAgentWorkdir: string;
-  forgeAgentPresetId: AgentPresetId;
-  forgeAgentCodeMode: boolean;
-  forgeAgentBusy: boolean;
-};
-type TeamCreateAction = { type: "patch"; patch: Partial<TeamCreateState> };
-
-const EVENT_PAGE_LIMIT = 100;
-const MEMBER_EVENT_PAGE_LIMIT = 300;
-const TEAM_RUN_PAGE_LIMIT = 50;
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
-const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
-  statusFilter: "all",
-  hasMore: false,
-};
-const DEFAULT_TEAM_UI_STATE: TeamUiState = {
-  tab: "overview",
-  runLookupId: "",
-  eventsAutoRefresh: true,
-};
-const DEFAULT_TEAM_CONTROL_STATE: TeamControlState = {
-  runContextId: "",
-  runInput: "{}",
-  stepKey: "",
-  stepMemberId: "",
-  stepDependsOn: "",
-  stepInput: "{}",
-  selectedStepId: "",
-  stepAction: "start",
-  stepRemoteTaskId: "",
-  stepOutput: "{}",
-  stepFailText: "",
-  stepInputReason: "",
-  stepInputRequiredPayload: "{}",
-  stepResumePayload: "{}",
-};
-const DEFAULT_TEAM_MAILBOX_STATE: TeamMailboxState = {
-  msgFromActorId: "",
-  msgToActorId: "",
-  msgChannel: "default",
-  msgTransport: "local",
-  msgRoute: "",
-  msgTemplate: "leader_task_assignment",
-  msgPayload: "{}",
-  msgIdempotencyKey: "",
-  chatDraft: "",
-  chatStickToBottom: true,
-  chatSeenByConversation: {},
-  inboxActorId: "",
-  inboxLimit: "100",
-  inboxAfterId: "",
-  inboxIncludeDelivered: false,
-  inbox: [],
-  selectedMemberId: "",
-};
-const MAILBOX_TEMPLATE_OPTIONS: Array<{
-  value: MailboxTemplateKey;
-  label: string;
-}> = [
-  { value: "leader_task_assignment", label: "Leader Task Assignment" },
-  { value: "clarification_request", label: "Clarification Request" },
-  { value: "clarification_response", label: "Clarification Response" },
-  { value: "worker_done", label: "Worker Done Status" },
-  { value: "worker_blocked", label: "Worker Blocked Status" },
-  { value: "profile_patch_proposal", label: "Profile Patch Proposal" },
-];
-const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
-  value: TeamRunStatusFilter;
-  label: string;
-}> = [
-  { value: "all", label: "All statuses" },
-  { value: "submitted", label: "submitted" },
-  { value: "working", label: "working" },
-  { value: "input_required", label: "input_required" },
-  { value: "completed", label: "completed" },
-  { value: "failed", label: "failed" },
-  { value: "canceled", label: "canceled" },
-];
-const CREATE_TEAM_STAGE_TITLES = [
-  "Mission Brief",
-  "Leader Forge",
-  "Recruit Workers",
-  "Launch Team",
-] as const;
-
-function reduceTeamUiState(state: TeamUiState, action: TeamUiAction): TeamUiState {
-  switch (action.type) {
-    case "set_tab":
-      return { ...state, tab: action.tab };
-    case "set_run_lookup_id":
-      return { ...state, runLookupId: action.runLookupId };
-    case "set_events_auto_refresh":
-      return { ...state, eventsAutoRefresh: action.eventsAutoRefresh };
-    default:
-      return state;
-  }
-}
-
-function reduceTeamControlState(
-  state: TeamControlState,
-  action: TeamControlAction
-): TeamControlState {
-  switch (action.type) {
-    case "patch":
-      return { ...state, ...action.patch };
-    default:
-      return state;
-  }
-}
-
-function reduceTeamMailboxState(
-  state: TeamMailboxState,
-  action: TeamMailboxAction
-): TeamMailboxState {
-  switch (action.type) {
-    case "patch":
-      return { ...state, ...action.patch };
-    case "mark_conversation_seen": {
-      if (!action.key) {
-        return state;
-      }
-      const current = state.chatSeenByConversation[action.key] ?? 0;
-      if (action.messageId <= current) {
-        return state;
-      }
-      return {
-        ...state,
-        chatSeenByConversation: {
-          ...state.chatSeenByConversation,
-          [action.key]: action.messageId,
-        },
-      };
-    }
-    case "reset_chat_seen":
-      if (Object.keys(state.chatSeenByConversation).length === 0) {
-        return state;
-      }
-      return { ...state, chatSeenByConversation: {} };
-    default:
-      return state;
-  }
-}
-
-function reduceTeamCreateState(
-  state: TeamCreateState,
-  action: TeamCreateAction
-): TeamCreateState {
-  switch (action.type) {
-    case "patch":
-      return { ...state, ...action.patch };
-    default:
-      return state;
-  }
-}
-
-function resolveUpdater<T>(current: T, next: T | ((prev: T) => T)): T {
-  if (typeof next === "function") {
-    return (next as (prev: T) => T)(current);
-  }
-  return next;
-}
-
-const DEFAULT_TEAM_LEADER_PROMPT = [
-  "You are the Team Leader in AgentHub.",
-  "Your job is to plan, delegate work to workers, and synthesize the final answer.",
-  "Workflow:",
-  "1. Read the run input and create a concise execution plan.",
-  "2. Use actor mailbox to assign concrete tasks to workers.",
-  "3. Pull inbox regularly and acknowledge consumed messages.",
-  "4. Merge worker outputs, resolve conflicts, and produce final deliverable.",
-  "5. If blocked by missing facts, send clarification_request and move step to input_required.",
-  "Structured payload contracts:",
-  "- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}",
-  "- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}",
-  "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}",
-].join("\n");
-const DEFAULT_TEAM_WORKER_PROMPT = [
-  "You are a Worker in an AgentHub team.",
-  "Your job is to execute assignments from the team leader and report results.",
-  "Workflow:",
-  "1. Pull inbox and find the latest task from leader.",
-  "2. Acknowledge messages after reading.",
-  "3. Execute the task and summarize output with evidence.",
-  "4. Send the result back to leader via actor mailbox.",
-  "5. If blocked, send blocker details and a proposed next action.",
-  "Use worker_status payload contract:",
-  "{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}",
-].join("\n");
-const DEFAULT_TEAM_LEADER_SKILLS = [
-  "agenthub-actor-runtime",
-  "team-leader-orchestrator",
-  "team-deliberation-rules",
-];
-const DEFAULT_TEAM_WORKER_SKILLS = [
-  "agenthub-actor-runtime",
-  "team-worker-executor",
-  "team-deliberation-rules",
-];
-const REQUIRED_TEAM_LEADER_SKILLS = [
-  "agenthub-actor-runtime",
-  "team-leader-orchestrator",
-];
-const REQUIRED_TEAM_WORKER_SKILLS = [
-  "agenthub-actor-runtime",
-  "team-worker-executor",
-];
-const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];
-const TEAM_SKILL_OPTIONS = [
-  ...new Set([...DEFAULT_TEAM_LEADER_SKILLS, ...DEFAULT_TEAM_WORKER_SKILLS]),
-];
-const TEAM_MODEL_PRESET_OPTIONS = listAgentPresets().map((preset) => ({
-  value: preset.id,
-  label: preset.label,
-}));
-const TEAM_MODEL_PRESET_VALUES = new Set(
-  TEAM_MODEL_PRESET_OPTIONS.map((option) => option.value)
-);
-
-type WorkerDraft = {
-  member_id: string;
-  model: string;
-  prompt: string;
-  skills: string[];
-  custom_skills: string;
-};
-
-type TeamStepDraft = {
-  step_key: string;
-  member_id: string;
-  depends_on: string[];
-};
-
-export type TeamSpecMember = {
-  member_id: string;
-  role: string;
-};
-
-export type TeamMemberAgentStatus = {
-  member_id: string;
-  role: string;
-  agent_name?: string;
-  status: string;
-  missing_agent: boolean;
-};
-
-export type TeamMemberAgentStatusSummary = {
-  active: number;
-  inactive: number;
-  missing: number;
-  total: number;
-};
-
-export type TeamMemberLiveState = {
-  member_id: string;
-  role: string;
-  agent_name?: string;
-  lifecycle_status: string;
-  lifecycle_tone: "active" | "inactive" | "missing";
-  run_status: string;
-  step_status: string;
-  pending_inbox_count: number | null;
-  current_work: string;
-};
-
-export type TeamCreateDraftState = {
-  leaderMemberId: string;
-  leaderModel: string;
-  leaderPrompt: string;
-  leaderSkills: string[];
-  leaderCustomSkills: string;
-  workers: Array<{
-    member_id: string;
-    model: string;
-    prompt: string;
-    skills: string[];
-    custom_skills: string;
-  }>;
-  useSpecOverride: boolean;
-  newTeamSpec: string;
-  teamForgeAgentIds: string[];
-};
-
-function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
-  return [...runs].sort((a, b) => b.created_at - a.created_at);
-}
-
-function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
-  const withoutCurrent = list.filter((run) => run.id !== nextRun.id);
-  return sortRuns([nextRun, ...withoutCurrent]);
-}
-
-export function mergeRunPages(
-  existing: TeamRunRecord[],
-  incoming: TeamRunRecord[]
-): TeamRunRecord[] {
-  const byId = new Map<string, TeamRunRecord>();
-  for (const run of existing) {
-    byId.set(run.id, run);
-  }
-  for (const run of incoming) {
-    byId.set(run.id, run);
-  }
-  return sortRuns([...byId.values()]);
-}
-
-export function mergeTeamRunList(
-  previousTeamRuns: TeamRunRecord[],
-  incoming: TeamRunRecord[],
-  mode: "replace" | "append",
-  activeRunId: string | null
-): TeamRunRecord[] {
-  const base = mode === "append" ? previousTeamRuns : [];
-  let merged = mergeRunPages(base, incoming);
-  if (mode !== "replace" || !activeRunId) {
-    return merged;
-  }
-  const pinned = previousTeamRuns.find((run) => run.id === activeRunId);
-  if (!pinned || merged.some((run) => run.id === pinned.id)) {
-    return merged;
-  }
-  merged = mergeRunPages(merged, [pinned]);
-  return merged;
-}
-
-export function resolveRunStatusFilter(
-  status: TeamRunStatusFilter
-): TeamRunStatus | undefined {
-  return status === "all" ? undefined : status;
-}
-
-export function selectTeamPreviewEvents(
-  events: TeamRunEventRecord[],
-  selectedMemberId: string,
-  limit = TEAM_EVENT_PREVIEW_LIMIT
-): TeamRunEventRecord[] {
-  if (selectedMemberId.trim().length > 0) {
-    return events;
-  }
-  if (events.length <= limit) {
-    return events;
-  }
-  return events.slice(events.length - limit);
-}
-
-export type TeamMailboxChatActors = {
-  fromActorId: string;
-  toActorId: string;
-  inboxActorId: string;
-};
-
-export function resolveMailboxChatActors(
-  leaderMemberId: string | null | undefined,
-  memberIds: string[],
-  selectedMemberId: string
-): TeamMailboxChatActors {
-  if (memberIds.length === 0) {
-    return {
-      fromActorId: "",
-      toActorId: "",
-      inboxActorId: "",
-    };
-  }
-  const normalizedLeaderId = (leaderMemberId ?? "").trim();
-  const leaderId = normalizedLeaderId && memberIds.includes(normalizedLeaderId)
-    ? normalizedLeaderId
-    : memberIds[0] ?? "";
-  const normalizedSelectedId = selectedMemberId.trim();
-  const targetId = normalizedSelectedId && memberIds.includes(normalizedSelectedId)
-    ? normalizedSelectedId
-    : memberIds[0] ?? "";
-  return {
-    fromActorId: leaderId,
-    toActorId: targetId,
-    inboxActorId: targetId,
-  };
-}
-
-export function mergeMailboxMessages(
-  recentMessages: TeamActorMessageRecord[],
-  inboxMessages: TeamActorMessageRecord[]
-): TeamActorMessageRecord[] {
-  const byId = new Map<number, TeamActorMessageRecord>();
-  for (const message of [...recentMessages, ...inboxMessages]) {
-    byId.set(message.message_id, message);
-  }
-  return [...byId.values()].sort((a, b) => a.message_id - b.message_id);
-}
-
-export function selectMailboxConversation(
-  messages: TeamActorMessageRecord[],
-  actorA: string,
-  actorB: string
-): TeamActorMessageRecord[] {
-  const left = actorA.trim();
-  const right = actorB.trim();
-  if (!left || !right) {
-    return [];
-  }
-  return messages.filter(
-    (message) =>
-      (message.from_actor_id === left && message.to_actor_id === right) ||
-      (message.from_actor_id === right && message.to_actor_id === left)
-  );
-}
-
-export function buildMailboxChatPayload(text: string): {
-  type: "chat_message";
-  text: string;
-  source: "team_workbench";
-} {
-  return {
-    type: "chat_message",
-    text,
-    source: "team_workbench",
-  };
-}
-
-export function buildMailboxConversationKey(actorA: string, actorB: string): string {
-  const pair = [actorA.trim(), actorB.trim()].filter((value) => value.length > 0).sort();
-  if (pair.length < 2) {
-    return "";
-  }
-  return `${pair[0]}::${pair[1]}`;
-}
-
-export function resolveConversationMaxMessageId(
-  messages: TeamActorMessageRecord[]
-): number | null {
-  if (messages.length === 0) {
-    return null;
-  }
-  return messages.reduce(
-    (maxId, message) => (message.message_id > maxId ? message.message_id : maxId),
-    messages[0]?.message_id ?? 0
-  );
-}
-
-export function countUnreadConversationMessages(
-  messages: TeamActorMessageRecord[],
-  actorA: string,
-  actorB: string,
-  seenMessageId: number
-): number {
-  const left = actorA.trim();
-  const right = actorB.trim();
-  if (!left || !right) {
-    return 0;
-  }
-  return messages.filter((message) => {
-    if (message.message_id <= seenMessageId) {
-      return false;
-    }
-    const inConversation =
-      (message.from_actor_id === left && message.to_actor_id === right) ||
-      (message.from_actor_id === right && message.to_actor_id === left);
-    if (!inConversation) {
-      return false;
-    }
-    // Unread in chat list should reflect inbound messages to the current sender side.
-    if (left === right) {
-      return true;
-    }
-    return message.to_actor_id === left;
-  }).length;
-}
-
-export function selectTeamForgeAgents(
-  agents: AgentRecord[],
-  teamForgeAgentIds: string[]
-): AgentRecord[] {
-  if (teamForgeAgentIds.length === 0) {
-    return [];
-  }
-  const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  return teamForgeAgentIds
-    .map((agentId) => byId.get(agentId))
-    .filter((agent): agent is AgentRecord => Boolean(agent));
-}
-
-export function createInitialTeamDraftState(): TeamCreateDraftState {
-  return {
-    leaderMemberId: "",
-    leaderModel: "",
-    leaderPrompt: DEFAULT_TEAM_LEADER_PROMPT,
-    leaderSkills: [...DEFAULT_TEAM_LEADER_SKILLS],
-    leaderCustomSkills: "",
-    workers: [],
-    useSpecOverride: false,
-    newTeamSpec: "{}",
-    teamForgeAgentIds: [],
-  };
-}
-
-function createInitialTeamCreateState(): TeamCreateState {
-  const draft = createInitialTeamDraftState();
-  return {
-    ...draft,
-    newTeamName: "",
-    newTeamDescription: "",
-    showCreateTeamModal: false,
-    createTeamStage: 0,
-    forgeAgentBindTarget: "none",
-    showForgeAgentForm: false,
-    forgeAgentName: "",
-    forgeAgentWorkdir: "",
-    forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
-    forgeAgentCodeMode: true,
-    forgeAgentBusy: false,
-  };
-}
-
-function upsertEventList(
-  prev: TeamRunEventRecord[],
-  next: TeamRunEventRecord[],
-  mode: "replace" | "prepend"
-): TeamRunEventRecord[] {
-  const merged = mode === "replace" ? [...next] : [...next, ...prev];
-  const byId = new Map<number, TeamRunEventRecord>();
-  for (const event of merged) {
-    byId.set(event.event_id, event);
-  }
-  return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
-}
-
-function upsertAgentEventList(
-  prev: AgentEvent[],
-  next: AgentEvent[],
-  mode: "replace" | "prepend"
-): AgentEvent[] {
-  const merged = mode === "replace" ? [...next] : [...next, ...prev];
-  const byId = new Map<number, AgentEvent>();
-  for (const event of merged) {
-    byId.set(event.event_id, event);
-  }
-  return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
-}
-
-function buildTeamSpecFromForm(
-  leaderMemberId: string,
-  leaderModel: string,
-  leaderPrompt: string,
-  leaderSkills: string[],
-  leaderCustomSkills: string,
-  workers: WorkerDraft[]
-): unknown {
-  const leaderId = leaderMemberId.trim();
-  const normalizedWorkers = workers
-    .map((worker) => ({
-      member_id: worker.member_id.trim(),
-      model: worker.model.trim(),
-      prompt: worker.prompt.trim() || DEFAULT_TEAM_WORKER_PROMPT,
-      skills: normalizeSkillSelection(
-        worker.skills,
-        worker.custom_skills,
-        DEFAULT_TEAM_WORKER_SKILLS,
-        REQUIRED_TEAM_WORKER_SKILLS
-      ),
-    }))
-    .filter((worker) => worker.member_id.length > 0);
-  const steps = buildDefaultWorkflowSteps(
-    leaderId,
-    normalizedWorkers.map((worker) => worker.member_id)
-  );
-
-  const members = [
-    {
-      member_id: leaderId,
-      role: "leader",
-      model: leaderModel.trim() || undefined,
-      prompt: leaderPrompt.trim() || DEFAULT_TEAM_LEADER_PROMPT,
-      skills: normalizeSkillSelection(
-        leaderSkills,
-        leaderCustomSkills,
-        DEFAULT_TEAM_LEADER_SKILLS,
-        REQUIRED_TEAM_LEADER_SKILLS
-      ),
-    },
-    ...normalizedWorkers.map((worker) => ({
-      member_id: worker.member_id,
-      role: "worker",
-      model: worker.model || undefined,
-      prompt: worker.prompt,
-      skills: worker.skills,
-    })),
-  ];
-
-  return {
-    spec_version: 1,
-    entrypoint: steps[0]?.step_key ?? leaderId,
-    leader_member_id: leaderId,
-    members,
-    steps,
-  };
-}
-
-function buildDefaultWorkflowSteps(
-  leaderMemberId: string,
-  workerMemberIds: string[]
-): TeamStepDraft[] {
-  if (!leaderMemberId.trim()) {
-    return [];
-  }
-  const planningStep: TeamStepDraft = {
-    step_key: "leader_plan",
-    member_id: leaderMemberId,
-    depends_on: [],
-  };
-  if (workerMemberIds.length === 0) {
-    return [planningStep];
-  }
-  const workerSteps = workerMemberIds.map((memberId, index) => ({
-    step_key: `worker_${index + 1}_${toStepKeyToken(memberId)}`,
-    member_id: memberId,
-    depends_on: [planningStep.step_key],
-  }));
-  const synthesizeStep: TeamStepDraft = {
-    step_key: "leader_synthesize",
-    member_id: leaderMemberId,
-    depends_on: workerSteps.map((step) => step.step_key),
-  };
-  return [planningStep, ...workerSteps, synthesizeStep];
-}
-
-function toStepKeyToken(raw: string): string {
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized || "worker";
-}
-
-function parseErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    const msg = err.message ?? "request failed";
-    if (!msg.trim().startsWith("{")) {
-      return msg;
-    }
-    try {
-      const parsed = JSON.parse(msg) as { error?: string };
-      if (typeof parsed.error === "string" && parsed.error) {
-        return parsed.error;
-      }
-      return msg;
-    } catch {
-      return msg;
-    }
-  }
-  return String(err);
-}
-
-function parseRequiredJson(raw: string, field: string): unknown {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    throw new Error(`${field} is required`);
-  }
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    throw new Error(`${field} must be valid JSON`);
-  }
-}
-
-function parseOptionalJson(raw: string, field: string): unknown | undefined {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    throw new Error(`${field} must be valid JSON`);
-  }
-}
-
-function parseOptionalInteger(raw: string, field: string): number | undefined {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`${field} must be a non-negative integer`);
-  }
-  return parsed;
-}
-
-function parseCsvList(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
-function ensureMandatorySkills(skills: string[], requiredSkills: string[]): string[] {
-  const deduped = [...new Set(skills.map((item) => item.trim()).filter(Boolean))];
-  const required = [...new Set(requiredSkills.map((item) => item.trim()).filter(Boolean))];
-  const mandatory = required.filter((item) => !deduped.includes(item));
-  if (mandatory.length === 0) {
-    return deduped;
-  }
-  return [...mandatory, ...deduped];
-}
-
-export function normalizeSkillSelection(
-  selected: string[],
-  customRaw: string,
-  fallback: string[],
-  requiredSkills: string[] = MANDATORY_TEAM_SKILLS
-): string[] {
-  const allowed = new Set(TEAM_SKILL_OPTIONS);
-  const selectedSkills = [...new Set(selected.map((item) => item.trim()).filter(Boolean))].filter(
-    (item) => allowed.has(item)
-  );
-  const customSkills = parseCsvList(customRaw);
-  const merged = [...new Set([...selectedSkills, ...customSkills])];
-  if (merged.length > 0) {
-    return ensureMandatorySkills(merged, requiredSkills);
-  }
-  return ensureMandatorySkills(fallback, requiredSkills);
-}
-
-export function toggleSkillSelection(
-  selected: string[],
-  skill: string,
-  requiredSkills: string[] = MANDATORY_TEAM_SKILLS
-): string[] {
-  const normalized = skill.trim();
-  if (!normalized || !TEAM_SKILL_OPTIONS.includes(normalized)) {
-    return selected;
-  }
-  const required = new Set(
-    requiredSkills.map((item) => item.trim()).filter((item) => item.length > 0)
-  );
-  const normalizedSelected = ensureMandatorySkills(selected, [...required]);
-  if (normalizedSelected.includes(normalized)) {
-    if (required.has(normalized)) {
-      return normalizedSelected;
-    }
-    return normalizedSelected.filter((item) => item !== normalized);
-  }
-  return ensureMandatorySkills([...normalizedSelected, normalized], [...required]);
-}
-
-function asObjectRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function normalizeLifecycleStatus(status: string | null | undefined): string {
-  const normalized = status?.trim().toLowerCase();
-  return normalized && normalized.length > 0 ? normalized : "unknown";
-}
-
-export function parseTeamSpecMembers(spec: unknown): TeamSpecMember[] {
-  const specRecord = asObjectRecord(spec);
-  if (!specRecord) return [];
-  const membersRaw = specRecord.members;
-  if (!Array.isArray(membersRaw)) return [];
-
-  const deduped = new Map<string, TeamSpecMember>();
-  for (const item of membersRaw) {
-    const memberRecord = asObjectRecord(item);
-    if (!memberRecord) continue;
-    const memberIdRaw = memberRecord.member_id;
-    if (typeof memberIdRaw !== "string") continue;
-    const memberId = memberIdRaw.trim();
-    if (!memberId) continue;
-    if (deduped.has(memberId)) continue;
-    const roleRaw = memberRecord.role;
-    const role =
-      typeof roleRaw === "string" && roleRaw.trim().length > 0
-        ? roleRaw.trim()
-        : "member";
-    deduped.set(memberId, { member_id: memberId, role });
-  }
-  return [...deduped.values()];
-}
-
-export function resolveTeamMemberAgentStatuses(
-  spec: unknown,
-  agents: AgentRecord[]
-): TeamMemberAgentStatus[] {
-  const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  return parseTeamSpecMembers(spec).map((member) => {
-    const agent = byId.get(member.member_id);
-    if (!agent) {
-      return {
-        member_id: member.member_id,
-        role: member.role,
-        status: "missing",
-        missing_agent: true,
-      };
-    }
-    return {
-      member_id: member.member_id,
-      role: member.role,
-      agent_name: agent.name,
-      status: normalizeLifecycleStatus(agent.status),
-      missing_agent: false,
-    };
-  });
-}
-
-export function summarizeTeamMemberAgentStatuses(
-  members: TeamMemberAgentStatus[]
-): TeamMemberAgentStatusSummary {
-  let active = 0;
-  let missing = 0;
-  for (const member of members) {
-    if (member.missing_agent) {
-      missing += 1;
-      continue;
-    }
-    if (isAgentActiveStatus(member.status)) {
-      active += 1;
-    }
-  }
-  const total = members.length;
-  const inactive = total - active - missing;
-  return {
-    active,
-    inactive,
-    missing,
-    total,
-  };
-}
-
-function resolveTeamRoleWeight(role: string): number {
-  const normalized = role.trim().toLowerCase();
-  if (normalized === "leader") return 0;
-  if (normalized === "worker") return 1;
-  return 2;
-}
-
-function toCompactWorkPreview(value: unknown, maxLength = 72): string {
-  if (value == null) {
-    return "";
-  }
-  const raw =
-    typeof value === "string"
-      ? value
-      : (() => {
-          try {
-            return JSON.stringify(value);
-          } catch {
-            return String(value);
-          }
-        })();
-  const normalized = raw.replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength - 3)}...`;
-}
-
-function resolveTeamMemberCurrentWork(
-  snapshotMember?: TeamRunSnapshotRecord["members"][number]
-): string {
-  if (!snapshotMember) {
-    return "No active run context.";
-  }
-  const step = snapshotMember.latest_step;
-  if (!step) {
-    return `run_status=${snapshotMember.status}`;
-  }
-  const stepLabel = step.step_key || step.id;
-  const payloadPreview =
-    toCompactWorkPreview(step.input) ||
-    toCompactWorkPreview(step.output) ||
-    toCompactWorkPreview(step.error_text);
-  if (!payloadPreview) {
-    return `${stepLabel} (${step.status})`;
-  }
-  return `${stepLabel}: ${payloadPreview}`;
-}
-
-export function resolveTeamMemberLifecycleTone(
-  member: TeamMemberAgentStatus
-): "active" | "inactive" | "missing" {
-  if (member.missing_agent) {
-    return "missing";
-  }
-  return isAgentActiveStatus(member.status) ? "active" : "inactive";
-}
-
-export function buildTeamMemberLiveStates(
-  members: TeamMemberAgentStatus[],
-  snapshotMembers?: TeamRunSnapshotRecord["members"]
-): TeamMemberLiveState[] {
-  const snapshotByMemberId = new Map(
-    (snapshotMembers ?? []).map((member) => [member.member_id, member])
-  );
-  return [...members]
-    .map((member) => {
-      const snapshotMember = snapshotByMemberId.get(member.member_id);
-      return {
-        member_id: member.member_id,
-        role: member.role,
-        agent_name: member.agent_name,
-        lifecycle_status: member.status,
-        lifecycle_tone: resolveTeamMemberLifecycleTone(member),
-        run_status: snapshotMember?.status ?? "-",
-        step_status: snapshotMember?.latest_step?.status ?? "-",
-        pending_inbox_count: snapshotMember?.pending_inbox_count ?? null,
-        current_work: resolveTeamMemberCurrentWork(snapshotMember),
-      };
-    })
-    .sort((a, b) => {
-      const roleGap = resolveTeamRoleWeight(a.role) - resolveTeamRoleWeight(b.role);
-      if (roleGap !== 0) return roleGap;
-      return a.member_id.localeCompare(b.member_id);
-    });
-}
-
-export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
-  switch (template) {
-    case "leader_task_assignment":
-      return {
-        type: "leader_task_assignment",
-        task: "Implement the requested change in a focused scope.",
-        acceptance: "All listed checks pass and artifacts are updated.",
-        deadline: "asap",
-      };
-    case "clarification_request":
-      return {
-        type: "clarification_request",
-        question: "Need one product decision before continuing.",
-        choices: ["option_a", "option_b"],
-        blocking_scope: "run",
-        context: {},
-      };
-    case "clarification_response":
-      return {
-        type: "clarification_response",
-        request_id: "fill_request_id",
-        answer: "option_a",
-        rationale: "Fits current constraints and priority.",
-      };
-    case "worker_done":
-      return {
-        type: "worker_status",
-        status: "done",
-        result: "Implemented scoped change and verified behavior.",
-        evidence: ["path/to/file:123", "test_name"],
-      };
-    case "worker_blocked":
-      return {
-        type: "worker_status",
-        status: "blocked",
-        result: "Blocked by missing requirement detail.",
-        evidence: ["blocking_input_missing"],
-        next_action: "Please provide target behavior for edge case X.",
-      };
-    case "profile_patch_proposal":
-      return {
-        type: "profile_patch_proposal",
-        target: "run",
-        prompt_append: "Add missing domain constraint and output contract.",
-        skills_add: ["team-leader-orchestrator"],
-      };
-    default:
-      return {};
-  }
-}
-
-function buildAgentLabel(agent: AgentRecord): string {
-  const model = formatAgentModelLabel(agent.command, agent.args) ?? "Unknown";
-  return `${agent.name} · ${model} · ${agent.id.slice(0, 8)}`;
-}
-
-function pickNextWorkerAgentId(
-  agents: AgentRecord[],
-  excludedAgentIds: Set<string>
-): string {
-  return agents.find((agent) => !excludedAgentIds.has(agent.id))?.id ?? "";
-}
-
-function buildDefaultWorkerDraft(memberId: string): WorkerDraft {
-  return {
-    member_id: memberId,
-    model: "",
-    prompt: DEFAULT_TEAM_WORKER_PROMPT,
-    skills: [...DEFAULT_TEAM_WORKER_SKILLS],
-    custom_skills: "",
-  };
-}
-
-export function assignCreatedWorkerToDraft(
-  workers: WorkerDraft[],
-  createdMemberId: string
-): WorkerDraft[] {
-  const memberId = createdMemberId.trim();
-  if (!memberId) {
-    return workers;
-  }
-  if (workers.some((worker) => worker.member_id.trim() === memberId)) {
-    return workers;
-  }
-  const firstUnassigned = workers.findIndex(
-    (worker) => worker.member_id.trim().length === 0
-  );
-  if (firstUnassigned >= 0) {
-    return workers.map((worker, index) =>
-      index === firstUnassigned ? { ...worker, member_id: memberId } : worker
-    );
-  }
-  return [...workers, buildDefaultWorkerDraft(memberId)];
-}
-
-function clampCreateTeamStage(next: number): CreateTeamStage {
-  if (next <= 0) return 0;
-  if (next >= 3) return 3;
-  return next as CreateTeamStage;
-}
-
-function resolveTeamModelOptions(currentModel: string): Array<{
-  value: string;
-  label: string;
-}> {
-  const options = [
-    { value: "", label: "Use default model" },
-    ...TEAM_MODEL_PRESET_OPTIONS,
-  ];
-  const normalized = currentModel.trim();
-  if (normalized && !TEAM_MODEL_PRESET_VALUES.has(normalized)) {
-    options.push({ value: normalized, label: `Custom (${normalized})` });
-  }
-  return options;
-}
-
-function formatTs(ts?: number | null): string {
-  if (!ts) return "-";
-  return new Date(ts * 1000).toLocaleString();
-}
-
-function toPrettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -1287,14 +289,20 @@ export function TeamPage(props: TeamPageProps) {
   const leaderSkills = teamCreateState.leaderSkills;
   const leaderCustomSkills = teamCreateState.leaderCustomSkills;
   const workers = teamCreateState.workers;
-  const forgeAgentBindTarget = teamCreateState.forgeAgentBindTarget;
   const showForgeAgentForm = teamCreateState.showForgeAgentForm;
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
   const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
+  const forgeAgentWorktreeMode = teamCreateState.forgeAgentWorktreeMode;
+  const forgeAgentWorktreeRepo = teamCreateState.forgeAgentWorktreeRepo;
+  const forgeAgentWorktreeRef = teamCreateState.forgeAgentWorktreeRef;
   const forgeAgentCodeMode = teamCreateState.forgeAgentCodeMode;
+  const forgeAgentWorktreeError = teamCreateState.forgeAgentWorktreeError;
   const forgeAgentBusy = teamCreateState.forgeAgentBusy;
   const teamForgeAgentIds = teamCreateState.teamForgeAgentIds;
+  const [forgeDefaultWorktreeRoot, setForgeDefaultWorktreeRoot] = useState(
+    DEFAULT_WORKTREE_ROOT
+  );
   const patchTeamCreate = useCallback((patch: Partial<TeamCreateState>) => {
     dispatchTeamCreate({ type: "patch", patch });
   }, []);
@@ -1349,10 +357,6 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamCreate({ workers: resolveUpdater(workers, next) }),
     [patchTeamCreate, workers]
   );
-  const setForgeAgentBindTarget = useCallback(
-    (next: TeamForgeBindTarget) => patchTeamCreate({ forgeAgentBindTarget: next }),
-    [patchTeamCreate]
-  );
   const setShowForgeAgentForm = useCallback(
     (next: boolean) => patchTeamCreate({ showForgeAgentForm: next }),
     [patchTeamCreate]
@@ -1362,15 +366,33 @@ export function TeamPage(props: TeamPageProps) {
     [patchTeamCreate]
   );
   const setForgeAgentWorkdir = useCallback(
-    (next: string) => patchTeamCreate({ forgeAgentWorkdir: next }),
-    [patchTeamCreate]
+    (next: string | ((prev: string) => string)) =>
+      patchTeamCreate({ forgeAgentWorkdir: resolveUpdater(forgeAgentWorkdir, next) }),
+    [forgeAgentWorkdir, patchTeamCreate]
   );
   const setForgeAgentPresetId = useCallback(
     (next: AgentPresetId) => patchTeamCreate({ forgeAgentPresetId: next }),
     [patchTeamCreate]
   );
+  const setForgeAgentWorktreeMode = useCallback(
+    (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
+      patchTeamCreate({ forgeAgentWorktreeMode: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeRepo = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentWorktreeRepo: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeRef = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentWorktreeRef: next }),
+    [patchTeamCreate]
+  );
   const setForgeAgentCodeMode = useCallback(
     (next: boolean) => patchTeamCreate({ forgeAgentCodeMode: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorktreeError = useCallback(
+    (next: string | null) => patchTeamCreate({ forgeAgentWorktreeError: next }),
     [patchTeamCreate]
   );
   const setForgeAgentBusy = useCallback(
@@ -1381,6 +403,20 @@ export function TeamPage(props: TeamPageProps) {
     (next: string[] | ((prev: string[]) => string[])) =>
       patchTeamCreate({ teamForgeAgentIds: resolveUpdater(teamForgeAgentIds, next) }),
     [patchTeamCreate, teamForgeAgentIds]
+  );
+  const handleForgeWorktreeModeChange = useCallback(
+    (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
+      setForgeAgentWorktreeMode(nextMode);
+      setForgeAgentWorkdir((prev) =>
+        resolveWorkdirForModeChange(
+          prev,
+          nextMode,
+          forgeDefaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    },
+    [forgeDefaultWorktreeRoot, setForgeAgentWorkdir, setForgeAgentWorktreeMode]
   );
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
@@ -1539,6 +575,16 @@ export function TeamPage(props: TeamPageProps) {
     [teamForgeAgents, leaderMemberId]
   );
   const hasForgeAgents = teamForgeAgents.length > 0;
+  const forgeRoleTag = useMemo<TeamForgeRoleTag | null>(() => {
+    if (createTeamStage === 1) {
+      return "leader";
+    }
+    if (createTeamStage === 2) {
+      return "worker";
+    }
+    return null;
+  }, [createTeamStage]);
+  const canForgeAgentsInStage = !useSpecOverride && forgeRoleTag !== null;
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -1704,13 +750,14 @@ export function TeamPage(props: TeamPageProps) {
   );
   const isLeaderForgeReady = useMemo(
     () =>
+      useSpecOverride ||
       leaderMemberId.trim().length > 0 &&
       teamForgeAgents.some((agent) => agent.id === leaderMemberId),
-    [leaderMemberId, teamForgeAgents]
+    [leaderMemberId, teamForgeAgents, useSpecOverride]
   );
   const isRecruitWorkersReady = useMemo(
-    () => !hasDuplicateMembers,
-    [hasDuplicateMembers]
+    () => useSpecOverride || !hasDuplicateMembers,
+    [hasDuplicateMembers, useSpecOverride]
   );
   const createStageReadiness = useMemo(
     () =>
@@ -1744,6 +791,9 @@ export function TeamPage(props: TeamPageProps) {
   }, [createStageReadiness, createTeamStage]);
   const canEnterCreateStage = useCallback(
     (target: CreateTeamStage): boolean => {
+      if (useSpecOverride && target !== 0 && target !== 3) {
+        return false;
+      }
       if (target <= createTeamStage) {
         return true;
       }
@@ -1755,7 +805,7 @@ export function TeamPage(props: TeamPageProps) {
       }
       return true;
     },
-    [createStageReadiness, createTeamStage]
+    [createStageReadiness, createTeamStage, useSpecOverride]
   );
   const questChecklist = useMemo(
     () => [
@@ -1766,12 +816,16 @@ export function TeamPage(props: TeamPageProps) {
       },
       {
         key: "leader",
-        label: "Leader selected",
+        label: useSpecOverride
+          ? "Leader/worker forge skipped (manual spec mode)"
+          : "Leader selected",
         ready: isLeaderForgeReady,
       },
       {
         key: "party",
-        label: hasDuplicateMembers
+        label: useSpecOverride
+          ? "Member assignments provided in manual spec JSON"
+          : hasDuplicateMembers
           ? "Resolve duplicate member assignments"
           : "Party assignments are unique",
         ready: isRecruitWorkersReady,
@@ -1793,18 +847,6 @@ export function TeamPage(props: TeamPageProps) {
   const leaderModelOptions = useMemo(
     () => resolveTeamModelOptions(leaderModel),
     [leaderModel]
-  );
-  const forgeAgentPresetOptions = useMemo(
-    () =>
-      listAgentPresets().map((preset) => ({
-        value: preset.id,
-        label: preset.label,
-      })),
-    []
-  );
-  const forgeAgentPreset = useMemo(
-    () => getAgentPreset(forgeAgentPresetId),
-    [forgeAgentPresetId]
   );
   const leaderForgeAgentOptions = useMemo(
     () =>
@@ -1844,6 +886,16 @@ export function TeamPage(props: TeamPageProps) {
       useSpecOverride: initial.useSpecOverride,
       newTeamSpec: initial.newTeamSpec,
       teamForgeAgentIds: initial.teamForgeAgentIds,
+      showForgeAgentForm: false,
+      forgeAgentName: "",
+      forgeAgentWorkdir: "",
+      forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+      forgeAgentWorktreeMode: "use_existing",
+      forgeAgentWorktreeRepo: "",
+      forgeAgentWorktreeRef: "",
+      forgeAgentCodeMode: true,
+      forgeAgentWorktreeError: null,
+      forgeAgentBusy: false,
     });
   }, [patchTeamCreate]);
 
@@ -1909,7 +961,7 @@ export function TeamPage(props: TeamPageProps) {
             mode,
             activeRunIdRef.current
           );
-          return sortRuns([...otherTeamRuns, ...merged]);
+          return mergeRunPages(otherTeamRuns, merged);
         });
         const hasMore = list.length >= TEAM_RUN_PAGE_LIMIT;
         const nextBeforeCreatedAt =
@@ -2059,6 +1111,20 @@ export function TeamPage(props: TeamPageProps) {
     conversationKey,
     conversationLatestMessageId,
     markConversationSeen,
+    setChatStickToBottom,
+  ]);
+
+  const onJumpConversationToBottom = useCallback(() => {
+    setChatStickToBottom(true);
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+      markConversationSeen(conversationKey, conversationLatestMessageId);
+    });
+  }, [
+    conversationKey,
+    conversationLatestMessageId,
+    markConversationSeen,
+    scrollConversationToBottom,
     setChatStickToBottom,
   ]);
 
@@ -2286,6 +1352,23 @@ export function TeamPage(props: TeamPageProps) {
   }, [loadMemberEvents]);
 
   useEffect(() => {
+    if (!props.token) {
+      setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      return;
+    }
+    api
+      .getRuntimeDefaults(props.token)
+      .then((defaults) => {
+        const root = normalizeRuntimeWorktreeRoot(
+          defaults.default_worktree_root,
+          DEFAULT_WORKTREE_ROOT
+        );
+        setForgeDefaultWorktreeRoot(root);
+      })
+      .catch(() => undefined);
+  }, [props.token]);
+
+  useEffect(() => {
     if (!showCreateTeamModal) return;
     if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
       return;
@@ -2309,39 +1392,74 @@ export function TeamPage(props: TeamPageProps) {
     };
   }, [busy, setCreateTeamStage, setShowCreateTeamModal, showCreateTeamModal]);
 
-  const openCreateTeamModal = () => {
-    setError(null);
-    setCreateTeamStage(0);
-    resetTeamDraft();
-    setShowCreateTeamModal(true);
-    setShowForgeAgentForm(false);
-    void refreshAgents().catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  };
+  const openCreateTeamModal = useCallback(
+    (mode: TeamCreateEntryMode) => {
+      const isManualSpec = mode === "manual_spec";
+      setError(null);
+      setCreateTeamStage(0);
+      resetTeamDraft();
+      setUseSpecOverride(isManualSpec);
+      setShowCreateTeamModal(true);
+      setShowForgeAgentForm(false);
+      setForgeAgentWorktreeError(null);
+      void refreshAgents().catch((err) => {
+        setError(parseErrorMessage(err));
+      });
+    },
+    [
+      refreshAgents,
+      resetTeamDraft,
+      setCreateTeamStage,
+      setShowCreateTeamModal,
+      setShowForgeAgentForm,
+      setForgeAgentWorktreeError,
+      setUseSpecOverride,
+    ]
+  );
+
+  const openCreateTeamWizardModal = useCallback(() => {
+    openCreateTeamModal("wizard");
+  }, [openCreateTeamModal]);
+
+  const openCreateTeamManualModal = useCallback(() => {
+    openCreateTeamModal("manual_spec");
+  }, [openCreateTeamModal]);
 
   const closeCreateTeamModal = () => {
     setShowCreateTeamModal(false);
     setCreateTeamStage(0);
     setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
   };
 
   const openForgeAgentForm = () => {
+    if (!forgeRoleTag) {
+      setError("Open Agent Forge in Leader Forge or Recruit Workers stage.");
+      return;
+    }
     setError(null);
+    setForgeAgentWorktreeError(null);
     setShowForgeAgentForm(true);
-    const target: TeamForgeBindTarget =
-      createTeamStage === 1 ? "leader" : createTeamStage === 2 ? "worker" : "none";
-    setForgeAgentBindTarget(target);
     const teamToken = newTeamName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const prefix = teamToken || "team";
     const defaultName =
-      target === "leader"
+      forgeRoleTag === "leader"
         ? `${prefix}-leader`
-        : target === "worker"
+        : forgeRoleTag === "worker"
           ? `${prefix}-worker-${Math.max(1, workers.length + 1)}`
           : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
     setForgeAgentName(defaultName);
-    setForgeAgentWorkdir("");
+    setForgeAgentWorktreeMode("use_existing");
+    setForgeAgentWorkdir((prev) =>
+      resolveWorkdirForModalOpen(
+        prev,
+        "use_existing",
+        forgeDefaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      )
+    );
+    setForgeAgentWorktreeRepo("");
+    setForgeAgentWorktreeRef("");
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
     setForgeAgentCodeMode(true);
   };
@@ -2349,42 +1467,63 @@ export function TeamPage(props: TeamPageProps) {
   const closeForgeAgentForm = () => {
     if (forgeAgentBusy) return;
     setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
   };
 
   const onCreateForgeAgent = async () => {
     if (forgeAgentBusy) return;
+    if (!forgeRoleTag) {
+      setError("Role tag is unavailable in this stage. Switch to Leader or Worker stage.");
+      return;
+    }
     const name = forgeAgentName.trim() || "agent";
-    const workdir = forgeAgentWorkdir.trim();
-    if (!workdir) {
+    const workdir = normalizeWorkdirInput(forgeAgentWorkdir);
+    const normalizedRoot = normalizeWorkdirInput(forgeDefaultWorktreeRoot);
+    const workdirPayload =
+      forgeAgentWorktreeMode === "create_worktree" &&
+      normalizedRoot &&
+      workdir === normalizedRoot
+        ? ""
+        : workdir;
+    if (!workdirPayload && forgeAgentWorktreeMode !== "create_worktree") {
       setError("Forge agent workdir is required");
+      return;
+    }
+    if (forgeAgentWorktreeMode !== "use_existing" && !forgeAgentWorktreeRepo.trim()) {
+      setError("Worktree repo is required");
       return;
     }
     setForgeAgentBusy(true);
     setError(null);
+    setForgeAgentWorktreeError(null);
     try {
       const preset = getAgentPreset(forgeAgentPresetId);
       const created = await api.createAgent(props.token, {
         name,
-        workdir,
+        workdir: workdirPayload,
         command: preset.command,
         args: preset.args.slice(),
-        worktree_mode: "use_existing",
-        worktree_repo: null,
-        worktree_ref: null,
+        source: "team_forge",
+        worktree_mode: forgeAgentWorktreeMode,
+        worktree_repo: forgeAgentWorktreeRepo.trim() || null,
+        worktree_ref: forgeAgentWorktreeRef.trim() || null,
         code_mode: forgeAgentCodeMode,
       });
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
       setTeamForgeAgentIds((prev) =>
         prev.includes(created.id) ? prev : [...prev, created.id]
       );
-      if (forgeAgentBindTarget === "leader") {
+      if (forgeRoleTag === "leader") {
         setLeaderMemberId(created.id);
-      } else if (forgeAgentBindTarget === "worker") {
+      } else if (forgeRoleTag === "worker") {
         setWorkers((prev) => assignCreatedWorkerToDraft(prev, created.id));
       }
       setShowForgeAgentForm(false);
+      setForgeAgentWorktreeError(null);
     } catch (err) {
-      setError(parseErrorMessage(err));
+      const hint = formatTeamForgeWorktreeError(err);
+      setForgeAgentWorktreeError(hint);
+      setError(hint ?? parseErrorMessage(err));
     } finally {
       setForgeAgentBusy(false);
     }
@@ -2405,12 +1544,22 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     setError(null);
-    setCreateTeamStage((prev) => clampCreateTeamStage(prev + 1));
+    setCreateTeamStage((prev) => {
+      if (useSpecOverride && prev === 0) {
+        return 3;
+      }
+      return clampCreateTeamStage(prev + 1);
+    });
   };
 
   const goToPrevCreateTeamStage = () => {
     setError(null);
-    setCreateTeamStage((prev) => clampCreateTeamStage(prev - 1));
+    setCreateTeamStage((prev) => {
+      if (useSpecOverride && prev === 3) {
+        return 0;
+      }
+      return clampCreateTeamStage(prev - 1);
+    });
   };
 
   const onCreateTeam = async () => {
@@ -2969,7 +2118,8 @@ export function TeamPage(props: TeamPageProps) {
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
-          onOpenCreateTeamModal={openCreateTeamModal}
+          onOpenCreateTeamWizard={openCreateTeamWizardModal}
+          onOpenCreateTeamManual={openCreateTeamManualModal}
           draftTeamName={newTeamName}
           leaderMemberId={leaderMemberId}
           configuredWorkerCount={configuredWorkerCount}
@@ -3181,6 +2331,7 @@ export function TeamPage(props: TeamPageProps) {
                       chatStickToBottom={chatStickToBottom}
                       chatMessagesRef={chatMessagesRef}
                       onConversationScroll={onConversationScroll}
+                      onJumpToBottom={onJumpConversationToBottom}
                       conversationMessages={conversationMessages}
                       toPrettyJson={toPrettyJson}
                       formatTs={formatTs}
@@ -3266,9 +2417,14 @@ export function TeamPage(props: TeamPageProps) {
           >
             <div className="modal-head">
               <h3 id="team-create-title">Team Forge</h3>
-              <span className="badge">
-                Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
-              </span>
+              <div className="team-create-head-meta">
+                <span className="badge">
+                  Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
+                </span>
+                <span className="badge">
+                  {useSpecOverride ? "Manual Spec" : "Guided Wizard"}
+                </span>
+              </div>
             </div>
 
             <div className="team-create-progress">
@@ -3276,7 +2432,9 @@ export function TeamPage(props: TeamPageProps) {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
                 const isCompleted = stageIndex < createTeamStage;
-                const isLocked = !canEnterCreateStage(stageIndex);
+                const isManualSkipped =
+                  useSpecOverride && stageIndex !== 0 && stageIndex !== 3;
+                const isLocked = isManualSkipped || !canEnterCreateStage(stageIndex);
                 return (
                   <button
                     key={title}
@@ -3294,7 +2452,9 @@ export function TeamPage(props: TeamPageProps) {
                     aria-disabled={isLocked && !isActive && !isCompleted}
                     title={
                       isLocked && !isActive && !isCompleted
-                        ? "Complete previous stage requirements first"
+                        ? isManualSkipped
+                          ? "Manual spec mode skips this stage"
+                          : "Complete previous stage requirements first"
                         : undefined
                     }
                   >
@@ -3327,111 +2487,52 @@ export function TeamPage(props: TeamPageProps) {
                 ))}
               </div>
 
-              <div className="team-create-agent-entry">
-                <div className="team-create-agent-entry-head">
-                  <h4>Agent Forge</h4>
-                  <button
-                    onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
-                    disabled={useSpecOverride || forgeAgentBusy}
-                    type="button"
-                  >
-                    {showForgeAgentForm ? "Hide" : "New Agent"}
-                  </button>
-                </div>
-                <p className="muted">
-                  Use one unified entry to create an agent, then optionally bind it to leader or
-                  workers.
-                </p>
-                {showForgeAgentForm && (
-                  <div className="team-create-forge-agent">
-                    <div className="team-create-forge-agent-head">
-                      <strong>Create Agent</strong>
-                      <button
-                        onClick={closeForgeAgentForm}
-                        disabled={forgeAgentBusy}
-                        type="button"
-                      >
-                        Close
-                      </button>
-                    </div>
-                    <div className="team-create-forge-agent-grid">
-                      <input
-                        placeholder="agent name"
-                        value={forgeAgentName}
-                        onChange={(event) => setForgeAgentName(event.target.value)}
-                        disabled={forgeAgentBusy}
-                      />
-                      <input
-                        placeholder="workdir"
-                        value={forgeAgentWorkdir}
-                        onChange={(event) => setForgeAgentWorkdir(event.target.value)}
-                        disabled={forgeAgentBusy}
-                      />
-                      <select
-                        value={forgeAgentPresetId}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          if (isAgentPresetId(next)) {
-                            setForgeAgentPresetId(next);
-                          }
-                        }}
-                        disabled={forgeAgentBusy}
-                      >
-                        {forgeAgentPresetOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={forgeAgentBindTarget}
-                        onChange={(event) =>
-                          setForgeAgentBindTarget(event.target.value as TeamForgeBindTarget)
-                        }
-                        disabled={forgeAgentBusy}
-                      >
-                        <option value="none">Create only (no binding)</option>
-                        <option value="leader">Create and bind as leader</option>
-                        <option value="worker">Create and bind as worker</option>
-                      </select>
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={forgeAgentCodeMode}
-                          onChange={(event) => setForgeAgentCodeMode(event.target.checked)}
-                          disabled={forgeAgentBusy}
-                        />
-                        code_mode
-                      </label>
-                    </div>
-                    <div className="team-create-forge-agent-meta mono">
-                      <span>{`command=${forgeAgentPreset.command}`}</span>
-                      <span>{`args=${
-                        forgeAgentPreset.args.length > 0
-                          ? forgeAgentPreset.args.join(" ")
-                          : "-"
-                      }`}</span>
-                      <span>{`bind_target=${forgeAgentBindTarget}`}</span>
-                    </div>
-                    <div className="team-create-forge-agent-actions">
-                      <button
-                        onClick={onCreateForgeAgent}
-                        disabled={forgeAgentBusy}
-                        type="button"
-                      >
-                        {forgeAgentBusy ? "Creating..." : "Create Agent"}
-                      </button>
-                    </div>
+              {createTeamStage !== 0 && (
+                <div className="team-create-agent-entry">
+                  <div className="team-create-agent-entry-head">
+                    <h4>Agent Forge</h4>
+                    <button
+                      onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
+                      disabled={!canForgeAgentsInStage || forgeAgentBusy}
+                      type="button"
+                    >
+                      {showForgeAgentForm ? "Hide" : "New Agent"}
+                    </button>
                   </div>
-                )}
-              </div>
+                  <p className="muted">
+                    Role tag follows the current stage. Leader stage creates leader agents, worker
+                    stage creates worker agents.
+                  </p>
+                  <div className="team-create-forge-agent-meta mono">
+                    <span>role_tag</span>
+                    <span>{forgeRoleTag ?? "-"}</span>
+                  </div>
+                  {!canForgeAgentsInStage && (
+                    <div className="team-create-stage-note">
+                      Agent Forge is available only in Leader Forge or Recruit Workers stage.
+                    </div>
+                  )}
+                  {showForgeAgentForm && (
+                    <div className="team-create-stage-note">
+                      Agent create modal is open. Submit to create and auto-assign by role tag.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {createTeamStage === 0 && (
                 <div className="team-create-panel">
                   <h4>Mission Brief</h4>
-                  <p className="muted">
-                    Pick a team name and description first. This is the party identity shown in
-                    the workbench.
+                  <div className="team-create-mission-intro">
+                    <p className="muted">
+                      Pick a team name and description first. This is the party identity shown in
+                      the workbench.
+                    </p>
+                  </div>
+                  <p className="team-create-stage-note">
+                    {useSpecOverride
+                      ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
+                      : "Guided Wizard entry selected. Continue to Leader Forge next."}
                   </p>
                   {!isMissionBriefReady && (
                     <p className="team-create-stage-note">
@@ -3698,25 +2799,23 @@ export function TeamPage(props: TeamPageProps) {
                 <div className="team-create-panel">
                   <h4>Launch Team</h4>
                   <p className="muted">
-                    Final review before deployment. You can still override spec JSON manually.
+                    Final review before deployment.
                   </p>
                   <div className="teams-run-meta mono">
                     <span>team={newTeamName.trim() || "-"}</span>
                     <span>leader={leaderMemberId.trim() || "-"}</span>
                     <span>workers={configuredWorkerCount}</span>
                   </div>
-                  <p className="muted">
-                    Default workflow is generated automatically:
-                    `leader_plan` → `worker_*` → `leader_synthesize`.
-                  </p>
-                  <label className="checkbox">
-                    <input
-                      type="checkbox"
-                      checked={useSpecOverride}
-                      onChange={(event) => setUseSpecOverride(event.target.checked)}
-                    />
-                    Edit spec JSON manually
-                  </label>
+                  {useSpecOverride ? (
+                    <p className="muted">
+                      Manual Spec mode: edit full team spec JSON directly.
+                    </p>
+                  ) : (
+                    <p className="muted">
+                      Guided wizard generated this spec:
+                      `leader_plan` → `worker_*` → `leader_synthesize`.
+                    </p>
+                  )}
                   <textarea
                     className="mono"
                     rows={12}
@@ -3772,6 +2871,30 @@ export function TeamPage(props: TeamPageProps) {
               )}
             </div>
           </div>
+          {showForgeAgentForm && (
+            <CreateAgentModal
+              agentName={forgeAgentName}
+              setAgentName={setForgeAgentName}
+              agentWorkdir={forgeAgentWorkdir}
+              setAgentWorkdir={setForgeAgentWorkdir}
+              agentPresetId={forgeAgentPresetId}
+              setAgentPresetId={setForgeAgentPresetId}
+              worktreeMode={forgeAgentWorktreeMode}
+              setWorktreeMode={handleForgeWorktreeModeChange}
+              worktreeRepo={forgeAgentWorktreeRepo}
+              setWorktreeRepo={setForgeAgentWorktreeRepo}
+              worktreeRef={forgeAgentWorktreeRef}
+              setWorktreeRef={setForgeAgentWorktreeRef}
+              codeMode={forgeAgentCodeMode}
+              setCodeMode={setForgeAgentCodeMode}
+              worktreeError={forgeAgentWorktreeError}
+              createBusy={forgeAgentBusy}
+              workdirPlaceholder={forgeDefaultWorktreeRoot}
+              withinPortal
+              onCreateAgent={onCreateForgeAgent}
+              onClose={closeForgeAgentForm}
+            />
+          )}
         </div>
       )}
     </div>

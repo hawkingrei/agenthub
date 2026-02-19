@@ -17,12 +17,16 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 
+const AGENT_SOURCE_MANUAL: &str = "manual";
+const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
+
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
     pub name: String,
     pub workdir: String,
     pub command: String,
     pub args: Vec<String>,
+    pub source: Option<String>,
     pub worktree_mode: Option<String>,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -128,6 +132,7 @@ async fn create_agent(
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
     let _user = require_user(&headers, &state).await?;
+    let source = parse_agent_source(payload.source.as_deref())?;
     let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
     let workdir = resolve_create_agent_workdir(
         &payload.workdir,
@@ -145,7 +150,14 @@ async fn create_agent(
         worktree_ref: payload.worktree_ref,
         code_mode: payload.code_mode.unwrap_or(true),
     };
-    let agent = state.agents.create_agent(config).await?;
+    let agent = if source == AGENT_SOURCE_MANUAL {
+        state.agents.create_agent(config).await?
+    } else {
+        state
+            .agents
+            .create_agent_with_source(config, source)
+            .await?
+    };
     Ok(Json(agent))
 }
 
@@ -408,6 +420,21 @@ fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
     }
 }
 
+fn parse_agent_source(value: Option<&str>) -> Result<&'static str, ApiError> {
+    let normalized = value
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty())
+        .unwrap_or(AGENT_SOURCE_MANUAL)
+        .to_ascii_lowercase();
+    match normalized.as_str() {
+        AGENT_SOURCE_MANUAL => Ok(AGENT_SOURCE_MANUAL),
+        AGENT_SOURCE_TEAM_FORGE => Ok(AGENT_SOURCE_TEAM_FORGE),
+        _ => Err(ApiError::bad_request(
+            "source must be one of: manual, team_forge",
+        )),
+    }
+}
+
 fn resolve_create_agent_workdir(
     requested_workdir: &str,
     agent_name: &str,
@@ -526,7 +553,7 @@ mod tests {
     use crate::team::TeamManager;
 
     use super::{
-        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode,
+        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, parse_agent_source,
         parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
         router, sanitize_worktree_segment,
     };
@@ -553,6 +580,16 @@ mod tests {
             parse_worktree_mode(Some("reuse_worktree")),
             WorktreeMode::ReuseWorktree
         ));
+    }
+
+    #[test]
+    fn parse_agent_source_defaults_and_validates() {
+        assert_eq!(parse_agent_source(None).expect("default source"), "manual");
+        assert_eq!(
+            parse_agent_source(Some("team_forge")).expect("team forge source"),
+            "team_forge"
+        );
+        assert!(parse_agent_source(Some("invalid")).is_err());
     }
 
     #[test]
@@ -748,6 +785,7 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'manual',
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -1700,6 +1738,86 @@ mod tests {
         assert!(
             ids_after_complete.iter().any(|id| id == &hidden_member.id),
             "member agent should be visible again after team step completed"
+        );
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn list_agents_hides_team_forge_source_agents() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir =
+            std::env::temp_dir().join(format!("agenthub-list-agents-source-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO safe_paths (path, created_at)
+            VALUES (?1, ?2)
+            "#,
+        )
+        .bind(workdir.to_string_lossy().to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+        let manual_agent = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "manual-visible".to_string(),
+                workdir: workdir.to_string_lossy().to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: false,
+            })
+            .await
+            .expect("create manual agent");
+
+        let team_forge_agent = state
+            .agents
+            .create_agent_with_source(
+                crate::agent::AgentConfig {
+                    name: "team-forge-hidden".to_string(),
+                    workdir: workdir.to_string_lossy().to_string(),
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                    worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                    worktree_repo: None,
+                    worktree_ref: None,
+                    code_mode: false,
+                },
+                "team_forge",
+            )
+            .await
+            .expect("create team forge agent");
+
+        let list_resp = app
+            .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
+            .await
+            .expect("list agents");
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let listed = decode_json_body(list_resp).await;
+        let ids: Vec<String> = listed
+            .as_array()
+            .expect("agents list")
+            .iter()
+            .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+
+        assert!(
+            ids.iter().any(|id| id == &manual_agent.id),
+            "manual agent should stay visible"
+        );
+        assert!(
+            !ids.iter().any(|id| id == &team_forge_agent.id),
+            "team_forge agent should be hidden from /api/agents list"
         );
 
         remove_dir_best_effort(&workdir);

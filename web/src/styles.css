@@ -2933,6 +2933,12 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0 0 4px;
 }
 
+.teams-create-entry-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .teams-create-launch-meta {
   display: grid;
   gap: 4px;
@@ -3236,6 +3242,59 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0;
 }
 
+.team-create-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-create-mission-intro {
+  border: 1px solid #dbe4ef;
+  background: #f8fbff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.team-create-mission-intro p {
+  margin: 0;
+}
+
+.team-create-mode-toggle {
+  border: 1px solid #dbe4ef;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.team-create-mode-checkbox {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.team-create-mode-checkbox input {
+  margin-top: 2px;
+}
+
+.team-create-mode-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.team-create-mode-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #233446;
+  line-height: 1.35;
+}
+
+.team-create-mode-hint {
+  font-size: 12px;
+  color: #5d6f82;
+  line-height: 1.45;
+}
+
 .team-create-stage-note {
   margin: 0;
   border-left: 3px solid #d59c2f;
@@ -3273,6 +3332,10 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 4px;
   color: #4d5f73;
   font-size: 11px;
+}
+
+.team-create-forge-agent-meta select {
+  width: min(260px, 100%);
 }
 
 .team-create-forge-agent-actions {
@@ -3479,6 +3542,12 @@ select:not([class*="mantine-"]):focus-visible {
   align-items: center;
 }
 
+.teams-chat-jump-bottom {
+  margin-left: auto;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
 .teams-chat-messages {
   max-height: 420px;
   overflow: auto;
@@ -3544,6 +3613,80 @@ select:not([class*="mantine-"]):focus-visible {
 
 .muted {
   color: #6f6f6f;
+}
+
+@media (max-width: 960px) {
+  .teams-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-sidebar,
+  .teams-main {
+    min-width: 0;
+  }
+
+  .teams-run-list-head .actions {
+    width: 100%;
+  }
+
+  .teams-run-list-head .actions select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .teams-run-meta {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .teams-step-grid,
+  .teams-message-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-chat-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teams-chat-members {
+    max-height: 220px;
+  }
+
+  .team-member-row-main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .team-member-row-meta {
+    grid-column: 1 / -1;
+  }
+
+  .team-member-workline {
+    text-align: left;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .teams-create-launch,
+  .teams-run-create,
+  .teams-run-list,
+  .teams-step-panel,
+  .teams-message-panel,
+  .teams-chat-panel,
+  .teams-chat-members {
+    padding: 8px;
+  }
+
+  .teams-event-list,
+  .teams-step-list,
+  .teams-message-list,
+  .teams-chat-messages {
+    max-height: 320px;
+  }
+
+  .team-item {
+    padding: 7px 9px;
+  }
 }
 
 @media (max-width: 600px) {
