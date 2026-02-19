@@ -38,6 +38,5 @@ global status filter across teams, causing context loss when switching teams.
 ```bash
 npm --prefix web run test -- src/pages/team_page.runs.test.ts
 npm --prefix web run build
-HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= NO_PROXY=127.0.0.1,localhost npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts --project=chromium
-cargo test --test web_assets styles_keep_acp_conversation_scoped
+/bin/zsh -lc 'set -euo pipefail; npm --prefix web run dev -- --host 127.0.0.1 --port 5173 --strictPort >/tmp/agenthub-vite.log 2>&1 & VITE_PID=$!; trap "kill $VITE_PID 2>/dev/null || true" EXIT; for i in {1..30}; do curl -sf http://127.0.0.1:5173 >/dev/null && break; sleep 1; done; PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts'
 ```

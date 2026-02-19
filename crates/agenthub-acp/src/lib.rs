@@ -1,4 +1,5 @@
 mod actor_runtime_skill;
+mod team_role_skills;
 
 use std::collections::HashMap;
 use std::fs;
@@ -29,6 +30,7 @@ use agenthub_acp_core::{
     AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
     filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
+use team_role_skills::build_team_role_skills;
 
 const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
@@ -45,6 +47,7 @@ pub struct AcpActorSkillContext {
     pub actor_id: String,
     pub default_channel: String,
     pub actor_cli_path: String,
+    pub member_role: Option<String>,
 }
 
 pub struct SpawnAcpSessionRequest {
@@ -339,6 +342,23 @@ fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
     skills
 }
 
+fn dedupe_skills(skills: Vec<AcpSkill>) -> Vec<AcpSkill> {
+    let mut seen_name = std::collections::HashSet::new();
+    let mut seen_path = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(skills.len());
+    for skill in skills {
+        let name_key = skill.name.to_ascii_lowercase();
+        let path_key = skill.path.to_ascii_lowercase();
+        if seen_name.contains(&name_key) || seen_path.contains(&path_key) {
+            continue;
+        }
+        seen_name.insert(name_key);
+        seen_path.insert(path_key);
+        out.push(skill);
+    }
+    out
+}
+
 #[derive(Clone)]
 pub struct AcpClient {
     sink: Arc<dyn AcpEventSink>,
@@ -571,8 +591,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         let mcp_servers = load_mcp_servers(actor_context.as_ref());
         let mut skills = load_skills(&safe_paths);
         if let Some(ctx) = actor_context.as_ref() {
+            skills.extend(build_team_role_skills(ctx));
             skills.push(build_actor_runtime_skill(ctx));
         }
+        let skills = dedupe_skills(skills);
         let skill_blocks = build_skill_blocks(&skills);
         let skills_meta = build_skills_meta(&skills);
         let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -1162,6 +1184,7 @@ mod tests {
             actor_id: "leader".to_string(),
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
+            member_role: Some("leader".to_string()),
         };
         let server = build_actor_mailbox_mcp_server(&context);
         match server {

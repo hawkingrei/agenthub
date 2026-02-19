@@ -147,6 +147,7 @@ impl AgentManager {
     }
 
     pub async fn list_agents(&self) -> anyhow::Result<Vec<AgentRecord>> {
+        let active_team_member_agents = self.list_active_team_member_agents().await?;
         let rows = sqlx::query(
             r#"
             SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
@@ -159,11 +160,15 @@ impl AgentManager {
 
         let mut agents = Vec::with_capacity(rows.len());
         for row in rows {
+            let agent_id: String = row.get("id");
+            if active_team_member_agents.contains(&agent_id) {
+                continue;
+            }
             let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
             let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
             let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
             agents.push(AgentRecord {
-                id: row.get("id"),
+                id: agent_id,
                 name: row.get("name"),
                 workdir: row.get("workdir"),
                 command: row.get("command"),
@@ -178,6 +183,41 @@ impl AgentManager {
             });
         }
         Ok(agents)
+    }
+
+    async fn list_active_team_member_agents(&self) -> anyhow::Result<HashSet<String>> {
+        let has_team_tables: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name IN ('team_runs', 'team_steps')
+            "#,
+        )
+        .fetch_one(&self.db)
+        .await?;
+        if has_team_tables < 2 {
+            return Ok(HashSet::new());
+        }
+
+        let rows = sqlx::query(
+            r#"
+            SELECT DISTINCT sessions.agent_id
+            FROM team_steps AS steps
+            JOIN team_runs AS runs ON runs.id = steps.run_id
+            JOIN agent_sessions AS sessions ON sessions.id = steps.remote_task_id
+            WHERE steps.remote_task_id IS NOT NULL
+              AND steps.status IN ('working', 'input_required')
+              AND runs.status IN ('submitted', 'working', 'input_required')
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("agent_id"))
+            .collect())
     }
 
     pub async fn get_agent(&self, agent_id: &str) -> anyhow::Result<AgentRecord> {

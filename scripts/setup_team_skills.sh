@@ -8,7 +8,7 @@ Usage:
   scripts/setup_team_skills.sh [--skills-file=<path>]
 
 Description:
-  Add Team leader/worker skill files from this repository into AgentHub
+  Add Team leader/worker/deliberation skill files from this repository into AgentHub
   skills.json. Existing skills are preserved and duplicates are removed.
 
 Options:
@@ -58,8 +58,9 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 leader_skill="${repo_root}/skills/team/team-leader-orchestrator.SKILL.md"
 worker_skill="${repo_root}/skills/team/team-worker-executor.SKILL.md"
+deliberation_skill="${repo_root}/skills/team/team-deliberation-rules.SKILL.md"
 
-for skill_path in "${leader_skill}" "${worker_skill}"; do
+for skill_path in "${leader_skill}" "${worker_skill}" "${deliberation_skill}"; do
   if [[ ! -f "${skill_path}" ]]; then
     echo "error: missing skill file: ${skill_path}" >&2
     exit 1
@@ -82,9 +83,10 @@ trap cleanup EXIT
 jq \
   --arg leader "${leader_skill}" \
   --arg worker "${worker_skill}" \
+  --arg deliberation "${deliberation_skill}" \
   '
     .skills = (
-      ((.skills | if type == "array" then . else [] end) + [$leader, $worker])
+      ((.skills | if type == "array" then . else [] end) + [$leader, $worker, $deliberation])
       | reduce .[] as $entry (
           {items: [], seen: {}};
           (
@@ -114,3 +116,4 @@ echo "updated skills config: ${skills_file}"
 echo "added team skills:"
 echo "  - ${leader_skill}"
 echo "  - ${worker_skill}"
+echo "  - ${deliberation_skill}"

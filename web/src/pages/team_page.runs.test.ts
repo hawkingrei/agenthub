@@ -1,14 +1,28 @@
 import { describe, expect, it } from "vitest";
-import type { AgentRecord, TeamRunEventRecord, TeamRunRecord } from "../api";
+import type {
+  AgentRecord,
+  TeamActorMessageRecord,
+  TeamRunEventRecord,
+  TeamRunRecord,
+} from "../api";
 import {
   assignCreatedWorkerToDraft,
+  buildMailboxChatPayload,
+  buildMailboxConversationKey,
   buildTeamMemberLiveStates,
   buildMailboxPayloadTemplate,
+  createInitialTeamDraftState,
+  countUnreadConversationMessages,
+  mergeMailboxMessages,
   mergeRunPages,
   mergeTeamRunList,
   normalizeSkillSelection,
   parseTeamSpecMembers,
+  resolveConversationMaxMessageId,
+  resolveMailboxChatActors,
   toggleSkillSelection,
+  selectMailboxConversation,
+  selectTeamForgeAgents,
   resolveTeamMemberLifecycleTone,
   resolveTeamMemberAgentStatuses,
   resolveRunStatusFilter,
@@ -58,6 +72,28 @@ function buildAgent(id: string, status: string): AgentRecord {
     status,
     created_at: 1_700_000_000,
     updated_at: 1_700_000_000,
+  };
+}
+
+function buildMailboxMessage(
+  messageId: number,
+  fromActorId: string,
+  toActorId: string,
+  payload: unknown,
+  status: TeamActorMessageRecord["status"] = "pending"
+): TeamActorMessageRecord {
+  return {
+    message_id: messageId,
+    run_id: "run-1",
+    from_actor_id: fromActorId,
+    to_actor_id: toActorId,
+    channel: "default",
+    transport: "local",
+    route: null,
+    payload,
+    status,
+    created_at: 1_700_000_000 + messageId,
+    delivered_at: status === "delivered" ? 1_700_000_100 + messageId : null,
   };
 }
 
@@ -138,6 +174,123 @@ describe("team run list helpers", () => {
     };
     expect(blocked.status).toBe("blocked");
     expect(blocked.next_action.length).toBeGreaterThan(0);
+  });
+
+  it("resolves chat actors from leader and selected member", () => {
+    expect(
+      resolveMailboxChatActors("leader-agent", ["leader-agent", "worker-agent"], "worker-agent")
+    ).toEqual({
+      fromActorId: "leader-agent",
+      toActorId: "worker-agent",
+      inboxActorId: "worker-agent",
+    });
+
+    expect(resolveMailboxChatActors("missing", ["worker-agent"], "")).toEqual({
+      fromActorId: "worker-agent",
+      toActorId: "worker-agent",
+      inboxActorId: "worker-agent",
+    });
+  });
+
+  it("merges mailbox messages with dedupe by message id", () => {
+    const merged = mergeMailboxMessages(
+      [
+        buildMailboxMessage(1, "leader-agent", "worker-agent", {
+          type: "chat_message",
+          text: "task",
+        }),
+      ],
+      [
+        buildMailboxMessage(1, "leader-agent", "worker-agent", {
+          type: "chat_message",
+          text: "task-updated",
+        }),
+        buildMailboxMessage(2, "worker-agent", "leader-agent", {
+          type: "chat_message",
+          text: "done",
+        }),
+      ]
+    );
+    expect(merged.map((message) => message.message_id)).toEqual([1, 2]);
+    expect(
+      (merged[0]?.payload as { text?: string } | undefined)?.text
+    ).toBe("task-updated");
+  });
+
+  it("selects mailbox conversation in both directions", () => {
+    const conversation = selectMailboxConversation(
+      [
+        buildMailboxMessage(1, "leader-agent", "worker-agent", "a"),
+        buildMailboxMessage(2, "worker-agent", "leader-agent", "b"),
+        buildMailboxMessage(3, "leader-agent", "worker-2", "c"),
+      ],
+      "leader-agent",
+      "worker-agent"
+    );
+    expect(conversation.map((message) => message.message_id)).toEqual([1, 2]);
+  });
+
+  it("builds chat payload for quick IM send", () => {
+    expect(buildMailboxChatPayload("hello")).toEqual({
+      type: "chat_message",
+      text: "hello",
+      source: "team_workbench",
+    });
+  });
+
+  it("builds stable mailbox conversation key", () => {
+    expect(buildMailboxConversationKey("leader-agent", "worker-agent")).toBe(
+      "leader-agent::worker-agent"
+    );
+    expect(buildMailboxConversationKey("worker-agent", "leader-agent")).toBe(
+      "leader-agent::worker-agent"
+    );
+    expect(buildMailboxConversationKey("leader-agent", "")).toBe("");
+  });
+
+  it("resolves conversation max message id", () => {
+    expect(resolveConversationMaxMessageId([])).toBeNull();
+    expect(
+      resolveConversationMaxMessageId([
+        buildMailboxMessage(3, "a", "b", {}),
+        buildMailboxMessage(7, "a", "b", {}),
+      ])
+    ).toBe(7);
+  });
+
+  it("counts unread messages after seen watermark", () => {
+    const unread = countUnreadConversationMessages(
+      [
+        buildMailboxMessage(1, "leader-agent", "worker-agent", {}),
+        buildMailboxMessage(2, "worker-agent", "leader-agent", {}),
+        buildMailboxMessage(3, "leader-agent", "worker-2", {}),
+      ],
+      "leader-agent",
+      "worker-agent",
+      1
+    );
+    expect(unread).toBe(1);
+    expect(
+      countUnreadConversationMessages(
+        [buildMailboxMessage(2, "leader-agent", "worker-agent", {})],
+        "leader-agent",
+        "worker-agent",
+        2
+      )
+    ).toBe(0);
+  });
+
+  it("counts unread as inbound-only for the active actor side", () => {
+    const unread = countUnreadConversationMessages(
+      [
+        buildMailboxMessage(10, "leader-agent", "worker-agent", {}),
+        buildMailboxMessage(11, "worker-agent", "leader-agent", {}),
+      ],
+      "leader-agent",
+      "worker-agent",
+      0
+    );
+    expect(unread).toBe(1);
   });
 
   it("parses team spec members with dedupe and invalid-entry filtering", () => {
@@ -360,15 +513,33 @@ describe("team run list helpers", () => {
       "custom-skill-a",
       "custom-skill-b",
     ]);
+    expect(
+      normalizeSkillSelection(
+        ["team-deliberation-rules"],
+        "",
+        ["team-worker-executor"],
+        ["agenthub-actor-runtime", "team-worker-executor"]
+      )
+    ).toEqual([
+      "agenthub-actor-runtime",
+      "team-worker-executor",
+      "team-deliberation-rules",
+    ]);
   });
 
-  it("toggles allowed skills while ignoring unknown entries", () => {
+  it("toggles allowed skills while preserving required entries", () => {
     const added = toggleSkillSelection(["agenthub-actor-runtime"], "team-worker-executor");
     expect(added).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
     const removed = toggleSkillSelection(added, "agenthub-actor-runtime");
-    expect(removed).toEqual(["team-worker-executor"]);
+    expect(removed).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
     const unchanged = toggleSkillSelection(removed, "custom-skill");
-    expect(unchanged).toEqual(["team-worker-executor"]);
+    expect(unchanged).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
+    const keptRoleSkill = toggleSkillSelection(
+      ["agenthub-actor-runtime", "team-leader-orchestrator"],
+      "team-leader-orchestrator",
+      ["agenthub-actor-runtime", "team-leader-orchestrator"]
+    );
+    expect(keptRoleSkill).toEqual(["agenthub-actor-runtime", "team-leader-orchestrator"]);
   });
 
   it("assigns newly created worker agent to first empty slot or appends", () => {
@@ -402,5 +573,27 @@ describe("team run list helpers", () => {
 
     const unchanged = assignCreatedWorkerToDraft(appended, "worker-1");
     expect(unchanged).toEqual(appended);
+  });
+
+  it("filters forge-selectable members to current team forge session ids", () => {
+    const pool = selectTeamForgeAgents(
+      [
+        buildAgent("agent-a", "running"),
+        buildAgent("agent-b", "idle"),
+        buildAgent("agent-c", "stopped"),
+      ],
+      ["agent-c", "missing-agent", "agent-a"]
+    );
+    expect(pool.map((agent) => agent.id)).toEqual(["agent-c", "agent-a"]);
+  });
+
+  it("creates initial team draft with empty forge candidate pool", () => {
+    const draft = createInitialTeamDraftState();
+    expect(draft.leaderMemberId).toBe("");
+    expect(draft.workers).toEqual([]);
+    expect(draft.teamForgeAgentIds).toEqual([]);
+    expect(draft.useSpecOverride).toBe(false);
+    expect(draft.newTeamSpec).toBe("{}");
+    expect(draft.leaderSkills).toContain("agenthub-actor-runtime");
   });
 });

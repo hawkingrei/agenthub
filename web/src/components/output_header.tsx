@@ -1,5 +1,6 @@
 import React from "react";
 import { AgentRecord } from "../api";
+import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
 
 type OutputHeaderProps = {
   activeAgent: AgentRecord | null;
@@ -59,9 +60,12 @@ export const OutputHeader = React.memo(function OutputHeader({
       </div>
       {activeAgent ? (
         <div className="output-meta">
-          <span className={`agent-status ${activeAgent.status}`}>
-            {activeAgent.status}
-          </span>
+          <StatusBadge
+            label={activeAgent.status}
+            tone={resolveAgentStatusTone(activeAgent.status)}
+            className={`agent-status status-${activeAgent.status}`}
+            title={`status: ${activeAgent.status}`}
+          />
           <span className="output-pill">
             Code mode {activeAgent.code_mode ? "on" : "off"}
           </span>

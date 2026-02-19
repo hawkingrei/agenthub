@@ -38,19 +38,11 @@ The standalone `/teams` workbench exists, but team-level observability is fragme
 
 ## Validation
 
-Suggested checks:
+Executed (2026-02-18):
 
 ```bash
-cargo test team_run_snapshot_api_returns_member_status_and_mailbox_summary -- --nocapture
-cargo test teams_router_http_contract -- --nocapture
-cargo test openapi_json_contains_team_runs_list_path -- --nocapture
-npm --prefix web run lint
+cargo test api::teams::tests::team_run_snapshot_api_returns_member_status_and_mailbox_summary -- --nocapture
+cargo test api::teams::tests:: -- --nocapture
+npm --prefix web run test -- src/pages/team_page.runs.test.ts
 npm --prefix web run build
 ```
-
-Manual checks:
-
-1. Create a team using leader/worker form fields and confirm generated spec is accepted.
-2. Create a run and verify `Overview` shows member status/mailbox counters.
-3. Send mailbox messages and verify `Mailbox` tab summary and list update.
-4. Select a member with an active session and verify `Member Console` shows agent events.

@@ -18,7 +18,7 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
         Json(CreateTeamRequest {
             name: "review-team".to_string(),
             description: Some("team for review".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -66,7 +66,7 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
         Json(CreateTeamRequest {
             name: "review-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -85,7 +85,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
         Json(CreateTeamRequest {
             name: "delete-team".to_string(),
             description: Some("delete target".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -203,6 +203,84 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .await
             .expect("count messages");
     assert_eq!(message_count, 0);
+}
+
+#[tokio::test]
+async fn teams_api_enforces_required_role_skills() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "required-role-skills-team".to_string(),
+            description: Some("role skill enforcement".to_string()),
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "skills":["planning"]
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "skills":["coding"]
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let members = created
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("members array");
+
+    let resolve_skills = |member_id: &str| -> Vec<String> {
+        members
+            .iter()
+            .find(|member| {
+                member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == member_id)
+            })
+            .and_then(|member| member.get("skills"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect::<Vec<_>>()
+    };
+
+    let leader_skills = resolve_skills("leader-agent");
+    assert!(leader_skills.iter().any(|item| item == "agenthub-actor-runtime"));
+    assert!(leader_skills
+        .iter()
+        .any(|item| item == "team-leader-orchestrator"));
+    assert!(leader_skills.iter().any(|item| item == "planning"));
+    assert!(!leader_skills
+        .iter()
+        .any(|item| item == "team-worker-executor"));
+
+    let worker_skills = resolve_skills("worker-agent");
+    assert!(worker_skills.iter().any(|item| item == "agenthub-actor-runtime"));
+    assert!(worker_skills
+        .iter()
+        .any(|item| item == "team-worker-executor"));
+    assert!(worker_skills.iter().any(|item| item == "coding"));
+    assert!(!worker_skills
+        .iter()
+        .any(|item| item == "team-leader-orchestrator"));
 }
 
 #[tokio::test]
@@ -391,7 +469,7 @@ async fn teams_api_rejects_spec_with_too_many_steps() {
             description: None,
             spec: json!({
                 "entrypoint": "step-0",
-                "members": [{"member_id":"planner"}],
+                "members": [{"member_id":"planner","role":"leader"}],
                 "steps": steps,
             }),
         }),
@@ -418,7 +496,7 @@ async fn teams_api_internal_errors_are_sanitized() {
         Json(CreateTeamRequest {
             name: "internal-error-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -457,7 +535,7 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
         Json(CreateTeamRequest {
             name: "run-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor"}]}),
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
         }),
     )
     .await
@@ -574,7 +652,7 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         Json(CreateTeamRequest {
             name: "runs-list-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -586,7 +664,7 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         Json(CreateTeamRequest {
             name: "runs-list-other-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -747,7 +825,7 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
         Json(CreateTeamRequest {
             name: "scheduler-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -994,7 +1072,7 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
         Json(CreateTeamRequest {
             name: "input-required-api-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
@@ -1169,7 +1247,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                "members":[{"member_id":"planner","role":"leader"},{"member_id":"reviewer","role":"worker"}]
             }),
         }),
     )
@@ -1383,7 +1461,7 @@ async fn team_run_messages_api_supports_idempotency_key() {
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                "members":[{"member_id":"planner","role":"leader"},{"member_id":"reviewer","role":"worker"}]
             }),
         }),
     )
@@ -1947,7 +2025,12 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
     assert_eq!(
         leader.skills,
-        vec!["planning".to_string(), "review".to_string()]
+        vec![
+            "agenthub-actor-runtime".to_string(),
+            "team-leader-orchestrator".to_string(),
+            "planning".to_string(),
+            "review".to_string()
+        ]
     );
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");

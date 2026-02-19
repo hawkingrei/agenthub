@@ -43,6 +43,7 @@ pub struct StartAgentRequest {
 pub struct StartAgentActorRuntimeRequest {
     pub run_id: String,
     pub actor_id: String,
+    pub member_role: Option<String>,
     pub channel: Option<String>,
     pub actor_cli_path: Option<String>,
 }
@@ -495,6 +496,9 @@ fn parse_start_actor_runtime_context(
         actor_id: actor_id.to_string(),
         default_channel,
         actor_cli_path,
+        member_role: actor_runtime
+            .member_role
+            .map(|value| value.trim().to_string()),
     }))
 }
 
@@ -611,6 +615,7 @@ mod tests {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: "run-7".to_string(),
                 actor_id: "planner".to_string(),
+                member_role: Some("leader".to_string()),
                 channel: Some("coordination".to_string()),
                 actor_cli_path: Some(default_cli.clone()),
             }),
@@ -619,6 +624,7 @@ mod tests {
         .expect("context");
         assert_eq!(context.run_id, "run-7");
         assert_eq!(context.actor_id, "planner");
+        assert_eq!(context.member_role.as_deref(), Some("leader"));
         assert_eq!(context.default_channel, "coordination");
         assert_eq!(context.actor_cli_path, default_cli);
     }
@@ -629,6 +635,7 @@ mod tests {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: "run-9".to_string(),
                 actor_id: "planner".to_string(),
+                member_role: None,
                 channel: None,
                 actor_cli_path: None,
             }),
@@ -648,6 +655,7 @@ mod tests {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: " ".to_string(),
                 actor_id: "planner".to_string(),
+                member_role: None,
                 channel: None,
                 actor_cli_path: None,
             }),
@@ -659,6 +667,7 @@ mod tests {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: "run-2".to_string(),
                 actor_id: " ".to_string(),
+                member_role: None,
                 channel: None,
                 actor_cli_path: None,
             }),
@@ -673,6 +682,7 @@ mod tests {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 run_id: "run-10".to_string(),
                 actor_id: "planner".to_string(),
+                member_role: None,
                 channel: None,
                 actor_cli_path: Some("/tmp/not-allowed-agenthub".to_string()),
             }),
@@ -795,6 +805,48 @@ mod tests {
         .execute(db)
         .await
         .expect("create agent_events");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_runs (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create team_runs");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_steps (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                step_key TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                remote_task_id TEXT,
+                status TEXT NOT NULL,
+                attempt INTEGER NOT NULL DEFAULT 0,
+                depends_on_json TEXT NOT NULL,
+                input_json TEXT,
+                output_json TEXT,
+                error_text TEXT,
+                started_at INTEGER,
+                ended_at INTEGER,
+                FOREIGN KEY(run_id) REFERENCES team_runs(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create team_steps");
     }
 
     async fn build_test_state() -> AppState {
@@ -1477,6 +1529,177 @@ mod tests {
         assert!(
             !env_file.exists(),
             "agent mode should reject actor_runtime payload and must not spawn process"
+        );
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn list_agents_hides_team_working_member_agent() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir = std::env::temp_dir().join(format!("agenthub-list-agents-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO safe_paths (path, created_at)
+            VALUES (?1, ?2)
+            "#,
+        )
+        .bind(workdir.to_string_lossy().to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+        let hidden_member = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "team-hidden-member".to_string(),
+                workdir: workdir.to_string_lossy().to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: false,
+            })
+            .await
+            .expect("create hidden member");
+
+        let visible_agent = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "visible-agent".to_string(),
+                workdir: workdir.to_string_lossy().to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: false,
+            })
+            .await
+            .expect("create visible agent");
+
+        let hidden_session = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at)
+            VALUES (?1, ?2, 'running', ?3)
+            "#,
+        )
+        .bind(&hidden_session)
+        .bind(&hidden_member.id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert hidden session");
+
+        let team_run = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, 'working', '{}', ?4)
+            "#,
+        )
+        .bind(&team_run)
+        .bind(Uuid::new_v4().to_string())
+        .bind(Uuid::new_v4().to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert team run");
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_steps (
+                id,
+                run_id,
+                step_key,
+                member_id,
+                remote_task_id,
+                status,
+                attempt,
+                depends_on_json
+            )
+            VALUES (?1, ?2, 'step-1', ?3, ?4, 'working', 0, '[]')
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&team_run)
+        .bind(&hidden_member.id)
+        .bind(&hidden_session)
+        .execute(&state.db)
+        .await
+        .expect("insert team step");
+
+        let list_resp = app
+            .clone()
+            .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
+            .await
+            .expect("list agents");
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let listed = decode_json_body(list_resp).await;
+        let ids: Vec<String> = listed
+            .as_array()
+            .expect("agents list")
+            .iter()
+            .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+
+        assert!(
+            !ids.iter().any(|id| id == &hidden_member.id),
+            "team working member should be hidden from /api/agents list"
+        );
+        assert!(
+            ids.iter().any(|id| id == &visible_agent.id),
+            "non-team agent should stay visible in /api/agents list"
+        );
+
+        sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET status = 'completed', ended_at = ?1
+            WHERE run_id = ?2
+            "#,
+        )
+        .bind(now + 1)
+        .bind(&team_run)
+        .execute(&state.db)
+        .await
+        .expect("complete team step");
+        sqlx::query(
+            r#"
+            UPDATE team_runs
+            SET status = 'completed', ended_at = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(now + 1)
+        .bind(&team_run)
+        .execute(&state.db)
+        .await
+        .expect("complete team run");
+
+        let list_after_complete_resp = app
+            .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
+            .await
+            .expect("list agents after team completion");
+        assert_eq!(list_after_complete_resp.status(), StatusCode::OK);
+        let listed_after_complete = decode_json_body(list_after_complete_resp).await;
+        let ids_after_complete: Vec<String> = listed_after_complete
+            .as_array()
+            .expect("agents list after completion")
+            .iter()
+            .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert!(
+            ids_after_complete.iter().any(|id| id == &hidden_member.id),
+            "member agent should be visible again after team step completed"
         );
 
         remove_dir_best_effort(&workdir);

@@ -66,11 +66,18 @@ pub(crate) fn normalize_actor_context(
         context.default_channel.trim().to_string()
     };
     let actor_cli_path = normalize_actor_cli_path(Some(context.actor_cli_path.as_str()))?;
+    let member_role = context
+        .member_role
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase());
     Ok(AcpActorSkillContext {
         run_id: context.run_id.trim().to_string(),
         actor_id: context.actor_id.trim().to_string(),
         default_channel,
         actor_cli_path,
+        member_role,
     })
 }
 

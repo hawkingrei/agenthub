@@ -1,0 +1,99 @@
+use agenthub_acp_core::{AcpSkill, build_skill};
+
+use crate::AcpActorSkillContext;
+
+const TEAM_LEADER_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-leader-orchestrator.SKILL.md");
+const TEAM_WORKER_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-worker-executor.SKILL.md");
+const TEAM_DELIBERATION_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
+
+const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
+const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
+const TEAM_DELIBERATION_SKILL_NAME: &str = "team-deliberation-rules";
+
+fn normalize_member_role(role: Option<&str>) -> Option<&str> {
+    role.map(str::trim).filter(|value| !value.is_empty())
+}
+
+pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
+    let role = normalize_member_role(context.member_role.as_deref());
+    let mut out = Vec::new();
+    match role {
+        Some("leader") => {
+            out.push(build_skill(
+                TEAM_LEADER_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-leader-orchestrator".to_string(),
+                TEAM_LEADER_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_DELIBERATION_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-deliberation-rules".to_string(),
+                TEAM_DELIBERATION_SKILL_TEXT,
+            ));
+        }
+        Some("worker") => {
+            out.push(build_skill(
+                TEAM_WORKER_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-worker-executor".to_string(),
+                TEAM_WORKER_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_DELIBERATION_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-deliberation-rules".to_string(),
+                TEAM_DELIBERATION_SKILL_TEXT,
+            ));
+        }
+        _ => {}
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_team_role_skills;
+    use crate::AcpActorSkillContext;
+
+    fn context_with_role(role: Option<&str>) -> AcpActorSkillContext {
+        AcpActorSkillContext {
+            run_id: "run-1".to_string(),
+            actor_id: "actor-1".to_string(),
+            default_channel: "default".to_string(),
+            actor_cli_path: "/tmp/agenthub".to_string(),
+            member_role: role.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn build_team_role_skills_for_leader() {
+        let skills = build_team_role_skills(&context_with_role(Some("leader")));
+        let names = skills
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["team-leader-orchestrator", "team-deliberation-rules"]
+        );
+    }
+
+    #[test]
+    fn build_team_role_skills_for_worker() {
+        let skills = build_team_role_skills(&context_with_role(Some("worker")));
+        let names = skills
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["team-worker-executor", "team-deliberation-rules"]
+        );
+    }
+
+    #[test]
+    fn build_team_role_skills_skips_unknown_role() {
+        assert!(build_team_role_skills(&context_with_role(Some("observer"))).is_empty());
+        assert!(build_team_role_skills(&context_with_role(None)).is_empty());
+    }
+}

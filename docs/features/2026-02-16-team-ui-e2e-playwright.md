@@ -19,11 +19,13 @@ layout, leaving Team UI regression risk unguarded.
 - Validate staged Team Forge flow:
   - Open modal from sidebar.
   - Complete mission/leader/worker stages.
+  - Create leader/worker agents through Agent Forge entry and bind them into Team Forge flow.
   - Select leader/worker model presets.
   - Confirm generated spec contains expected workflow steps.
   - Submit create request and ensure team list updates.
 - Validate Team Forge guardrail behavior:
-  - reproduce duplicate member assignment by switching leader to an existing worker id,
+  - reproduce duplicate member assignment inside Team Forge flow (same forged member bound to
+    both leader and worker),
   - assert stage-2 duplicate warning is visible,
   - assert `Next Stage` stays disabled until `Resolve Duplicates` is applied.
 - Assert posted create payload includes expected leader/worker model selections and default step
@@ -40,8 +42,10 @@ layout, leaving Team UI regression risk unguarded.
 
 ## Validation
 
-Run:
+Executed (2026-02-18):
 
 ```bash
-HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= NO_PROXY=127.0.0.1,localhost npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts --project=chromium
+npm --prefix web run test -- src/pages/team_page.runs.test.ts
+/bin/zsh -lc 'set -euo pipefail; npm --prefix web run dev -- --host 127.0.0.1 --port 5173 --strictPort >/tmp/agenthub-vite.log 2>&1 & VITE_PID=$!; trap "kill $VITE_PID 2>/dev/null || true" EXIT; for i in {1..30}; do curl -sf http://127.0.0.1:5173 >/dev/null && break; sleep 1; done; PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts'
+npm --prefix web run build
 ```

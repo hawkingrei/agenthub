@@ -2,6 +2,7 @@ import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
+import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];
@@ -174,9 +175,12 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           >
                             <i className="bi bi-code-slash" aria-hidden="true" />
                           </button>
-                          <span className={`agent-status ${agent.status}`}>
-                            {agent.status}
-                          </span>
+                          <StatusBadge
+                            label={agent.status}
+                            tone={resolveAgentStatusTone(agent.status)}
+                            className={`agent-status status-${agent.status}`}
+                            title={`status: ${agent.status}`}
+                          />
                           <button
                             className="icon-button small"
                             disabled={isAgentActiveStatus(agent.status)}
