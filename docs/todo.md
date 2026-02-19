@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify Linux CI jobs (`Rust`, `Clippy`, `Bazel`) pass after adding `libcap-dev` system dependency for `codex-linux-sandbox` build-time `pkg-config` lookup (`libcap.pc`) and record push/PR run IDs (see `docs/features/2026-02-19-ci-libcap-linux-sandbox.md`).
 - [x] Pin `agenthub-codex-acp` codex git dependencies to fixed commit `c34b30a3c128bb75fcec27ef838c93c99b92fc61` (replace `branch = "acp"` with `rev`) to avoid upstream branch drift breaking ACP adapter builds (see `docs/features/2026-02-19-codex-acp-codex-git-rev-pin.md`).
 - [x] Verify `agenthub-codex-acp` compiles after codex upstream sync tied to `3b80a66ff118f19cdfeab21511caa61924982d29` (API path moves + protocol/config shape changes: `codex_utils_cli`, `codex_utils_approval_presets`, `Config.permissions`, `turn_id/status`, `McpServerConfig.required`, `RolloutRecorder::list_threads(&Config, ...)`) (see `docs/features/2026-02-19-codex-acp-upstream-sync-3b80a66-api-fixes.md`).
 - [ ] Verify codex-acp upstream PR160 sync in `agenthub-codex-acp` after lockfile upgrade (`c34b30a`): patch approval uses `call_id`, exec approval uses `approval_id` fallback + `turn_id`, `ModelReroute` events are handled, and model preset lookup still works across config/options/model APIs (see `docs/features/2026-02-19-codex-acp-upstream-sync-pr160.md`).

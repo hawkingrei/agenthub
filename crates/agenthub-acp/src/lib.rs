@@ -1,10 +1,11 @@
 mod actor_runtime_skill;
 mod team_role_skills;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -571,6 +572,85 @@ impl AcpHandle {
     }
 }
 
+fn should_queue_while_prompt_running(prompt_in_flight: bool, cmd: &AcpCommand) -> bool {
+    prompt_in_flight && !matches!(cmd, AcpCommand::Cancel)
+}
+
+async fn dispatch_acp_command(
+    cmd: AcpCommand,
+    conn: Rc<ClientSideConnection>,
+    event_sink: Arc<dyn AcpEventSink>,
+    session_id: &str,
+    skill_blocks: &[ContentBlock],
+    prompt_done_tx: &mpsc::UnboundedSender<()>,
+    prompt_in_flight: &mut bool,
+) {
+    match cmd {
+        AcpCommand::Prompt(prompt) => {
+            if *prompt_in_flight {
+                event_sink
+                    .emit_raw(
+                        AcpStream::System,
+                        "acp prompt skipped because another prompt is still running".to_string(),
+                    )
+                    .await;
+                return;
+            }
+            *prompt_in_flight = true;
+
+            let conn = conn.clone();
+            let event_sink = event_sink.clone();
+            let session_id = session_id.to_string();
+            let prompt_done_tx = prompt_done_tx.clone();
+            let mut blocks = Vec::with_capacity(skill_blocks.len() + 1);
+            blocks.extend(skill_blocks.iter().cloned());
+            blocks.push(ContentBlock::Text(TextContent::new(prompt)));
+            tokio::task::spawn_local(async move {
+                let request = PromptRequest::new(session_id, blocks);
+                if let Err(err) = conn.prompt(request).await {
+                    event_sink
+                        .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                        .await;
+                }
+                let _ = prompt_done_tx.send(());
+            });
+        }
+        AcpCommand::SetMode(mode_id) => {
+            let request = SetSessionModeRequest::new(session_id.to_string(), mode_id);
+            if let Err(err) = conn.set_session_mode(request).await {
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
+                    .await;
+            }
+        }
+        AcpCommand::SetModel(model_id) => {
+            let request = SetSessionModelRequest::new(session_id.to_string(), model_id);
+            if let Err(err) = conn.set_session_model(request).await {
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
+                    .await;
+            }
+        }
+        AcpCommand::SetConfig { config_id, value } => {
+            let request =
+                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value);
+            if let Err(err) = conn.set_session_config_option(request).await {
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
+                    .await;
+            }
+        }
+        AcpCommand::Cancel => {
+            let request = CancelNotification::new(session_id.to_string());
+            if let Err(err) = conn.cancel(request).await {
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
+                    .await;
+            }
+        }
+    }
+}
+
 pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
     let SpawnAcpSessionRequest {
         event_sink,
@@ -694,53 +774,60 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let session_id = session_id.unwrap_or_else(|| "unknown".to_string());
             let _ = ready_tx.send(Ok(session_id.clone()));
 
-            while let Some(cmd) = cmd_rx.recv().await {
-                match cmd {
-                    AcpCommand::Prompt(prompt) => {
-                        let mut blocks = Vec::with_capacity(skill_blocks.len() + 1);
-                        blocks.extend(skill_blocks.iter().cloned());
-                        blocks.push(ContentBlock::Text(TextContent::new(prompt)));
-                        let request = PromptRequest::new(session_id.clone(), blocks);
-                        if let Err(err) = conn.prompt(request).await {
+            let conn = Rc::new(conn);
+            let (prompt_done_tx, mut prompt_done_rx) = mpsc::unbounded_channel::<()>();
+            let mut prompt_in_flight = false;
+            let mut cmd_rx_closed = false;
+            let mut pending_commands = VecDeque::<AcpCommand>::new();
+
+            while !cmd_rx_closed || prompt_in_flight || !pending_commands.is_empty() {
+                if !prompt_in_flight && let Some(cmd) = pending_commands.pop_front() {
+                    dispatch_acp_command(
+                        cmd,
+                        conn.clone(),
+                        event_sink.clone(),
+                        &session_id,
+                        &skill_blocks,
+                        &prompt_done_tx,
+                        &mut prompt_in_flight,
+                    )
+                    .await;
+                    continue;
+                }
+
+                tokio::select! {
+                    maybe_done = prompt_done_rx.recv(), if prompt_in_flight => {
+                        if maybe_done.is_none() {
                             event_sink
-                                .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                                .emit_raw(
+                                    AcpStream::System,
+                                    "acp prompt completion channel closed unexpectedly".to_string(),
+                                )
                                 .await;
                         }
+                        prompt_in_flight = false;
                     }
-                    AcpCommand::SetMode(mode_id) => {
-                        let request = SetSessionModeRequest::new(session_id.clone(), mode_id);
-                        if let Err(err) = conn.set_session_mode(request).await {
-                            event_sink
-                                .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
+                    maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
+                        match maybe_cmd {
+                            Some(cmd) => {
+                                if should_queue_while_prompt_running(prompt_in_flight, &cmd) {
+                                    pending_commands.push_back(cmd);
+                                    continue;
+                                }
+                                dispatch_acp_command(
+                                    cmd,
+                                    conn.clone(),
+                                    event_sink.clone(),
+                                    &session_id,
+                                    &skill_blocks,
+                                    &prompt_done_tx,
+                                    &mut prompt_in_flight,
+                                )
                                 .await;
-                        }
-                    }
-                    AcpCommand::SetModel(model_id) => {
-                        let request = SetSessionModelRequest::new(session_id.clone(), model_id);
-                        if let Err(err) = conn.set_session_model(request).await {
-                            event_sink
-                                .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
-                                .await;
-                        }
-                    }
-                    AcpCommand::SetConfig { config_id, value } => {
-                        let request = SetSessionConfigOptionRequest::new(
-                            session_id.clone(),
-                            config_id,
-                            value,
-                        );
-                        if let Err(err) = conn.set_session_config_option(request).await {
-                            event_sink
-                                .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
-                                .await;
-                        }
-                    }
-                    AcpCommand::Cancel => {
-                        let request = CancelNotification::new(session_id.clone());
-                        if let Err(err) = conn.cancel(request).await {
-                            event_sink
-                                .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
-                                .await;
+                            }
+                            None => {
+                                cmd_rx_closed = true;
+                            }
                         }
                     }
                 }
@@ -1175,7 +1262,7 @@ impl AcpPermissionService {
 mod tests {
     use super::{
         ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle, AcpSendError,
-        build_actor_mailbox_mcp_server,
+        build_actor_mailbox_mcp_server, should_queue_while_prompt_running,
     };
     use agent_client_protocol::McpServer;
     use std::time::Duration;
@@ -1225,6 +1312,37 @@ mod tests {
             err.to_string().contains("channel closed"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn prompt_in_flight_allows_cancel_passthrough_only() {
+        assert!(should_queue_while_prompt_running(
+            true,
+            &AcpCommand::Prompt("hello".to_string())
+        ));
+        assert!(should_queue_while_prompt_running(
+            true,
+            &AcpCommand::SetMode("auto".to_string())
+        ));
+        assert!(should_queue_while_prompt_running(
+            true,
+            &AcpCommand::SetModel("gpt-5".to_string())
+        ));
+        assert!(should_queue_while_prompt_running(
+            true,
+            &AcpCommand::SetConfig {
+                config_id: "mode".to_string(),
+                value: "auto".to_string(),
+            }
+        ));
+        assert!(!should_queue_while_prompt_running(
+            true,
+            &AcpCommand::Cancel
+        ));
+        assert!(!should_queue_while_prompt_running(
+            false,
+            &AcpCommand::Prompt("hello".to_string())
+        ));
     }
 
     #[test]
