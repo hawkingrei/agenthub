@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   AgentRecord,
   AgentEvent,
@@ -22,11 +22,17 @@ import {
 import { isAgentActiveStatus } from "../agent_ws";
 import {
   StatusBadge,
-  resolveTeamLifecycleStatusTone,
   resolveTeamRunStatusTone,
 } from "../components/status_badge";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import { TeamEventsPanel } from "./team_events_panel";
+import { TeamMailboxPanel } from "./team_mailbox_panel";
+import { TeamMemberConsolePanel } from "./team_member_console_panel";
+import { TeamOverviewPanel } from "./team_overview_panel";
+import { TeamRunPanel } from "./team_run_panel";
+import { TeamSidebar } from "./team_sidebar";
+import { TeamStepsPanel } from "./team_steps_panel";
 
 type TeamPageProps = {
   auth: AuthState;
@@ -56,6 +62,69 @@ type StepAction =
   | "input_required"
   | "resume";
 type TeamForgeBindTarget = "none" | "leader" | "worker";
+type TeamUiState = {
+  tab: TeamTab;
+  runLookupId: string;
+  eventsAutoRefresh: boolean;
+};
+type TeamUiAction =
+  | { type: "set_tab"; tab: TeamTab }
+  | { type: "set_run_lookup_id"; runLookupId: string }
+  | { type: "set_events_auto_refresh"; eventsAutoRefresh: boolean };
+type TeamControlState = {
+  runContextId: string;
+  runInput: string;
+  stepKey: string;
+  stepMemberId: string;
+  stepDependsOn: string;
+  stepInput: string;
+  selectedStepId: string;
+  stepAction: StepAction;
+  stepRemoteTaskId: string;
+  stepOutput: string;
+  stepFailText: string;
+  stepInputReason: string;
+  stepInputRequiredPayload: string;
+  stepResumePayload: string;
+};
+type TeamControlAction = { type: "patch"; patch: Partial<TeamControlState> };
+type TeamMailboxState = {
+  msgFromActorId: string;
+  msgToActorId: string;
+  msgChannel: string;
+  msgTransport: "local" | "remote";
+  msgRoute: string;
+  msgTemplate: MailboxTemplateKey;
+  msgPayload: string;
+  msgIdempotencyKey: string;
+  chatDraft: string;
+  chatStickToBottom: boolean;
+  chatSeenByConversation: Record<string, number>;
+  inboxActorId: string;
+  inboxLimit: string;
+  inboxAfterId: string;
+  inboxIncludeDelivered: boolean;
+  inbox: TeamActorMessageRecord[];
+  selectedMemberId: string;
+};
+type TeamMailboxAction =
+  | { type: "patch"; patch: Partial<TeamMailboxState> }
+  | { type: "mark_conversation_seen"; key: string; messageId: number }
+  | { type: "reset_chat_seen" };
+type TeamCreateState = TeamCreateDraftState & {
+  newTeamName: string;
+  newTeamDescription: string;
+  showCreateTeamModal: boolean;
+  createTeamStage: CreateTeamStage;
+  forgeAgentBindTarget: TeamForgeBindTarget;
+  showForgeAgentForm: boolean;
+  forgeAgentName: string;
+  forgeAgentWorkdir: string;
+  forgeAgentPresetId: AgentPresetId;
+  forgeAgentCodeMode: boolean;
+  forgeAgentBusy: boolean;
+};
+type TeamCreateAction = { type: "patch"; patch: Partial<TeamCreateState> };
 
 const EVENT_PAGE_LIMIT = 100;
 const MEMBER_EVENT_PAGE_LIMIT = 300;
@@ -64,6 +133,46 @@ const TEAM_EVENT_PREVIEW_LIMIT = 5;
 const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
   statusFilter: "all",
   hasMore: false,
+};
+const DEFAULT_TEAM_UI_STATE: TeamUiState = {
+  tab: "overview",
+  runLookupId: "",
+  eventsAutoRefresh: true,
+};
+const DEFAULT_TEAM_CONTROL_STATE: TeamControlState = {
+  runContextId: "",
+  runInput: "{}",
+  stepKey: "",
+  stepMemberId: "",
+  stepDependsOn: "",
+  stepInput: "{}",
+  selectedStepId: "",
+  stepAction: "start",
+  stepRemoteTaskId: "",
+  stepOutput: "{}",
+  stepFailText: "",
+  stepInputReason: "",
+  stepInputRequiredPayload: "{}",
+  stepResumePayload: "{}",
+};
+const DEFAULT_TEAM_MAILBOX_STATE: TeamMailboxState = {
+  msgFromActorId: "",
+  msgToActorId: "",
+  msgChannel: "default",
+  msgTransport: "local",
+  msgRoute: "",
+  msgTemplate: "leader_task_assignment",
+  msgPayload: "{}",
+  msgIdempotencyKey: "",
+  chatDraft: "",
+  chatStickToBottom: true,
+  chatSeenByConversation: {},
+  inboxActorId: "",
+  inboxLimit: "100",
+  inboxAfterId: "",
+  inboxIncludeDelivered: false,
+  inbox: [],
+  selectedMemberId: "",
 };
 const MAILBOX_TEMPLATE_OPTIONS: Array<{
   value: MailboxTemplateKey;
@@ -94,6 +203,84 @@ const CREATE_TEAM_STAGE_TITLES = [
   "Recruit Workers",
   "Launch Team",
 ] as const;
+
+function reduceTeamUiState(state: TeamUiState, action: TeamUiAction): TeamUiState {
+  switch (action.type) {
+    case "set_tab":
+      return { ...state, tab: action.tab };
+    case "set_run_lookup_id":
+      return { ...state, runLookupId: action.runLookupId };
+    case "set_events_auto_refresh":
+      return { ...state, eventsAutoRefresh: action.eventsAutoRefresh };
+    default:
+      return state;
+  }
+}
+
+function reduceTeamControlState(
+  state: TeamControlState,
+  action: TeamControlAction
+): TeamControlState {
+  switch (action.type) {
+    case "patch":
+      return { ...state, ...action.patch };
+    default:
+      return state;
+  }
+}
+
+function reduceTeamMailboxState(
+  state: TeamMailboxState,
+  action: TeamMailboxAction
+): TeamMailboxState {
+  switch (action.type) {
+    case "patch":
+      return { ...state, ...action.patch };
+    case "mark_conversation_seen": {
+      if (!action.key) {
+        return state;
+      }
+      const current = state.chatSeenByConversation[action.key] ?? 0;
+      if (action.messageId <= current) {
+        return state;
+      }
+      return {
+        ...state,
+        chatSeenByConversation: {
+          ...state.chatSeenByConversation,
+          [action.key]: action.messageId,
+        },
+      };
+    }
+    case "reset_chat_seen":
+      if (Object.keys(state.chatSeenByConversation).length === 0) {
+        return state;
+      }
+      return { ...state, chatSeenByConversation: {} };
+    default:
+      return state;
+  }
+}
+
+function reduceTeamCreateState(
+  state: TeamCreateState,
+  action: TeamCreateAction
+): TeamCreateState {
+  switch (action.type) {
+    case "patch":
+      return { ...state, ...action.patch };
+    default:
+      return state;
+  }
+}
+
+function resolveUpdater<T>(current: T, next: T | ((prev: T) => T)): T {
+  if (typeof next === "function") {
+    return (next as (prev: T) => T)(current);
+  }
+  return next;
+}
+
 const DEFAULT_TEAM_LEADER_PROMPT = [
   "You are the Team Leader in AgentHub.",
   "Your job is to plan, delegate work to workers, and synthesize the final answer.",
@@ -422,6 +609,24 @@ export function createInitialTeamDraftState(): TeamCreateDraftState {
     useSpecOverride: false,
     newTeamSpec: "{}",
     teamForgeAgentIds: [],
+  };
+}
+
+function createInitialTeamCreateState(): TeamCreateState {
+  const draft = createInitialTeamDraftState();
+  return {
+    ...draft,
+    newTeamName: "",
+    newTeamDescription: "",
+    showCreateTeamModal: false,
+    createTeamStage: 0,
+    forgeAgentBindTarget: "none",
+    showForgeAgentForm: false,
+    forgeAgentName: "",
+    forgeAgentWorkdir: "",
+    forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+    forgeAgentCodeMode: true,
+    forgeAgentBusy: false,
   };
 }
 
@@ -967,39 +1172,216 @@ export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<TeamTab>("overview");
+  const [teamUiState, dispatchTeamUi] = useReducer(
+    reduceTeamUiState,
+    DEFAULT_TEAM_UI_STATE
+  );
+  const tab = teamUiState.tab;
+  const runLookupId = teamUiState.runLookupId;
+  const eventsAutoRefresh = teamUiState.eventsAutoRefresh;
+  const setTab = useCallback((next: TeamTab) => {
+    dispatchTeamUi({ type: "set_tab", tab: next });
+  }, []);
+  const setRunLookupId = useCallback((next: string) => {
+    dispatchTeamUi({ type: "set_run_lookup_id", runLookupId: next });
+  }, []);
+  const setEventsAutoRefresh = useCallback((next: boolean) => {
+    dispatchTeamUi({ type: "set_events_auto_refresh", eventsAutoRefresh: next });
+  }, []);
+  const [teamControlState, dispatchTeamControl] = useReducer(
+    reduceTeamControlState,
+    DEFAULT_TEAM_CONTROL_STATE
+  );
+  const runContextId = teamControlState.runContextId;
+  const runInput = teamControlState.runInput;
+  const stepKey = teamControlState.stepKey;
+  const stepMemberId = teamControlState.stepMemberId;
+  const stepDependsOn = teamControlState.stepDependsOn;
+  const stepInput = teamControlState.stepInput;
+  const selectedStepId = teamControlState.selectedStepId;
+  const stepAction = teamControlState.stepAction;
+  const stepRemoteTaskId = teamControlState.stepRemoteTaskId;
+  const stepOutput = teamControlState.stepOutput;
+  const stepFailText = teamControlState.stepFailText;
+  const stepInputReason = teamControlState.stepInputReason;
+  const stepInputRequiredPayload = teamControlState.stepInputRequiredPayload;
+  const stepResumePayload = teamControlState.stepResumePayload;
+  const patchTeamControl = useCallback((patch: Partial<TeamControlState>) => {
+    dispatchTeamControl({ type: "patch", patch });
+  }, []);
+  const setRunContextId = useCallback(
+    (next: string) => patchTeamControl({ runContextId: next }),
+    [patchTeamControl]
+  );
+  const setRunInput = useCallback(
+    (next: string) => patchTeamControl({ runInput: next }),
+    [patchTeamControl]
+  );
+  const setStepKey = useCallback(
+    (next: string) => patchTeamControl({ stepKey: next }),
+    [patchTeamControl]
+  );
+  const setStepMemberId = useCallback(
+    (next: string) => patchTeamControl({ stepMemberId: next }),
+    [patchTeamControl]
+  );
+  const setStepDependsOn = useCallback(
+    (next: string) => patchTeamControl({ stepDependsOn: next }),
+    [patchTeamControl]
+  );
+  const setStepInput = useCallback(
+    (next: string) => patchTeamControl({ stepInput: next }),
+    [patchTeamControl]
+  );
+  const setSelectedStepId = useCallback(
+    (next: string) => patchTeamControl({ selectedStepId: next }),
+    [patchTeamControl]
+  );
+  const setStepAction = useCallback(
+    (next: StepAction) => patchTeamControl({ stepAction: next }),
+    [patchTeamControl]
+  );
+  const setStepRemoteTaskId = useCallback(
+    (next: string) => patchTeamControl({ stepRemoteTaskId: next }),
+    [patchTeamControl]
+  );
+  const setStepOutput = useCallback(
+    (next: string) => patchTeamControl({ stepOutput: next }),
+    [patchTeamControl]
+  );
+  const setStepFailText = useCallback(
+    (next: string) => patchTeamControl({ stepFailText: next }),
+    [patchTeamControl]
+  );
+  const setStepInputReason = useCallback(
+    (next: string) => patchTeamControl({ stepInputReason: next }),
+    [patchTeamControl]
+  );
+  const setStepInputRequiredPayload = useCallback(
+    (next: string) => patchTeamControl({ stepInputRequiredPayload: next }),
+    [patchTeamControl]
+  );
+  const setStepResumePayload = useCallback(
+    (next: string) => patchTeamControl({ stepResumePayload: next }),
+    [patchTeamControl]
+  );
+
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
-  const [newTeamName, setNewTeamName] = useState("");
-  const [newTeamDescription, setNewTeamDescription] = useState("");
-  const [useSpecOverride, setUseSpecOverride] = useState(false);
-  const [newTeamSpec, setNewTeamSpec] = useState("{}");
-  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [createTeamStage, setCreateTeamStage] = useState<CreateTeamStage>(0);
-  const [leaderMemberId, setLeaderMemberId] = useState("");
-  const [leaderModel, setLeaderModel] = useState("");
-  const [leaderPrompt, setLeaderPrompt] = useState(DEFAULT_TEAM_LEADER_PROMPT);
-  const [leaderSkills, setLeaderSkills] = useState<string[]>([
-    ...DEFAULT_TEAM_LEADER_SKILLS,
-  ]);
-  const [leaderCustomSkills, setLeaderCustomSkills] = useState("");
-  const [workers, setWorkers] = useState<WorkerDraft[]>([]);
-  const [forgeAgentBindTarget, setForgeAgentBindTarget] =
-    useState<TeamForgeBindTarget>("none");
-  const [showForgeAgentForm, setShowForgeAgentForm] = useState(false);
-  const [forgeAgentName, setForgeAgentName] = useState("");
-  const [forgeAgentWorkdir, setForgeAgentWorkdir] = useState("");
-  const [forgeAgentPresetId, setForgeAgentPresetId] =
-    useState<AgentPresetId>(DEFAULT_AGENT_PRESET_ID);
-  const [forgeAgentCodeMode, setForgeAgentCodeMode] = useState(true);
-  const [forgeAgentBusy, setForgeAgentBusy] = useState(false);
-  const [teamForgeAgentIds, setTeamForgeAgentIds] = useState<string[]>([]);
-
-  const [runContextId, setRunContextId] = useState("");
-  const [runInput, setRunInput] = useState("{}");
-  const [runLookupId, setRunLookupId] = useState("");
+  const [teamCreateState, dispatchTeamCreate] = useReducer(
+    reduceTeamCreateState,
+    undefined,
+    createInitialTeamCreateState
+  );
+  const newTeamName = teamCreateState.newTeamName;
+  const newTeamDescription = teamCreateState.newTeamDescription;
+  const useSpecOverride = teamCreateState.useSpecOverride;
+  const newTeamSpec = teamCreateState.newTeamSpec;
+  const showCreateTeamModal = teamCreateState.showCreateTeamModal;
+  const createTeamStage = teamCreateState.createTeamStage;
+  const leaderMemberId = teamCreateState.leaderMemberId;
+  const leaderModel = teamCreateState.leaderModel;
+  const leaderPrompt = teamCreateState.leaderPrompt;
+  const leaderSkills = teamCreateState.leaderSkills;
+  const leaderCustomSkills = teamCreateState.leaderCustomSkills;
+  const workers = teamCreateState.workers;
+  const forgeAgentBindTarget = teamCreateState.forgeAgentBindTarget;
+  const showForgeAgentForm = teamCreateState.showForgeAgentForm;
+  const forgeAgentName = teamCreateState.forgeAgentName;
+  const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
+  const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
+  const forgeAgentCodeMode = teamCreateState.forgeAgentCodeMode;
+  const forgeAgentBusy = teamCreateState.forgeAgentBusy;
+  const teamForgeAgentIds = teamCreateState.teamForgeAgentIds;
+  const patchTeamCreate = useCallback((patch: Partial<TeamCreateState>) => {
+    dispatchTeamCreate({ type: "patch", patch });
+  }, []);
+  const setNewTeamName = useCallback(
+    (next: string) => patchTeamCreate({ newTeamName: next }),
+    [patchTeamCreate]
+  );
+  const setNewTeamDescription = useCallback(
+    (next: string) => patchTeamCreate({ newTeamDescription: next }),
+    [patchTeamCreate]
+  );
+  const setUseSpecOverride = useCallback(
+    (next: boolean) => patchTeamCreate({ useSpecOverride: next }),
+    [patchTeamCreate]
+  );
+  const setNewTeamSpec = useCallback(
+    (next: string) => patchTeamCreate({ newTeamSpec: next }),
+    [patchTeamCreate]
+  );
+  const setShowCreateTeamModal = useCallback(
+    (next: boolean) => patchTeamCreate({ showCreateTeamModal: next }),
+    [patchTeamCreate]
+  );
+  const setCreateTeamStage = useCallback(
+    (next: CreateTeamStage | ((prev: CreateTeamStage) => CreateTeamStage)) =>
+      patchTeamCreate({ createTeamStage: resolveUpdater(createTeamStage, next) }),
+    [createTeamStage, patchTeamCreate]
+  );
+  const setLeaderMemberId = useCallback(
+    (next: string) => patchTeamCreate({ leaderMemberId: next }),
+    [patchTeamCreate]
+  );
+  const setLeaderModel = useCallback(
+    (next: string) => patchTeamCreate({ leaderModel: next }),
+    [patchTeamCreate]
+  );
+  const setLeaderPrompt = useCallback(
+    (next: string) => patchTeamCreate({ leaderPrompt: next }),
+    [patchTeamCreate]
+  );
+  const setLeaderSkills = useCallback(
+    (next: string[] | ((prev: string[]) => string[])) =>
+      patchTeamCreate({ leaderSkills: resolveUpdater(leaderSkills, next) }),
+    [leaderSkills, patchTeamCreate]
+  );
+  const setLeaderCustomSkills = useCallback(
+    (next: string) => patchTeamCreate({ leaderCustomSkills: next }),
+    [patchTeamCreate]
+  );
+  const setWorkers = useCallback(
+    (next: WorkerDraft[] | ((prev: WorkerDraft[]) => WorkerDraft[])) =>
+      patchTeamCreate({ workers: resolveUpdater(workers, next) }),
+    [patchTeamCreate, workers]
+  );
+  const setForgeAgentBindTarget = useCallback(
+    (next: TeamForgeBindTarget) => patchTeamCreate({ forgeAgentBindTarget: next }),
+    [patchTeamCreate]
+  );
+  const setShowForgeAgentForm = useCallback(
+    (next: boolean) => patchTeamCreate({ showForgeAgentForm: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentName = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentName: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentWorkdir = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentWorkdir: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentPresetId = useCallback(
+    (next: AgentPresetId) => patchTeamCreate({ forgeAgentPresetId: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentCodeMode = useCallback(
+    (next: boolean) => patchTeamCreate({ forgeAgentCodeMode: next }),
+    [patchTeamCreate]
+  );
+  const setForgeAgentBusy = useCallback(
+    (next: boolean) => patchTeamCreate({ forgeAgentBusy: next }),
+    [patchTeamCreate]
+  );
+  const setTeamForgeAgentIds = useCallback(
+    (next: string[] | ((prev: string[]) => string[])) =>
+      patchTeamCreate({ teamForgeAgentIds: resolveUpdater(teamForgeAgentIds, next) }),
+    [patchTeamCreate, teamForgeAgentIds]
+  );
 
   const [runs, setRuns] = useState<TeamRunRecord[]>([]);
   const [teamRunBrowserByTeam, setTeamRunBrowserByTeam] = useState<
@@ -1014,47 +1396,104 @@ export function TeamPage(props: TeamPageProps) {
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsAutoRefresh, setEventsAutoRefresh] = useState(true);
 
   const [steps, setSteps] = useState<TeamStepRecord[]>([]);
-  const [stepKey, setStepKey] = useState("");
-  const [stepMemberId, setStepMemberId] = useState("");
-  const [stepDependsOn, setStepDependsOn] = useState("");
-  const [stepInput, setStepInput] = useState("{}");
 
-  const [selectedStepId, setSelectedStepId] = useState<string>("");
-  const [stepAction, setStepAction] = useState<StepAction>("start");
-  const [stepRemoteTaskId, setStepRemoteTaskId] = useState("");
-  const [stepOutput, setStepOutput] = useState("{}");
-  const [stepFailText, setStepFailText] = useState("");
-  const [stepInputReason, setStepInputReason] = useState("");
-  const [stepInputRequiredPayload, setStepInputRequiredPayload] = useState("{}");
-  const [stepResumePayload, setStepResumePayload] = useState("{}");
-
-  const [msgFromActorId, setMsgFromActorId] = useState("");
-  const [msgToActorId, setMsgToActorId] = useState("");
-  const [msgChannel, setMsgChannel] = useState("default");
-  const [msgTransport, setMsgTransport] = useState<"local" | "remote">("local");
-  const [msgRoute, setMsgRoute] = useState("");
-  const [msgTemplate, setMsgTemplate] = useState<MailboxTemplateKey>(
-    "leader_task_assignment"
+  const [teamMailboxState, dispatchTeamMailbox] = useReducer(
+    reduceTeamMailboxState,
+    DEFAULT_TEAM_MAILBOX_STATE
   );
-  const [msgPayload, setMsgPayload] = useState("{}");
-  const [msgIdempotencyKey, setMsgIdempotencyKey] = useState("");
-  const [chatDraft, setChatDraft] = useState("");
-  const [chatStickToBottom, setChatStickToBottom] = useState(true);
-  const [chatSeenByConversation, setChatSeenByConversation] = useState<
-    Record<string, number>
-  >({});
+  const msgFromActorId = teamMailboxState.msgFromActorId;
+  const msgToActorId = teamMailboxState.msgToActorId;
+  const msgChannel = teamMailboxState.msgChannel;
+  const msgTransport = teamMailboxState.msgTransport;
+  const msgRoute = teamMailboxState.msgRoute;
+  const msgTemplate = teamMailboxState.msgTemplate;
+  const msgPayload = teamMailboxState.msgPayload;
+  const msgIdempotencyKey = teamMailboxState.msgIdempotencyKey;
+  const chatDraft = teamMailboxState.chatDraft;
+  const chatStickToBottom = teamMailboxState.chatStickToBottom;
+  const chatSeenByConversation = teamMailboxState.chatSeenByConversation;
+  const inboxActorId = teamMailboxState.inboxActorId;
+  const inboxLimit = teamMailboxState.inboxLimit;
+  const inboxAfterId = teamMailboxState.inboxAfterId;
+  const inboxIncludeDelivered = teamMailboxState.inboxIncludeDelivered;
+  const inbox = teamMailboxState.inbox;
+  const selectedMemberId = teamMailboxState.selectedMemberId;
+  const patchTeamMailbox = useCallback((patch: Partial<TeamMailboxState>) => {
+    dispatchTeamMailbox({ type: "patch", patch });
+  }, []);
+  const setMsgFromActorId = useCallback(
+    (next: string) => patchTeamMailbox({ msgFromActorId: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgToActorId = useCallback(
+    (next: string) => patchTeamMailbox({ msgToActorId: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgChannel = useCallback(
+    (next: string) => patchTeamMailbox({ msgChannel: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgTransport = useCallback(
+    (next: "local" | "remote") => patchTeamMailbox({ msgTransport: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgRoute = useCallback(
+    (next: string) => patchTeamMailbox({ msgRoute: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgTemplate = useCallback(
+    (next: MailboxTemplateKey) => patchTeamMailbox({ msgTemplate: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgPayload = useCallback(
+    (next: string) => patchTeamMailbox({ msgPayload: next }),
+    [patchTeamMailbox]
+  );
+  const setMsgIdempotencyKey = useCallback(
+    (next: string) => patchTeamMailbox({ msgIdempotencyKey: next }),
+    [patchTeamMailbox]
+  );
+  const setChatDraft = useCallback(
+    (next: string) => patchTeamMailbox({ chatDraft: next }),
+    [patchTeamMailbox]
+  );
+  const setChatStickToBottom = useCallback(
+    (next: boolean) => patchTeamMailbox({ chatStickToBottom: next }),
+    [patchTeamMailbox]
+  );
+  const setChatSeenByConversation = useCallback(
+    (next: Record<string, number>) => patchTeamMailbox({ chatSeenByConversation: next }),
+    [patchTeamMailbox]
+  );
+  const setInboxActorId = useCallback(
+    (next: string) => patchTeamMailbox({ inboxActorId: next }),
+    [patchTeamMailbox]
+  );
+  const setInboxLimit = useCallback(
+    (next: string) => patchTeamMailbox({ inboxLimit: next }),
+    [patchTeamMailbox]
+  );
+  const setInboxAfterId = useCallback(
+    (next: string) => patchTeamMailbox({ inboxAfterId: next }),
+    [patchTeamMailbox]
+  );
+  const setInboxIncludeDelivered = useCallback(
+    (next: boolean) => patchTeamMailbox({ inboxIncludeDelivered: next }),
+    [patchTeamMailbox]
+  );
+  const setInbox = useCallback(
+    (next: TeamActorMessageRecord[]) => patchTeamMailbox({ inbox: next }),
+    [patchTeamMailbox]
+  );
+  const setSelectedMemberId = useCallback(
+    (next: string) => patchTeamMailbox({ selectedMemberId: next }),
+    [patchTeamMailbox]
+  );
   const chatMessagesRef = useRef<HTMLUListElement | null>(null);
 
-  const [inboxActorId, setInboxActorId] = useState("");
-  const [inboxLimit, setInboxLimit] = useState("100");
-  const [inboxAfterId, setInboxAfterId] = useState("");
-  const [inboxIncludeDelivered, setInboxIncludeDelivered] = useState(false);
-  const [inbox, setInbox] = useState<TeamActorMessageRecord[]>([]);
   const eventsRef = useRef<TeamRunEventRecord[]>([]);
-  const [selectedMemberId, setSelectedMemberId] = useState("");
   const [memberEvents, setMemberEvents] = useState<AgentEvent[]>([]);
   const [memberEventsHasMore, setMemberEventsHasMore] = useState(false);
   const [memberEventsLoading, setMemberEventsLoading] = useState(false);
@@ -1393,18 +1832,20 @@ export function TeamPage(props: TeamPageProps) {
 
   const resetTeamDraft = useCallback(() => {
     const initial = createInitialTeamDraftState();
-    setNewTeamName("");
-    setNewTeamDescription("");
-    setLeaderMemberId(initial.leaderMemberId);
-    setLeaderModel(initial.leaderModel);
-    setLeaderPrompt(initial.leaderPrompt);
-    setLeaderSkills(initial.leaderSkills);
-    setLeaderCustomSkills(initial.leaderCustomSkills);
-    setWorkers(initial.workers);
-    setUseSpecOverride(initial.useSpecOverride);
-    setNewTeamSpec(initial.newTeamSpec);
-    setTeamForgeAgentIds(initial.teamForgeAgentIds);
-  }, []);
+    patchTeamCreate({
+      newTeamName: "",
+      newTeamDescription: "",
+      leaderMemberId: initial.leaderMemberId,
+      leaderModel: initial.leaderModel,
+      leaderPrompt: initial.leaderPrompt,
+      leaderSkills: initial.leaderSkills,
+      leaderCustomSkills: initial.leaderCustomSkills,
+      workers: initial.workers,
+      useSpecOverride: initial.useSpecOverride,
+      newTeamSpec: initial.newTeamSpec,
+      teamForgeAgentIds: initial.teamForgeAgentIds,
+    });
+  }, [patchTeamCreate]);
 
   const refreshAgents = useCallback(async () => {
     const list = await api.listAgents(props.token);
@@ -1503,7 +1944,7 @@ export function TeamPage(props: TeamPageProps) {
       });
       return list;
     },
-    [props.token]
+    [props.token, setSelectedStepId]
   );
 
   const refreshEvents = useCallback(
@@ -1571,19 +2012,25 @@ export function TeamPage(props: TeamPageProps) {
       include_delivered: inboxIncludeDelivered,
     });
     setInbox(list);
-  }, [activeRunId, inboxActorId, inboxAfterId, inboxIncludeDelivered, inboxLimit, props.token]);
+  }, [
+    activeRunId,
+    inboxActorId,
+    inboxAfterId,
+    inboxIncludeDelivered,
+    inboxLimit,
+    props.token,
+    setInbox,
+  ]);
 
   const markConversationSeen = useCallback(
     (key: string, messageId: number | null) => {
       if (!key || messageId == null) {
         return;
       }
-      setChatSeenByConversation((prev) => {
-        const current = prev[key] ?? 0;
-        if (messageId <= current) {
-          return prev;
-        }
-        return { ...prev, [key]: messageId };
+      dispatchTeamMailbox({
+        type: "mark_conversation_seen",
+        key,
+        messageId,
       });
     },
     []
@@ -1608,7 +2055,12 @@ export function TeamPage(props: TeamPageProps) {
     if (stick) {
       markConversationSeen(conversationKey, conversationLatestMessageId);
     }
-  }, [conversationKey, conversationLatestMessageId, markConversationSeen]);
+  }, [
+    conversationKey,
+    conversationLatestMessageId,
+    markConversationSeen,
+    setChatStickToBottom,
+  ]);
 
   const loadMemberEvents = useCallback(
     async (mode: "replace" | "prepend" = "replace") => {
@@ -1682,7 +2134,7 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       canceled = true;
     };
-  }, [refreshTeamRuns, selectedTeamId, runStatusFilter]);
+  }, [refreshTeamRuns, runStatusFilter, selectedTeamId, setInbox, setSelectedMemberId]);
 
   useEffect(() => {
     if (!selectedTeamId) return;
@@ -1736,6 +2188,10 @@ export function TeamPage(props: TeamPageProps) {
     refreshRun,
     refreshSnapshot,
     refreshSteps,
+    setChatSeenByConversation,
+    setChatStickToBottom,
+    setInbox,
+    setSelectedMemberId,
     selectedTeamId,
   ]);
 
@@ -1774,13 +2230,14 @@ export function TeamPage(props: TeamPageProps) {
       setMemberEvents([]);
       return;
     }
-    setSelectedMemberId((prev) => {
-      if (prev && snapshot.members.some((member) => member.member_id === prev)) {
-        return prev;
-      }
-      return snapshot.members[0]?.member_id ?? "";
-    });
-  }, [snapshot]);
+    if (
+      selectedMemberId &&
+      snapshot.members.some((member) => member.member_id === selectedMemberId)
+    ) {
+      return;
+    }
+    setSelectedMemberId(snapshot.members[0]?.member_id ?? "");
+  }, [selectedMemberId, setSelectedMemberId, snapshot]);
 
   useEffect(() => {
     const actorId = chatActors.inboxActorId.trim();
@@ -1792,7 +2249,7 @@ export function TeamPage(props: TeamPageProps) {
     void loadInbox(actorId).catch((err) => {
       setError(parseErrorMessage(err));
     });
-  }, [activeRunId, chatActors.inboxActorId, loadInbox]);
+  }, [activeRunId, chatActors.inboxActorId, loadInbox, setInbox, setInboxActorId]);
 
   useEffect(() => {
     if (tab !== "mailbox") {
@@ -1802,7 +2259,7 @@ export function TeamPage(props: TeamPageProps) {
     window.requestAnimationFrame(() => {
       scrollConversationToBottom();
     });
-  }, [conversationKey, scrollConversationToBottom, tab]);
+  }, [conversationKey, scrollConversationToBottom, setChatStickToBottom, tab]);
 
   useEffect(() => {
     if (tab !== "mailbox" || !chatStickToBottom) {
@@ -1835,7 +2292,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     const fallbackLeaderId = teamForgeAgents[0]?.id ?? "";
     setLeaderMemberId(fallbackLeaderId);
-  }, [leaderMemberId, showCreateTeamModal, teamForgeAgents]);
+  }, [leaderMemberId, setLeaderMemberId, showCreateTeamModal, teamForgeAgents]);
 
   useEffect(() => {
     if (!showCreateTeamModal) return;
@@ -1850,7 +2307,7 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [busy, showCreateTeamModal]);
+  }, [busy, setCreateTeamStage, setShowCreateTeamModal, showCreateTeamModal]);
 
   const openCreateTeamModal = () => {
     setError(null);
@@ -2080,6 +2537,33 @@ export function TeamPage(props: TeamPageProps) {
       setBusy(null);
     }
   };
+
+  const onRunStatusFilterChange = useCallback(
+    (nextFilter: TeamRunStatusFilter) => {
+      if (!selectedTeamId) return;
+      setTeamRunBrowserByTeam((prev) => ({
+        ...prev,
+        [selectedTeamId]: {
+          statusFilter: nextFilter,
+          beforeCreatedAt: undefined,
+          hasMore: false,
+        },
+      }));
+    },
+    [selectedTeamId]
+  );
+
+  const onRefreshRuns = useCallback(async () => {
+    if (!selectedTeamId) return;
+    setError(null);
+    try {
+      await refreshTeamRuns(selectedTeamId, "replace", {
+        statusFilter: runStatusFilter,
+      });
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [refreshTeamRuns, runStatusFilter, selectedTeamId]);
 
   const onLoadMoreRuns = useCallback(async () => {
     if (!selectedTeamId || runsLoading || !runsHasMore) {
@@ -2322,6 +2806,58 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
+  const onRefreshMemberConsole = useCallback(async () => {
+    if (selectedMemberSnapshot) {
+      await loadMemberEvents("replace");
+      return;
+    }
+    if (activeRunId) {
+      await refreshEvents(activeRunId);
+    }
+  }, [activeRunId, loadMemberEvents, refreshEvents, selectedMemberSnapshot]);
+
+  const onLoadOlderMemberConsole = useCallback(async () => {
+    if (!selectedMemberSnapshot) {
+      return;
+    }
+    await loadMemberEvents("prepend");
+  }, [loadMemberEvents, selectedMemberSnapshot]);
+
+  const onRefreshOverviewSnapshot = useCallback(async () => {
+    if (!activeRunId) return;
+    setError(null);
+    try {
+      await refreshSnapshot(activeRunId);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [activeRunId, refreshSnapshot]);
+
+  const onOpenMailboxForMember = useCallback((memberId: string) => {
+    setSelectedMemberId(memberId);
+    setTab("mailbox");
+  }, [setSelectedMemberId, setTab]);
+
+  const onRefreshEventsPanel = useCallback(async () => {
+    if (!activeRun) return;
+    setError(null);
+    try {
+      await refreshEvents(activeRun.id);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [activeRun, refreshEvents]);
+
+  const onLoadOlderEventsPanel = useCallback(async () => {
+    if (!activeRun) return;
+    setError(null);
+    try {
+      await refreshEvents(activeRun.id, "prepend");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [activeRun, refreshEvents]);
+
   const onUpdateWorker = (
     index: number,
     field: "member_id" | "model" | "prompt" | "custom_skills",
@@ -2430,60 +2966,21 @@ export function TeamPage(props: TeamPageProps) {
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
       <section className="teams-layout">
-        <aside className="card teams-sidebar">
-          <div className="mode-switch">
-            <a className="mode-tag" href="/">
-              Agents
-            </a>
-            <a className="mode-tag active" href="/teams">
-              Teams
-            </a>
-          </div>
-          <div className="toolbar">
-            <h2>Teams</h2>
-            <button onClick={() => void refreshTeams()} disabled={busy === "refresh-teams"}>
-              Refresh
-            </button>
-          </div>
-
-          <div className="teams-form teams-create-launch">
-            <h3>Team Forge</h3>
-            <p className="muted">
-              Open the creation quest to set up Leader and Workers in stages.
-            </p>
-            <button onClick={openCreateTeamModal}>Create Team</button>
-            <div className="teams-create-launch-meta mono">
-              <span>draft_team={newTeamName.trim() || "-"}</span>
-              <span>leader={leaderMemberId.trim() || "-"}</span>
-              <span>workers={configuredWorkerCount}</span>
-            </div>
-          </div>
-
-          <div className="teams-list">
-            {teams.length === 0 && <p className="muted">No teams yet.</p>}
-            {teams.map((team) => {
-              const summary = teamMemberSummaryByTeamId.get(team.id);
-              return (
-                <button
-                  key={team.id}
-                  className={team.id === selectedTeamId ? "team-item active" : "team-item"}
-                  onClick={() => {
-                    setSelectedTeamId(team.id);
-                    setRunLookupId("");
-                  }}
-                >
-                  <span className="team-name">{team.name}</span>
-                  <span className="team-id mono">{team.id}</span>
-                  {summary && (
-                    <span className="team-id mono team-member-summary">
-                      {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+        <TeamSidebar
+          busy={busy}
+          onRefreshTeams={refreshTeams}
+          onOpenCreateTeamModal={openCreateTeamModal}
+          draftTeamName={newTeamName}
+          leaderMemberId={leaderMemberId}
+          configuredWorkerCount={configuredWorkerCount}
+          teams={teams}
+          selectedTeamId={selectedTeamId}
+          teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
+          onSelectTeam={(teamId) => {
+            setSelectedTeamId(teamId);
+            setRunLookupId("");
+          }}
+        />
 
         <div className="teams-main">
           {!selectedTeam && (
@@ -2495,177 +2992,36 @@ export function TeamPage(props: TeamPageProps) {
 
           {selectedTeam && (
             <>
-              <div className="card">
-                <div className="toolbar">
-                  <h2>{selectedTeam.name}</h2>
-                  <div className="actions">
-                    <span className="mono">{selectedTeam.id}</span>
-                    <button
-                      onClick={() => void onDeleteTeam()}
-                      disabled={busy === "delete-team"}
-                    >
-                      Delete Team
-                    </button>
-                  </div>
-                </div>
-                <div className="teams-run-create">
-                  <div className="teams-member-status-panel">
-                    <div className="teams-member-summary-line mono">
-                      {`active=${selectedTeamMemberSummary.active} inactive=${selectedTeamMemberSummary.inactive} missing=${selectedTeamMemberSummary.missing} total=${selectedTeamMemberSummary.total}`}
-                    </div>
-                    {selectedTeamMemberLiveStates.length === 0 ? (
-                      <p className="muted">No members declared in team spec.</p>
-                    ) : (
-                      <div className="teams-member-strip">
-                        {selectedTeamMemberLiveStates.map((member) => {
-                          const roleTone =
-                            member.role.trim().toLowerCase() === "leader"
-                              ? "leader"
-                              : "worker";
-                          return (
-                            <article
-                              key={`${selectedTeam.id}:${member.member_id}`}
-                              className="team-member-row"
-                            >
-                              <div className="team-member-row-main">
-                                <span className={`team-role-chip ${roleTone}`}>
-                                  {member.role}
-                                </span>
-                                <span className="team-member-row-id mono">{member.member_id}</span>
-                                <StatusBadge
-                                  label={member.lifecycle_status}
-                                  tone={resolveTeamLifecycleStatusTone(
-                                    member.lifecycle_tone
-                                  )}
-                                  className={`team-status-chip ${member.lifecycle_tone}`}
-                                  title={`lifecycle: ${member.lifecycle_status}`}
-                                />
-                                <span className="team-member-row-meta mono">
-                                  {member.agent_name ?? "agent_not_found"}
-                                </span>
-                                <span className="team-member-row-meta mono">
-                                  {`run=${member.run_status} step=${member.step_status} inbox=${member.pending_inbox_count ?? "-"}`}
-                                </span>
-                              </div>
-                              <div className="team-member-workline mono">
-                                {member.current_work}
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <h3>Create / Load Run</h3>
-                  <p className="muted">
-                    <strong>Create Run</strong> starts a new execution for this team spec.
-                    <br />
-                    <strong>Load Run</strong> opens an existing run by `run_id` (even if it was
-                    created earlier) and auto-switches to its team.
-                  </p>
-                  <div className="form-row">
-                    <input
-                      placeholder="context_id (optional, auto-generated when empty)"
-                      value={runContextId}
-                      onChange={(event) => setRunContextId(event.target.value)}
-                    />
-                    <button onClick={onCreateRun} disabled={busy === "create-run"}>
-                      Create Run
-                    </button>
-                  </div>
-                  <textarea
-                    className="mono"
-                    rows={4}
-                    value={runInput}
-                    onChange={(event) => setRunInput(event.target.value)}
-                  />
-                  <div className="form-row">
-                    <input
-                      placeholder="existing run_id"
-                      value={runLookupId}
-                      onChange={(event) => setRunLookupId(event.target.value)}
-                    />
-                    <button onClick={onLoadRunById} disabled={busy === "load-run"}>
-                      Load Run
-                    </button>
-                  </div>
-                </div>
-                <div className="teams-run-list">
-                  <div className="teams-run-list-head">
-                    <h3>Runs</h3>
-                    <div className="actions">
-                      <select
-                        value={runStatusFilter}
-                        onChange={(event) => {
-                          if (!selectedTeamId) return;
-                          const nextFilter = event.target.value as TeamRunStatusFilter;
-                          setTeamRunBrowserByTeam((prev) => ({
-                            ...prev,
-                            [selectedTeamId]: {
-                              statusFilter: nextFilter,
-                              beforeCreatedAt: undefined,
-                              hasMore: false,
-                            },
-                          }));
-                        }}
-                        aria-label="Run status filter"
-                      >
-                        {TEAM_RUN_STATUS_FILTER_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => {
-                          if (!selectedTeamId) return;
-                          void refreshTeamRuns(selectedTeamId, "replace", {
-                            statusFilter: runStatusFilter,
-                          }).catch((err) => setError(parseErrorMessage(err)));
-                        }}
-                        disabled={runsLoading}
-                      >
-                        Refresh Runs
-                      </button>
-                    </div>
-                  </div>
-                  {visibleRuns.length === 0 && (
-                    <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
-                  )}
-                  {isActiveRunHiddenByFilter && activeRun && (
-                    <p className="muted">
-                      Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
-                    </p>
-                  )}
-                  {visibleRuns.map((run) => (
-                    <button
-                      key={run.id}
-                      className={run.id === activeRunId ? "team-item active" : "team-item"}
-                      onClick={() => setActiveRunId(run.id)}
-                    >
-                      <span className="team-name mono">{run.id}</span>
-                      <StatusBadge
-                        label={run.status}
-                        tone={resolveTeamRunStatusTone(run.status)}
-                        className="team-status"
-                        title={`run status: ${run.status}`}
-                      />
-                    </button>
-                  ))}
-                  <div className="teams-run-list-foot">
-                    <span className="mono">
-                      showing={visibleRuns.length} loaded={totalLoadedRunsForTeam}
-                      {" "}limit={TEAM_RUN_PAGE_LIMIT}
-                    </span>
-                    <button
-                      onClick={onLoadMoreRuns}
-                      disabled={runsLoading || !runsHasMore || !selectedTeamId}
-                    >
-                      {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <TeamRunPanel
+                selectedTeam={selectedTeam}
+                busy={busy}
+                onDeleteTeam={onDeleteTeam}
+                selectedTeamMemberSummary={selectedTeamMemberSummary}
+                selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
+                runContextId={runContextId}
+                onRunContextIdChange={setRunContextId}
+                onCreateRun={onCreateRun}
+                runInput={runInput}
+                onRunInputChange={setRunInput}
+                runLookupId={runLookupId}
+                onRunLookupIdChange={setRunLookupId}
+                onLoadRunById={onLoadRunById}
+                runStatusFilter={runStatusFilter}
+                runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
+                onRunStatusFilterChange={onRunStatusFilterChange}
+                onRefreshRuns={onRefreshRuns}
+                runsLoading={runsLoading}
+                visibleRuns={visibleRuns}
+                activeRunId={activeRunId}
+                onActiveRunChange={setActiveRunId}
+                isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
+                activeRun={activeRun}
+                totalLoadedRunsForTeam={totalLoadedRunsForTeam}
+                pageLimit={TEAM_RUN_PAGE_LIMIT}
+                runsHasMore={runsHasMore}
+                selectedTeamId={selectedTeamId}
+                onLoadMoreRuns={onLoadMoreRuns}
+              />
 
               {activeRun && (
                 <>
@@ -2753,688 +3109,137 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
 
                   {tab === "overview" && (
-                    <div className="card">
-                      <div className="toolbar">
-                        <h3>Team Snapshot</h3>
-                        <div className="actions">
-                          <button
-                            onClick={() => {
-                              if (!activeRunId) return;
-                              void refreshSnapshot(activeRunId).catch((err) =>
-                                setError(parseErrorMessage(err))
-                              );
-                            }}
-                            disabled={snapshotLoading}
-                          >
-                            Refresh Snapshot
-                          </button>
-                        </div>
-                      </div>
-
-                      {!snapshot && <p className="muted">No snapshot yet.</p>}
-
-                      {snapshot && (
-                        <>
-                          <div className="teams-run-meta">
-                            <span>
-                              <strong>Leader:</strong>{" "}
-                              <code>{snapshot.leader_member_id ?? "-"}</code>
-                            </span>
-                            <span>
-                              <strong>Members:</strong> {snapshot.members.length}
-                            </span>
-                            <span>
-                              <strong>Pending Mailbox:</strong> {snapshot.mailbox.pending}
-                            </span>
-                            <span>
-                              <strong>Delivered:</strong> {snapshot.mailbox.delivered}
-                            </span>
-                            <span>
-                              <strong>Dead Letter:</strong> {snapshot.mailbox.dead_letter}
-                            </span>
-                            <span>
-                              <strong>Recent Events:</strong>{" "}
-                              {snapshot.latest_events.length}
-                            </span>
-                          </div>
-
-                          <div className="teams-member-list">
-                            {snapshot.members.map((member) => (
-                              <button
-                                key={member.member_id}
-                                className={
-                                  selectedMemberId === member.member_id
-                                    ? "team-item active"
-                                    : "team-item"
-                                }
-                                onClick={() => {
-                                  setSelectedMemberId(member.member_id);
-                                  setTab("mailbox");
-                                }}
-                              >
-                                <span className="team-name">
-                                  {member.member_id} ({member.role})
-                                </span>
-                                <StatusBadge
-                                  label={member.status}
-                                  tone={resolveTeamRunStatusTone(member.status)}
-                                  className="team-status"
-                                  title={`member status: ${member.status}`}
-                                />
-                                <span className="team-id mono">
-                                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <TeamOverviewPanel
+                      snapshot={snapshot}
+                      snapshotLoading={snapshotLoading}
+                      onRefreshSnapshot={onRefreshOverviewSnapshot}
+                      selectedMemberId={selectedMemberId}
+                      onOpenMailboxForMember={onOpenMailboxForMember}
+                    />
                   )}
 
                   {tab === "events" && (
-                    <div className="card">
-                      <div className="toolbar">
-                        <h3>Run Events</h3>
-                        <div className="actions">
-                          <label className="checkbox">
-                            <input
-                              type="checkbox"
-                              checked={eventsAutoRefresh}
-                              onChange={(event) =>
-                                setEventsAutoRefresh(event.target.checked)
-                              }
-                            />
-                            Auto refresh
-                          </label>
-                          <button
-                            onClick={() => void refreshEvents(activeRun.id)}
-                            disabled={eventsLoading}
-                          >
-                            Refresh
-                          </button>
-                          <button
-                            onClick={() => void refreshEvents(activeRun.id, "prepend")}
-                            disabled={
-                              previewMode ||
-                              eventsLoading ||
-                              !eventsHasMore ||
-                              oldestEventId == null
-                            }
-                          >
-                            Load Older
-                          </button>
-                        </div>
-                      </div>
-                      {previewMode && (
-                        <p className="muted">
-                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} records. For full event
-                          history, select a member in the Member Console tab.
-                        </p>
-                      )}
-                      {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}
-                      <ul className="teams-event-list">
-                        {displayedRunEvents.map((event) => (
-                          <li key={event.event_id}>
-                            <div className="teams-event-head">
-                              <span className="mono">#{event.event_id}</span>
-                              <span>{event.event_type}</span>
-                              <span>{formatTs(event.ts)}</span>
-                            </div>
-                            <pre className="mono">{toPrettyJson(event.payload)}</pre>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <TeamEventsPanel
+                      eventsAutoRefresh={eventsAutoRefresh}
+                      onEventsAutoRefreshChange={setEventsAutoRefresh}
+                      onRefreshEvents={onRefreshEventsPanel}
+                      onLoadOlderEvents={onLoadOlderEventsPanel}
+                      eventsLoading={eventsLoading}
+                      previewMode={previewMode}
+                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                      eventsHasMore={eventsHasMore}
+                      oldestEventId={oldestEventId}
+                      displayedRunEvents={displayedRunEvents}
+                      formatTs={formatTs}
+                      toPrettyJson={toPrettyJson}
+                    />
                   )}
 
                   {tab === "steps" && (
-                    <div className="card">
-                      <div className="toolbar">
-                        <h3>Steps</h3>
-                        <button onClick={() => void refreshSteps(activeRun.id)}>Refresh</button>
-                      </div>
-
-                      <div className="teams-step-grid">
-                        <div className="teams-step-panel">
-                          <h4>Submit Step</h4>
-                          <input
-                            placeholder="step_key"
-                            value={stepKey}
-                            onChange={(event) => setStepKey(event.target.value)}
-                          />
-                          <input
-                            placeholder="member_id"
-                            value={stepMemberId}
-                            onChange={(event) => setStepMemberId(event.target.value)}
-                          />
-                          <input
-                            placeholder="depends_on (comma separated)"
-                            value={stepDependsOn}
-                            onChange={(event) => setStepDependsOn(event.target.value)}
-                          />
-                          <textarea
-                            className="mono"
-                            rows={4}
-                            value={stepInput}
-                            onChange={(event) => setStepInput(event.target.value)}
-                          />
-                          <button onClick={onSubmitStep} disabled={busy === "submit-step"}>
-                            Submit Step
-                          </button>
-                        </div>
-
-                        <div className="teams-step-panel">
-                          <h4>Step Action</h4>
-                          <select
-                            value={selectedStepId}
-                            onChange={(event) => setSelectedStepId(event.target.value)}
-                          >
-                            <option value="">Select step</option>
-                            {steps.map((step) => (
-                              <option key={step.id} value={step.id}>
-                                {step.step_key} ({step.status})
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={stepAction}
-                            onChange={(event) =>
-                              setStepAction(event.target.value as StepAction)
-                            }
-                          >
-                            <option value="start">start</option>
-                            <option value="complete">complete</option>
-                            <option value="fail">fail</option>
-                            <option value="input_required">input_required</option>
-                            <option value="resume">resume</option>
-                          </select>
-
-                          {stepAction === "start" && (
-                            <input
-                              placeholder="remote_task_id (optional)"
-                              value={stepRemoteTaskId}
-                              onChange={(event) =>
-                                setStepRemoteTaskId(event.target.value)
-                              }
-                            />
-                          )}
-
-                          {stepAction === "complete" && (
-                            <textarea
-                              className="mono"
-                              rows={4}
-                              value={stepOutput}
-                              onChange={(event) => setStepOutput(event.target.value)}
-                            />
-                          )}
-
-                          {stepAction === "fail" && (
-                            <input
-                              placeholder="error_text"
-                              value={stepFailText}
-                              onChange={(event) => setStepFailText(event.target.value)}
-                            />
-                          )}
-
-                          {stepAction === "input_required" && (
-                            <>
-                              <input
-                                placeholder="reason (optional)"
-                                value={stepInputReason}
-                                onChange={(event) =>
-                                  setStepInputReason(event.target.value)
-                                }
-                              />
-                              <textarea
-                                className="mono"
-                                rows={4}
-                                value={stepInputRequiredPayload}
-                                onChange={(event) =>
-                                  setStepInputRequiredPayload(event.target.value)
-                                }
-                              />
-                            </>
-                          )}
-
-                          {stepAction === "resume" && (
-                            <textarea
-                              className="mono"
-                              rows={4}
-                              value={stepResumePayload}
-                              onChange={(event) =>
-                                setStepResumePayload(event.target.value)
-                              }
-                            />
-                          )}
-
-                          <button onClick={onApplyStepAction}>
-                            Apply Step Action
-                          </button>
-                        </div>
-                      </div>
-
-                      <ul className="teams-step-list">
-                        {steps.map((step) => (
-                          <li key={step.id}>
-                            <div className="teams-step-head">
-                              <span className="mono">{step.id}</span>
-                              <span>{step.step_key}</span>
-                              <span>{step.status}</span>
-                            </div>
-                            <div className="teams-step-body mono">
-                              <div>member_id: {step.member_id}</div>
-                              <div>attempt: {step.attempt}</div>
-                              <div>
-                                depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}
-                              </div>
-                              <div>remote_task_id: {step.remote_task_id ?? "-"}</div>
-                              {step.error_text && <div>error_text: {step.error_text}</div>}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <TeamStepsPanel
+                      steps={steps}
+                      onRefreshSteps={async () => {
+                        await refreshSteps(activeRun.id);
+                      }}
+                      stepKey={stepKey}
+                      onStepKeyChange={setStepKey}
+                      stepMemberId={stepMemberId}
+                      onStepMemberIdChange={setStepMemberId}
+                      stepDependsOn={stepDependsOn}
+                      onStepDependsOnChange={setStepDependsOn}
+                      stepInput={stepInput}
+                      onStepInputChange={setStepInput}
+                      onSubmitStep={onSubmitStep}
+                      busy={busy}
+                      selectedStepId={selectedStepId}
+                      onSelectedStepIdChange={setSelectedStepId}
+                      stepAction={stepAction}
+                      onStepActionChange={setStepAction}
+                      stepRemoteTaskId={stepRemoteTaskId}
+                      onStepRemoteTaskIdChange={setStepRemoteTaskId}
+                      stepOutput={stepOutput}
+                      onStepOutputChange={setStepOutput}
+                      stepFailText={stepFailText}
+                      onStepFailTextChange={setStepFailText}
+                      stepInputReason={stepInputReason}
+                      onStepInputReasonChange={setStepInputReason}
+                      stepInputRequiredPayload={stepInputRequiredPayload}
+                      onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+                      stepResumePayload={stepResumePayload}
+                      onStepResumePayloadChange={setStepResumePayload}
+                      onApplyStepAction={onApplyStepAction}
+                    />
                   )}
 
                   {tab === "mailbox" && (
-                    <div className="card">
-                      <div className="toolbar">
-                        <h3>Mailbox</h3>
-                      </div>
-
-                      {snapshot && (
-                        <div className="teams-run-meta">
-                          <span>
-                            <strong>Pending:</strong> {snapshot.mailbox.pending}
-                          </span>
-                          <span>
-                            <strong>Delivered:</strong> {snapshot.mailbox.delivered}
-                          </span>
-                          <span>
-                            <strong>Dead Letter:</strong> {snapshot.mailbox.dead_letter}
-                          </span>
-                          <span>
-                            <strong>Recent Messages:</strong>{" "}
-                            {snapshot.mailbox.recent_messages.length}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="teams-chat-shell">
-                        <div className="teams-chat-members">
-                          <h4>Agents</h4>
-                          {snapshot?.members.map((member) => {
-                            const unread = unreadByMemberId[member.member_id] ?? 0;
-                            return (
-                              <button
-                                key={member.member_id}
-                                className={
-                                  selectedMemberId === member.member_id
-                                    ? "team-item active"
-                                    : "team-item"
-                                }
-                                onClick={() => setSelectedMemberId(member.member_id)}
-                              >
-                                <span className="team-name">
-                                  {member.member_id} ({member.role})
-                                </span>
-                                <StatusBadge
-                                  label={member.status}
-                                  tone={resolveTeamRunStatusTone(member.status)}
-                                  className="team-status"
-                                  title={`member status: ${member.status}`}
-                                />
-                                <span className="team-id mono">
-                                  pending={member.pending_inbox_count}
-                                </span>
-                                <span
-                                  className={
-                                    unread > 0
-                                      ? "teams-member-unread mono"
-                                      : "teams-member-unread mono muted"
-                                  }
-                                >
-                                  unread={unread}
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {(!snapshot || snapshot.members.length === 0) && (
-                            <p className="muted">No members available.</p>
-                          )}
-                        </div>
-
-                        <div className="teams-chat-panel">
-                          <div className="teams-chat-head">
-                            <div>
-                              <strong>
-                                {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
-                              </strong>
-                            </div>
-                            <div className="mono">
-                              inbox_actor_id={chatActors.inboxActorId || "-"}
-                            </div>
-                            <div className="mono">
-                              auto_follow={chatStickToBottom ? "on" : "off"}
-                            </div>
-                          </div>
-                          <ul
-                            className="teams-chat-messages"
-                            ref={chatMessagesRef}
-                            onScroll={onConversationScroll}
-                          >
-                            {conversationMessages.map((message) => {
-                              const isOutgoing =
-                                message.from_actor_id === chatActors.fromActorId;
-                              const payload =
-                                typeof message.payload === "object" &&
-                                message.payload !== null &&
-                                "type" in message.payload &&
-                                (message.payload as { type?: unknown }).type === "chat_message" &&
-                                "text" in message.payload
-                                  ? String(
-                                      (message.payload as { text?: unknown }).text ?? ""
-                                    )
-                                  : toPrettyJson(message.payload);
-                              return (
-                                <li
-                                  key={message.message_id}
-                                  className={
-                                    isOutgoing
-                                      ? "teams-chat-bubble outgoing"
-                                      : "teams-chat-bubble incoming"
-                                  }
-                                >
-                                  <div className="teams-message-head">
-                                    <span className="mono">#{message.message_id}</span>
-                                    <span>
-                                      {message.from_actor_id} → {message.to_actor_id}
-                                    </span>
-                                    <span>{message.status}</span>
-                                    <span>{formatTs(message.created_at)}</span>
-                                  </div>
-                                  <pre className="mono">{payload}</pre>
-                                  {message.status !== "delivered" && (
-                                    <div className="actions">
-                                      <button
-                                        onClick={() => void onAckMessage(message)}
-                                        disabled={busy === `ack-${message.message_id}`}
-                                      >
-                                        Ack
-                                      </button>
-                                    </div>
-                                  )}
-                                </li>
-                              );
-                            })}
-                            {conversationMessages.length === 0 && (
-                              <li className="teams-chat-empty muted">
-                                No conversation records yet for this pair.
-                              </li>
-                            )}
-                          </ul>
-                          <div className="teams-chat-compose">
-                            <textarea
-                              rows={3}
-                              placeholder="Type a message to selected agent"
-                              value={chatDraft}
-                              onChange={(event) => setChatDraft(event.target.value)}
-                              onKeyDown={(event) => {
-                                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                                  event.preventDefault();
-                                  void onSendChatMessage();
-                                }
-                              }}
-                            />
-                            <div className="actions">
-                              <button
-                                onClick={onSendChatMessage}
-                                disabled={busy === "send-chat"}
-                              >
-                                Send Chat
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <details className="teams-message-advanced">
-                        <summary>Advanced mailbox controls</summary>
-                        <div className="teams-message-grid">
-                          <div className="teams-message-panel">
-                            <h4>Send Message (JSON)</h4>
-                            <input
-                              placeholder="from_actor_id"
-                              value={msgFromActorId}
-                              onChange={(event) => setMsgFromActorId(event.target.value)}
-                            />
-                            <input
-                              placeholder="to_actor_id"
-                              value={msgToActorId}
-                              onChange={(event) => setMsgToActorId(event.target.value)}
-                            />
-                            <input
-                              placeholder="channel (default)"
-                              value={msgChannel}
-                              onChange={(event) => setMsgChannel(event.target.value)}
-                            />
-                            <select
-                              value={msgTransport}
-                              onChange={(event) =>
-                                setMsgTransport(event.target.value as "local" | "remote")
-                              }
-                            >
-                              <option value="local">local</option>
-                              <option value="remote">remote</option>
-                            </select>
-                            <textarea
-                              className="mono"
-                              rows={3}
-                              placeholder="route JSON (required for remote)"
-                              value={msgRoute}
-                              onChange={(event) => setMsgRoute(event.target.value)}
-                            />
-                            <div className="form-row">
-                              <select
-                                value={msgTemplate}
-                                onChange={(event) =>
-                                  setMsgTemplate(event.target.value as MailboxTemplateKey)
-                                }
-                              >
-                                {MAILBOX_TEMPLATE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <button type="button" onClick={onApplyMessageTemplate}>
-                                Apply Template
-                              </button>
-                            </div>
-                            <textarea
-                              className="mono"
-                              rows={4}
-                              placeholder="payload JSON"
-                              value={msgPayload}
-                              onChange={(event) => setMsgPayload(event.target.value)}
-                            />
-                            <input
-                              placeholder="idempotency_key (optional)"
-                              value={msgIdempotencyKey}
-                              onChange={(event) => setMsgIdempotencyKey(event.target.value)}
-                            />
-                            <button onClick={onSendMessage} disabled={busy === "send-message"}>
-                              Send Message
-                            </button>
-                          </div>
-
-                          <div className="teams-message-panel">
-                            <h4>Inbox (raw query)</h4>
-                            <input
-                              placeholder="actor_id"
-                              value={inboxActorId}
-                              onChange={(event) => setInboxActorId(event.target.value)}
-                            />
-                            <input
-                              placeholder="limit"
-                              value={inboxLimit}
-                              onChange={(event) => setInboxLimit(event.target.value)}
-                            />
-                            <input
-                              placeholder="after_id (optional)"
-                              value={inboxAfterId}
-                              onChange={(event) => setInboxAfterId(event.target.value)}
-                            />
-                            <label className="checkbox">
-                              <input
-                                type="checkbox"
-                                checked={inboxIncludeDelivered}
-                                onChange={(event) =>
-                                  setInboxIncludeDelivered(event.target.checked)
-                                }
-                              />
-                              include_delivered
-                            </label>
-                            <button
-                              onClick={onRefreshInbox}
-                              disabled={busy === "refresh-inbox"}
-                            >
-                              Refresh Inbox
-                            </button>
-                          </div>
-                        </div>
-                      </details>
-                    </div>
+                    <TeamMailboxPanel
+                      snapshot={snapshot}
+                      selectedMemberId={selectedMemberId}
+                      unreadByMemberId={unreadByMemberId}
+                      onSelectMember={setSelectedMemberId}
+                      chatActors={chatActors}
+                      chatStickToBottom={chatStickToBottom}
+                      chatMessagesRef={chatMessagesRef}
+                      onConversationScroll={onConversationScroll}
+                      conversationMessages={conversationMessages}
+                      toPrettyJson={toPrettyJson}
+                      formatTs={formatTs}
+                      busy={busy}
+                      onAckMessage={onAckMessage}
+                      chatDraft={chatDraft}
+                      onChatDraftChange={setChatDraft}
+                      onSendChatMessage={onSendChatMessage}
+                      msgFromActorId={msgFromActorId}
+                      onMsgFromActorIdChange={setMsgFromActorId}
+                      msgToActorId={msgToActorId}
+                      onMsgToActorIdChange={setMsgToActorId}
+                      msgChannel={msgChannel}
+                      onMsgChannelChange={setMsgChannel}
+                      msgTransport={msgTransport}
+                      onMsgTransportChange={setMsgTransport}
+                      msgRoute={msgRoute}
+                      onMsgRouteChange={setMsgRoute}
+                      mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+                      msgTemplate={msgTemplate}
+                      onMsgTemplateChange={(value) =>
+                        setMsgTemplate(value as MailboxTemplateKey)
+                      }
+                      onApplyMessageTemplate={onApplyMessageTemplate}
+                      msgPayload={msgPayload}
+                      onMsgPayloadChange={setMsgPayload}
+                      msgIdempotencyKey={msgIdempotencyKey}
+                      onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+                      onSendMessage={onSendMessage}
+                      inboxActorId={inboxActorId}
+                      onInboxActorIdChange={setInboxActorId}
+                      inboxLimit={inboxLimit}
+                      onInboxLimitChange={setInboxLimit}
+                      inboxAfterId={inboxAfterId}
+                      onInboxAfterIdChange={setInboxAfterId}
+                      inboxIncludeDelivered={inboxIncludeDelivered}
+                      onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+                      onRefreshInbox={onRefreshInbox}
+                    />
                   )}
 
                   {tab === "member_console" && (
-                    <div className="card">
-                      <div className="toolbar">
-                        <h3>Member Console</h3>
-                        <div className="actions">
-                          <button
-                            onClick={() => {
-                              if (selectedMemberSnapshot) {
-                                void loadMemberEvents("replace");
-                                return;
-                              }
-                              if (activeRunId) {
-                                void refreshEvents(activeRunId);
-                              }
-                            }}
-                            disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-                          >
-                            Refresh
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (!selectedMemberSnapshot) return;
-                              void loadMemberEvents("prepend");
-                            }}
-                            disabled={
-                              !selectedMemberSnapshot ||
-                              memberEventsLoading ||
-                              !memberEventsHasMore ||
-                              oldestMemberEventId == null
-                            }
-                          >
-                            Load Older
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="form-row">
-                        <select
-                          value={selectedMemberId}
-                          onChange={(event) => setSelectedMemberId(event.target.value)}
-                        >
-                          <option value="">Select member</option>
-                          {snapshot?.members.map((member) => (
-                            <option key={member.member_id} value={member.member_id}>
-                              {member.member_id} ({member.role})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {selectedMemberSnapshot && (
-                        <div className="teams-step-body mono">
-                          <div>member_id: {selectedMemberSnapshot.member_id}</div>
-                          <div>role: {selectedMemberSnapshot.role}</div>
-                          <div>model: {selectedMemberSnapshot.model ?? "-"}</div>
-                          <div>status: {selectedMemberSnapshot.status}</div>
-                          <div>
-                            session_status: {selectedMemberSnapshot.session_status ?? "-"}
-                          </div>
-                          <div>
-                            remote_task_id:{" "}
-                            {selectedMemberSnapshot.latest_step?.remote_task_id ?? "-"}
-                          </div>
-                          <div>
-                            skills:{" "}
-                            {selectedMemberSnapshot.skills.length > 0
-                              ? selectedMemberSnapshot.skills.join(", ")
-                              : "-"}
-                          </div>
-                          <div>prompt: {selectedMemberSnapshot.prompt ?? "-"}</div>
-                        </div>
-                      )}
-
-                      {!selectedMemberSnapshot && (
-                        <p className="muted">
-                          Showing latest {TEAM_EVENT_PREVIEW_LIMIT} run records. Select a member
-                          for full member history.
-                        </p>
-                      )}
-
-                      {selectedMemberSnapshot &&
-                        !selectedMemberSnapshot.latest_step?.remote_task_id && (
-                          <p className="muted">
-                            Selected member has no associated session yet.
-                          </p>
-                        )}
-
-                      {selectedMemberSnapshot &&
-                        selectedMemberSnapshot.latest_step?.remote_task_id &&
-                        memberEvents.length === 0 && (
-                          <p className="muted">No member events yet.</p>
-                        )}
-
-                      {!selectedMemberSnapshot && displayedRunEvents.length === 0 && (
-                        <p className="muted">No run records yet.</p>
-                      )}
-
-                      {selectedMemberSnapshot && (
-                        <ul className="teams-event-list">
-                          {memberEvents.map((event) => (
-                            <li key={event.event_id}>
-                              <div className="teams-event-head">
-                                <span className="mono">#{event.event_id}</span>
-                                <span>{event.stream}</span>
-                                <span>{formatTs(event.ts)}</span>
-                              </div>
-                              <pre className="mono">{event.message}</pre>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {!selectedMemberSnapshot && (
-                        <ul className="teams-event-list">
-                          {displayedRunEvents.map((event) => (
-                            <li key={event.event_id}>
-                              <div className="teams-event-head">
-                                <span className="mono">#{event.event_id}</span>
-                                <span>{event.event_type}</span>
-                                <span>{formatTs(event.ts)}</span>
-                              </div>
-                              <pre className="mono">{toPrettyJson(event.payload)}</pre>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    <TeamMemberConsolePanel
+                      snapshot={snapshot}
+                      selectedMemberId={selectedMemberId}
+                      onSelectedMemberIdChange={setSelectedMemberId}
+                      selectedMemberSnapshot={selectedMemberSnapshot}
+                      memberEvents={memberEvents}
+                      memberEventsHasMore={memberEventsHasMore}
+                      memberEventsLoading={memberEventsLoading}
+                      eventsLoading={eventsLoading}
+                      oldestMemberEventId={oldestMemberEventId}
+                      displayedRunEvents={displayedRunEvents}
+                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                      onRefresh={onRefreshMemberConsole}
+                      onLoadOlder={onLoadOlderMemberConsole}
+                      toPrettyJson={toPrettyJson}
+                      formatTs={formatTs}
+                    />
                   )}
                 </>
               )}
