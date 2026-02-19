@@ -35,7 +35,9 @@ Even when backend status is updated to `failed`/`exited`, web UI did not provide
 
 Executed (2026-02-19):
 
-- `npm --prefix web run test -- src/agent_ws.test.ts src/app.permission_scope.test.ts`
+```bash
+npm --prefix web run test -- src/agent_ws.test.ts src/app.permission_scope.test.ts
+```
 
 ## Follow-up
 
