@@ -44,8 +44,12 @@ Two gaps could produce this symptom:
 
 ## Validation
 
-- `npm --prefix web run test -- src/event_polling.test.ts`
-- `cargo test -p agenthub sse::tests::output_stream_closes_after_broadcast_lagged -- --nocapture`
+Executed (2026-02-19):
+
+```bash
+npm --prefix web run test -- src/event_polling.test.ts src/app.permission_scope.test.ts
+cargo test -p agenthub sse::tests::output_stream_closes_after_broadcast_lagged -- --nocapture
+```
 
 ## Follow-up
 
