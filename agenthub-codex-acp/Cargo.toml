@@ -21,13 +21,14 @@ agent-client-protocol = { version = "=0.9.4", features = ["unstable"] }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/zed-industries/codex", branch = "acp" }
-codex-arg0 = { git = "https://github.com/zed-industries/codex", branch = "acp" }
-codex-common = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["cli"] }
-codex-core = { git = "https://github.com/zed-industries/codex", branch = "acp", features = ["test-support"] }
-codex-login = { git = "https://github.com/zed-industries/codex", branch = "acp" }
-codex-mcp-server = { git = "https://github.com/zed-industries/codex", branch = "acp" }
-codex-protocol = { git = "https://github.com/zed-industries/codex", branch = "acp" }
+codex-apply-patch = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-arg0 = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-core = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-mcp-server = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-protocol = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-login = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-utils-approval-presets = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-utils-cli = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
 heck = "0.5.0"
 itertools = "0.14.0"
 regex-lite = "0.1"
