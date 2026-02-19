@@ -739,6 +739,125 @@ impl AgentManager {
 #[cfg(test)]
 mod tests {
     use super::{GitWorktreeEntry, is_hex_sha, parse_worktree_list, worktree_ref_matches};
+    use crate::agent::OutputStream;
+    use chrono::Utc;
+    use sqlx::{Row, SqlitePool};
+    use tokio::io::AsyncWriteExt;
+    use tokio::time::{Duration, sleep, timeout};
+    use uuid::Uuid;
+
+    async fn insert_agent_and_session(db: &SqlitePool, suffix: &str) -> (String, String) {
+        let now = Utc::now().timestamp();
+        let agent_id = format!("agent-runtime-{suffix}-{}", Uuid::new_v4());
+        let session_id = format!("session-runtime-{suffix}-{}", Uuid::new_v4());
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+            "#,
+        )
+        .bind(&agent_id)
+        .bind(format!("runtime-{suffix}"))
+        .bind("/tmp")
+        .bind("cat")
+        .bind("[]")
+        .bind("use_existing")
+        .bind("running")
+        .bind(now)
+        .bind(now)
+        .execute(db)
+        .await
+        .expect("insert test agent");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(&session_id)
+        .bind(&agent_id)
+        .bind(now)
+        .execute(db)
+        .await
+        .expect("insert test session");
+        (agent_id, session_id)
+    }
+
+    async fn wait_for_event_count(
+        db: &SqlitePool,
+        agent_id: &str,
+        session_id: &str,
+        expected: i64,
+    ) {
+        timeout(Duration::from_secs(2), async {
+            loop {
+                let count: i64 = sqlx::query_scalar(
+                    r#"
+                    SELECT COUNT(*)
+                    FROM agent_events
+                    WHERE agent_id = ?1 AND session_id = ?2
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(session_id)
+                .fetch_one(db)
+                .await
+                .expect("count events");
+                if count >= expected {
+                    return;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timed out waiting for output reader to persist events");
+    }
+
+    async fn collect_streams_for_lines(detect_acp_messages: bool, lines: &[&str]) -> Vec<String> {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, "stream-classify").await;
+        let (mut writer, reader) = tokio::io::duplex(4096);
+        let (output_tx, _output_rx) = tokio::sync::broadcast::channel(32);
+
+        state
+            .agents
+            .spawn_output_reader(
+                agent_id.clone(),
+                session_id.clone(),
+                OutputStream::Stderr,
+                reader,
+                output_tx,
+                detect_acp_messages,
+            )
+            .await;
+
+        for line in lines {
+            writer.write_all(line.as_bytes()).await.expect("write line");
+            writer.write_all(b"\n").await.expect("write newline");
+        }
+        writer.shutdown().await.expect("shutdown writer");
+        drop(writer);
+
+        wait_for_event_count(&state.db, &agent_id, &session_id, lines.len() as i64).await;
+        sqlx::query(
+            r#"
+            SELECT stream
+            FROM agent_events
+            WHERE agent_id = ?1 AND session_id = ?2
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(agent_id)
+        .bind(session_id)
+        .fetch_all(&state.db)
+        .await
+        .expect("list persisted streams")
+        .into_iter()
+        .map(|row| row.get::<String, _>("stream"))
+        .collect()
+    }
 
     #[test]
     fn parse_worktree_list_extracts_entries() {
@@ -795,5 +914,34 @@ branch refs/heads/agent-a
         assert!(is_hex_sha(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         ));
+    }
+
+    #[tokio::test]
+    async fn spawn_output_reader_promotes_latest_codex_event_types_for_acp_agents() {
+        let streams = collect_streams_for_lines(
+            true,
+            &[
+                r#"{"type":"plan","steps":[{"title":"Investigate"}]}"#,
+                r#"{"type":"available_commands","commands":["/compact","/undo"]}"#,
+                r#"{"type":"current_mode","current_mode_id":"code"}"#,
+                r#"{"type":"run_status","status":"completed","session_id":"s-1"}"#,
+                "plain stderr line",
+            ],
+        )
+        .await;
+        assert_eq!(streams, vec!["acp", "acp", "acp", "acp", "stderr"]);
+    }
+
+    #[tokio::test]
+    async fn spawn_output_reader_keeps_stderr_for_non_acp_agents() {
+        let streams = collect_streams_for_lines(
+            false,
+            &[
+                r#"{"type":"plan","steps":[{"title":"Investigate"}]}"#,
+                r#"{"type":"run_status","status":"completed","session_id":"s-1"}"#,
+            ],
+        )
+        .await;
+        assert_eq!(streams, vec!["stderr", "stderr"]);
     }
 }

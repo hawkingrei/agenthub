@@ -41,6 +41,17 @@ Local targeted checks:
 - `cargo test is_acp_message_`
 - `cargo test send_input_rejects_stale_session_id_with_conflict`
 - `npm --prefix web test -- app.permission_scope.test.ts`
+- `cargo test spawn_output_reader_promotes_latest_codex_event_types_for_acp_agents -- --nocapture`
+- `cargo test spawn_output_reader_keeps_stderr_for_non_acp_agents -- --nocapture`
+
+Validation evidence (2026-02-19):
+
+- `spawn_output_reader_promotes_latest_codex_event_types_for_acp_agents`
+  - persisted stream sequence: `acp, acp, acp, acp, stderr`
+  - confirms `plan` / `available_commands` / `current_mode` / `run_status` are promoted to ACP only when ACP detection is enabled.
+- `spawn_output_reader_keeps_stderr_for_non_acp_agents`
+  - persisted stream sequence: `stderr, stderr`
+  - confirms non-ACP agents do not auto-promote typed JSON stderr messages into ACP stream.
 
 ## Follow-up
 
