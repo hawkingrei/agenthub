@@ -1,0 +1,22 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "vendored_bwrap_ffi",
+    srcs = ["@codex_src//codex-rs/vendor:bubblewrap_c_sources"],
+    hdrs = [
+        ":config.h",
+        "@codex_src//codex-rs/vendor:bubblewrap_headers",
+    ],
+    copts = [
+        "-D_GNU_SOURCE",
+        "-Dmain=bwrap_main",
+    ],
+    includes = ["."],
+    linkopts = select({
+        "@platforms//os:linux": ["-lcap"],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = ["@platforms//os:linux"],
+)

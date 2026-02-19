@@ -18,14 +18,19 @@ The dependency chain remains intentionally unchanged (`codex-arg0` + `codex-mcp-
   - `.github/workflows/clippy.yml`
   - `.github/workflows/bazel.yml`
 - Add `libcap-dev` to existing apt install commands.
-- In `.github/workflows/bazel.yml`, resolve codex git `rev` from `Cargo.lock`, fetch that exact upstream commit, and export `CODEX_BWRAP_SOURCE_DIR` to `codex-rs/vendor/bubblewrap` before `bazel build/test`.
+- Add Bazel mid-term override for `codex-linux-sandbox` in `MODULE.bazel`:
+  - fetch `@codex_src` at lockfile-pinned codex revision;
+  - disable `codex-linux-sandbox` cargo build script (`gen_build_script = "off"`);
+  - inject `--cfg=vendored_bwrap_available`;
+  - link `//third_party/codex_linux_sandbox:vendored_bwrap_ffi`.
+- Add `third_party/codex_linux_sandbox/BUILD.bazel` and `config.h` to compile vendored bubblewrap C sources from `@codex_src//codex-rs/vendor` and link system `libcap` via `-lcap`.
 - Keep `agenthub-codex-acp` dependency graph and `arg0_dispatch_or_else` entry behavior unchanged.
 
 ## Key Decisions
 
 - Preserve upstream-compatible `codex` entrypoint behavior (`arg0_dispatch_or_else`) and helper binary dispatch semantics.
 - Solve build breakage via environment provisioning (`libcap-dev`) because the failure is from missing system `pkg-config` metadata (`libcap.pc`) on CI runners.
-- Solve Bazel-only runfiles layout mismatch by explicitly supplying `CODEX_BWRAP_SOURCE_DIR` from a checked-out upstream codex source tree at the lockfile-pinned revision.
+- Solve Bazel-only runfiles layout mismatch by moving Linux bubblewrap wiring into Bazel graph construction (crate annotation + `cc_library`) instead of runtime `CODEX_BWRAP_SOURCE_DIR` injection in CI scripts.
 - Apply fixes consistently across Rust/Cargo and Bazel workflows to avoid split-brain CI behavior.
 
 ## Validation

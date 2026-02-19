@@ -16,25 +16,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.1
-      - name: Prepare codex bubblewrap sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          codex_rev="$(awk -F'[=#\"]+' '/source = "git\+https:\/\/github\.com\/zed-industries\/codex\?rev=/{print $5; exit}' Cargo.lock)"
-          if [[ -z "${codex_rev}" ]]; then
-            echo "failed to detect codex git revision from Cargo.lock" >&2
-            exit 1
-          fi
-
-          codex_dir="${RUNNER_TEMP}/codex-src"
-          git init "${codex_dir}"
-          git -C "${codex_dir}" remote add origin https://github.com/zed-industries/codex
-          git -C "${codex_dir}" fetch --depth 1 origin "${codex_rev}"
-          git -C "${codex_dir}" checkout --detach FETCH_HEAD
-
-          bwrap_dir="${codex_dir}/codex-rs/vendor/bubblewrap"
-          test -f "${bwrap_dir}/bubblewrap.c"
-          echo "CODEX_BWRAP_SOURCE_DIR=${bwrap_dir}" >> "${GITHUB_ENV}"
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.18.0
         with:
