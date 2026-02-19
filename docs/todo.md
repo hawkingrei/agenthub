@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify Team helper extraction coverage guardrails with dedicated unit tests for `create_helpers`/`state`/`page_helpers` (including parse error branches, reducer edge transitions, and upsert ordering semantics) and keep `web` test suite green (see `docs/features/2026-02-19-team-helper-coverage-hardening.md`).
 - [x] Verify Team page helper extraction keeps run/mailbox/member/state/create/page helper contracts stable after splitting into `web/src/pages/team/*` modules, while preserving existing `team_page.runs.test.ts` imports via `team_page.tsx` re-export (see `docs/features/2026-02-19-team-page-helper-modularization.md`).
 - [x] Verify Team create wizard removes manual `bind_target` for Agent Forge, derives `role_tag` from current stage (`Leader Forge` => leader, `Recruit Workers` => worker), and blocks forge action in Mission/Launch stages (see `docs/features/2026-02-19-team-forge-role-tag-no-bind.md`).
 - [x] Verify Team Forge-created agents are tagged with `source=team_forge` and hidden from `/api/agents` list while manual-created agents remain visible (see `docs/features/2026-02-19-agent-source-separation-team-forge.md`).
