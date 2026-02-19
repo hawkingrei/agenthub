@@ -4,7 +4,7 @@ module(
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_rust", version = "0.67.0")
 
@@ -25,7 +25,7 @@ use_repo(rust, "rust_toolchains")
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.annotation(
     crate = "codex-linux-sandbox",
-    deps = ["//third_party/codex_linux_sandbox:vendored_bwrap_ffi"],
+    deps = ["@//third_party/codex_linux_sandbox:vendored_bwrap_ffi"],
     gen_build_script = "off",
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
