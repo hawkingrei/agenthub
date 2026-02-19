@@ -22,7 +22,7 @@ The dependency chain remains intentionally unchanged (`codex-arg0` + `codex-mcp-
   - fetch `@codex_src` at lockfile-pinned codex revision;
   - disable `codex-linux-sandbox` cargo build script (`gen_build_script = "off"`);
   - inject `--cfg=vendored_bwrap_available`;
-  - link `//third_party/codex_linux_sandbox:vendored_bwrap_ffi`.
+  - link `@@//third_party/codex_linux_sandbox:vendored_bwrap_ffi` (canonical main-repo label, avoids resolving to the generated external crate repo namespace).
 - Add `third_party/codex_linux_sandbox/BUILD.bazel` and `config.h` to compile vendored bubblewrap C sources from `@codex_src//codex-rs/vendor` and link system `libcap` via `-lcap`.
 - Keep `agenthub-codex-acp` dependency graph and `arg0_dispatch_or_else` entry behavior unchanged.
 
@@ -31,6 +31,7 @@ The dependency chain remains intentionally unchanged (`codex-arg0` + `codex-mcp-
 - Preserve upstream-compatible `codex` entrypoint behavior (`arg0_dispatch_or_else`) and helper binary dispatch semantics.
 - Solve build breakage via environment provisioning (`libcap-dev`) because the failure is from missing system `pkg-config` metadata (`libcap.pc`) on CI runners.
 - Solve Bazel-only runfiles layout mismatch by moving Linux bubblewrap wiring into Bazel graph construction (crate annotation + `cc_library`) instead of runtime `CODEX_BWRAP_SOURCE_DIR` injection in CI scripts.
+- Use canonical main-repo label (`@@//...`) for crate annotation deps so bzlmod/crate_universe does not reinterpret the path as an in-repo package under `@crate_index__codex-linux-sandbox`.
 - Apply fixes consistently across Rust/Cargo and Bazel workflows to avoid split-brain CI behavior.
 
 ## Validation
