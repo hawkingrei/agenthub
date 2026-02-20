@@ -2284,7 +2284,7 @@ export function TeamPage(props: TeamPageProps) {
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 
   return (
-    <div className="mx-auto flex min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 px-3 py-3 sm:px-4 lg:px-6">
+    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-auto overflow-x-hidden px-3 py-3 sm:px-4 lg:px-6">
       <header className="mb-0 flex flex-wrap items-center justify-between gap-3">
         <h1 className="whitespace-normal text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
           AgentHub Teams
@@ -2304,8 +2304,9 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <div className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-        <TeamSidebar
+      <div className="rounded-xl border border-slate-200/80 bg-white/85 p-1 shadow-[0_18px_40px_rgba(17,29,43,0.08)] backdrop-blur-sm">
+        <div className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+          <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
           onOpenCreateTeamWizard={openCreateTeamWizardModal}
@@ -2322,7 +2323,7 @@ export function TeamPage(props: TeamPageProps) {
           }}
         />
 
-        <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 [&>*]:shrink-0">
+          <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 [&>*]:shrink-0">
           {!selectedTeam && (
             <div className="min-h-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
@@ -2813,6 +2814,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
             </>
           )}
+          </div>
         </div>
       </div>
 
