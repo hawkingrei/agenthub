@@ -20,6 +20,19 @@ type AgentsPanelProps = {
   onDeleteAgent: (id: string) => void;
 };
 
+const AGENTS_PANEL_EXPANDED_CLASS =
+  "workspace-left rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+const AGENTS_PANEL_COLLAPSED_CLASS =
+  "workspace-left collapsed rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+const AGENTS_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
+const AGENTS_TOOLBAR_ACTIONS_CLASS = "toolbar-actions flex items-center gap-2";
+const AGENTS_CREATE_BUTTON_CLASS =
+  "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800";
+const AGENTS_ROW_CLASS =
+  "agent-row rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-slate-300";
+const AGENTS_ROW_ACTIVE_CLASS =
+  "agent-row active rounded-xl border border-slate-300 bg-slate-50 px-3 py-3";
+
 export const AgentsPanel = React.memo(function AgentsPanel({
   agents,
   activeAgent,
@@ -43,7 +56,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         <div className="agents-backdrop" onClick={onCollapse} />
       )}
       <div
-        className={agentsCollapsed ? "workspace-left collapsed" : "workspace-left"}
+        className={agentsCollapsed ? AGENTS_PANEL_COLLAPSED_CLASS : AGENTS_PANEL_EXPANDED_CLASS}
       >
         {agentsCollapsed ? (
           <div className="agents-rail">
@@ -90,9 +103,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 Teams
               </a>
             </div>
-            <div className="toolbar">
+            <div className={AGENTS_TOOLBAR_CLASS}>
               <h2>Agents</h2>
-              <div className="toolbar-actions">
+              <div className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
                 <button
                   className="icon-button small agents-collapse-button"
                   onClick={onCollapse}
@@ -101,7 +114,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 >
                   <i className="bi bi-chevron-left" aria-hidden="true" />
                 </button>
-                <button onClick={onCreateAgent}>Create Agent</button>
+                <button className={AGENTS_CREATE_BUTTON_CLASS} onClick={onCreateAgent}>
+                  Create Agent
+                </button>
               </div>
             </div>
             <div className="agent-layout">
@@ -118,7 +133,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                     <div
                       key={agent.id}
                       className={
-                        activeAgent === agent.id ? "agent-row active" : "agent-row"
+                        activeAgent === agent.id ? AGENTS_ROW_ACTIVE_CLASS : AGENTS_ROW_CLASS
                       }
                       role="button"
                       tabIndex={0}

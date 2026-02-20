@@ -86,6 +86,18 @@ export function AcpDebug({
   const ansiHitRate = ansiTotal > 0
     ? Math.round((runtimeMetrics.ansiCacheHits / ansiTotal) * 100)
     : 0;
+  const debugTabClassName = (isActive: boolean) =>
+    `tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+      isActive
+        ? "active bg-slate-900 text-white shadow-sm"
+        : "text-slate-600 hover:bg-white hover:text-slate-900"
+    }`;
+  const debugInputClassName =
+    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300";
+  const debugSecondaryButtonClassName =
+    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const debugPrimaryButtonClassName =
+    "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
 
   React.useEffect(() => {
     if (tab !== "raw") return;
@@ -119,86 +131,92 @@ export function AcpDebug({
   }, []);
 
   return (
-    <div className="acp-debug">
-      <div className="acp-debug-tabs">
+    <div className="acp-debug flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+      <div className="acp-debug-tabs flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
         <button
-          className={tab === "session" ? "tab active" : "tab"}
+          className={debugTabClassName(tab === "session")}
           onClick={() => setTab("session")}
         >
           Session Controls
         </button>
         <button
-          className={tab === "runtime" ? "tab active" : "tab"}
+          className={debugTabClassName(tab === "runtime")}
           onClick={() => setTab("runtime")}
         >
           Runtime
         </button>
         <button
-          className={tab === "permissions" ? "tab active" : "tab"}
+          className={debugTabClassName(tab === "permissions")}
           onClick={() => setTab("permissions")}
         >
           Permissions
         </button>
         <button
-          className={tab === "raw" ? "tab active" : "tab"}
+          className={debugTabClassName(tab === "raw")}
           onClick={() => setTab("raw")}
         >
           Raw Events
         </button>
       </div>
       {tab === "session" && (
-        <div className="acp-controls">
-          <h4>Session Controls</h4>
-          <div className="acp-control-meta">
+        <div className="acp-controls space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Session Controls</h4>
+          <div className="acp-control-meta text-sm text-slate-600">
             Current mode: {currentMode ?? "unknown"}
           </div>
-          <div className="form-row">
+          <div className="form-row flex flex-col gap-2 sm:flex-row">
             <input
+              className={debugInputClassName}
               placeholder="Mode ID"
               value={acpModeId}
               onChange={(e) => onAcpModeIdChange(e.target.value)}
             />
-            <button onClick={onAcpSetMode} disabled={!canControlAcp}>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpSetMode} disabled={!canControlAcp}>
               Set Mode
             </button>
           </div>
-          <div className="form-row">
+          <div className="form-row flex flex-col gap-2 sm:flex-row">
             <input
+              className={debugInputClassName}
               placeholder="Model ID"
               value={acpModelId}
               onChange={(e) => onAcpModelIdChange(e.target.value)}
             />
-            <button onClick={onAcpSetModel} disabled={!canControlAcp}>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpSetModel} disabled={!canControlAcp}>
               Set Model
             </button>
           </div>
-          <div className="form-row">
+          <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <input
+              className={debugInputClassName}
               placeholder="Config ID"
               value={acpConfigId}
               onChange={(e) => onAcpConfigIdChange(e.target.value)}
             />
             <input
+              className={debugInputClassName}
               placeholder="Config Value ID"
               value={acpConfigValue}
               onChange={(e) => onAcpConfigValueChange(e.target.value)}
             />
-            <button onClick={onAcpSetConfig} disabled={!canControlAcp}>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpSetConfig} disabled={!canControlAcp}>
               Set Config
             </button>
           </div>
-          <div className="form-row">
-            <button onClick={onAcpCancel} disabled={!canControlAcp}>
+          <div className="form-row flex flex-wrap gap-2">
+            <button className={debugPrimaryButtonClassName} onClick={onAcpCancel} disabled={!canControlAcp}>
               Cancel Run
             </button>
-            <button onClick={onAcpClearSession}>Clear Session</button>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpClearSession}>
+              Clear Session
+            </button>
           </div>
         </div>
       )}
       {tab === "runtime" && (
-        <div className="acp-runtime">
-          <h4>Runtime Metrics</h4>
-          <div className="acp-runtime-grid">
+        <div className="acp-runtime space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Runtime Metrics</h4>
+          <div className="acp-runtime-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <RuntimeMetricCard label="Conversation (total/source/rendered)">
               {runtimeMetrics.totalConversationItems}
               {" / "}
@@ -251,20 +269,22 @@ export function AcpDebug({
         </div>
       )}
       {tab === "permissions" && (
-        <div className="acp-permissions">
+        <div className="acp-permissions space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <h4>Permissions</h4>
           {acpPermissionHistory.length === 0 && (
-            <div className="empty">No permissions yet.</div>
+            <div className="empty rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+              No permissions yet.
+            </div>
           )}
           {acpPermissionHistory.map((permission) => {
             const toolCall = toPermissionToolCall(permission.tool_call);
             const copied = copiedPermissionId === permission.id;
             const canJump = Boolean(permission.tool_call_id?.trim());
             return (
-              <div key={permission.id} className="acp-permission">
-                <div className="head">
+              <div key={permission.id} className="acp-permission rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="head flex items-start justify-between gap-2">
                   <button
-                    className="acp-permission-toggle"
+                    className="acp-permission-toggle flex min-w-0 flex-1 flex-col items-start gap-1 rounded-lg border border-transparent px-2 py-1 text-left transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                     type="button"
                     onClick={() => onJumpToPermissionHistory(permission)}
                     disabled={!canJump}
@@ -275,14 +295,14 @@ export function AcpDebug({
                     <span className="meta">{permission.status}</span>
                   </button>
                   <button
-                    className="acp-permission-copy"
+                    className={`acp-permission-copy ${debugSecondaryButtonClassName}`}
                     type="button"
                     onClick={() => void handleCopyPermission(permission)}
                   >
                     {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
-                <div className="acp-permission-submeta">
+                <div className="acp-permission-submeta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                   <span className="mono">{permission.id}</span>
                   {permission.tool_call_id && (
                     <span className="mono">tool_call {permission.tool_call_id}</span>
@@ -293,7 +313,7 @@ export function AcpDebug({
                   )}
                 </div>
                 {!canJump && (
-                  <div className="acp-permission-options mono">
+                  <div className="acp-permission-options mono mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
                     no linked tool call in conversation
                   </div>
                 )}
@@ -303,16 +323,16 @@ export function AcpDebug({
         </div>
       )}
       {tab === "raw" && (
-        <div className="acp-raw-wrapper">
-          <h4>Raw Events</h4>
-          <ul className="acp-raw" ref={rawRef}>
+        <div className="acp-raw-wrapper space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Raw Events</h4>
+          <ul className="acp-raw max-h-[420px] space-y-2 overflow-auto pr-1" ref={rawRef}>
             {rawEvents.map((evt, idx) => (
-              <li key={`${evt.ts}-${idx}`}>
-                <div className="meta">
+              <li key={`${evt.ts}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <div className="meta flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>{new Date(evt.ts * 1000).toLocaleTimeString()}</span>
                   <span className="mono">{evt.type}</span>
                 </div>
-                <pre className="acp-content">
+                <pre className="acp-content mt-2 overflow-auto rounded-md border border-slate-200 bg-white p-2 text-xs leading-5 text-slate-700">
                   {JSON.stringify(evt.payload, null, 2)}
                 </pre>
               </li>
@@ -407,9 +427,11 @@ function RuntimeMetricCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="acp-runtime-card">
-      <div className="acp-runtime-label">{label}</div>
-      <div className="acp-runtime-value">{children}</div>
+    <div className="acp-runtime-card rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="acp-runtime-label text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div className="acp-runtime-value mt-1 text-sm font-semibold text-slate-900">{children}</div>
     </div>
   );
 }

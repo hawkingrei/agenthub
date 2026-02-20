@@ -20,6 +20,8 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 
 - Backend: Rust (single-process service)
 - Frontend: mainstream TS framework (default React + Vite SPA), static assets embedded in the Rust service
+- Frontend UI standard: all new UI features and UI refactors must use the project UI library (`@mantine/core`) plus Tailwind CSS utility classes as the default styling path
+- CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
 - Database: SQLite
 - Deployment: single binary, no separate frontend deployment
 - Agent execution: spawn subprocess under the user-specified path; closing the page must not stop the agent
@@ -88,6 +90,9 @@ agenthub/
   - Use a config file instead of environment variables
 - ACP:
   - History must be retained and replayable
+- Frontend implementation policy:
+  - Follow-up UI work should be built with UI library components + Tailwind CSS utilities
+  - Avoid introducing new parallel style systems or expanding legacy handcrafted global CSS except compatibility patches
 
 ## 10. TODO
 

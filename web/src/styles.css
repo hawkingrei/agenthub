@@ -1708,6 +1708,7 @@ select:not([class*="mantine-"]):focus-visible {
   line-height: 1.6;
   max-width: 100%;
   overflow-wrap: anywhere;
+  text-align: left;
 }
 
 .acp-text {
@@ -1848,6 +1849,8 @@ select:not([class*="mantine-"]):focus-visible {
   background: #fff3e4;
   border-color: #f0c99a;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .acp-bubble.tool_call.tool_call_group {
@@ -1885,8 +1888,10 @@ select:not([class*="mantine-"]):focus-visible {
   color: #295d52;
   margin-bottom: 6px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 6px;
+  text-align: left;
 }
 
 .acp-tool-group-fold summary {
@@ -1895,8 +1900,10 @@ select:not([class*="mantine-"]):focus-visible {
   color: #245a46;
   margin-bottom: 6px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 6px;
+  text-align: left;
 }
 
 .acp-explore-group-fold summary {
@@ -1910,13 +1917,31 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-fold summary .acp-tool-title {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+}
+
+.acp-tool-group-fold summary .acp-tool-title {
+  text-align: left;
+}
+
+.acp-tool-group-fold summary .acp-tool-group-title {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .acp-tool-status-mark {
@@ -1953,16 +1978,32 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-fold summary .acp-tool-status {
   flex: 0 0 auto;
+  margin-left: auto;
+  align-self: flex-start;
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 999px;
   background: #ffe7c2;
   color: #8a5a13;
+  text-align: left;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+.acp-tool-group-fold summary .acp-tool-status {
+  margin-left: auto;
+  align-self: flex-start;
+  text-align: left;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 .acp-tool-group-list {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .acp-tool-group-fold[open] > .acp-tool-group-list {
@@ -1974,10 +2015,21 @@ select:not([class*="mantine-"]):focus-visible {
   padding-top: 8px;
 }
 
+.acp-tool-group-item {
+  min-width: 0;
+}
+
+.acp-tool-group-item > * {
+  min-width: 0;
+}
+
 .acp-tool-group-entry {
   background: #fff8ef;
   border-color: #f2d7ad;
   padding: 8px 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .acp-tool-fold-nested {
@@ -1986,6 +2038,24 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-group-status {
   background: #ffe3bf;
+}
+
+.acp-tool-group-fold summary .acp-tool-status.tone-success {
+  color: #1f7a3d;
+  background: rgba(31, 122, 61, 0.14);
+  border-color: rgba(31, 122, 61, 0.32);
+}
+
+.acp-tool-group-fold summary .acp-tool-status.tone-failure {
+  color: #b42318;
+  background: rgba(180, 35, 24, 0.14);
+  border-color: rgba(180, 35, 24, 0.32);
+}
+
+.acp-tool-group-fold summary .acp-tool-status.tone-running {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.14);
+  border-color: rgba(37, 99, 235, 0.32);
 }
 
 .acp-explore-thinking-item .acp-bubble.agent_thinking {

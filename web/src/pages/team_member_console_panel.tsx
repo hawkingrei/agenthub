@@ -24,6 +24,18 @@ type TeamMemberConsolePanelProps = {
   formatTs: (ts?: number | null) => string;
 };
 
+const MEMBER_CONSOLE_CARD_CLASS =
+  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+const MEMBER_CONSOLE_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
+const MEMBER_CONSOLE_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
+const MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS =
+  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
+const MEMBER_CONSOLE_SELECT_CLASS =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+const MEMBER_CONSOLE_DETAIL_CLASS =
+  "teams-step-body mono rounded-xl border border-slate-200 bg-slate-50/70 p-3";
+const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+
 export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   const {
     snapshot,
@@ -44,15 +56,16 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   } = props;
 
   return (
-    <div className="card">
-      <div className="toolbar">
+    <div className={MEMBER_CONSOLE_CARD_CLASS}>
+      <div className={MEMBER_CONSOLE_TOOLBAR_CLASS}>
         <h3>Member Console</h3>
-        <div className="actions">
+        <div className={MEMBER_CONSOLE_TOOLBAR_ACTIONS_CLASS}>
           <button
             onClick={() => {
               void onRefresh();
             }}
             disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
+            className={MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS}
           >
             Refresh
           </button>
@@ -66,6 +79,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               !memberEventsHasMore ||
               oldestMemberEventId == null
             }
+            className={MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS}
           >
             Load Older
           </button>
@@ -74,6 +88,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
 
       <div className="form-row">
         <select
+          className={MEMBER_CONSOLE_SELECT_CLASS}
           value={selectedMemberId}
           onChange={(event) => onSelectedMemberIdChange(event.target.value)}
         >
@@ -87,7 +102,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
       </div>
 
       {selectedMemberSnapshot && (
-        <div className="teams-step-body mono">
+        <div className={MEMBER_CONSOLE_DETAIL_CLASS}>
           <div>member_id: {selectedMemberSnapshot.member_id}</div>
           <div>role: {selectedMemberSnapshot.role}</div>
           <div>model: {selectedMemberSnapshot.model ?? "-"}</div>
@@ -120,7 +135,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
       )}
 
       {selectedMemberSnapshot && (
-        <ul className="teams-event-list">
+        <ul className={MEMBER_CONSOLE_LIST_CLASS}>
           {memberEvents.map((event) => (
             <li key={event.event_id}>
               <div className="teams-event-head">
@@ -135,7 +150,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
       )}
 
       {!selectedMemberSnapshot && (
-        <ul className="teams-event-list">
+        <ul className={MEMBER_CONSOLE_LIST_CLASS}>
           {displayedRunEvents.map((event) => (
             <li key={event.event_id}>
               <div className="teams-event-head">

@@ -16,6 +16,14 @@ type TeamEventsPanelProps = {
   toPrettyJson: (value: unknown) => string;
 };
 
+const EVENTS_CARD_CLASS =
+  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+const EVENTS_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
+const EVENTS_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
+const EVENTS_SECONDARY_BUTTON_CLASS =
+  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
+const EVENTS_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+
 export function TeamEventsPanel(props: TeamEventsPanelProps) {
   const {
     eventsAutoRefresh,
@@ -33,10 +41,10 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
   } = props;
 
   return (
-    <div className="card">
-      <div className="toolbar">
+    <div className={EVENTS_CARD_CLASS}>
+      <div className={EVENTS_TOOLBAR_CLASS}>
         <h3>Run Events</h3>
-        <div className="actions">
+        <div className={EVENTS_TOOLBAR_ACTIONS_CLASS}>
           <label className="checkbox">
             <input
               type="checkbox"
@@ -50,6 +58,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               void onRefreshEvents();
             }}
             disabled={eventsLoading}
+            className={EVENTS_SECONDARY_BUTTON_CLASS}
           >
             Refresh
           </button>
@@ -58,6 +67,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               void onLoadOlderEvents();
             }}
             disabled={previewMode || eventsLoading || !eventsHasMore || oldestEventId == null}
+            className={EVENTS_SECONDARY_BUTTON_CLASS}
           >
             Load Older
           </button>
@@ -70,7 +80,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
         </p>
       )}
       {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}
-      <ul className="teams-event-list">
+      <ul className={EVENTS_LIST_CLASS}>
         {displayedRunEvents.map((event) => (
           <li key={event.event_id}>
             <div className="teams-event-head">

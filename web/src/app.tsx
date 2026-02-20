@@ -103,6 +103,15 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
+const LOGIN_PANEL_CLASS =
+  "auth mx-auto flex w-full max-w-md flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm backdrop-blur";
+const LOGIN_INPUT_CLASS =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+const LOGIN_ACTIONS_CLASS = "actions mt-1 flex flex-wrap gap-2";
+const LOGIN_PRIMARY_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800";
+const LOGIN_SECONDARY_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-500";
 
 type PendingPermissionJumpState = {
   toolCallId: string;
@@ -2549,14 +2558,18 @@ export function App() {
       )}
 
       {!auth && (
-        <section className="auth">
-          <h2>Password + Passkey Login</h2>
+        <section className={LOGIN_PANEL_CLASS}>
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+            Password + Passkey Login
+          </h2>
           <input
+            className={LOGIN_INPUT_CLASS}
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
           <input
+            className={LOGIN_INPUT_CLASS}
             placeholder="Password"
             type="password"
             value={password}
@@ -2564,16 +2577,24 @@ export function App() {
           />
           {rootInitialized === false && (
             <input
+              className={LOGIN_INPUT_CLASS}
               placeholder="Display Name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
           )}
-          <div className="actions">
+          <div className={LOGIN_ACTIONS_CLASS}>
             {rootInitialized === false && (
-              <button onClick={() => onRegister("root")}>Bootstrap Root</button>
+              <button
+                className={LOGIN_SECONDARY_BUTTON_CLASS}
+                onClick={() => onRegister("root")}
+              >
+                Bootstrap Root
+              </button>
             )}
-            <button onClick={onLogin}>Login</button>
+            <button className={LOGIN_PRIMARY_BUTTON_CLASS} onClick={onLogin}>
+              Login
+            </button>
           </div>
         </section>
       )}

@@ -38,8 +38,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
 
   return (
-    <aside className="card teams-sidebar">
-      <div className="mode-switch">
+    <aside className="card teams-sidebar rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
+      <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents
         </a>
@@ -47,28 +47,37 @@ export function TeamSidebar(props: TeamSidebarProps) {
           Teams
         </a>
       </div>
-      <div className="toolbar">
+      <div className="toolbar mb-3 flex items-center justify-between gap-2">
         <h2>Teams</h2>
         <button
           onClick={() => {
             void onRefreshTeams();
           }}
           disabled={busy === "refresh-teams"}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Refresh
         </button>
       </div>
 
-      <div className="teams-form teams-create-launch">
-        <h3>Team Forge</h3>
+      <div className="teams-form teams-create-launch rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
         <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
-        <div className="teams-create-entry-actions">
-          <button onClick={onOpenCreateTeamWizard}>Guided Wizard</button>
-          <button className="ghost" onClick={onOpenCreateTeamManual}>
+        <div className="teams-create-entry-actions mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={onOpenCreateTeamWizard}
+            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Guided Wizard
+          </button>
+          <button
+            className="ghost rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-400"
+            onClick={onOpenCreateTeamManual}
+          >
             Manual Spec
           </button>
         </div>
-        <div className="teams-create-launch-meta mono">
+        <div className="teams-create-launch-meta mono mt-3 grid gap-1 text-xs text-slate-600">
           <span>draft_team={draftTeamName.trim() || "-"}</span>
           <span>leader={leaderMemberId.trim() || "-"}</span>
           <span>workers={configuredWorkerCount}</span>
