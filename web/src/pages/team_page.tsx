@@ -65,6 +65,7 @@ import {
   buildDefaultWorkerDraft,
   buildTeamMemberLiveStates,
   createInitialTeamDraftState,
+  parseTeamSpecMembers,
   resolveTeamMemberAgentStatuses,
   selectTeamForgeAgents,
   summarizeTeamMemberAgentStatuses,
@@ -269,6 +270,9 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const [teamMemberAgentsById, setTeamMemberAgentsById] = useState<
+    Record<string, AgentRecord | null>
+  >({});
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
@@ -539,13 +543,64 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  const teamSpecMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const team of teams) {
+      for (const member of parseTeamSpecMembers(team.spec)) {
+        ids.add(member.member_id);
+      }
+    }
+    return [...ids];
+  }, [teams]);
+  useEffect(() => {
+    const listedAgentIds = new Set(agents.map((agent) => agent.id));
+    const unresolvedMemberIds = teamSpecMemberIds.filter(
+      (memberId) =>
+        !listedAgentIds.has(memberId) && !(memberId in teamMemberAgentsById)
+    );
+    if (unresolvedMemberIds.length === 0) {
+      return;
+    }
+
+    let canceled = false;
+    const loadMissingMemberAgents = async () => {
+      const resolved = await Promise.all(
+        unresolvedMemberIds.map(async (memberId) => {
+          try {
+            const agent = await api.getAgent(props.token, memberId);
+            return [memberId, agent] as const;
+          } catch {
+            return [memberId, null] as const;
+          }
+        })
+      );
+      if (canceled) {
+        return;
+      }
+      setTeamMemberAgentsById((prev) => {
+        const next = { ...prev };
+        for (const [memberId, agent] of resolved) {
+          next[memberId] = agent;
+        }
+        return next;
+      });
+    };
+
+    void loadMissingMemberAgents();
+    return () => {
+      canceled = true;
+    };
+  }, [agents, props.token, teamMemberAgentsById, teamSpecMemberIds]);
   const teamMemberStatusByTeamId = useMemo(() => {
     const next = new Map<string, TeamMemberAgentStatus[]>();
     for (const team of teams) {
-      next.set(team.id, resolveTeamMemberAgentStatuses(team.spec, agents));
+      next.set(
+        team.id,
+        resolveTeamMemberAgentStatuses(team.spec, agents, teamMemberAgentsById)
+      );
     }
     return next;
-  }, [agents, teams]);
+  }, [agents, teamMemberAgentsById, teams]);
   const teamMemberSummaryByTeamId = useMemo(() => {
     const next = new Map<string, TeamMemberAgentStatusSummary>();
     for (const team of teams) {

@@ -232,9 +232,17 @@ export function parseTeamSpecMembers(spec: unknown): TeamSpecMember[] {
 
 export function resolveTeamMemberAgentStatuses(
   spec: unknown,
-  agents: AgentRecord[]
+  agents: AgentRecord[],
+  fallbackAgentsById?: Record<string, AgentRecord | null>
 ): TeamMemberAgentStatus[] {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  if (fallbackAgentsById) {
+    for (const [memberId, agent] of Object.entries(fallbackAgentsById)) {
+      if (agent && !byId.has(memberId)) {
+        byId.set(memberId, agent);
+      }
+    }
+  }
   return parseTeamSpecMembers(spec).map((member) => {
     const agent = byId.get(member.member_id);
     if (!agent) {

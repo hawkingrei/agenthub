@@ -553,6 +553,8 @@ export const api = {
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
+  getAgent: (token: string, id: string) =>
+    apiFetch<AgentRecord>(`/api/agents/${id}`, token),
   sendInput: (
     token: string,
     id: string,

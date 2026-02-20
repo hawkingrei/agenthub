@@ -345,6 +345,37 @@ describe("team run list helpers", () => {
     ]);
   });
 
+  it("uses fallback member lookup when /api/agents list hides team members", () => {
+    const statuses = resolveTeamMemberAgentStatuses(
+      {
+        members: [
+          { member_id: "leader-agent", role: "leader" },
+          { member_id: "worker-hidden", role: "worker" },
+        ],
+      },
+      [buildAgent("leader-agent", "running")],
+      {
+        "worker-hidden": buildAgent("worker-hidden", "created"),
+      }
+    );
+    expect(statuses).toEqual([
+      {
+        member_id: "leader-agent",
+        role: "leader",
+        agent_name: "leader-agent",
+        status: "running",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-hidden",
+        role: "worker",
+        agent_name: "worker-hidden",
+        status: "created",
+        missing_agent: false,
+      },
+    ]);
+  });
+
   it("summarizes active/inactive/missing team member counts", () => {
     const summary = summarizeTeamMemberAgentStatuses([
       {
