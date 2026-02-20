@@ -5,6 +5,13 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentEventCleanupResult {
+    pub cutoff_ts: i64,
+    pub deleted_rows: u64,
+    pub vacuum_ran: bool,
+}
+
 pub async fn init_db() -> anyhow::Result<SqlitePool> {
     let db_path = default_db_path();
     init_db_at_path(&db_path).await
@@ -343,6 +350,17 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             err
         );
     }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_ts
+        ON agent_events(ts);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!("db init: failed to create idx_agent_events_ts: {}", err);
+    }
 
     if let Err(err) = sqlx::query(
         r#"
@@ -566,6 +584,51 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     Ok(pool)
 }
 
+pub async fn cleanup_agent_event_history(
+    pool: &SqlitePool,
+    retention_days: u32,
+    vacuum_on_cleanup: bool,
+) -> anyhow::Result<AgentEventCleanupResult> {
+    const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+    let retention_seconds = i64::from(retention_days).saturating_mul(SECONDS_PER_DAY);
+    let cutoff_ts = chrono::Utc::now()
+        .timestamp()
+        .saturating_sub(retention_seconds);
+
+    let deleted_rows = sqlx::query(
+        r#"
+        DELETE FROM agent_events
+        WHERE ts < ?1
+        "#,
+    )
+    .bind(cutoff_ts)
+    .execute(pool)
+    .await?
+    .rows_affected();
+
+    if let Err(err) = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+        .execute(pool)
+        .await
+    {
+        tracing::warn!("db cleanup: wal checkpoint failed: {}", err);
+    }
+
+    let mut vacuum_ran = false;
+    if vacuum_on_cleanup && deleted_rows > 0 {
+        if let Err(err) = sqlx::query("VACUUM").execute(pool).await {
+            tracing::warn!("db cleanup: vacuum failed: {}", err);
+        } else {
+            vacuum_ran = true;
+        }
+    }
+
+    Ok(AgentEventCleanupResult {
+        cutoff_ts,
+        deleted_rows,
+        vacuum_ran,
+    })
+}
+
 async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
     if let Err(err) = sqlx::query(sql).execute(pool).await {
         let message = err.to_string();
@@ -612,7 +675,7 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_parent_dir, init_db_at_path, try_connect};
+    use super::{cleanup_agent_event_history, create_parent_dir, init_db_at_path, try_connect};
     use sqlx::Row;
     use uuid::Uuid;
 
@@ -710,6 +773,110 @@ mod tests {
                 .expect("check parent exists"),
             "parent directory should exist"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cleanup_agent_event_history_deletes_rows_older_than_retention() {
+        let dir = unique_temp_dir("db-cleanup");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("cleanup.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let now = chrono::Utc::now().timestamp();
+        let old_ts = now - (10 * 24 * 60 * 60);
+        let new_ts = now - (2 * 24 * 60 * 60);
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind("agent-cleanup")
+        .bind("cleanup-agent")
+        .bind("/tmp")
+        .bind("echo")
+        .bind("[]")
+        .bind("reuse_worktree")
+        .bind(None::<String>)
+        .bind(None::<String>)
+        .bind(0_i64)
+        .bind("manual")
+        .bind("stopped")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-cleanup")
+        .bind("agent-cleanup")
+        .bind("running")
+        .bind(now)
+        .bind(None::<i64>)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("agent-cleanup")
+        .bind("session-cleanup")
+        .bind("seq-old")
+        .bind(old_ts)
+        .bind("acp")
+        .bind("old")
+        .execute(&pool)
+        .await
+        .expect("insert old event");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("agent-cleanup")
+        .bind("session-cleanup")
+        .bind("seq-new")
+        .bind(new_ts)
+        .bind("acp")
+        .bind("new")
+        .execute(&pool)
+        .await
+        .expect("insert new event");
+
+        let result = cleanup_agent_event_history(&pool, 5, false)
+            .await
+            .expect("cleanup history");
+        assert_eq!(result.deleted_rows, 1);
+        assert!(!result.vacuum_ran);
+        assert!(result.cutoff_ts > old_ts);
+        assert!(result.cutoff_ts < new_ts);
+
+        let remaining: i64 = sqlx::query("SELECT COUNT(*) AS cnt FROM agent_events")
+            .fetch_one(&pool)
+            .await
+            .expect("count remaining events")
+            .get("cnt");
+        assert_eq!(remaining, 1);
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

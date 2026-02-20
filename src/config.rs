@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
+const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -17,6 +18,7 @@ pub struct AppConfig {
     pub proxy: Option<ProxyConfig>,
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
+    pub history: Option<HistoryConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
     pub safe_paths: Option<Vec<String>>,
@@ -58,6 +60,12 @@ pub struct CodexAcpConfig {
 pub struct PushConfig {
     pub subject: Option<String>,
     pub keys_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HistoryConfig {
+    pub event_retention_days: Option<u32>,
+    pub vacuum_on_cleanup: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -206,6 +214,25 @@ impl AppConfig {
             .map(|value| value.to_string())
     }
 
+    pub fn history_event_retention_days(&self) -> Option<u32> {
+        let days = self
+            .history
+            .as_ref()
+            .and_then(|history| history.event_retention_days)
+            .unwrap_or(DEFAULT_HISTORY_EVENT_RETENTION_DAYS);
+        if days == 0 {
+            return None;
+        }
+        Some(days)
+    }
+
+    pub fn history_vacuum_on_cleanup(&self) -> bool {
+        self.history
+            .as_ref()
+            .and_then(|history| history.vacuum_on_cleanup)
+            .unwrap_or(false)
+    }
+
     pub fn internal_grpc_enabled(&self) -> bool {
         self.internal_grpc
             .as_ref()
@@ -339,6 +366,8 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
         "AGENTHUB_CODEX_ACP_DEFAULT_MODE",
+        "AGENTHUB_HISTORY_EVENT_RETENTION_DAYS",
+        "AGENTHUB_HISTORY_VACUUM_ON_CLEANUP",
         "AGENTHUB_INTERNAL_GRPC_ENABLED",
         "AGENTHUB_INTERNAL_GRPC_LISTEN",
         "AGENTHUB_INTERNAL_GRPC_SECURITY_MODE",
@@ -379,7 +408,7 @@ fn expand_tilde(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, WorktreeConfig};
+    use super::{AppConfig, HistoryConfig, WorktreeConfig};
 
     #[test]
     fn default_worktree_root_uses_builtin_default() {
@@ -445,5 +474,37 @@ mod tests {
         assert!(config.internal_grpc_auth_issuer().is_none());
         assert!(config.internal_grpc_auth_audience().is_none());
         assert!(config.internal_grpc_bootstrap_token().is_none());
+    }
+
+    #[test]
+    fn history_defaults_use_five_days_and_no_vacuum() {
+        let config = AppConfig::default();
+        assert_eq!(config.history_event_retention_days(), Some(5));
+        assert!(!config.history_vacuum_on_cleanup());
+    }
+
+    #[test]
+    fn history_config_applies_custom_values() {
+        let config = AppConfig {
+            history: Some(HistoryConfig {
+                event_retention_days: Some(14),
+                vacuum_on_cleanup: Some(true),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.history_event_retention_days(), Some(14));
+        assert!(config.history_vacuum_on_cleanup());
+    }
+
+    #[test]
+    fn history_retention_can_be_disabled_with_zero() {
+        let config = AppConfig {
+            history: Some(HistoryConfig {
+                event_retention_days: Some(0),
+                vacuum_on_cleanup: Some(false),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.history_event_retention_days(), None);
     }
 }

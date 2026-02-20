@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify startup history retention cleanup (`history.event_retention_days`) deletes `agent_events` older than configured window (default `5` days) and optional `history.vacuum_on_cleanup` compaction behavior remains stable on non-empty cleanup runs (see `docs/features/2026-02-20-sqlite-history-retention-cleanup.md`).
 - [x] Verify `TeamMemberConsolePanel` and `TeamMailboxPanel` reuse shared Team Tailwind panel constants while keeping panel interaction tests green (`team_panels`) and passing `web` lint/build (see `docs/features/2026-02-20-web-team-member-mailbox-shared-tailwind-classes.md`).
 - [ ] Verify Codecov upload strict mode (`fail_ci_if_error: true`) stays stable for `Rust`/`Web`/`Web E2E` workflows on both `push` and `pull_request` events; record workflow run IDs before marking done (see `docs/features/2026-02-20-ci-codecov-fail-fast-upload.md`).
 - [x] Verify Team workbench shared Tailwind class extraction across `TeamRunPanel`/`TeamOverviewPanel`/`TeamEventsPanel`/`TeamStepsPanel` keeps interaction tests green (`team_panels`), passes `web` lint/build, and preserves existing callback/reducer behavior (see `docs/features/2026-02-20-web-team-panel-shared-tailwind-classes.md`).
