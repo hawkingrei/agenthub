@@ -406,7 +406,11 @@ describe("team panels interactions", () => {
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
     expect(onLoadMoreRuns).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("agent_not_found");
+    expect(container.textContent).toContain("team_number=2");
+    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("worker-agent");
+    expect(container.querySelectorAll(".teams-member-dot.active")).toHaveLength(1);
+    expect(container.querySelectorAll(".teams-member-dot.inactive")).toHaveLength(1);
 
     act(() => {
       root.render(

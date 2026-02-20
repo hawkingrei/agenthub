@@ -1,10 +1,6 @@
 import React from "react";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
-import {
-  StatusBadge,
-  resolveTeamLifecycleStatusTone,
-  resolveTeamRunStatusTone,
-} from "../components/status_badge";
+import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
@@ -54,6 +50,8 @@ const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
 const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
+const RUN_PANEL_MEMBER_SUMMARY_CLASS =
+  "teams-member-summary-line mono mb-2 text-left text-xs tracking-wide text-slate-600";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -136,37 +134,29 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         </div>
       </div>
       <div className={RUN_PANEL_MEMBER_CLASS}>
-        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Health</p>
+        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Members</p>
         <div className="teams-member-status-panel">
-          <div className="teams-member-summary-line mono">
-            {`active=${selectedTeamMemberSummary.active} inactive=${selectedTeamMemberSummary.inactive} missing=${selectedTeamMemberSummary.missing} total=${selectedTeamMemberSummary.total}`}
+          <div className={RUN_PANEL_MEMBER_SUMMARY_CLASS}>
+            {`team_number=${selectedTeamMemberSummary.total}`}
           </div>
           {selectedTeamMemberLiveStates.length === 0 ? (
             <p className="muted">No members declared in team spec.</p>
           ) : (
-            <div className="teams-member-strip">
+            <div className="teams-member-strip compact">
               {selectedTeamMemberLiveStates.map((member) => {
-                const roleTone = member.role.trim().toLowerCase() === "leader" ? "leader" : "worker";
+                const isRunning = member.lifecycle_tone === "active";
                 return (
-                  <article key={`${selectedTeam.id}:${member.member_id}`} className="team-member-row">
-                    <div className="team-member-row-main">
-                      <span className={`team-role-chip ${roleTone}`}>{member.role}</span>
-                      <span className="team-member-row-id mono">{member.member_id}</span>
-                      <StatusBadge
-                        label={member.lifecycle_status}
-                        tone={resolveTeamLifecycleStatusTone(member.lifecycle_tone)}
-                        className={`team-status-chip ${member.lifecycle_tone}`}
-                        title={`lifecycle: ${member.lifecycle_status}`}
-                      />
-                      <span className="team-member-row-meta mono">
-                        {member.agent_name ?? "agent_not_found"}
-                      </span>
-                      <span className="team-member-row-meta mono">
-                        {`run=${member.run_status} step=${member.step_status} inbox=${member.pending_inbox_count ?? "-"}`}
-                      </span>
-                    </div>
-                    <div className="team-member-workline mono">{member.current_work}</div>
-                  </article>
+                  <span
+                    key={`${selectedTeam.id}:${member.member_id}`}
+                    className="teams-member-dot-item mono"
+                    title={`member=${member.member_id} status=${member.lifecycle_status}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`teams-member-dot ${isRunning ? "active" : "inactive"}`}
+                    />
+                    <span className="teams-member-dot-label">{member.member_id}</span>
+                  </span>
                 );
               })}
             </div>

@@ -3116,6 +3116,45 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 6px;
 }
 
+.teams-member-strip.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.teams-member-dot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  color: #1f2a37;
+  font-size: 12px;
+}
+
+.teams-member-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.teams-member-dot.active {
+  background: #1c6b3e;
+}
+
+.teams-member-dot.inactive {
+  background: #9a2b2b;
+}
+
+.teams-member-dot-label {
+  min-width: 0;
+  max-width: min(42vw, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .team-member-row {
   display: grid;
   gap: 3px;

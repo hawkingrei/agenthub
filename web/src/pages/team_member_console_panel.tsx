@@ -59,6 +59,15 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
     toPrettyJson,
     formatTs,
   } = props;
+  const mcpSkills =
+    selectedMemberSnapshot?.skills.filter((skill) => {
+      const normalized = skill.trim().toLowerCase();
+      return (
+        normalized.includes("mcp") ||
+        normalized.includes("actor-mailbox") ||
+        normalized.includes("actor-runtime")
+      );
+    }) ?? [];
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -117,6 +126,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
           <div>
             skills: {selectedMemberSnapshot.skills.length > 0 ? selectedMemberSnapshot.skills.join(", ") : "-"}
           </div>
+          <div>mcp_skills: {mcpSkills.length > 0 ? mcpSkills.join(", ") : "-"}</div>
           <div>prompt: {selectedMemberSnapshot.prompt ?? "-"}</div>
         </div>
       )}
