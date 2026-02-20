@@ -1,5 +1,12 @@
 import React from "react";
 import { TeamRunEventRecord } from "../api";
+import {
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TITLE_CLASS,
+  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_PANEL_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamEventsPanelProps = {
   eventsAutoRefresh: boolean;
@@ -16,13 +23,11 @@ type TeamEventsPanelProps = {
   toPrettyJson: (value: unknown) => string;
 };
 
-const EVENTS_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const EVENTS_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const EVENTS_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
-const EVENTS_SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 const EVENTS_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+const EVENTS_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-sm text-slate-700";
+const EVENTS_EMPTY_TEXT_CLASS = "muted text-sm text-slate-600";
+const EVENTS_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
+const EVENTS_ITEM_HEAD_CLASS = "teams-event-head mb-1 flex items-center gap-2 text-xs text-slate-600";
 
 export function TeamEventsPanel(props: TeamEventsPanelProps) {
   const {
@@ -41,11 +46,11 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
   } = props;
 
   return (
-    <div className={EVENTS_CARD_CLASS}>
-      <div className={EVENTS_TOOLBAR_CLASS}>
-        <h3>Run Events</h3>
-        <div className={EVENTS_TOOLBAR_ACTIONS_CLASS}>
-          <label className="checkbox">
+    <div className={TEAM_PANEL_CARD_CLASS}>
+      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+        <h3 className={TEAM_PANEL_TITLE_CLASS}>Run Events</h3>
+        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
+          <label className={EVENTS_CHECKBOX_LABEL_CLASS}>
             <input
               type="checkbox"
               checked={eventsAutoRefresh}
@@ -58,7 +63,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               void onRefreshEvents();
             }}
             disabled={eventsLoading}
-            className={EVENTS_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Refresh
           </button>
@@ -67,23 +72,23 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               void onLoadOlderEvents();
             }}
             disabled={previewMode || eventsLoading || !eventsHasMore || oldestEventId == null}
-            className={EVENTS_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Load Older
           </button>
         </div>
       </div>
       {previewMode && (
-        <p className="muted">
+        <p className={EVENTS_EMPTY_TEXT_CLASS}>
           Showing latest {previewLimit} records. For full event history, select a member in the
           Member Console tab.
         </p>
       )}
-      {displayedRunEvents.length === 0 && <p className="muted">No events.</p>}
+      {displayedRunEvents.length === 0 && <p className={EVENTS_EMPTY_TEXT_CLASS}>No events.</p>}
       <ul className={EVENTS_LIST_CLASS}>
         {displayedRunEvents.map((event) => (
-          <li key={event.event_id}>
-            <div className="teams-event-head">
+          <li key={event.event_id} className={EVENTS_ITEM_CLASS}>
+            <div className={EVENTS_ITEM_HEAD_CLASS}>
               <span className="mono">#{event.event_id}</span>
               <span>{event.event_type}</span>
               <span>{formatTs(event.ts)}</span>

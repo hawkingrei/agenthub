@@ -5,6 +5,15 @@ import {
   resolveTeamLifecycleStatusTone,
   resolveTeamRunStatusTone,
 } from "../components/status_badge";
+import {
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TEXTAREA_CLASS,
+  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_PANEL_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamRunStatusFilter = TeamRunStatus | "all";
 
@@ -32,25 +41,12 @@ type TeamMemberLiveState = {
   current_work: string;
 };
 
-const RUN_PANEL_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const RUN_PANEL_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const RUN_PANEL_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_SECTION_CLASS = "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
-const RUN_PANEL_INPUT_CLASS =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
-const RUN_PANEL_TEXTAREA_CLASS =
-  "mono min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
-const RUN_PANEL_PRIMARY_BUTTON_CLASS =
-  "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
-const RUN_PANEL_SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_LIST_CLASS = "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
-const RUN_PANEL_LIST_ACTIONS_CLASS = "actions flex items-center gap-2";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -116,10 +112,10 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
   } = props;
 
   return (
-    <div className={RUN_PANEL_CARD_CLASS}>
-      <div className={RUN_PANEL_TOOLBAR_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS}>
+      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h2>{selectedTeam.name}</h2>
-        <div className={RUN_PANEL_TOOLBAR_ACTIONS_CLASS}>
+        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <span className="mono">{selectedTeam.id}</span>
           <button
             onClick={() => {
@@ -176,13 +172,13 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         </p>
         <div className="form-row">
           <input
-            className={RUN_PANEL_INPUT_CLASS}
+            className={TEAM_PANEL_INPUT_CLASS}
             placeholder="context_id (optional, auto-generated when empty)"
             value={runContextId}
             onChange={(event) => onRunContextIdChange(event.target.value)}
           />
           <button
-            className={RUN_PANEL_PRIMARY_BUTTON_CLASS}
+            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
             onClick={onCreateRun}
             disabled={busy === "create-run"}
           >
@@ -190,20 +186,20 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </button>
         </div>
         <textarea
-          className={RUN_PANEL_TEXTAREA_CLASS}
+          className={TEAM_PANEL_TEXTAREA_CLASS}
           rows={4}
           value={runInput}
           onChange={(event) => onRunInputChange(event.target.value)}
         />
         <div className="form-row">
           <input
-            className={RUN_PANEL_INPUT_CLASS}
+            className={TEAM_PANEL_INPUT_CLASS}
             placeholder="existing run_id"
             value={runLookupId}
             onChange={(event) => onRunLookupIdChange(event.target.value)}
           />
           <button
-            className={RUN_PANEL_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
             onClick={onLoadRunById}
             disabled={busy === "load-run"}
           >
@@ -214,9 +210,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       <div className={RUN_PANEL_LIST_CLASS}>
         <div className={RUN_PANEL_LIST_HEAD_CLASS}>
           <h3>Runs</h3>
-          <div className={RUN_PANEL_LIST_ACTIONS_CLASS}>
+          <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
             <select
-              className={RUN_PANEL_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               value={runStatusFilter}
               onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
               aria-label="Run status filter"
@@ -232,7 +228,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                 void onRefreshRuns();
               }}
               disabled={runsLoading}
-              className={RUN_PANEL_SECONDARY_BUTTON_CLASS}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
             >
               Refresh Runs
             </button>
@@ -270,7 +266,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               void onLoadMoreRuns();
             }}
             disabled={runsLoading || !runsHasMore || !selectedTeamId}
-            className={RUN_PANEL_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
           </button>
