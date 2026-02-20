@@ -815,6 +815,152 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
 }
 
 #[tokio::test]
+async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_status_filter() {
+    const TOTAL_RUNS: usize = 120;
+    const PAGE_SIZE: i64 = 17;
+
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "runs-list-high-volume-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let mut expected_runs = Vec::with_capacity(TOTAL_RUNS);
+    let mut canceled_expected = Vec::new();
+    for index in 0..TOTAL_RUNS {
+        let Json(run) = create_team_run(
+            State(state.clone()),
+            headers.clone(),
+            Path(team.id.clone()),
+            Json(CreateTeamRunRequest {
+                context_id: Some(format!("ctx-runs-high-volume-{index}")),
+                input: Some(json!({"seq":index})),
+            }),
+        )
+        .await
+        .expect("create run");
+
+        let created_at = 10_000_i64 + index as i64;
+        sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+            .bind(created_at)
+            .bind(&run.id)
+            .execute(&state.db)
+            .await
+            .expect("set run created_at");
+
+        if index % 4 == 0 {
+            let _ = cancel_team_run(
+                State(state.clone()),
+                headers.clone(),
+                Path(run.id.clone()),
+            )
+            .await
+            .expect("cancel run");
+            canceled_expected.push((created_at, run.id.clone()));
+        }
+
+        expected_runs.push((created_at, run.id));
+    }
+
+    expected_runs.sort_by(|left, right| right.cmp(left));
+    let expected_ids = expected_runs
+        .iter()
+        .map(|(_, run_id)| run_id.clone())
+        .collect::<Vec<_>>();
+
+    let mut collected_ids = Vec::with_capacity(TOTAL_RUNS);
+    let mut cursor = None;
+    loop {
+        let Json(page) = list_team_runs(
+            State(state.clone()),
+            headers.clone(),
+            Path(team.id.clone()),
+            Query(ListTeamRunsQuery {
+                limit: Some(PAGE_SIZE),
+                status: None,
+                before_created_at: cursor,
+            }),
+        )
+        .await
+        .expect("list high-volume runs");
+
+        if page.is_empty() {
+            break;
+        }
+
+        assert!((page.len() as i64) <= PAGE_SIZE);
+        if let Some(before_created_at) = cursor {
+            assert!(
+                page.iter()
+                    .all(|run| run.created_at < before_created_at),
+                "cursor filter should only return older runs"
+            );
+        }
+
+        for pair in page.windows(2) {
+            let current = &pair[0];
+            let next = &pair[1];
+            assert!(
+                current.created_at > next.created_at
+                    || (current.created_at == next.created_at && current.id > next.id),
+                "runs should be sorted by created_at DESC, id DESC"
+            );
+        }
+
+        cursor = page.last().map(|run| run.created_at);
+        collected_ids.extend(page.into_iter().map(|run| run.id));
+    }
+
+    assert_eq!(collected_ids.len(), TOTAL_RUNS);
+    assert_eq!(
+        collected_ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        TOTAL_RUNS
+    );
+    assert_eq!(collected_ids, expected_ids);
+
+    canceled_expected.sort_by(|left, right| right.cmp(left));
+    let expected_canceled_ids = canceled_expected
+        .iter()
+        .map(|(_, run_id)| run_id.clone())
+        .collect::<Vec<_>>();
+
+    let mut canceled_ids = Vec::with_capacity(expected_canceled_ids.len());
+    let mut canceled_cursor = None;
+    loop {
+        let Json(page) = list_team_runs(
+            State(state.clone()),
+            headers.clone(),
+            Path(team.id.clone()),
+            Query(ListTeamRunsQuery {
+                limit: Some(9),
+                status: Some("canceled".to_string()),
+                before_created_at: canceled_cursor,
+            }),
+        )
+        .await
+        .expect("list high-volume canceled runs");
+
+        if page.is_empty() {
+            break;
+        }
+        assert!(page.iter().all(|run| run.status == crate::team::TeamRunStatus::Canceled));
+        canceled_cursor = page.last().map(|run| run.created_at);
+        canceled_ids.extend(page.into_iter().map(|run| run.id));
+    }
+
+    assert_eq!(canceled_ids, expected_canceled_ids);
+}
+
+#[tokio::test]
 async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

@@ -36,3 +36,13 @@ cargo test team_runs_api_lists_team_runs_with_status_filter_and_cursor -- --noca
 cargo test teams_router_http_contract -- --nocapture
 cargo test -p agenthub-web
 ```
+
+## Validation Evidence (2026-02-20)
+
+- Command:
+  - `cargo test team_runs_api_paginates_high_volume_without_duplicates_and_honors_status_filter -- --nocapture`
+- Result:
+  - passed `api::teams::tests::team_runs_api_paginates_high_volume_without_duplicates_and_honors_status_filter`:
+    - seeds 120 runs under one team, pins deterministic `created_at`, and verifies full cursor pagination (`before_created_at`) without duplicates.
+    - verifies global ordering remains `created_at DESC, id DESC` across pages.
+    - verifies `status=canceled` filter remains correct across multi-page retrieval.

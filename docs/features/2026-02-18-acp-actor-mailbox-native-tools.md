@@ -83,6 +83,18 @@ This made mailbox coordination depend on terminal commands instead of ACP-native
   - passed `agenthub_acp::tests::build_actor_mailbox_mcp_server_uses_actor_runtime_binary_and_context`
   - passed `agenthub_acp::actor_runtime_skill::tests::actor_runtime_skill_includes_context_and_native_tool_contract`
 
+## Validation Evidence (2026-02-20)
+
+- Command:
+  - `cargo test -p agenthub-acp load_mcp_servers_injects_actor_mailbox_when_config_missing -- --nocapture`
+  - `cargo test -p agenthub-acp load_mcp_servers_appends_actor_mailbox_to_existing_config_servers -- --nocapture`
+- Result:
+  - passed `agenthub_acp::tests::load_mcp_servers_injects_actor_mailbox_when_config_missing`:
+    - verifies actor runtime context auto-injects `agenthub-actor-mailbox` when `~/.agenthub/mcp.json` is absent.
+  - passed `agenthub_acp::tests::load_mcp_servers_appends_actor_mailbox_to_existing_config_servers`:
+    - verifies actor runtime context appends `agenthub-actor-mailbox` without dropping existing MCP servers.
+  - existing `actor_mcp::tests::jsonrpc_tools_list_and_call_drive_local_mailbox_flow` continues to cover JSON-RPC `tools/list` and `tools/call` mailbox flow end-to-end.
+
 ## Risk Notes
 
 - `actor-mcp` currently accepts JSON-RPC methods needed by Codex MCP clients; unknown methods return JSON-RPC method-not-found.
