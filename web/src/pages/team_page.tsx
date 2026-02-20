@@ -2209,16 +2209,18 @@ export function TeamPage(props: TeamPageProps) {
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 
   return (
-    <div className="app mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 lg:px-6">
+    <div className="app mx-auto flex min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 px-3 py-3 sm:px-4 lg:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
           AgentHub Teams
         </h1>
-        <div className="session flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm">
+        <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm">
           <a className="icon-button" href="/" title="Back" aria-label="Back">
             <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
-          <span className="text-sm font-medium text-slate-700">{props.auth.username}</span>
+          <span className="max-w-[44vw] truncate text-sm font-medium text-slate-700 sm:max-w-none">
+            {props.auth.username}
+          </span>
           <button className={panelSecondaryButtonClassName} onClick={props.onLogout}>
             Logout
           </button>
@@ -2227,7 +2229,7 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <section className="teams-layout grid gap-4 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+      <section className="teams-layout grid gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
@@ -2245,7 +2247,7 @@ export function TeamPage(props: TeamPageProps) {
           }}
         />
 
-        <div className="teams-main flex min-w-0 flex-col gap-4">
+        <div className="teams-main flex min-w-0 flex-col gap-5">
           {!selectedTeam && (
             <div className="card rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
@@ -2366,9 +2368,9 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
 
-                  <div className="tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+                  <div className="tab-bar team-tab-bar flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
                     <button
-                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "overview"
                           ? "active bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -2378,7 +2380,7 @@ export function TeamPage(props: TeamPageProps) {
                       Overview
                     </button>
                     <button
-                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "events"
                           ? "active bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -2388,7 +2390,7 @@ export function TeamPage(props: TeamPageProps) {
                       Events
                     </button>
                     <button
-                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "steps"
                           ? "active bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -2398,7 +2400,7 @@ export function TeamPage(props: TeamPageProps) {
                       Steps
                     </button>
                     <button
-                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "mailbox"
                           ? "active bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -2408,7 +2410,7 @@ export function TeamPage(props: TeamPageProps) {
                       Mailbox
                     </button>
                     <button
-                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "member_console"
                           ? "active bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"

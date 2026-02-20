@@ -78,6 +78,44 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
 async fn teams_api_delete_team_cascades_related_run_data() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
+    let now = Utc::now().timestamp();
+    let member_agent_id = "planner";
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+        "#,
+    )
+    .bind(member_agent_id)
+    .bind("planner-agent")
+    .bind("/tmp")
+    .bind("/bin/sh")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("running")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert member agent");
+
+    let session_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind(&session_id)
+    .bind(member_agent_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert member session");
 
     let Json(team) = create_team(
         State(state.clone()),
@@ -203,6 +241,15 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .await
             .expect("count messages");
     assert_eq!(message_count, 0);
+
+    let session_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1",
+    )
+    .bind(member_agent_id)
+    .fetch_one(&state.db)
+    .await
+    .expect("count member sessions");
+    assert_eq!(session_count, 0);
 }
 
 #[tokio::test]
@@ -281,6 +328,56 @@ async fn teams_api_enforces_required_role_skills() {
     assert!(!worker_skills
         .iter()
         .any(|item| item == "team-leader-orchestrator"));
+}
+
+#[tokio::test]
+async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "role-workflow-prompt-team".to_string(),
+            description: Some("role workflow prompt defaults".to_string()),
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {"member_id":"leader-agent","role":"leader"},
+                    {"member_id":"worker-agent","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let members = created
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("members array");
+    let leader_prompt = members
+        .iter()
+        .find(|member| member.get("member_id").and_then(Value::as_str) == Some("leader-agent"))
+        .and_then(|member| member.get("prompt"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(leader_prompt.contains("Do not implement feature code directly."));
+    assert!(leader_prompt.contains("perform targeted technical research"));
+    assert!(leader_prompt.contains("Start from an empty workspace."));
+
+    let worker_prompt = members
+        .iter()
+        .find(|member| member.get("member_id").and_then(Value::as_str) == Some("worker-agent"))
+        .and_then(|member| member.get("prompt"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(worker_prompt.contains("Work in your own git worktree only."));
+    assert!(worker_prompt.contains("Create a random branch at start"));
 }
 
 #[tokio::test]

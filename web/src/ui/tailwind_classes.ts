@@ -20,9 +20,11 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
 export const TEAM_PANEL_CARD_CLASS =
   "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
 
-export const TEAM_PANEL_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
+export const TEAM_PANEL_TOOLBAR_CLASS =
+  "toolbar mb-3 flex flex-wrap items-center justify-between gap-2";
 
-export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
+export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
+  "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
 
 export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
   "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
@@ -37,3 +39,6 @@ export const TEAM_PANEL_TEXTAREA_CLASS =
   `mono min-h-24 ${TEAM_PANEL_INPUT_CLASS}`;
 
 export const TEAM_PANEL_TITLE_CLASS = "text-lg font-semibold tracking-tight text-slate-900";
+
+export const TEAM_PANEL_PRE_CLASS =
+  "mono max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-2";

@@ -1,11 +1,14 @@
 use super::codec::is_acp_message;
 use super::{
-    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentStatus, OutputStream,
-    acp_provider_for_agent_with_binary, expand_tilde, is_path_allowed, normalize_path,
-    status_from_str, status_to_str, stream_from_str, stream_to_str,
+    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
+    OutputStream, WorktreeMode, acp_provider_for_agent_with_binary, build_runtime_start_policy,
+    expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
+    stream_to_str,
 };
+use crate::acp::AcpActorSkillContext;
 use crate::actor_runtime::default_actor_cli_path;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -138,4 +141,106 @@ fn is_acp_message_rejects_non_acp_shapes() {
     assert!(!is_acp_message(r#"{"message":"missing type"}"#));
     assert!(!is_acp_message(r#"{"type":123}"#));
     assert!(!is_acp_message(r#"{"type":"   "}"#));
+}
+
+fn build_agent_record_for_policy(
+    worktree_mode: WorktreeMode,
+    workdir: &str,
+    worktree_repo: Option<&str>,
+) -> AgentRecord {
+    AgentRecord {
+        id: "agent-policy".to_string(),
+        name: "agent-policy".to_string(),
+        workdir: workdir.to_string(),
+        command: "env".to_string(),
+        args: vec![],
+        worktree_mode,
+        worktree_repo: worktree_repo.map(str::to_string),
+        worktree_ref: None,
+        code_mode: true,
+        status: AgentStatus::Created,
+        created_at: 0,
+        updated_at: 0,
+    }
+}
+
+#[test]
+fn runtime_start_policy_rejects_non_empty_leader_workdir() {
+    let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
+    let agent =
+        build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
+    let ctx = AcpActorSkillContext {
+        run_id: "run-leader".to_string(),
+        actor_id: "leader-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("leader".to_string()),
+    };
+
+    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
+        .expect_err("leader should require empty workdir");
+    assert!(
+        err.to_string()
+            .contains("team leader policy requires empty workdir")
+    );
+}
+
+#[test]
+fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
+    let tmp = std::env::temp_dir().join(format!("agenthub-worker-policy-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let agent =
+        build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
+    let ctx = AcpActorSkillContext {
+        run_id: "run-worker".to_string(),
+        actor_id: "worker-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("worker".to_string()),
+    };
+
+    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
+        .expect_err("worker must use create_worktree");
+    assert!(
+        err.to_string()
+            .contains("team worker policy requires worktree_mode=create_worktree")
+    );
+}
+
+#[test]
+fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
+    let tmp_root = std::env::temp_dir().join(format!("agenthub-worker-policy-{}", Uuid::new_v4()));
+    let workdir = tmp_root.join("worker-base");
+    let repo = tmp_root.join("repo");
+    std::fs::create_dir_all(&workdir).expect("create worker workdir");
+    std::fs::create_dir_all(&repo).expect("create repo dir");
+    let workdir_str = workdir.to_string_lossy().to_string();
+    let repo_str = repo.to_string_lossy().to_string();
+    let agent =
+        build_agent_record_for_policy(WorktreeMode::CreateWorktree, &workdir_str, Some(&repo_str));
+    let ctx = AcpActorSkillContext {
+        run_id: "run-1234-5678".to_string(),
+        actor_id: "worker-alpha".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("worker".to_string()),
+    };
+
+    let policy = build_runtime_start_policy(&agent, Some(&ctx), &workdir_str, Some(&repo_str))
+        .expect("build worker runtime policy");
+    assert!(matches!(policy.worktree_mode, WorktreeMode::CreateWorktree));
+    assert_eq!(policy.worktree_ref.as_deref(), Some("HEAD"));
+    assert_eq!(policy.worktree_repo.as_deref(), Some(repo_str.as_str()));
+    assert!(
+        policy.workdir.contains("worker-alpha-run-1234-5678"),
+        "workdir={}",
+        policy.workdir
+    );
+    let branch = policy.worker_branch.as_deref().unwrap_or_default();
+    assert!(
+        branch.starts_with("worker-worker-alpha-"),
+        "branch={branch}"
+    );
 }

@@ -2,6 +2,7 @@ import React from "react";
 import { TeamRunEventRecord } from "../api";
 import {
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -93,7 +94,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               <span>{event.event_type}</span>
               <span>{formatTs(event.ts)}</span>
             </div>
-            <pre className="mono">{toPrettyJson(event.payload)}</pre>
+            <pre className={TEAM_PANEL_PRE_CLASS}>{toPrettyJson(event.payload)}</pre>
           </li>
         ))}
       </ul>

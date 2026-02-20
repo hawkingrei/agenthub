@@ -8,6 +8,7 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -151,7 +152,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
                 <span>{event.stream}</span>
                 <span>{formatTs(event.ts)}</span>
               </div>
-              <pre className="mono">{event.message}</pre>
+              <pre className={TEAM_PANEL_PRE_CLASS}>{event.message}</pre>
             </li>
           ))}
         </ul>
@@ -166,7 +167,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
                 <span>{event.event_type}</span>
                 <span>{formatTs(event.ts)}</span>
               </div>
-              <pre className="mono">{toPrettyJson(event.payload)}</pre>
+              <pre className={TEAM_PANEL_PRE_CLASS}>{toPrettyJson(event.payload)}</pre>
             </li>
           ))}
         </ul>

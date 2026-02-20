@@ -5,6 +5,7 @@ mod runtime;
 mod tests;
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -21,7 +22,9 @@ use self::codec::{
     expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
     stream_to_str, worktree_mode_from_opt, worktree_mode_to_str,
 };
-use super::{AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream};
+use super::{
+    AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
+};
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink,
     SpawnAcpSessionRequest, load_safe_paths, spawn_acp_session,
@@ -53,6 +56,145 @@ const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
+const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
+const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
+
+#[derive(Debug, Clone)]
+struct RuntimeStartPolicy {
+    workdir: String,
+    worktree_repo: Option<String>,
+    worktree_mode: WorktreeMode,
+    worktree_ref: Option<String>,
+    worker_branch: Option<String>,
+}
+
+fn is_empty_or_missing_dir(path: &str) -> anyhow::Result<bool> {
+    let dir = Path::new(path);
+    if !dir.exists() {
+        return Ok(true);
+    }
+    if !dir.is_dir() {
+        return Ok(false);
+    }
+    let mut entries = std::fs::read_dir(dir)?;
+    Ok(entries.next().is_none())
+}
+
+fn compact_token(raw: &str, fallback: &str, max_len: usize) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_sep = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_sep = false;
+            continue;
+        }
+        if !prev_sep {
+            out.push('-');
+            prev_sep = true;
+        }
+    }
+    let normalized = out.trim_matches('-');
+    let mut token = if normalized.is_empty() {
+        fallback.to_string()
+    } else {
+        normalized.to_string()
+    };
+    if token.len() > max_len {
+        token.truncate(max_len);
+        token = token.trim_matches('-').to_string();
+        if token.is_empty() {
+            return fallback.to_string();
+        }
+    }
+    token
+}
+
+fn short_random_token() -> String {
+    Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(8)
+        .collect::<String>()
+}
+
+fn derive_worker_runtime_root(workdir: &str) -> String {
+    let path = Path::new(workdir);
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(|parent| parent.to_string_lossy().to_string())
+        .unwrap_or_else(|| workdir.to_string())
+}
+
+fn build_runtime_start_policy(
+    agent: &AgentRecord,
+    actor_context: Option<&AcpActorSkillContext>,
+    expanded_workdir: &str,
+    expanded_worktree_repo: Option<&str>,
+) -> anyhow::Result<RuntimeStartPolicy> {
+    let mut policy = RuntimeStartPolicy {
+        workdir: expanded_workdir.to_string(),
+        worktree_repo: expanded_worktree_repo.map(str::to_string),
+        worktree_mode: agent.worktree_mode.clone(),
+        worktree_ref: agent.worktree_ref.clone(),
+        worker_branch: None,
+    };
+
+    let Some(role) = actor_context.and_then(|context| context.member_role.as_deref()) else {
+        return Ok(policy);
+    };
+
+    match role {
+        TEAM_MEMBER_ROLE_LEADER => {
+            if !matches!(policy.worktree_mode, WorktreeMode::UseExisting) {
+                anyhow::bail!(
+                    "team leader policy requires worktree_mode=use_existing (agent_id={})",
+                    agent.id
+                );
+            }
+            if !is_empty_or_missing_dir(expanded_workdir)? {
+                anyhow::bail!(
+                    "team leader policy requires empty workdir (agent_id={} workdir={})",
+                    agent.id,
+                    expanded_workdir
+                );
+            }
+        }
+        TEAM_MEMBER_ROLE_WORKER => {
+            if !matches!(policy.worktree_mode, WorktreeMode::CreateWorktree) {
+                anyhow::bail!(
+                    "team worker policy requires worktree_mode=create_worktree (agent_id={})",
+                    agent.id
+                );
+            }
+            let repo = expanded_worktree_repo.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "team worker policy requires worktree_repo when worktree_mode=create_worktree (agent_id={})",
+                    agent.id
+                )
+            })?;
+            let context = actor_context
+                .ok_or_else(|| anyhow::anyhow!("worker role policy requires actor context"))?;
+            let actor_token = compact_token(&context.actor_id, "worker", 24);
+            let run_token = compact_token(&context.run_id, "run", 24);
+            let root = derive_worker_runtime_root(expanded_workdir);
+            let workdir = Path::new(&root)
+                .join(format!("{actor_token}-{run_token}"))
+                .to_string_lossy()
+                .to_string();
+            let branch = format!("worker-{actor_token}-{}", short_random_token());
+            policy.workdir = workdir;
+            policy.worktree_repo = Some(repo.to_string());
+            policy.worktree_mode = WorktreeMode::CreateWorktree;
+            policy.worktree_ref = Some("HEAD".to_string());
+            policy.worker_branch = Some(branch);
+        }
+        _ => {}
+    }
+
+    Ok(policy)
+}
 
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
@@ -602,9 +744,11 @@ impl AgentManager {
         let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
-        let workdir = expand_tilde(&agent.workdir);
-        let worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
-        if workdir != agent.workdir || worktree_repo.as_deref() != agent.worktree_repo.as_deref() {
+        let persisted_workdir = expand_tilde(&agent.workdir);
+        let persisted_worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
+        if persisted_workdir != agent.workdir
+            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref()
+        {
             let _ = sqlx::query(
                 r#"
                 UPDATE agents
@@ -612,15 +756,29 @@ impl AgentManager {
                 WHERE id = ?4
                 "#,
             )
-            .bind(&workdir)
-            .bind(&worktree_repo)
+            .bind(&persisted_workdir)
+            .bind(&persisted_worktree_repo)
             .bind(Utc::now().timestamp())
             .bind(&agent.id)
             .execute(&self.db)
             .await;
         }
+        let start_policy = build_runtime_start_policy(
+            &agent,
+            actor_context.as_ref(),
+            &persisted_workdir,
+            persisted_worktree_repo.as_deref(),
+        )?;
+        let mut runtime_agent = agent.clone();
+        runtime_agent.worktree_mode = start_policy.worktree_mode.clone();
+        runtime_agent.worktree_ref = start_policy.worktree_ref.clone();
+
         if let Err(err) = self
-            .prepare_worktree_with_paths(&agent, &workdir, worktree_repo.as_deref())
+            .prepare_worktree_with_paths(
+                &runtime_agent,
+                &start_policy.workdir,
+                start_policy.worktree_repo.as_deref(),
+            )
             .await
         {
             let _ = self
@@ -631,7 +789,20 @@ impl AgentManager {
                 .await;
             return Err(err);
         }
-        if let Err(err) = self.ensure_safe_path(&workdir).await {
+        if let Err(err) = self.ensure_safe_path(&start_policy.workdir).await {
+            let _ = self
+                .record_failed_session(&agent.id, &session_id, &err.to_string())
+                .await;
+            let _ = self
+                .update_agent_status(&agent.id, AgentStatus::Failed)
+                .await;
+            return Err(err);
+        }
+        if let Some(worker_branch) = start_policy.worker_branch.as_deref()
+            && let Err(err) = self
+                .checkout_team_worker_branch(&start_policy.workdir, worker_branch)
+                .await
+        {
             let _ = self
                 .record_failed_session(&agent.id, &session_id, &err.to_string())
                 .await;
@@ -646,7 +817,7 @@ impl AgentManager {
         let command_path = self.resolve_command_path(&agent.command, acp_provider);
         let mut command = Command::new(&command_path);
         command
-            .current_dir(&workdir)
+            .current_dir(&start_policy.workdir)
             .args(&agent.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -673,14 +844,14 @@ impl AgentManager {
                 tracing::error!(
                     "spawn failed: command={} workdir={} args={:?} error={}",
                     command_path,
-                    workdir,
+                    start_policy.workdir,
                     agent.args,
                     err
                 );
                 return Err(anyhow::anyhow!(
                     "spawn failed: command={} workdir={} args={:?} error={}",
                     command_path,
-                    workdir,
+                    start_policy.workdir,
                     agent.args,
                     err
                 ));
@@ -766,7 +937,7 @@ impl AgentManager {
                 agent_id: agent.id.clone(),
                 agent_session_id: session_id.clone(),
                 resume_session_id,
-                workdir: workdir.clone(),
+                workdir: start_policy.workdir.clone(),
                 client_info,
                 stdout,
                 stdin,
@@ -863,6 +1034,34 @@ impl AgentManager {
         .await;
 
         Ok(session_id)
+    }
+
+    async fn checkout_team_worker_branch(&self, workdir: &str, branch: &str) -> anyhow::Result<()> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(workdir)
+            .arg("checkout")
+            .arg("-B")
+            .arg(branch)
+            .output()
+            .await?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            anyhow::bail!(
+                "team worker policy failed to prepare branch '{}' in {}",
+                branch,
+                workdir
+            );
+        }
+        anyhow::bail!(
+            "team worker policy failed to prepare branch '{}' in {}: {}",
+            branch,
+            workdir,
+            stderr
+        );
     }
 
     async fn ensure_safe_path(&self, workdir: &str) -> anyhow::Result<()> {

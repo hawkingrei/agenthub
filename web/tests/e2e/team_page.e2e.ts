@@ -466,15 +466,17 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
+  const longLeaderId = `agent-leader-${"x".repeat(72)}`;
+  const longWorkerId = `agent-worker-${"y".repeat(72)}`;
   fixture.teams.push({
     id: "team-mobile",
     name: "Team Mobile",
     description: "mobile layout regression guard",
     spec: {
-      leader_member_id: "agent-leader-1",
+      leader_member_id: longLeaderId,
       members: [
-        { member_id: "agent-leader-1", role: "leader", model: "codex" },
-        { member_id: "agent-worker-1", role: "worker", model: "gemini" },
+        { member_id: longLeaderId, role: "leader", model: "codex" },
+        { member_id: longWorkerId, role: "worker", model: "gemini" },
       ],
       steps: [{ step_key: "leader_plan" }],
     },
@@ -504,6 +506,11 @@ test("team page keeps single-column proportions on mobile viewport", async ({
     return window.getComputedStyle(element).gridTemplateColumns;
   });
   expect(memberColumns.trim().split(/\s+/).length).toBe(3);
+
+  const horizontalOverflow = await page.evaluate(() => {
+    return document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  });
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });
 
 test("team forge agent entry creates and binds leader in-place", async ({
@@ -1281,8 +1288,10 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
 
   await runFilter.selectOption("working");
   await expect(runFilter).toHaveValue("working");
-  await expect(page.getByRole("button", { name: "Load More" })).toBeEnabled();
-  await page.getByRole("button", { name: "Load More" }).click();
+  const loadMoreRunsButton = page.getByRole("button", { name: "Load More" });
+  await expect(loadMoreRunsButton).toBeEnabled();
+  await loadMoreRunsButton.focus();
+  await loadMoreRunsButton.press("Enter");
 
   await expect
     .poll(() =>

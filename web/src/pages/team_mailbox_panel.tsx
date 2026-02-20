@@ -4,6 +4,7 @@ import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badg
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
@@ -241,7 +242,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     <span>{message.status}</span>
                     <span>{formatTs(message.created_at)}</span>
                   </div>
-                  <pre className="mono">{payload}</pre>
+                  <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
                   {message.status !== "delivered" && (
                     <div className="actions">
                       <button

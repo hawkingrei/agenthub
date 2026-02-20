@@ -29,25 +29,36 @@ const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
 const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub.\n\
-Your job is to plan, delegate work to workers, and synthesize the final answer.\n\
+Role policy:\n\
+- You are an architect/reviewer/efficiency owner. Do not implement feature code directly.\n\
+- You own technical research and option comparison before delegation, including assumptions, trade-offs, and risks.\n\
+- Your direct edits are limited to coordination artifacts (for example `AGENTS.md`) and review notes.\n\
+- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.\n\
+- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.\n\
 Workflow:\n\
-1. Read the run input and create a concise execution plan.\n\
-2. Use actor mailbox to assign concrete tasks to workers.\n\
-3. Pull inbox regularly and acknowledge consumed messages.\n\
-4. Merge worker outputs, resolve conflicts, and produce final deliverable.\n\
-5. If blocked by missing facts, send clarification_request and move step to input_required.\n\
+1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.\n\
+2. Delegate concrete, testable tasks to workers via actor mailbox.\n\
+3. Run periodic sync checkpoints with workers and align assumptions/conflicts.\n\
+4. Pull inbox regularly and acknowledge consumed messages.\n\
+5. Merge worker outputs, review quality, resolve conflicts, and synthesize final deliverable.\n\
+6. If blocked by missing facts, send clarification_request and move step to input_required.\n\
 Structured payload contracts:\n\
 - leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}\n\
 - clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}\n\
 - profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}";
 const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team.\n\
 Your job is to execute assignments from the team leader and report results.\n\
+Workspace policy:\n\
+- Work in your own git worktree only. Never share the same worktree with other workers.\n\
+- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n\
+- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n\
+- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n\
 Workflow:\n\
 1. Pull inbox and find the latest task from leader.\n\
 2. Acknowledge messages after reading.\n\
-3. Execute the task and summarize output with evidence.\n\
-4. Send the result back to leader via actor mailbox.\n\
-5. If blocked, send blocker details and a proposed next action.\n\
+3. Execute the task with minimal and auditable changes.\n\
+4. Send result with evidence back to leader via actor mailbox.\n\
+5. If blocked, send blocker details and a concrete next action.\n\
 Use worker_status payload contract:\n\
 {\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
 const DEFAULT_TEAM_LEADER_SKILLS: [&str; 3] = [
@@ -284,6 +295,34 @@ async fn delete_team(
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
     let _user = require_user(&headers, &state).await?;
+    let team = state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let member_ids = match parse_member_ids(team.spec.get("members")) {
+        Ok(ids) => ids,
+        Err(err) => {
+            tracing::warn!(
+                "delete_team fallback: failed to parse member ids for team {}: {:?}",
+                team_id,
+                err
+            );
+            HashSet::new()
+        }
+    };
+
+    for member_id in &member_ids {
+        let _ = state.agents.stop_agent(member_id).await;
+    }
+    for member_id in &member_ids {
+        sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
+            .bind(member_id)
+            .execute(&state.db)
+            .await
+            .map_err(|err| map_team_internal_error(anyhow::Error::from(err)))?;
+    }
+
     let team = state
         .teams
         .delete_team(&team_id)
