@@ -1161,8 +1161,10 @@ mod tests {
             return;
         }
 
-        let base =
-            std::env::temp_dir().join(format!("agenthub-create-worktree-rebuild-{}", Uuid::new_v4()));
+        let base = std::env::temp_dir().join(format!(
+            "agenthub-create-worktree-rebuild-{}",
+            Uuid::new_v4()
+        ));
         let repo_dir = base.join("repo");
         let workdir = base.join("worktree-agent");
         let db_path = base.join("agents.sqlite");
