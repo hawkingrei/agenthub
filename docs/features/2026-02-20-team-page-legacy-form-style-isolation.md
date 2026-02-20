@@ -29,11 +29,6 @@ These selectors changed button/input appearance and spacing on `/teams`, which c
 3. Keep change set minimal and reversible:
    - no API/data behavior changes.
    - no large CSS block additions.
-4. Keep Teams visual shell close to pre-isolation appearance:
-   - preserve page-level scroll container behavior with explicit Tailwind sizing/overflow classes.
-   - re-introduce a lightweight outer shell card (border + soft shadow + subtle blur) via utility classes
-     instead of relying on legacy global `section` styling.
-
 ## Validation
 
 - `npm --prefix web run test -- src/pages/team_page.runs.test.ts src/pages/team_panels.test.tsx`
