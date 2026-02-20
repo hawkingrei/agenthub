@@ -22,11 +22,16 @@ At the same time, team member MCP-related capability visibility in `Member Conso
    - non-active lifecycle (`inactive` / `missing`) => red dot.
 3. Keep MCP-related visibility explicit in Member Console:
    - Add `mcp_skills` line derived from member skills matching MCP/runtime mailbox keywords.
+4. Harden desktop overlap risk for long fields:
+   - Member Console details moved to responsive card grid with wrapped long-value rendering.
+   - Prompt moved into collapsible block to avoid forcing large always-open vertical text wall.
+   - Add overflow guards for Team run meta cards and chat header rows to prevent long IDs from squeezing/overlapping neighboring UI.
 
 ## Validation Evidence (2026-02-20)
 
 - `npm --prefix web run lint`
 - `npm --prefix web run test -- src/pages/team_panels.test.tsx`
+- `npm --prefix web run test -- src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts`
 
 ## Notes
 

@@ -35,6 +35,13 @@ type TeamMemberConsolePanelProps = {
 
 const MEMBER_CONSOLE_DETAIL_CLASS =
   "teams-step-body mono rounded-xl border border-slate-200 bg-slate-50/70 p-3";
+const MEMBER_CONSOLE_DETAIL_GRID_CLASS = "grid gap-2 md:grid-cols-2";
+const MEMBER_CONSOLE_DETAIL_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
+const MEMBER_CONSOLE_DETAIL_LABEL_CLASS = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+const MEMBER_CONSOLE_DETAIL_VALUE_CLASS =
+  "mono mt-1 block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-slate-800";
+const MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS =
+  "mono mt-1 block min-w-0 whitespace-pre-wrap break-words text-slate-800";
 const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
 const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
 const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
@@ -117,17 +124,58 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
 
       {selectedMemberSnapshot && (
         <div className={MEMBER_CONSOLE_DETAIL_CLASS}>
-          <div>member_id: {selectedMemberSnapshot.member_id}</div>
-          <div>role: {selectedMemberSnapshot.role}</div>
-          <div>model: {selectedMemberSnapshot.model ?? "-"}</div>
-          <div>status: {selectedMemberSnapshot.status}</div>
-          <div>session_status: {selectedMemberSnapshot.session_status ?? "-"}</div>
-          <div>remote_task_id: {selectedMemberSnapshot.latest_step?.remote_task_id ?? "-"}</div>
-          <div>
-            skills: {selectedMemberSnapshot.skills.length > 0 ? selectedMemberSnapshot.skills.join(", ") : "-"}
+          <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>member_id</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                {selectedMemberSnapshot.member_id}
+              </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>role</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.role}</span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>model</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.model ?? "-"}</span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>status</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.status}</span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>session_status</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                {selectedMemberSnapshot.session_status ?? "-"}
+              </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>remote_task_id</div>
+              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                {selectedMemberSnapshot.latest_step?.remote_task_id ?? "-"}
+              </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>skills</div>
+              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+                {selectedMemberSnapshot.skills.length > 0 ? selectedMemberSnapshot.skills.join(", ") : "-"}
+              </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>mcp_skills</div>
+              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+                {mcpSkills.length > 0 ? mcpSkills.join(", ") : "-"}
+              </span>
+            </div>
           </div>
-          <div>mcp_skills: {mcpSkills.length > 0 ? mcpSkills.join(", ") : "-"}</div>
-          <div>prompt: {selectedMemberSnapshot.prompt ?? "-"}</div>
+          <details className="rounded-lg border border-slate-200 bg-white p-2">
+            <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              prompt
+            </summary>
+            <pre className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+              {selectedMemberSnapshot.prompt ?? "-"}
+            </pre>
+          </details>
         </div>
       )}
 
