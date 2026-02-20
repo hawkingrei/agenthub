@@ -815,6 +815,120 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
 }
 
 #[tokio::test]
+async fn team_runs_api_supports_resume_and_restart_strategy() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "resume-restart-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-resume-restart".to_string()),
+            input: Some(json!({"prompt":"recover"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(resumed_active) =
+        resume_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
+            .await
+            .expect("resume active run");
+    assert_eq!(resumed_active.id, run.id);
+    assert_eq!(resumed_active.status, crate::team::TeamRunStatus::Submitted);
+
+    let Json(canceled) = cancel_team_run(State(state.clone()), headers.clone(), Path(run.id))
+        .await
+        .expect("cancel run");
+    assert_eq!(canceled.status, crate::team::TeamRunStatus::Canceled);
+
+    let Json(resumed_from_canceled) = resume_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(canceled.id.clone()),
+    )
+    .await
+    .expect("resume canceled run");
+    assert_ne!(resumed_from_canceled.id, canceled.id);
+    assert_eq!(resumed_from_canceled.team_id, canceled.team_id);
+    assert_eq!(resumed_from_canceled.context_id, canceled.context_id);
+    assert_eq!(resumed_from_canceled.input, canceled.input);
+    assert_eq!(
+        resumed_from_canceled.status,
+        crate::team::TeamRunStatus::Submitted
+    );
+
+    let Json(restarted) = restart_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(canceled.id.clone()),
+    )
+    .await
+    .expect("restart run");
+    assert_ne!(restarted.id, canceled.id);
+    assert_eq!(restarted.team_id, canceled.team_id);
+    assert_eq!(restarted.context_id, canceled.context_id);
+    assert_eq!(restarted.input, canceled.input);
+    assert_eq!(restarted.status, crate::team::TeamRunStatus::Submitted);
+
+    let completed_run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some("ctx-resume-completed"),
+            json!({"prompt":"done"}),
+        )
+        .await
+        .expect("create completed run");
+    let completed_step = state
+        .teams
+        .submit_step(
+            &completed_run.id,
+            "done",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"complete"})),
+        )
+        .await
+        .expect("submit completed step");
+    let _ = state
+        .teams
+        .start_step(&completed_step.id, Some("session-completed"))
+        .await
+        .expect("start completed step");
+    let _ = state
+        .teams
+        .complete_step(&completed_step.id, Some(json!({"ok":true})))
+        .await
+        .expect("complete step");
+
+    let completed_resume_err = resume_team_run(
+        State(state),
+        headers,
+        Path(completed_run.id.clone()),
+    )
+    .await
+    .expect_err("completed run should reject resume");
+    assert_eq!(
+        completed_resume_err.into_response().status(),
+        StatusCode::CONFLICT
+    );
+}
+
+#[tokio::test]
 async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_status_filter() {
     const TOTAL_RUNS: usize = 120;
     const PAGE_SIZE: i64 = 17;

@@ -645,6 +645,18 @@ export function TeamPage(props: TeamPageProps) {
     () => runs.find((run) => run.id === activeRunId) ?? null,
     [runs, activeRunId]
   );
+  const canResumeActiveRun = useMemo(() => {
+    if (!activeRun) return false;
+    return activeRun.status === "failed" || activeRun.status === "canceled";
+  }, [activeRun]);
+  const canRestartActiveRun = useMemo(() => {
+    if (!activeRun) return false;
+    return (
+      activeRun.status === "failed" ||
+      activeRun.status === "canceled" ||
+      activeRun.status === "completed"
+    );
+  }, [activeRun]);
   const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
     if (!selectedTeamId) {
       return DEFAULT_TEAM_RUN_BROWSER_STATE;
@@ -1806,6 +1818,38 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
+  const onResumeRun = async () => {
+    if (!activeRunId) return;
+    setBusy("resume-run");
+    setError(null);
+    try {
+      const resumed = await api.resumeTeamRun(props.token, activeRunId);
+      setRuns((prev) => upsertRun(prev, resumed));
+      setActiveRunId(resumed.id);
+      setRunLookupId(resumed.id);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onRestartRun = async () => {
+    if (!activeRunId) return;
+    setBusy("restart-run");
+    setError(null);
+    try {
+      const restarted = await api.restartTeamRun(props.token, activeRunId);
+      setRuns((prev) => upsertRun(prev, restarted));
+      setActiveRunId(restarted.id);
+      setRunLookupId(restarted.id);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onSubmitStep = async () => {
     if (!activeRunId) {
       setError("Select a run first");
@@ -2267,6 +2311,30 @@ export function TeamPage(props: TeamPageProps) {
                           disabled={busy === "cancel-run" || activeRun.status === "canceled"}
                         >
                           Cancel Run
+                        </button>
+                        <button
+                          className={panelSecondaryButtonClassName}
+                          onClick={onResumeRun}
+                          disabled={busy === "resume-run" || !canResumeActiveRun}
+                          title={
+                            canResumeActiveRun
+                              ? "Resume a failed/canceled run"
+                              : "Resume is available for failed/canceled runs"
+                          }
+                        >
+                          Resume Run
+                        </button>
+                        <button
+                          className={panelSecondaryButtonClassName}
+                          onClick={onRestartRun}
+                          disabled={busy === "restart-run" || !canRestartActiveRun}
+                          title={
+                            canRestartActiveRun
+                              ? "Create a fresh run from the same context/input"
+                              : "Restart is available for completed/failed/canceled runs"
+                          }
+                        >
+                          Restart Run
                         </button>
                       </div>
                     </div>

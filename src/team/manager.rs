@@ -223,6 +223,31 @@ impl TeamManager {
         })
     }
 
+    async fn fork_run_submission(&self, source: &TeamRunRecord) -> anyhow::Result<TeamRunRecord> {
+        self.create_run(
+            &source.team_id,
+            Some(&source.context_id),
+            source.input.clone(),
+        )
+        .await
+    }
+
+    pub async fn restart_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {
+        let run = self.get_run(run_id).await?;
+        self.fork_run_submission(&run).await
+    }
+
+    pub async fn resume_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {
+        let run = self.get_run(run_id).await?;
+        match run.status {
+            TeamRunStatus::Submitted | TeamRunStatus::Working | TeamRunStatus::InputRequired => {
+                Ok(run)
+            }
+            TeamRunStatus::Failed | TeamRunStatus::Canceled => self.fork_run_submission(&run).await,
+            TeamRunStatus::Completed => Err(anyhow::anyhow!("completed run cannot be resumed")),
+        }
+    }
+
     #[allow(dead_code)]
     pub async fn submit_step(
         &self,

@@ -193,6 +193,8 @@ pub fn router(state: AppState) -> Router {
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
+        .route("/runs/:run_id/resume", post(resume_team_run))
+        .route("/runs/:run_id/restart", post(restart_team_run))
         .route("/runs/:run_id/snapshot", get(get_team_run_snapshot))
         .route("/runs/:run_id/events", get(list_team_run_events))
         .route(
@@ -360,6 +362,34 @@ async fn cancel_team_run(
     let run = state
         .teams
         .cancel_run(&run_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    Ok(Json(run))
+}
+
+async fn resume_team_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<Json<TeamRunRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let run = state
+        .teams
+        .resume_run(&run_id)
+        .await
+        .map_err(map_resume_run_error)?;
+    Ok(Json(run))
+}
+
+async fn restart_team_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<Json<TeamRunRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let run = state
+        .teams
+        .restart_run(&run_id)
         .await
         .map_err(|err| map_not_found_error(err, "run not found"))?;
     Ok(Json(run))
@@ -1279,6 +1309,13 @@ fn map_not_found_error(err: anyhow::Error, msg: &str) -> ApiError {
         return ApiError::not_found(msg);
     }
     map_team_internal_error(err)
+}
+
+fn map_resume_run_error(err: anyhow::Error) -> ApiError {
+    if err.to_string().contains("completed run cannot be resumed") {
+        return ApiError::conflict("completed run cannot be resumed; use restart");
+    }
+    map_not_found_error(err, "run not found")
 }
 
 fn map_team_internal_error(err: anyhow::Error) -> ApiError {
