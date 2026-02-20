@@ -4,6 +4,9 @@ import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badg
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_LIST_ITEM_BASE_CLASS,
+  TEAM_LIST_ITEM_META_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -74,15 +77,15 @@ type TeamMailboxPanelProps = {
 };
 
 const MAILBOX_META_CLASS =
-  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
+  "mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
 const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3";
 const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3";
 const MAILBOX_MEMBER_BUTTON_BASE_CLASS =
-  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
+  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
 const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
 const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} hover:border-slate-300`;
 const MAILBOX_UNREAD_ACTIVE_CLASS = "teams-member-unread mono text-amber-700";
 const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono muted text-slate-500";
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
@@ -300,7 +303,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 }
                 onClick={() => onSelectMember(member.member_id)}
               >
-                <span className="team-name">
+                <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
                   {member.member_id} ({member.role})
                 </span>
                 <StatusBadge
@@ -309,7 +312,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   className="team-status"
                   title={`member status: ${member.status}`}
                 />
-                <span className="team-id mono">pending={member.pending_inbox_count}</span>
+                <span className={TEAM_LIST_ITEM_META_CLASS}>pending={member.pending_inbox_count}</span>
                 <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
                   unread={unread}
                 </span>
@@ -370,7 +373,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   </div>
                   <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
                   {message.status !== "delivered" && (
-                    <div className="actions">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => {
                           void onAckMessage(message);
@@ -405,7 +408,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 }
               }}
             />
-            <div className="actions">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                 onClick={onSendChatMessage}

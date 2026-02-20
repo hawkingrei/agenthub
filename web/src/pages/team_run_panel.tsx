@@ -4,6 +4,9 @@ import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badg
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_LIST_ITEM_ACTIVE_CLASS,
+  TEAM_LIST_ITEM_IDLE_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -75,9 +78,6 @@ type TeamRunPanelProps = {
   onCreateRun: () => Promise<void> | void;
   runInput: string;
   onRunInputChange: (value: string) => void;
-  runLookupId: string;
-  onRunLookupIdChange: (value: string) => void;
-  onLoadRunById: () => Promise<void> | void;
   runStatusFilter: TeamRunStatusFilter;
   runStatusFilterOptions: TeamRunStatusFilterOption[];
   onRunStatusFilterChange: (value: TeamRunStatusFilter) => void;
@@ -107,9 +107,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     onCreateRun,
     runInput,
     onRunInputChange,
-    runLookupId,
-    onRunLookupIdChange,
-    onLoadRunById,
     runStatusFilter,
     runStatusFilterOptions,
     onRunStatusFilterChange,
@@ -196,11 +193,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       <div className={RUN_PANEL_GRID_CLASS}>
         <div className={RUN_PANEL_SECTION_CLASS}>
           <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Controls</p>
-          <h3>Create / Load Run</h3>
+          <h3>Create Run</h3>
           <p className="muted">
-            <strong>Create Run</strong> starts a new execution for this team spec.
-            <br />
-            <strong>Load Run</strong> opens an existing run by `run_id` (even if it was created earlier) and auto-switches to its team.
+            Start a new execution for this team spec.
           </p>
           <div className="form-row">
             <input
@@ -223,28 +218,13 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             value={runInput}
             onChange={(event) => onRunInputChange(event.target.value)}
           />
-          <div className="form-row">
-            <input
-              className={TEAM_PANEL_INPUT_CLASS}
-              placeholder="existing run_id"
-              value={runLookupId}
-              onChange={(event) => onRunLookupIdChange(event.target.value)}
-            />
-            <button
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-              onClick={onLoadRunById}
-              disabled={busy === "load-run"}
-            >
-              Load Run
-            </button>
-          </div>
         </div>
         <div className={RUN_PANEL_LIST_CLASS}>
           <div className={RUN_PANEL_LIST_HEAD_CLASS}>
             <h3>Runs</h3>
             <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
               <select
-                className={TEAM_PANEL_INPUT_CLASS}
+                className={`${TEAM_PANEL_INPUT_CLASS} min-w-0 sm:min-w-[164px]`}
                 value={runStatusFilter}
                 onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
                 aria-label="Run status filter"
@@ -271,7 +251,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </div>
           <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
             {visibleRuns.length === 0 && (
-              <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
+              <p className="muted">No runs loaded yet. Create one or use Debug → Run Ops.</p>
             )}
             {isActiveRunHiddenByFilter && activeRun && (
               <p className="muted">
@@ -281,10 +261,14 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             {visibleRuns.map((run) => (
               <button
                 key={run.id}
-                className={run.id === activeRunId ? "team-item active" : "team-item"}
+                className={
+                  run.id === activeRunId
+                    ? TEAM_LIST_ITEM_ACTIVE_CLASS
+                    : TEAM_LIST_ITEM_IDLE_CLASS
+                }
                 onClick={() => onActiveRunChange(run.id)}
               >
-                <span className="team-name mono">{run.id}</span>
+                <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} mono`}>{run.id}</span>
                 <StatusBadge
                   label={run.status}
                   tone={resolveTeamRunStatusTone(run.status)}

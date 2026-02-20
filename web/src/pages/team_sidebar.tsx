@@ -1,6 +1,12 @@
 import React from "react";
 import { TeamDefinitionRecord } from "../api";
-import { TEAM_PANEL_REFRESH_BUTTON_CLASS } from "../ui/tailwind_classes";
+import {
+  TEAM_LIST_ITEM_ACTIVE_CLASS,
+  TEAM_LIST_ITEM_IDLE_CLASS,
+  TEAM_LIST_ITEM_META_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamMemberSummary = {
   active: number;
@@ -39,7 +45,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
 
   return (
-    <aside className="card teams-sidebar rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <aside className="teams-sidebar min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents
@@ -48,7 +54,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
           Teams
         </a>
       </div>
-      <div className="toolbar mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h2>Teams</h2>
         <button
           onClick={() => {
@@ -95,13 +101,17 @@ export function TeamSidebar(props: TeamSidebarProps) {
           return (
             <button
               key={team.id}
-              className={team.id === selectedTeamId ? "team-item active" : "team-item"}
+              className={
+                team.id === selectedTeamId
+                  ? TEAM_LIST_ITEM_ACTIVE_CLASS
+                  : TEAM_LIST_ITEM_IDLE_CLASS
+              }
               onClick={() => onSelectTeam(team.id)}
             >
-              <span className="team-name">{team.name}</span>
-              <span className="team-id mono">{team.id}</span>
+              <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
+              <span className={TEAM_LIST_ITEM_META_CLASS}>{team.id}</span>
               {summary && (
-                <span className="team-id mono team-member-summary">
+                <span className={`${TEAM_LIST_ITEM_META_CLASS} team-member-summary`}>
                   {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
                 </span>
               )}

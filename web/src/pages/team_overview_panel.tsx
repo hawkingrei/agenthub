@@ -3,6 +3,9 @@ import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
+  TEAM_LIST_ITEM_BASE_CLASS,
+  TEAM_LIST_ITEM_META_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -18,14 +21,14 @@ type TeamOverviewPanelProps = {
 };
 
 const OVERVIEW_META_CLASS =
-  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
+  "mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
 const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
-  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
+  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
 const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
 const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} hover:border-slate-300`;
 
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
@@ -92,7 +95,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 }
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
-                <span className="team-name">
+                <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
                   {member.member_id} ({member.role})
                 </span>
                 <StatusBadge
@@ -101,7 +104,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                   className="team-status"
                   title={`member status: ${member.status}`}
                 />
-                <span className="team-id mono">
+                <span className={TEAM_LIST_ITEM_META_CLASS}>
                   {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                 </span>
               </button>

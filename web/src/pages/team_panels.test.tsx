@@ -300,8 +300,6 @@ describe("team panels interactions", () => {
     const onRunContextIdChange = vi.fn();
     const onCreateRun = vi.fn();
     const onRunInputChange = vi.fn();
-    const onRunLookupIdChange = vi.fn();
-    const onLoadRunById = vi.fn();
     const onRunStatusFilterChange = vi.fn();
     const onRefreshRuns = vi.fn();
     const onActiveRunChange = vi.fn();
@@ -344,9 +342,6 @@ describe("team panels interactions", () => {
           onCreateRun={onCreateRun}
           runInput="hello"
           onRunInputChange={onRunInputChange}
-          runLookupId="run-9"
-          onRunLookupIdChange={onRunLookupIdChange}
-          onLoadRunById={onLoadRunById}
           runStatusFilter="all"
           runStatusFilterOptions={[
             { value: "all", label: "All" },
@@ -382,13 +377,6 @@ describe("team panels interactions", () => {
       required(container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null, "run input missing"),
       "new input"
     );
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="existing run_id"]') as HTMLInputElement | null,
-        "run lookup input missing"
-      ),
-      "run-10"
-    );
     changeSelectValue(
       required(
         container.querySelector('select[aria-label="Run status filter"]') as HTMLSelectElement | null,
@@ -399,7 +387,6 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByText(container, "Delete Team"));
     clickElement(findButtonByText(container, "Create Run"));
-    clickElement(findButtonByText(container, "Load Run"));
     clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
@@ -408,8 +395,6 @@ describe("team panels interactions", () => {
     expect(onRunContextIdChange).toHaveBeenCalledWith("ctx-2");
     expect(onCreateRun).toHaveBeenCalledTimes(1);
     expect(onRunInputChange).toHaveBeenCalledWith("new input");
-    expect(onRunLookupIdChange).toHaveBeenCalledWith("run-10");
-    expect(onLoadRunById).toHaveBeenCalledTimes(1);
     expect(onRunStatusFilterChange).toHaveBeenCalledWith("working");
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
@@ -435,9 +420,6 @@ describe("team panels interactions", () => {
           onCreateRun={() => {}}
           runInput=""
           onRunInputChange={() => {}}
-          runLookupId=""
-          onRunLookupIdChange={() => {}}
-          onLoadRunById={() => {}}
           runStatusFilter="completed"
           runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
           onRunStatusFilterChange={() => {}}
@@ -459,7 +441,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members declared in team spec.");
     expect(container.textContent).toContain("Active run `run-hidden` is hidden by filter `completed`.");
-    expect(container.textContent).toContain("No runs loaded yet. Create one or load by run_id.");
+    expect(container.textContent).toContain("No runs loaded yet. Create one or use Debug → Run Ops.");
   });
 
   it("TeamStepsPanel covers submit and all step action payload editors", () => {

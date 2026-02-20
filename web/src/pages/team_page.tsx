@@ -169,13 +169,13 @@ type TeamPageProps = {
   onLogout: () => void;
 };
 type TeamCreateEntryMode = "wizard" | "manual_spec";
-type TeamDebugTag = "step_ops" | "mailbox_raw";
+type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("step_ops");
+  const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
 
   const [teamUiState, dispatchTeamUi] = useReducer(
     reduceTeamUiState,
@@ -647,18 +647,31 @@ export function TeamPage(props: TeamPageProps) {
     () => runs.find((run) => run.id === activeRunId) ?? null,
     [runs, activeRunId]
   );
+  const activeRunForSelectedTeam = useMemo(() => {
+    if (!activeRun || !selectedTeamId) {
+      return null;
+    }
+    if (activeRun.team_id !== selectedTeamId) {
+      return null;
+    }
+    return activeRun;
+  }, [activeRun, selectedTeamId]);
+  const activeRunIdForSelectedTeam = activeRunForSelectedTeam?.id ?? null;
   const canResumeActiveRun = useMemo(() => {
-    if (!activeRun) return false;
-    return activeRun.status === "failed" || activeRun.status === "canceled";
-  }, [activeRun]);
-  const canRestartActiveRun = useMemo(() => {
-    if (!activeRun) return false;
+    if (!activeRunForSelectedTeam) return false;
     return (
-      activeRun.status === "failed" ||
-      activeRun.status === "canceled" ||
-      activeRun.status === "completed"
+      activeRunForSelectedTeam.status === "failed" ||
+      activeRunForSelectedTeam.status === "canceled"
     );
-  }, [activeRun]);
+  }, [activeRunForSelectedTeam]);
+  const canRestartActiveRun = useMemo(() => {
+    if (!activeRunForSelectedTeam) return false;
+    return (
+      activeRunForSelectedTeam.status === "failed" ||
+      activeRunForSelectedTeam.status === "canceled" ||
+      activeRunForSelectedTeam.status === "completed"
+    );
+  }, [activeRunForSelectedTeam]);
   const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
     if (!selectedTeamId) {
       return DEFAULT_TEAM_RUN_BROWSER_STATE;
@@ -682,11 +695,10 @@ export function TeamPage(props: TeamPageProps) {
     });
   }, [runStatusFilter, runs, selectedTeamId]);
   const isActiveRunHiddenByFilter = useMemo(() => {
-    if (!activeRun || !selectedTeamId) return false;
-    if (activeRun.team_id !== selectedTeamId) return false;
+    if (!activeRunForSelectedTeam || !selectedTeamId) return false;
     if (runStatusFilter === "all") return false;
-    return activeRun.status !== runStatusFilter;
-  }, [activeRun, runStatusFilter, selectedTeamId]);
+    return activeRunForSelectedTeam.status !== runStatusFilter;
+  }, [activeRunForSelectedTeam, runStatusFilter, selectedTeamId]);
 
   const builtTeamSpec = useMemo(
     () =>
@@ -1119,14 +1131,14 @@ export function TeamPage(props: TeamPageProps) {
   }, [memberEvents]);
 
   const loadInbox = useCallback(async (actorIdOverride?: string) => {
-    if (!activeRunId) return;
+    if (!activeRunIdForSelectedTeam) return;
     const actorId = (actorIdOverride ?? inboxActorId).trim();
     if (!actorId) {
       throw new Error("Inbox actor_id is required");
     }
     const limit = parseOptionalInteger(inboxLimit, "Inbox limit") ?? 100;
     const afterId = parseOptionalInteger(inboxAfterId, "Inbox after_id");
-    const list = await api.listTeamRunInbox(props.token, activeRunId, {
+    const list = await api.listTeamRunInbox(props.token, activeRunIdForSelectedTeam, {
       actor_id: actorId,
       limit,
       after_id: afterId,
@@ -1134,7 +1146,7 @@ export function TeamPage(props: TeamPageProps) {
     });
     setInbox(list);
   }, [
-    activeRunId,
+    activeRunIdForSelectedTeam,
     inboxActorId,
     inboxAfterId,
     inboxIncludeDelivered,
@@ -1282,7 +1294,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [runs, selectedTeamId]);
 
   useEffect(() => {
-    if (!activeRunId) {
+    if (!activeRunIdForSelectedTeam) {
       setEvents([]);
       setSteps([]);
       setInbox([]);
@@ -1297,15 +1309,19 @@ export function TeamPage(props: TeamPageProps) {
     const loadAll = async () => {
       try {
         setError(null);
-        const run = await refreshRun(activeRunId);
+        const run = await refreshRun(activeRunIdForSelectedTeam);
         if (canceled) return;
-        if (run.team_id !== selectedTeamId) {
-          setSelectedTeamId(run.team_id);
+        if (selectedTeamId && run.team_id !== selectedTeamId) {
+          setError(
+            `Run ${run.id} belongs to team ${run.team_id}. Select that team to view it.`
+          );
+          setActiveRunId((current) => (current === run.id ? null : current));
+          return;
         }
         await Promise.all([
-          refreshSteps(activeRunId),
-          refreshEvents(activeRunId),
-          refreshSnapshot(activeRunId),
+          refreshSteps(activeRunIdForSelectedTeam),
+          refreshEvents(activeRunIdForSelectedTeam),
+          refreshSnapshot(activeRunIdForSelectedTeam),
         ]);
       } catch (err) {
         if (!canceled) {
@@ -1318,7 +1334,7 @@ export function TeamPage(props: TeamPageProps) {
       canceled = true;
     };
   }, [
-    activeRunId,
+    activeRunIdForSelectedTeam,
     refreshEvents,
     refreshRun,
     refreshSnapshot,
@@ -1331,25 +1347,25 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
-    if (!activeRunId || !eventsAutoRefresh) return;
+    if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
     const timer = window.setInterval(() => {
       if (tab === "mailbox") {
-        void refreshSnapshot(activeRunId).catch(() => undefined);
+        void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
         const actorId = chatActors.inboxActorId.trim();
         if (actorId) {
           void loadInbox(actorId).catch(() => undefined);
         }
         return;
       }
-      void refreshRun(activeRunId).catch(() => undefined);
-      void refreshEvents(activeRunId).catch(() => undefined);
-      void refreshSnapshot(activeRunId).catch(() => undefined);
+      void refreshRun(activeRunIdForSelectedTeam).catch(() => undefined);
+      void refreshEvents(activeRunIdForSelectedTeam).catch(() => undefined);
+      void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
     }, 4000);
     return () => {
       window.clearInterval(timer);
     };
   }, [
-    activeRunId,
+    activeRunIdForSelectedTeam,
     chatActors.inboxActorId,
     eventsAutoRefresh,
     loadInbox,
@@ -1376,7 +1392,7 @@ export function TeamPage(props: TeamPageProps) {
 
   useEffect(() => {
     const actorId = chatActors.inboxActorId.trim();
-    if (!activeRunId || !actorId) {
+    if (!activeRunIdForSelectedTeam || !actorId) {
       setInbox([]);
       return;
     }
@@ -1384,7 +1400,7 @@ export function TeamPage(props: TeamPageProps) {
     void loadInbox(actorId).catch((err) => {
       setError(parseErrorMessage(err));
     });
-  }, [activeRunId, chatActors.inboxActorId, loadInbox, setInbox, setInboxActorId]);
+  }, [activeRunIdForSelectedTeam, chatActors.inboxActorId, loadInbox, setInbox, setInboxActorId]);
 
   useEffect(() => {
     if (tab !== "mailbox") {
@@ -1738,6 +1754,10 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onLoadRunById = async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
     const runId = runLookupId.trim();
     if (!runId) {
       setError("Run ID is required");
@@ -1747,7 +1767,12 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     try {
       const run = await refreshRun(runId);
-      setSelectedTeamId(run.team_id);
+      if (run.team_id !== selectedTeamId) {
+        setError(
+          `Run ${run.id} belongs to team ${run.team_id}. Load Run only applies to the selected team.`
+        );
+        return;
+      }
       setActiveRunId(run.id);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -1806,13 +1831,23 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   const onCancelRun = async () => {
-    if (!activeRunId) return;
+    if (!activeRunForSelectedTeam) {
+      setError("Select a run in the current team first");
+      return;
+    }
+    const runId = activeRunForSelectedTeam.id;
     setBusy("cancel-run");
     setError(null);
     try {
-      const canceled = await api.cancelTeamRun(props.token, activeRunId);
+      const canceled = await api.cancelTeamRun(props.token, runId);
+      if (selectedTeamId && canceled.team_id !== selectedTeamId) {
+        setError(
+          `Run ${canceled.id} belongs to team ${canceled.team_id}. Cancel applies only to the selected team.`
+        );
+        return;
+      }
       setRuns((prev) => upsertRun(prev, canceled));
-      await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
+      await Promise.all([refreshEvents(runId), refreshSnapshot(runId)]);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -1821,11 +1856,21 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onResumeRun = async () => {
-    if (!activeRunId) return;
+    if (!activeRunForSelectedTeam) {
+      setError("Select a run in the current team first");
+      return;
+    }
+    const runId = activeRunForSelectedTeam.id;
     setBusy("resume-run");
     setError(null);
     try {
-      const resumed = await api.resumeTeamRun(props.token, activeRunId);
+      const resumed = await api.resumeTeamRun(props.token, runId);
+      if (selectedTeamId && resumed.team_id !== selectedTeamId) {
+        setError(
+          `Run ${resumed.id} belongs to team ${resumed.team_id}. Resume applies only to the selected team.`
+        );
+        return;
+      }
       setRuns((prev) => upsertRun(prev, resumed));
       setActiveRunId(resumed.id);
       setRunLookupId(resumed.id);
@@ -1837,11 +1882,21 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onRestartRun = async () => {
-    if (!activeRunId) return;
+    if (!activeRunForSelectedTeam) {
+      setError("Select a run in the current team first");
+      return;
+    }
+    const runId = activeRunForSelectedTeam.id;
     setBusy("restart-run");
     setError(null);
     try {
-      const restarted = await api.restartTeamRun(props.token, activeRunId);
+      const restarted = await api.restartTeamRun(props.token, runId);
+      if (selectedTeamId && restarted.team_id !== selectedTeamId) {
+        setError(
+          `Run ${restarted.id} belongs to team ${restarted.team_id}. Restart applies only to the selected team.`
+        );
+        return;
+      }
       setRuns((prev) => upsertRun(prev, restarted));
       setActiveRunId(restarted.id);
       setRunLookupId(restarted.id);
@@ -1853,8 +1908,8 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onSubmitStep = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     if (!stepKey.trim()) {
@@ -1868,17 +1923,17 @@ export function TeamPage(props: TeamPageProps) {
     setBusy("submit-step");
     setError(null);
     try {
-      const created = await api.submitTeamRunStep(props.token, activeRunId, {
+      const created = await api.submitTeamRunStep(props.token, activeRunIdForSelectedTeam, {
         step_key: stepKey.trim(),
         member_id: stepMemberId.trim(),
         depends_on: parseCsvList(stepDependsOn),
         input: parseOptionalJson(stepInput, "Step input"),
       });
       await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
+        refreshRun(activeRunIdForSelectedTeam),
+        refreshSteps(activeRunIdForSelectedTeam),
+        refreshEvents(activeRunIdForSelectedTeam),
+        refreshSnapshot(activeRunIdForSelectedTeam),
       ]);
       setSelectedStepId(created.id);
     } catch (err) {
@@ -1889,8 +1944,8 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onApplyStepAction = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     if (!selectedStepId) {
@@ -1901,11 +1956,11 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     try {
       if (stepAction === "start") {
-        await api.startTeamRunStep(props.token, activeRunId, selectedStepId, {
+        await api.startTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
           remote_task_id: stepRemoteTaskId.trim() || undefined,
         });
       } else if (stepAction === "complete") {
-        await api.completeTeamRunStep(props.token, activeRunId, selectedStepId, {
+        await api.completeTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
           output: parseOptionalJson(stepOutput, "Step output"),
         });
       } else if (stepAction === "fail") {
@@ -1913,24 +1968,24 @@ export function TeamPage(props: TeamPageProps) {
         if (!errorText) {
           throw new Error("Fail reason is required");
         }
-        await api.failTeamRunStep(props.token, activeRunId, selectedStepId, {
+        await api.failTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
           error_text: errorText,
         });
       } else if (stepAction === "input_required") {
-        await api.setTeamRunStepInputRequired(props.token, activeRunId, selectedStepId, {
+        await api.setTeamRunStepInputRequired(props.token, activeRunIdForSelectedTeam, selectedStepId, {
           reason: stepInputReason.trim() || undefined,
           input: parseOptionalJson(stepInputRequiredPayload, "Input required payload"),
         });
       } else {
-        await api.resumeTeamRunStep(props.token, activeRunId, selectedStepId, {
+        await api.resumeTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
           input: parseOptionalJson(stepResumePayload, "Resume payload"),
         });
       }
       await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
+        refreshRun(activeRunIdForSelectedTeam),
+        refreshSteps(activeRunIdForSelectedTeam),
+        refreshEvents(activeRunIdForSelectedTeam),
+        refreshSnapshot(activeRunIdForSelectedTeam),
       ]);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -1944,8 +1999,8 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onSendChatMessage = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     const fromActorId = chatActors.fromActorId.trim();
@@ -1962,7 +2017,7 @@ export function TeamPage(props: TeamPageProps) {
     setBusy("send-chat");
     setError(null);
     try {
-      await api.sendTeamRunMessage(props.token, activeRunId, {
+      await api.sendTeamRunMessage(props.token, activeRunIdForSelectedTeam, {
         from_actor_id: fromActorId,
         to_actor_id: toActorId,
         channel: "default",
@@ -1970,7 +2025,7 @@ export function TeamPage(props: TeamPageProps) {
         payload: buildMailboxChatPayload(text),
       });
       setChatDraft("");
-      await refreshSnapshot(activeRunId);
+      await refreshSnapshot(activeRunIdForSelectedTeam);
       await loadInbox(toActorId);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -1980,8 +2035,8 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onSendMessage = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     const fromActorId = msgFromActorId.trim();
@@ -1993,7 +2048,7 @@ export function TeamPage(props: TeamPageProps) {
     setBusy("send-message");
     setError(null);
     try {
-      await api.sendTeamRunMessage(props.token, activeRunId, {
+      await api.sendTeamRunMessage(props.token, activeRunIdForSelectedTeam, {
         from_actor_id: fromActorId,
         to_actor_id: toActorId,
         channel: msgChannel.trim() || undefined,
@@ -2003,12 +2058,15 @@ export function TeamPage(props: TeamPageProps) {
         idempotency_key: msgIdempotencyKey.trim() || undefined,
       });
       if (tab === "mailbox") {
-        await refreshSnapshot(activeRunId);
+        await refreshSnapshot(activeRunIdForSelectedTeam);
         if (inboxActorId.trim()) {
           await loadInbox();
         }
       } else {
-        await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
+        await Promise.all([
+          refreshEvents(activeRunIdForSelectedTeam),
+          refreshSnapshot(activeRunIdForSelectedTeam),
+        ]);
       }
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -2018,8 +2076,8 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onRefreshInbox = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     setBusy("refresh-inbox");
@@ -2034,19 +2092,24 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const onAckMessage = async (message: TeamActorMessageRecord) => {
-    if (!activeRunId) return;
+    if (!activeRunIdForSelectedTeam) return;
     const actorId = inboxActorId.trim() || message.to_actor_id;
     setBusy(`ack-${message.message_id}`);
     setError(null);
     try {
-      await api.ackTeamRunMessage(props.token, activeRunId, message.message_id, actorId);
+      await api.ackTeamRunMessage(
+        props.token,
+        activeRunIdForSelectedTeam,
+        message.message_id,
+        actorId
+      );
       if (tab === "mailbox") {
-        await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunId)]);
+        await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunIdForSelectedTeam)]);
       } else {
         await Promise.all([
           loadInbox(),
-          refreshEvents(activeRunId),
-          refreshSnapshot(activeRunId),
+          refreshEvents(activeRunIdForSelectedTeam),
+          refreshSnapshot(activeRunIdForSelectedTeam),
         ]);
       }
     } catch (err) {
@@ -2061,10 +2124,10 @@ export function TeamPage(props: TeamPageProps) {
       await loadMemberEvents("replace");
       return;
     }
-    if (activeRunId) {
-      await refreshEvents(activeRunId);
+    if (activeRunIdForSelectedTeam) {
+      await refreshEvents(activeRunIdForSelectedTeam);
     }
-  }, [activeRunId, loadMemberEvents, refreshEvents, selectedMemberSnapshot]);
+  }, [activeRunIdForSelectedTeam, loadMemberEvents, refreshEvents, selectedMemberSnapshot]);
 
   const onLoadOlderMemberConsole = useCallback(async () => {
     if (!selectedMemberSnapshot) {
@@ -2074,14 +2137,14 @@ export function TeamPage(props: TeamPageProps) {
   }, [loadMemberEvents, selectedMemberSnapshot]);
 
   const onRefreshOverviewSnapshot = useCallback(async () => {
-    if (!activeRunId) return;
+    if (!activeRunIdForSelectedTeam) return;
     setError(null);
     try {
-      await refreshSnapshot(activeRunId);
+      await refreshSnapshot(activeRunIdForSelectedTeam);
     } catch (err) {
       setError(parseErrorMessage(err));
     }
-  }, [activeRunId, refreshSnapshot]);
+  }, [activeRunIdForSelectedTeam, refreshSnapshot]);
 
   const onOpenMailboxForMember = useCallback((memberId: string) => {
     setSelectedMemberId(memberId);
@@ -2089,24 +2152,24 @@ export function TeamPage(props: TeamPageProps) {
   }, [setSelectedMemberId, setTab]);
 
   const onRefreshEventsPanel = useCallback(async () => {
-    if (!activeRun) return;
+    if (!activeRunForSelectedTeam) return;
     setError(null);
     try {
-      await refreshEvents(activeRun.id);
+      await refreshEvents(activeRunForSelectedTeam.id);
     } catch (err) {
       setError(parseErrorMessage(err));
     }
-  }, [activeRun, refreshEvents]);
+  }, [activeRunForSelectedTeam, refreshEvents]);
 
   const onLoadOlderEventsPanel = useCallback(async () => {
-    if (!activeRun) return;
+    if (!activeRunForSelectedTeam) return;
     setError(null);
     try {
-      await refreshEvents(activeRun.id, "prepend");
+      await refreshEvents(activeRunForSelectedTeam.id, "prepend");
     } catch (err) {
       setError(parseErrorMessage(err));
     }
-  }, [activeRun, refreshEvents]);
+  }, [activeRunForSelectedTeam, refreshEvents]);
 
   const onUpdateWorker = (
     index: number,
@@ -2204,6 +2267,8 @@ export function TeamPage(props: TeamPageProps) {
     "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
   const panelSecondaryButtonClassName =
     "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const panelInputClassName =
+    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300";
   const panelRefreshButtonClassName =
     "inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-500 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200";
   const panelGhostButtonClassName =
@@ -2251,9 +2316,9 @@ export function TeamPage(props: TeamPageProps) {
           }}
         />
 
-        <div className="teams-main flex min-w-0 flex-col gap-5">
+        <div className="teams-main flex min-w-0 flex-col gap-5 [&>*]:shrink-0">
           {!selectedTeam && (
-            <div className="card rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="min-h-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
               <p className="mt-2 text-sm text-slate-600">
                 Select a team from the left panel to manage runs, steps, and messages.
@@ -2274,19 +2339,16 @@ export function TeamPage(props: TeamPageProps) {
                 onCreateRun={onCreateRun}
                 runInput={runInput}
                 onRunInputChange={setRunInput}
-                runLookupId={runLookupId}
-                onRunLookupIdChange={setRunLookupId}
-                onLoadRunById={onLoadRunById}
                 runStatusFilter={runStatusFilter}
                 runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                 onRunStatusFilterChange={onRunStatusFilterChange}
                 onRefreshRuns={onRefreshRuns}
                 runsLoading={runsLoading}
                 visibleRuns={visibleRuns}
-                activeRunId={activeRunId}
+                activeRunId={activeRunIdForSelectedTeam}
                 onActiveRunChange={setActiveRunId}
                 isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
-                activeRun={activeRun}
+                activeRun={activeRunForSelectedTeam}
                 totalLoadedRunsForTeam={totalLoadedRunsForTeam}
                 pageLimit={TEAM_RUN_PAGE_LIMIT}
                 runsHasMore={runsHasMore}
@@ -2294,19 +2356,25 @@ export function TeamPage(props: TeamPageProps) {
                 onLoadMoreRuns={onLoadMoreRuns}
               />
 
-              {activeRun && (
+              {runsLoading && !activeRunForSelectedTeam && (
+                <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm text-slate-600">Loading run context for selected team...</p>
+                </div>
+              )}
+
+              {activeRunForSelectedTeam && !runsLoading && (
                 <>
-                  <div className="card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="toolbar flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <h3 className="text-base font-semibold text-slate-900">Active Run</h3>
-                      <div className="actions flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           className={panelRefreshButtonClassName}
                           title="Refresh active run"
                           aria-label="Refresh active run"
                           onClick={() => {
-                            if (!activeRunId) return;
-                            void refreshRun(activeRunId).catch((err) =>
+                            if (!activeRunIdForSelectedTeam) return;
+                            void refreshRun(activeRunIdForSelectedTeam).catch((err) =>
                               setError(parseErrorMessage(err))
                             );
                           }}
@@ -2317,7 +2385,10 @@ export function TeamPage(props: TeamPageProps) {
                         <button
                           className={panelSecondaryButtonClassName}
                           onClick={onCancelRun}
-                          disabled={busy === "cancel-run" || activeRun.status === "canceled"}
+                          disabled={
+                            busy === "cancel-run" ||
+                            activeRunForSelectedTeam.status === "canceled"
+                          }
                         >
                           Cancel Run
                         </button>
@@ -2347,39 +2418,39 @@ export function TeamPage(props: TeamPageProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="teams-run-meta mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="mt-3 grid min-w-0 gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3">
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <strong>ID:</strong> <code>{activeRun.id}</code>
+                        <strong>ID:</strong> <code>{activeRunForSelectedTeam.id}</code>
                       </span>
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Status:</strong>{" "}
                         <StatusBadge
-                          label={activeRun.status}
-                          tone={resolveTeamRunStatusTone(activeRun.status)}
+                          label={activeRunForSelectedTeam.status}
+                          tone={resolveTeamRunStatusTone(activeRunForSelectedTeam.status)}
                           className="team-status"
-                          title={`run status: ${activeRun.status}`}
+                          title={`run status: ${activeRunForSelectedTeam.status}`}
                         />
                       </span>
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <strong>Context:</strong> {activeRun.context_id}
+                        <strong>Context:</strong> {activeRunForSelectedTeam.context_id}
                       </span>
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <strong>Created:</strong> {formatTs(activeRun.created_at)}
+                        <strong>Created:</strong> {formatTs(activeRunForSelectedTeam.created_at)}
                       </span>
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <strong>Started:</strong> {formatTs(activeRun.started_at)}
+                        <strong>Started:</strong> {formatTs(activeRunForSelectedTeam.started_at)}
                       </span>
                       <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <strong>Ended:</strong> {formatTs(activeRun.ended_at)}
+                        <strong>Ended:</strong> {formatTs(activeRunForSelectedTeam.ended_at)}
                       </span>
                     </div>
                   </div>
 
-                  <div className="tab-bar team-tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                  <div className="mt-2 flex min-w-0 flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "overview"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("overview")}
@@ -2387,9 +2458,9 @@ export function TeamPage(props: TeamPageProps) {
                       Overview
                     </button>
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "events"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("events")}
@@ -2397,9 +2468,9 @@ export function TeamPage(props: TeamPageProps) {
                       Events
                     </button>
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "steps"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("steps")}
@@ -2407,9 +2478,9 @@ export function TeamPage(props: TeamPageProps) {
                       Steps
                     </button>
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "mailbox"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("mailbox")}
@@ -2417,9 +2488,9 @@ export function TeamPage(props: TeamPageProps) {
                       Mailbox
                     </button>
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "member_console"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("member_console")}
@@ -2427,9 +2498,9 @@ export function TeamPage(props: TeamPageProps) {
                       Member Console
                     </button>
                     <button
-                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "debug"
-                          ? "active bg-slate-900 text-white shadow-sm"
+                          ? "bg-slate-900 text-white shadow-sm"
                           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                       onClick={() => setTab("debug")}
@@ -2438,7 +2509,7 @@ export function TeamPage(props: TeamPageProps) {
                     </button>
                   </div>
 
-                  <div className="teams-output-stack flex min-w-0 flex-col gap-3">
+                  <div className="flex min-w-0 flex-col gap-3">
                     {tab === "overview" && (
                       <TeamOverviewPanel
                         snapshot={snapshot}
@@ -2471,7 +2542,7 @@ export function TeamPage(props: TeamPageProps) {
                         mode="list_only"
                         steps={steps}
                         onRefreshSteps={async () => {
-                          await refreshSteps(activeRun.id);
+                          await refreshSteps(activeRunForSelectedTeam.id);
                         }}
                         stepKey={stepKey}
                         onStepKeyChange={setStepKey}
@@ -2578,14 +2649,24 @@ export function TeamPage(props: TeamPageProps) {
 
                     {tab === "debug" && (
                       <>
-                        <div className="relative z-20 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <h3 className="text-sm font-semibold text-slate-900">Debug Tools</h3>
-                            <div className="relative z-30 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
                               <button
-                                className={`tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                  teamDebugTag === "run_ops"
+                                    ? "bg-slate-900 text-white shadow-sm"
+                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                }`}
+                                onClick={() => setTeamDebugTag("run_ops")}
+                              >
+                                Run Ops
+                              </button>
+                              <button
+                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
                                   teamDebugTag === "step_ops"
-                                    ? "active bg-slate-900 text-white shadow-sm"
+                                    ? "bg-slate-900 text-white shadow-sm"
                                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                                 }`}
                                 onClick={() => setTeamDebugTag("step_ops")}
@@ -2593,9 +2674,9 @@ export function TeamPage(props: TeamPageProps) {
                                 Step Ops
                               </button>
                               <button
-                                className={`tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
                                   teamDebugTag === "mailbox_raw"
-                                    ? "active bg-slate-900 text-white shadow-sm"
+                                    ? "bg-slate-900 text-white shadow-sm"
                                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                                 }`}
                                 onClick={() => setTeamDebugTag("mailbox_raw")}
@@ -2606,12 +2687,36 @@ export function TeamPage(props: TeamPageProps) {
                           </div>
                         </div>
 
+                        {teamDebugTag === "run_ops" && (
+                          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <h4 className="text-sm font-semibold text-slate-900">Load Existing Run</h4>
+                            <p className="muted mt-2 text-sm text-slate-600">
+                              Load by <code>run_id</code> for the currently selected team only.
+                            </p>
+                            <div className="form-row mt-3">
+                              <input
+                                className={panelInputClassName}
+                                placeholder="existing run_id"
+                                value={runLookupId}
+                                onChange={(event) => setRunLookupId(event.target.value)}
+                              />
+                              <button
+                                className={panelSecondaryButtonClassName}
+                                onClick={onLoadRunById}
+                                disabled={busy === "load-run"}
+                              >
+                                Load Run
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {teamDebugTag === "step_ops" && (
                           <TeamStepsPanel
                             mode="controls_only"
                             steps={steps}
                             onRefreshSteps={async () => {
-                              await refreshSteps(activeRun.id);
+                              await refreshSteps(activeRunForSelectedTeam.id);
                             }}
                             stepKey={stepKey}
                             onStepKeyChange={setStepKey}
@@ -2960,9 +3065,9 @@ export function TeamPage(props: TeamPageProps) {
 
               {createTeamStage === 2 && (
                 <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="toolbar flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <h4 className="text-base font-semibold text-slate-900">Recruit Workers</h4>
-                    <div className="toolbar-actions flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         className={panelSecondaryButtonClassName}
                         onClick={onAddWorker}
@@ -3141,7 +3246,7 @@ export function TeamPage(props: TeamPageProps) {
                   <p className="muted mt-2 text-sm text-slate-600">
                     Final review before deployment.
                   </p>
-                  <div className="teams-run-meta mono mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
+                  <div className="mono mt-3 grid min-w-0 gap-2 text-xs text-slate-700 sm:grid-cols-3">
                     <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                       team={newTeamName.trim() || "-"}
                     </span>
