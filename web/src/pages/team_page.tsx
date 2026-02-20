@@ -2218,7 +2218,7 @@ export function TeamPage(props: TeamPageProps) {
         <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
           AgentHub Teams
         </h1>
-        <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm">
+        <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
           <a className="icon-button" href="/" title="Back" aria-label="Back">
             <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
@@ -2253,7 +2253,7 @@ export function TeamPage(props: TeamPageProps) {
 
         <div className="teams-main flex min-w-0 flex-col gap-5">
           {!selectedTeam && (
-            <div className="card rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+            <div className="card rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
               <p className="mt-2 text-sm text-slate-600">
                 Select a team from the left panel to manage runs, steps, and messages.
@@ -2296,7 +2296,7 @@ export function TeamPage(props: TeamPageProps) {
 
               {activeRun && (
                 <>
-                  <div className="card rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                  <div className="card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="toolbar flex flex-wrap items-center justify-between gap-3">
                       <h3 className="text-base font-semibold text-slate-900">Active Run</h3>
                       <div className="actions flex flex-wrap items-center gap-2">

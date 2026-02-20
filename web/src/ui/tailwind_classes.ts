@@ -18,7 +18,7 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-500";
 
 export const TEAM_PANEL_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+  "card rounded-2xl border border-slate-200 bg-white shadow-sm";
 
 export const TEAM_PANEL_TOOLBAR_CLASS =
   "toolbar mb-3 flex flex-wrap items-center justify-between gap-2";

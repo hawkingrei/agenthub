@@ -39,7 +39,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
 
   return (
-    <aside className="card teams-sidebar rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
+    <aside className="card teams-sidebar rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents

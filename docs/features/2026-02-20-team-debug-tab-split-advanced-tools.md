@@ -37,6 +37,7 @@ This increased visual density and made quick task routing slower.
    - Render tab content under one `teams-output-stack` container.
    - Keep Debug tool tags in an opaque, elevated strip (`z-index` + solid background).
    - Remove fixed global card min-height pressure (`.card` `min-height: 0`) to reduce accidental vertical overlap.
+   - Replace Team translucent card surfaces (`bg-white/85`/`bg-white/90`) with solid white cards and isolate Team output stacking context (`isolation: isolate`) to remove visual bleed-through that looked like overlap.
 
 ## Validation Evidence (2026-02-20)
 

@@ -3042,6 +3042,16 @@ select:not([class*="mantine-"]):focus-visible {
   min-height: 0;
 }
 
+.teams-output-stack {
+  position: relative;
+  isolation: isolate;
+}
+
+.teams-output-stack > * {
+  position: relative;
+  z-index: 1;
+}
+
 .teams-list {
   display: flex;
   flex-direction: column;
