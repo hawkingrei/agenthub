@@ -94,6 +94,15 @@ agenthub/
 - Frontend implementation policy:
   - Follow-up UI work should be built with UI library components + Tailwind CSS utilities
   - Avoid introducing new parallel style systems or expanding legacy handcrafted global CSS except compatibility patches
+- Team role workflow policy:
+  - Leader acts as architect/reviewer and should not implement feature code directly
+  - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation
+  - Leader runtime starts from an empty workspace and should maintain coordination context in `AGENTS.md`
+  - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
+  - Backend runtime enforces leader starts with `worktree_mode=use_existing` and an empty workspace
+  - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
+  - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
+  - Workers may coordinate with peers when dependencies overlap, but status/evidence must still flow back to leader
 
 ## 10. TODO
 
