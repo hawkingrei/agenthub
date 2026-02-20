@@ -27,9 +27,8 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink,
-    SpawnAcpSessionRequest, load_safe_paths, spawn_acp_session,
+    SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context, spawn_acp_session,
 };
-use crate::actor_runtime::normalize_actor_context;
 use crate::auth::AuthService;
 use crate::push::PushService;
 use agent_client_protocol::Implementation;

@@ -1,6 +1,7 @@
 # TODO
 
 - [x] Verify Team role workflow policy is enforced across prompt defaults and runtime startup gates (leader: `use_existing` + empty workspace; worker: `create_worktree` + isolated run workdir + random branch) with Rust/Web regression tests (see `docs/features/2026-02-20-team-role-workflow-policy.md`).
+- [x] Refactor ACP-related code into package-style module layout (`src/acp/mod.rs` + `event_sink.rs` + `runtime.rs`) and move service bootstrap out of `lib.rs` into `src/app.rs` while preserving `main` thin-entry behavior (`agenthub::run`) and ACP runtime test coverage (see `docs/features/2026-02-20-acp-package-and-bootstrap-module-migration.md`).
 - [x] Refactor OpenAPI spec assembly into dedicated module `src/api/openapi/spec.rs` to keep `src/api/openapi.rs` focused on routing/auth/docs-page handlers, and verify OpenAPI auth/path contract tests remain stable (see `docs/features/2026-02-20-openapi-spec-module-migration.md`).
 - [ ] Verify startup history retention cleanup (`history.event_retention_days`) deletes `agent_events` older than configured window (default `5` days) and optional `history.vacuum_on_cleanup` compaction behavior remains stable on non-empty cleanup runs (see `docs/features/2026-02-20-sqlite-history-retention-cleanup.md`).
 - [x] Verify `DELETE /api/teams/:id` also cleans Team member agent sessions (`agent_sessions`) by member IDs from Team spec and preserves Team data cascade behavior (`team_runs/steps/events/messages`) (see `docs/features/2026-02-20-team-delete-cleans-member-agent-sessions.md`).

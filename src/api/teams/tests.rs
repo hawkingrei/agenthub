@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
-use crate::actor_runtime::default_actor_cli_path;
+use crate::acp::default_actor_cli_path;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
 use crate::auth::AuthService;

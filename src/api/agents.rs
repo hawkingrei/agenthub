@@ -7,10 +7,9 @@ use axum::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::acp::AcpActorSkillContext;
-use crate::acp::AcpPermissionRecord;
-use crate::actor_runtime::{
-    DEFAULT_ACTOR_CHANNEL, default_actor_cli_path, normalize_actor_cli_path,
+use crate::acp::{
+    AcpActorSkillContext, AcpPermissionRecord, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
+    normalize_actor_cli_path,
 };
 use crate::agent::{AgentConfig, AgentRecord, WorktreeMode};
 use crate::api::authz::require_user;
@@ -545,7 +544,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::acp::AcpPermissionService;
-    use crate::actor_runtime::default_actor_cli_path;
+    use crate::acp::default_actor_cli_path;
     use crate::agent::AgentManager;
     use crate::auth::AuthService;
     use crate::config::{AppConfig, PushConfig, WebConfig};

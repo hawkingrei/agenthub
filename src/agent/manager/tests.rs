@@ -6,7 +6,7 @@ use super::{
     stream_to_str,
 };
 use crate::acp::AcpActorSkillContext;
-use crate::actor_runtime::default_actor_cli_path;
+use crate::acp::default_actor_cli_path;
 use std::sync::Mutex;
 use uuid::Uuid;
 
