@@ -22,7 +22,7 @@ function AcpPanelView({
   debug,
 }: AcpPanelProps) {
   return (
-    <div className="acp flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+    <div className="acp flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-100 bg-white/90 shadow-sm">
       <div className="acp-head minimal flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-3 py-2 sm:px-4">
         <div className="acp-subtitle min-h-5 text-xs text-slate-500 sm:text-sm">
           {subtitle ?? " "}
