@@ -45,7 +45,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
 
   return (
-    <aside className="teams-sidebar min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <aside className="teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents
@@ -70,7 +70,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
         </button>
       </div>
 
-      <div className="teams-form teams-create-launch rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <div className="teams-form teams-create-launch flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
         <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
         <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
         <div className="teams-create-entry-actions mt-3 flex flex-wrap gap-2">
@@ -94,7 +94,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
         </div>
       </div>
 
-      <div className="teams-list">
+      <div className="teams-list flex max-h-80 flex-col gap-2 overflow-auto">
         {teams.length === 0 && <p className="muted">No teams yet.</p>}
         {teams.map((team) => {
           const summary = teamMemberSummaryByTeamId.get(team.id);
@@ -111,7 +111,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
               <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
               <span className={TEAM_LIST_ITEM_META_CLASS}>{team.id}</span>
               {summary && (
-                <span className={`${TEAM_LIST_ITEM_META_CLASS} team-member-summary`}>
+                <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-80`}>
                   {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
                 </span>
               )}

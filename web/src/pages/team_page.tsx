@@ -2298,7 +2298,7 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <section className="teams-layout grid gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+      <section className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
@@ -2316,7 +2316,7 @@ export function TeamPage(props: TeamPageProps) {
           }}
         />
 
-        <div className="teams-main flex min-w-0 flex-col gap-5 [&>*]:shrink-0">
+        <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 [&>*]:shrink-0">
           {!selectedTeam && (
             <div className="min-h-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>

@@ -44,18 +44,18 @@ type TeamMemberLiveState = {
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_MEMBER_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/60 p-4";
+  "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4";
 const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
 const RUN_PANEL_SECTION_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
+  "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4";
 const RUN_PANEL_LIST_CLASS =
-  "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
+  "teams-run-list flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
 const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
 const RUN_PANEL_MEMBER_SUMMARY_CLASS =
-  "teams-member-summary-line mono mb-2 text-left text-xs tracking-wide text-slate-600";
+  "mono mb-2 text-left text-xs tracking-wide text-slate-600";
 const RUN_PANEL_MEMBER_ROLE_BADGE_CLASS =
   "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 
@@ -151,21 +151,21 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       </div>
       <div className={RUN_PANEL_MEMBER_CLASS}>
         <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Members</p>
-        <div className="teams-member-status-panel">
+        <div className="teams-member-status-panel grid gap-1.5">
           <div className={RUN_PANEL_MEMBER_SUMMARY_CLASS}>
             {`team_number=${selectedTeamMemberSummary.total}`}
           </div>
           {orderedTeamMemberLiveStates.length === 0 ? (
             <p className="muted">No members declared in team spec.</p>
           ) : (
-            <div className="teams-member-strip compact">
+            <div className="teams-member-strip compact flex flex-wrap gap-x-2.5 gap-y-1.5">
               {orderedTeamMemberLiveStates.map((member) => {
                 const isRunning = member.lifecycle_tone === "active";
                 const leader = isLeaderRole(member.role);
                 return (
                   <span
                     key={`${selectedTeam.id}:${member.member_id}`}
-                    className="teams-member-dot-item mono"
+                    className="teams-member-dot-item mono inline-flex min-w-0 max-w-full items-center gap-1.5 text-xs text-slate-800"
                     title={`member=${member.member_id} status=${member.lifecycle_status}`}
                   >
                     <span
@@ -180,9 +180,11 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                     </span>
                     <span
                       aria-hidden="true"
-                      className={`teams-member-dot ${isRunning ? "active" : "inactive"}`}
+                      className={`teams-member-dot inline-block h-2 w-2 rounded-full ${isRunning ? "active bg-emerald-700" : "inactive bg-rose-700"}`}
                     />
-                    <span className="teams-member-dot-label">{member.member_id}</span>
+                    <span className="teams-member-dot-label min-w-0 max-w-[min(42vw,280px)] overflow-hidden text-ellipsis whitespace-nowrap">
+                      {member.member_id}
+                    </span>
                   </span>
                 );
               })}
@@ -278,7 +280,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               </button>
             ))}
           </div>
-          <div className="teams-run-list-foot">
+          <div className="teams-run-list-foot flex flex-wrap items-center justify-between gap-2">
             <span className="mono">
               showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
             </span>

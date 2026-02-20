@@ -2835,44 +2835,6 @@ select:not([class*="mantine-"]):focus-visible {
   padding: 4px 8px;
 }
 
-.teams-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-  gap: 16px;
-  min-height: 0;
-}
-
-.teams-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
-.teams-form,
-.teams-run-create,
-.teams-run-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.teams-run-list-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.teams-run-list-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
 .teams-create-launch {
   border: 1px solid #d3dfeb;
   background:
@@ -2884,95 +2846,6 @@ select:not([class*="mantine-"]):focus-visible {
 
 .teams-create-launch p {
   margin: 0 0 4px;
-}
-
-.teams-create-entry-actions {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.teams-create-launch-meta {
-  display: grid;
-  gap: 4px;
-  color: #4d5f73;
-  font-size: 12px;
-}
-
-.teams-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
-
-.teams-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.team-member-summary {
-  opacity: 0.82;
-}
-
-.teams-member-status-panel {
-  display: grid;
-  gap: 6px;
-}
-
-.teams-member-summary-line {
-  font-size: 11px;
-  color: #5e6d80;
-  text-align: right;
-}
-
-.teams-member-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-}
-
-.teams-member-strip.compact {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-}
-
-.teams-member-dot-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 100%;
-  color: #1f2a37;
-  font-size: 12px;
-}
-
-.teams-member-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex: 0 0 auto;
-}
-
-.teams-member-dot.active {
-  background: #1c6b3e;
-}
-
-.teams-member-dot.inactive {
-  background: #9a2b2b;
-}
-
-.teams-member-dot-label {
-  min-width: 0;
-  max-width: min(42vw, 280px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .team-member-row {
@@ -3586,15 +3459,6 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 @media (max-width: 960px) {
-  .teams-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-sidebar,
-  .teams-main {
-    min-width: 0;
-  }
-
   .teams-step-grid,
   .teams-message-grid {
     grid-template-columns: minmax(0, 1fr);
