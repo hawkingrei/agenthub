@@ -11,6 +11,7 @@ At the same time, team member MCP-related capability visibility in `Member Conso
 - `web/src/pages/team_member_console_panel.tsx`
 - `web/src/styles.css`
 - `web/src/pages/team_panels.test.tsx`
+- `web/tests/e2e/team_page.e2e.ts`
 
 ## Key Decisions
 
@@ -32,6 +33,7 @@ At the same time, team member MCP-related capability visibility in `Member Conso
 - `npm --prefix web run lint`
 - `npm --prefix web run test -- src/pages/team_panels.test.tsx`
 - `npm --prefix web run test -- src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts`
+- `PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts --grep "single-column proportions on mobile viewport|desktop keeps long metadata blocks non-overlapping"`
 
 ## Notes
 
