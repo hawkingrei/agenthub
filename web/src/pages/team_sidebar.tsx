@@ -54,9 +54,11 @@ export function TeamSidebar(props: TeamSidebarProps) {
             void onRefreshTeams();
           }}
           disabled={busy === "refresh-teams"}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="icon-button small"
+          title="Refresh teams"
+          aria-label="Refresh teams"
         >
-          Refresh
+          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
         </button>
       </div>
 

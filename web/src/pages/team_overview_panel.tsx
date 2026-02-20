@@ -3,7 +3,6 @@ import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -46,9 +45,11 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
               void onRefreshSnapshot();
             }}
             disabled={snapshotLoading}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            className="icon-button small"
+            title="Refresh snapshot"
+            aria-label="Refresh snapshot"
           >
-            Refresh Snapshot
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
           </button>
         </div>
       </div>

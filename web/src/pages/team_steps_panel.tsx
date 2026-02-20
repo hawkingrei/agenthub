@@ -91,9 +91,11 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
           onClick={() => {
             void onRefreshSteps();
           }}
-          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+          className="icon-button small"
+          title="Refresh steps"
+          aria-label="Refresh steps"
         >
-          Refresh
+          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
         </button>
       </div>
 

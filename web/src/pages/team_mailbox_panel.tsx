@@ -401,11 +401,13 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               include_delivered
             </label>
             <button
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              className="icon-button small"
               onClick={onRefreshInbox}
               disabled={busy === "refresh-inbox"}
+              title="Refresh inbox"
+              aria-label="Refresh inbox"
             >
-              Refresh Inbox
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </button>
           </div>
         </div>

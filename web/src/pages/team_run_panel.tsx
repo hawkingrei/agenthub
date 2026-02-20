@@ -230,9 +230,11 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                   void onRefreshRuns();
                 }}
                 disabled={runsLoading}
-                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                className="icon-button small"
+                title="Refresh runs"
+                aria-label="Refresh runs"
               >
-                Refresh Runs
+                <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               </button>
             </div>
           </div>

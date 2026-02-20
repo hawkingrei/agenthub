@@ -86,9 +86,11 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               void onRefresh();
             }}
             disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            className="icon-button small"
+            title="Refresh member console"
+            aria-label="Refresh member console"
           >
-            Refresh
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
           </button>
           <button
             onClick={() => {

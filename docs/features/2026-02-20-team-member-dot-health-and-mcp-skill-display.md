@@ -9,6 +9,12 @@ At the same time, team member MCP-related capability visibility in `Member Conso
 
 - `web/src/pages/team_run_panel.tsx`
 - `web/src/pages/team_member_console_panel.tsx`
+- `web/src/pages/team_sidebar.tsx`
+- `web/src/pages/team_events_panel.tsx`
+- `web/src/pages/team_overview_panel.tsx`
+- `web/src/pages/team_steps_panel.tsx`
+- `web/src/pages/team_mailbox_panel.tsx`
+- `web/src/pages/team_page.tsx`
 - `web/src/styles.css`
 - `web/src/pages/team_panels.test.tsx`
 - `web/tests/e2e/team_page.e2e.ts`
@@ -27,6 +33,9 @@ At the same time, team member MCP-related capability visibility in `Member Conso
    - Member Console details moved to responsive card grid with wrapped long-value rendering.
    - Prompt moved into collapsible block to avoid forcing large always-open vertical text wall.
    - Add overflow guards for Team run meta cards and chat header rows to prevent long IDs from squeezing/overlapping neighboring UI.
+5. Replace Team workbench refresh text buttons with icon-only refresh actions:
+   - Convert refresh actions in sidebar/run/events/steps/overview/member-console/mailbox/active-run toolbars to `bi-arrow-clockwise` icon buttons.
+   - Keep explicit `title` + `aria-label` on each button so tests and accessibility remain stable after removing visible text labels.
 
 ## Validation Evidence (2026-02-20)
 

@@ -44,6 +44,14 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
   return required(button, `button not found: ${text}`);
 }
 
+function findButtonByAriaLabel(container: HTMLElement, label: string): HTMLButtonElement {
+  const normalized = label.toLowerCase();
+  const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
+    candidate.getAttribute("aria-label")?.toLowerCase().includes(normalized)
+  ) as HTMLButtonElement | undefined;
+  return required(button, `button not found by aria-label: ${label}`);
+}
+
 function setNativeValue(
   element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   value: string
@@ -255,7 +263,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByText(container, "Guided Wizard"));
     clickElement(findButtonByText(container, "Manual Spec"));
     clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
@@ -392,7 +400,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Delete Team"));
     clickElement(findButtonByText(container, "Create Run"));
     clickElement(findButtonByText(container, "Load Run"));
-    clickElement(findButtonByText(container, "Refresh Runs"));
+    clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
@@ -505,7 +513,7 @@ describe("team panels interactions", () => {
       root.render(<TeamStepsPanel {...baseProps} />);
     });
 
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh steps"));
     clickElement(findButtonByText(container, "Submit Step"));
     clickElement(findButtonByText(container, "Apply Step Action"));
 
@@ -634,7 +642,7 @@ describe("team panels interactions", () => {
       required(container.querySelector('input[type="checkbox"]') as HTMLInputElement | null, "events checkbox missing"),
       false
     );
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh events"));
     clickElement(findButtonByText(container, "Load Older"));
 
     expect(onEventsAutoRefreshChange).toHaveBeenCalledWith(false);
@@ -680,7 +688,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh Snapshot"));
+    clickElement(findButtonByAriaLabel(container, "Refresh snapshot"));
     clickElement(required(container.querySelectorAll(".teams-member-list .team-item")[1], "member button missing"));
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
@@ -732,7 +740,7 @@ describe("team panels interactions", () => {
       required(container.querySelector("select") as HTMLSelectElement | null, "member select missing"),
       "worker-agent"
     );
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh member console"));
 
     act(() => {
       root.render(
@@ -1018,7 +1026,7 @@ describe("team panels interactions", () => {
       required(container.querySelector('.teams-message-panel input[type="checkbox"]') as HTMLInputElement | null, "include delivered checkbox missing"),
       true
     );
-    clickElement(findButtonByText(container, "Refresh Inbox"));
+    clickElement(findButtonByAriaLabel(container, "Refresh inbox"));
 
     expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);

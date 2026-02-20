@@ -2297,7 +2297,9 @@ export function TeamPage(props: TeamPageProps) {
                       <h3 className="text-base font-semibold text-slate-900">Active Run</h3>
                       <div className="actions flex flex-wrap items-center gap-2">
                         <button
-                          className={panelSecondaryButtonClassName}
+                          className="icon-button small"
+                          title="Refresh active run"
+                          aria-label="Refresh active run"
                           onClick={() => {
                             if (!activeRunId) return;
                             void refreshRun(activeRunId).catch((err) =>
@@ -2305,7 +2307,7 @@ export function TeamPage(props: TeamPageProps) {
                             );
                           }}
                         >
-                          Refresh Run
+                          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
                         </button>
                         <button
                           className={panelSecondaryButtonClassName}
