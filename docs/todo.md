@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify web Tailwind baseline upgrades from `tailwindcss@^3.4.17` to `tailwindcss@^4.2.0` with PostCSS plugin migration to `@tailwindcss/postcss`, while keeping `web` lint/build and Team panel regression tests green (see `docs/features/2026-02-20-web-tailwind-v4-upgrade.md`).
 - [x] Verify Team run controls reduce primary-surface density by keeping `Create Run` in the main panel and moving `Load Run (run_id)` into `Debug -> Run Ops`, while Team panel regression tests stay green (see `docs/features/2026-02-20-team-load-run-moved-to-debug-run-ops.md`).
 - [x] Verify Team/ACP UI no longer depends on legacy global style hierarchy selectors (`.card`, `.tab`, `.tab-bar`, `.team-tab-bar`, `.toolbar`, `.toolbar-actions`, `.actions`, `.team-item.active`, nested `.acp-tabs .tab*`) by migrating panel/list/tab styling to Tailwind/component-scoped classes and keeping `web` lint + panel regression tests green (see `docs/features/2026-02-20-team-acp-global-style-layer-retirement.md`).
 - [x] Verify Team workbench no longer collapses/overlaps after post-load refreshes by removing Team page dependence on legacy global `toolbar/actions/tab-bar` layering and scoping legacy `.card ul` max-height rules to Admin only (see `docs/features/2026-02-20-team-post-load-layout-collapse-guard.md`).
