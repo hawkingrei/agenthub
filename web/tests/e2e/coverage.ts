@@ -47,6 +47,10 @@ function resolveCoverageFilePath(rawUrl: string): string | null {
   if (!pathname.startsWith("/src/")) {
     return null;
   }
+  const normalizedPath = pathname.toLowerCase();
+  if (!/\.(?:[cm]?[jt]sx?)$/.test(normalizedPath)) {
+    return null;
+  }
   const resolved = path.join(WEB_ROOT, pathname.slice(1));
   if (!existsSync(resolved)) {
     return null;

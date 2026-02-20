@@ -1,6 +1,7 @@
 import { parse } from "acorn";
 import type { CoverageMapData } from "istanbul-lib-coverage";
 import astV8ToIstanbul from "ast-v8-to-istanbul";
+import { pathToFileURL } from "node:url";
 
 type JsCoverageFunction = {
   functionName: string;
@@ -144,9 +145,12 @@ async function convertCoverageEntry(
   }
 
   const ast = buildCoverageAst(source, filePath);
+  const coverageUrl = entry.url.startsWith("file://")
+    ? entry.url
+    : pathToFileURL(filePath).href;
   return (converter as ModernCoverageConverter)({
     code: source,
-    coverage: { url: entry.url, functions },
+    coverage: { url: coverageUrl, functions },
     ast,
     wrapperLength: 0,
   });

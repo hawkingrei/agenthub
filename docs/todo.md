@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify Team mailbox E2E `Mailbox` tab remains clickable after Team run panel/UI style updates and fix E2E coverage merge URL-scheme errors (`ERR_INVALID_URL_SCHEME`) so `web e2e:coverage` emits numeric coverage summary (see `docs/features/2026-02-20-web-e2e-mailbox-tab-and-coverage-merge-fix.md`).
 - [x] Verify ACP tool-call summary alignment uses top-aligned layout (no vertical centering) across desktop/mobile for single call, grouped calls, and explore groups after restoring semantic style control (see `docs/features/2026-02-20-acp-tool-call-summary-top-align.md`).
 - [x] Verify Tailwind UI migration phase-10 visual parity for admin/runtime shell (`AdminPage`, `ErrorBanner`, `TerminalOutput`) across desktop/mobile while preserving admin tab workflows, error-dismiss behavior, and terminal output stream readability (see `docs/features/2026-02-20-web-tailwind-ui-phase10-admin-error-terminal-shell.md`).
 - [ ] Verify Tailwind UI migration phase-9 visual parity for `AcpConversation` shell (conversation viewport, message bubble tones, tool-call fold summaries, plan card, and segmented payload presentation) across desktop/mobile while preserving fold interaction, payload filtering, and render-test compatibility (see `docs/features/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`).
