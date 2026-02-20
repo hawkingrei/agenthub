@@ -1986,26 +1986,6 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-group-status {
   background: #ffe3bf;
-  color: #8a5a13;
-  border: 1px solid #f0c992;
-}
-
-.acp-tool-group-status.tone-running {
-  background: #dcecff;
-  color: #1f4d86;
-  border-color: #bcd9ff;
-}
-
-.acp-tool-group-status.tone-failed {
-  background: #fde8e7;
-  color: #8f1f16;
-  border-color: #f4c7c3;
-}
-
-.acp-tool-group-status.tone-completed {
-  background: #dff2e2;
-  color: #295d52;
-  border-color: #bfdfc4;
 }
 
 .acp-explore-thinking-item .acp-bubble.agent_thinking {

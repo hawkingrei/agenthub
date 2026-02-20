@@ -87,33 +87,6 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("#2 Read");
     expect(html).toContain("tool-call-enter");
     expect(html).toContain("1 running");
-    expect(html).toContain("acp-tool-group-status tone-running");
-  });
-
-  it("renders completed grouped tool status with success tone", () => {
-    const html = renderConversation([
-      {
-        kind: "tool_call_group",
-        event_id: 30,
-        calls: [
-          {
-            kind: "tool_call",
-            id: "call-a",
-            title: "Search",
-            status: "completed",
-          },
-          {
-            kind: "tool_call",
-            id: "call-b",
-            title: "Read",
-            status: "completed",
-          },
-        ],
-      },
-    ]);
-
-    expect(html).toContain("2 completed");
-    expect(html).toContain("acp-tool-group-status tone-completed");
   });
 
   it("renders explore groups as a single fold with thinking and nested tool calls", () => {
