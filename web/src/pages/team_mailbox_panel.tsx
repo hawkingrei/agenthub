@@ -6,6 +6,7 @@ import {
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
@@ -71,7 +72,6 @@ type TeamMailboxPanelProps = {
 
 const MAILBOX_META_CLASS =
   "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
-const MAILBOX_TEXTAREA_CLASS = `mono ${TEAM_PANEL_INPUT_CLASS}`;
 const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3";
 const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3";
 const MAILBOX_MEMBER_BUTTON_BASE_CLASS =
@@ -266,7 +266,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           </ul>
           <div className="teams-chat-compose">
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={3}
               placeholder="Type a message to selected agent"
               value={chatDraft}
@@ -323,7 +323,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               <option value="remote">remote</option>
             </select>
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={3}
               placeholder="route JSON (required for remote)"
               value={msgRoute}
@@ -350,7 +350,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               </button>
             </div>
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={4}
               placeholder="payload JSON"
               value={msgPayload}

@@ -50,9 +50,9 @@ Command (proxy disabled for localhost webServer health checks):
 env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
   PLAYWRIGHT_PORT=5174 \
   npm --prefix web run e2e -- \
-    web/tests/e2e/app.e2e.ts \
-    web/tests/e2e/input_dock_layout.e2e.ts \
-    web/tests/e2e/team_page.e2e.ts
+    tests/e2e/app.e2e.ts \
+    tests/e2e/input_dock_layout.e2e.ts \
+    tests/e2e/team_page.e2e.ts
 ```
 
 Result:
