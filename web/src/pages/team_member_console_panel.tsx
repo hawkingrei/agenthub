@@ -5,6 +5,14 @@ import {
   TeamRunEventRecord,
   TeamRunSnapshotRecord,
 } from "../api";
+import {
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TITLE_CLASS,
+  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_PANEL_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamMemberConsolePanelProps = {
   snapshot: TeamRunSnapshotRecord | null;
@@ -24,17 +32,13 @@ type TeamMemberConsolePanelProps = {
   formatTs: (ts?: number | null) => string;
 };
 
-const MEMBER_CONSOLE_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const MEMBER_CONSOLE_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const MEMBER_CONSOLE_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
-const MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
-const MEMBER_CONSOLE_SELECT_CLASS =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
 const MEMBER_CONSOLE_DETAIL_CLASS =
   "teams-step-body mono rounded-xl border border-slate-200 bg-slate-50/70 p-3";
 const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
+const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
+  "teams-event-head mb-1 flex items-center gap-2 text-xs text-slate-600";
+const MEMBER_CONSOLE_EMPTY_TEXT_CLASS = "muted text-sm text-slate-600";
 
 export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   const {
@@ -56,16 +60,16 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   } = props;
 
   return (
-    <div className={MEMBER_CONSOLE_CARD_CLASS}>
-      <div className={MEMBER_CONSOLE_TOOLBAR_CLASS}>
-        <h3>Member Console</h3>
-        <div className={MEMBER_CONSOLE_TOOLBAR_ACTIONS_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS}>
+      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+        <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Console</h3>
+        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             onClick={() => {
               void onRefresh();
             }}
             disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            className={MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Refresh
           </button>
@@ -79,7 +83,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               !memberEventsHasMore ||
               oldestMemberEventId == null
             }
-            className={MEMBER_CONSOLE_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Load Older
           </button>
@@ -88,7 +92,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
 
       <div className="form-row">
         <select
-          className={MEMBER_CONSOLE_SELECT_CLASS}
+          className={TEAM_PANEL_INPUT_CLASS}
           value={selectedMemberId}
           onChange={(event) => onSelectedMemberIdChange(event.target.value)}
         >
@@ -117,28 +121,32 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
       )}
 
       {!selectedMemberSnapshot && (
-        <p className="muted">
+        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>
           Showing latest {previewLimit} run records. Select a member for full member history.
         </p>
       )}
 
       {selectedMemberSnapshot && !selectedMemberSnapshot.latest_step?.remote_task_id && (
-        <p className="muted">Selected member has no associated session yet.</p>
+        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>
+          Selected member has no associated session yet.
+        </p>
       )}
 
       {selectedMemberSnapshot &&
         selectedMemberSnapshot.latest_step?.remote_task_id &&
-        memberEvents.length === 0 && <p className="muted">No member events yet.</p>}
+        memberEvents.length === 0 && (
+          <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>No member events yet.</p>
+        )}
 
       {!selectedMemberSnapshot && displayedRunEvents.length === 0 && (
-        <p className="muted">No run records yet.</p>
+        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>No run records yet.</p>
       )}
 
       {selectedMemberSnapshot && (
         <ul className={MEMBER_CONSOLE_LIST_CLASS}>
           {memberEvents.map((event) => (
-            <li key={event.event_id}>
-              <div className="teams-event-head">
+            <li key={event.event_id} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_EVENT_HEAD_CLASS}>
                 <span className="mono">#{event.event_id}</span>
                 <span>{event.stream}</span>
                 <span>{formatTs(event.ts)}</span>
@@ -152,8 +160,8 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
       {!selectedMemberSnapshot && (
         <ul className={MEMBER_CONSOLE_LIST_CLASS}>
           {displayedRunEvents.map((event) => (
-            <li key={event.event_id}>
-              <div className="teams-event-head">
+            <li key={event.event_id} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_EVENT_HEAD_CLASS}>
                 <span className="mono">#{event.event_id}</span>
                 <span>{event.event_type}</span>
                 <span>{formatTs(event.ts)}</span>

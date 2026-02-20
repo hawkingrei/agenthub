@@ -1,6 +1,15 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import {
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TEXTAREA_CLASS,
+  TEAM_PANEL_TITLE_CLASS,
+  TEAM_PANEL_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type ChatActors = {
   fromActorId: string;
@@ -61,18 +70,21 @@ type TeamMailboxPanelProps = {
   onRefreshInbox: () => Promise<void> | void;
 };
 
-const MAILBOX_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const MAILBOX_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const MAILBOX_META_CLASS = "teams-run-meta mb-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm";
-const MAILBOX_SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
-const MAILBOX_PRIMARY_BUTTON_CLASS =
-  "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
-const MAILBOX_INPUT_CLASS =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
-const MAILBOX_TEXTAREA_CLASS =
-  "mono w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+const MAILBOX_META_CLASS =
+  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
+const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3";
+const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3";
+const MAILBOX_MEMBER_BUTTON_BASE_CLASS =
+  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
+const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
+const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
+const MAILBOX_UNREAD_ACTIVE_CLASS = "teams-member-unread mono text-amber-700";
+const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono muted text-slate-500";
+const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
+  "ghost teams-chat-jump-bottom rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
+const MAILBOX_CONVERSATION_EMPTY_CLASS = "teams-chat-empty muted text-sm text-slate-600";
 
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
@@ -124,9 +136,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   } = props;
 
   return (
-    <div className={MAILBOX_CARD_CLASS}>
-      <div className={MAILBOX_TOOLBAR_CLASS}>
-        <h3>Mailbox</h3>
+    <div className={TEAM_PANEL_CARD_CLASS}>
+      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+        <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
       </div>
 
       {snapshot && (
@@ -147,7 +159,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       )}
 
       <div className="teams-chat-shell">
-        <div className="teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div className={MAILBOX_MEMBER_LIST_CLASS}>
           <h4>Agents</h4>
           {snapshot?.members.map((member) => {
             const unread = unreadByMemberId[member.member_id] ?? 0;
@@ -156,8 +168,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 key={member.member_id}
                 className={
                   selectedMemberId === member.member_id
-                    ? "team-item active rounded-lg border border-slate-300 bg-white px-3 py-2 text-left"
-                    : "team-item rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-slate-300"
+                    ? MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS
+                    : MAILBOX_MEMBER_BUTTON_IDLE_CLASS
                 }
                 onClick={() => onSelectMember(member.member_id)}
               >
@@ -171,24 +183,18 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   title={`member status: ${member.status}`}
                 />
                 <span className="team-id mono">pending={member.pending_inbox_count}</span>
-                <span
-                  className={
-                    unread > 0
-                      ? "teams-member-unread mono"
-                      : "teams-member-unread mono muted"
-                  }
-                >
+                <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
                   unread={unread}
                 </span>
               </button>
             );
           })}
           {(!snapshot || snapshot.members.length === 0) && (
-            <p className="muted">No members available.</p>
+            <p className="muted text-sm text-slate-600">No members available.</p>
           )}
         </div>
 
-        <div className="teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div className={MAILBOX_PANEL_CLASS}>
           <div className="teams-chat-head">
             <div>
               <strong>
@@ -199,7 +205,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
             <button
               type="button"
-              className="ghost teams-chat-jump-bottom rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
               onClick={onJumpToBottom}
               disabled={conversationMessages.length === 0}
               title="Jump to latest message"
@@ -225,9 +231,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               return (
                 <li
                   key={message.message_id}
-                  className={
-                    isOutgoing ? "teams-chat-bubble outgoing" : "teams-chat-bubble incoming"
-                  }
+                  className={isOutgoing ? "teams-chat-bubble outgoing" : "teams-chat-bubble incoming"}
                 >
                   <div className="teams-message-head">
                     <span className="mono">#{message.message_id}</span>
@@ -245,7 +249,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                           void onAckMessage(message);
                         }}
                         disabled={busy === `ack-${message.message_id}`}
-                        className={MAILBOX_SECONDARY_BUTTON_CLASS}
+                        className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
                       >
                         Ack
                       </button>
@@ -255,12 +259,14 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               );
             })}
             {conversationMessages.length === 0 && (
-              <li className="teams-chat-empty muted">No conversation records yet for this pair.</li>
+              <li className={MAILBOX_CONVERSATION_EMPTY_CLASS}>
+                No conversation records yet for this pair.
+              </li>
             )}
           </ul>
           <div className="teams-chat-compose">
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={3}
               placeholder="Type a message to selected agent"
               value={chatDraft}
@@ -274,7 +280,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             />
             <div className="actions">
               <button
-                className={MAILBOX_PRIMARY_BUTTON_CLASS}
+                className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                 onClick={onSendChatMessage}
                 disabled={busy === "send-chat"}
               >
@@ -291,25 +297,25 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           <div className="teams-message-panel">
             <h4>Send Message (JSON)</h4>
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="from_actor_id"
               value={msgFromActorId}
               onChange={(event) => onMsgFromActorIdChange(event.target.value)}
             />
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="to_actor_id"
               value={msgToActorId}
               onChange={(event) => onMsgToActorIdChange(event.target.value)}
             />
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="channel (default)"
               value={msgChannel}
               onChange={(event) => onMsgChannelChange(event.target.value)}
             />
             <select
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               value={msgTransport}
               onChange={(event) => onMsgTransportChange(event.target.value as "local" | "remote")}
             >
@@ -317,7 +323,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               <option value="remote">remote</option>
             </select>
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={3}
               placeholder="route JSON (required for remote)"
               value={msgRoute}
@@ -325,7 +331,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             />
             <div className="form-row">
               <select
-                className={MAILBOX_INPUT_CLASS}
+                className={TEAM_PANEL_INPUT_CLASS}
                 value={msgTemplate}
                 onChange={(event) => onMsgTemplateChange(event.target.value)}
               >
@@ -337,27 +343,27 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               </select>
               <button
                 type="button"
-                className={MAILBOX_SECONDARY_BUTTON_CLASS}
+                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
                 onClick={onApplyMessageTemplate}
               >
                 Apply Template
               </button>
             </div>
             <textarea
-              className={MAILBOX_TEXTAREA_CLASS}
+              className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={4}
               placeholder="payload JSON"
               value={msgPayload}
               onChange={(event) => onMsgPayloadChange(event.target.value)}
             />
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="idempotency_key (optional)"
               value={msgIdempotencyKey}
               onChange={(event) => onMsgIdempotencyKeyChange(event.target.value)}
             />
             <button
-              className={MAILBOX_PRIMARY_BUTTON_CLASS}
+              className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
               onClick={onSendMessage}
               disabled={busy === "send-message"}
             >
@@ -368,24 +374,24 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           <div className="teams-message-panel">
             <h4>Inbox (raw query)</h4>
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="actor_id"
               value={inboxActorId}
               onChange={(event) => onInboxActorIdChange(event.target.value)}
             />
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="limit"
               value={inboxLimit}
               onChange={(event) => onInboxLimitChange(event.target.value)}
             />
             <input
-              className={MAILBOX_INPUT_CLASS}
+              className={TEAM_PANEL_INPUT_CLASS}
               placeholder="after_id (optional)"
               value={inboxAfterId}
               onChange={(event) => onInboxAfterIdChange(event.target.value)}
             />
-            <label className="checkbox">
+            <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={inboxIncludeDelivered}
@@ -394,7 +400,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               include_delivered
             </label>
             <button
-              className={MAILBOX_SECONDARY_BUTTON_CLASS}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
               onClick={onRefreshInbox}
               disabled={busy === "refresh-inbox"}
             >

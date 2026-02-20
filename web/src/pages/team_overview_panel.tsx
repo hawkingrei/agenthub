@@ -1,6 +1,13 @@
 import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import {
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TITLE_CLASS,
+  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_PANEL_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamOverviewPanelProps = {
   snapshot: TeamRunSnapshotRecord | null;
@@ -10,14 +17,15 @@ type TeamOverviewPanelProps = {
   onOpenMailboxForMember: (memberId: string) => void;
 };
 
-const OVERVIEW_CARD_CLASS =
-  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const OVERVIEW_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const OVERVIEW_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
-const OVERVIEW_SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 const OVERVIEW_META_CLASS =
-  "teams-run-meta mb-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm";
+  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
+const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
+const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
+  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
+const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
+const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
 
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
@@ -29,23 +37,23 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   } = props;
 
   return (
-    <div className={OVERVIEW_CARD_CLASS}>
-      <div className={OVERVIEW_TOOLBAR_CLASS}>
-        <h3>Team Snapshot</h3>
-        <div className={OVERVIEW_TOOLBAR_ACTIONS_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS}>
+      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+        <h3 className={TEAM_PANEL_TITLE_CLASS}>Team Snapshot</h3>
+        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             onClick={() => {
               void onRefreshSnapshot();
             }}
             disabled={snapshotLoading}
-            className={OVERVIEW_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Refresh Snapshot
           </button>
         </div>
       </div>
 
-      {!snapshot && <p className="muted">No snapshot yet.</p>}
+      {!snapshot && <p className="muted text-sm text-slate-600">No snapshot yet.</p>}
 
       {snapshot && (
         <>
@@ -70,14 +78,14 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
             </span>
           </div>
 
-          <div className="teams-member-list">
+          <div className={OVERVIEW_MEMBER_LIST_CLASS}>
             {snapshot.members.map((member) => (
               <button
                 key={member.member_id}
                 className={
                   selectedMemberId === member.member_id
-                    ? "team-item active rounded-lg border border-slate-300 bg-white px-3 py-2 text-left"
-                    : "team-item rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-slate-300"
+                    ? OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS
+                    : OVERVIEW_MEMBER_BUTTON_IDLE_CLASS
                 }
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
