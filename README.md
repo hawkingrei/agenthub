@@ -67,12 +67,17 @@ Default UI address: `http://localhost:8080`.
 AgentHub reads config from `config.toml`.
 
 ```toml
-listen_addr = "0.0.0.0:8080"
+[server]
+listen = "0.0.0.0:8080"
 
 safe_paths = [
   "/home/foo",
   "/home/foo/projects"
 ]
+
+[history]
+event_retention_days = 5
+vacuum_on_cleanup = false
 ```
 
 Runtime state (database, local artifacts) defaults to `~/.agenthub/`.

@@ -26,6 +26,31 @@ pub struct AppState {
 impl AppState {
     pub async fn init(config: crate::config::AppConfig) -> anyhow::Result<Self> {
         let db = crate::db::init_db().await?;
+        if let Some(retention_days) = config.history_event_retention_days() {
+            let vacuum_on_cleanup = config.history_vacuum_on_cleanup();
+            match crate::db::cleanup_agent_event_history(&db, retention_days, vacuum_on_cleanup)
+                .await
+            {
+                Ok(result) => {
+                    if result.deleted_rows > 0 || result.vacuum_ran {
+                        tracing::info!(
+                            "history cleanup applied: retention_days={} cutoff_ts={} deleted_rows={} vacuum_ran={}",
+                            retention_days,
+                            result.cutoff_ts,
+                            result.deleted_rows,
+                            result.vacuum_ran
+                        );
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "history cleanup skipped due to error: retention_days={} error={}",
+                        retention_days,
+                        err
+                    );
+                }
+            }
+        }
         let push = Arc::new(PushService::new(db.clone(), &config)?);
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), &config).await?);
