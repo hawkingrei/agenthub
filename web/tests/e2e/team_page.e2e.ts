@@ -1288,8 +1288,10 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
 
   await runFilter.selectOption("working");
   await expect(runFilter).toHaveValue("working");
-  await expect(page.getByRole("button", { name: "Load More" })).toBeEnabled();
-  await page.getByRole("button", { name: "Load More" }).click();
+  const loadMoreRunsButton = page.getByRole("button", { name: "Load More" });
+  await expect(loadMoreRunsButton).toBeEnabled();
+  await loadMoreRunsButton.focus();
+  await loadMoreRunsButton.press("Enter");
 
   await expect
     .poll(() =>
