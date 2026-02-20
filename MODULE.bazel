@@ -24,6 +24,12 @@ use_repo(rust, "rust_toolchains")
 
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.annotation(
+    crate = "codex-core",
+    patch_args = ["-p1"],
+    patches = ["//third_party/codex_core:codex_core_node_version.patch"],
+    repositories = ["crate_index"],
+)
+crate.annotation(
     crate = "codex-linux-sandbox",
     # Use canonical main-repo label so crate_universe-generated repos don't
     # resolve this as an in-repo "//third_party/..." path.

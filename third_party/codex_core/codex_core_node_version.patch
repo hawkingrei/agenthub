@@ -1,0 +1,19 @@
+diff --git a/src/tools/js_repl/mod.rs b/src/tools/js_repl/mod.rs
+index b810587..f6e5d5d 100644
+--- a/src/tools/js_repl/mod.rs
++++ b/src/tools/js_repl/mod.rs
+@@ -40,7 +40,7 @@ pub(crate) const JS_REPL_PRAGMA_PREFIX: &str = "// codex-js-repl:";
+ const KERNEL_SOURCE: &str = include_str!("kernel.js");
+ const MERIYAH_UMD: &str = include_str!("meriyah.umd.min.js");
+-const JS_REPL_MIN_NODE_VERSION: &str = include_str!("../../../../node-version.txt");
++const JS_REPL_MIN_NODE_VERSION: &str = include_str!("../../../node-version.txt");
+ const JS_REPL_STDERR_TAIL_LINE_LIMIT: usize = 20;
+ const JS_REPL_STDERR_TAIL_LINE_MAX_BYTES: usize = 512;
+ const JS_REPL_STDERR_TAIL_MAX_BYTES: usize = 4_096;
+diff --git a/node-version.txt b/node-version.txt
+new file mode 100644
+index 0000000..9844956
+--- /dev/null
++++ b/node-version.txt
+@@ -0,0 +1 @@
++24.13.1
