@@ -10,6 +10,15 @@ type TeamOverviewPanelProps = {
   onOpenMailboxForMember: (memberId: string) => void;
 };
 
+const OVERVIEW_CARD_CLASS =
+  "card rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
+const OVERVIEW_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
+const OVERVIEW_TOOLBAR_ACTIONS_CLASS = "actions flex items-center gap-2";
+const OVERVIEW_SECONDARY_BUTTON_CLASS =
+  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
+const OVERVIEW_META_CLASS =
+  "teams-run-meta mb-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm";
+
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
     snapshot,
@@ -20,15 +29,16 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   } = props;
 
   return (
-    <div className="card">
-      <div className="toolbar">
+    <div className={OVERVIEW_CARD_CLASS}>
+      <div className={OVERVIEW_TOOLBAR_CLASS}>
         <h3>Team Snapshot</h3>
-        <div className="actions">
+        <div className={OVERVIEW_TOOLBAR_ACTIONS_CLASS}>
           <button
             onClick={() => {
               void onRefreshSnapshot();
             }}
             disabled={snapshotLoading}
+            className={OVERVIEW_SECONDARY_BUTTON_CLASS}
           >
             Refresh Snapshot
           </button>
@@ -39,7 +49,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
 
       {snapshot && (
         <>
-          <div className="teams-run-meta">
+          <div className={OVERVIEW_META_CLASS}>
             <span>
               <strong>Leader:</strong> <code>{snapshot.leader_member_id ?? "-"}</code>
             </span>
@@ -64,7 +74,11 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
             {snapshot.members.map((member) => (
               <button
                 key={member.member_id}
-                className={selectedMemberId === member.member_id ? "team-item active" : "team-item"}
+                className={
+                  selectedMemberId === member.member_id
+                    ? "team-item active rounded-lg border border-slate-300 bg-white px-3 py-2 text-left"
+                    : "team-item rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-slate-300"
+                }
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
                 <span className="team-name">

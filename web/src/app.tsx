@@ -95,6 +95,13 @@ import {
   resolveWorkdirForModalOpen,
 } from "./worktree_defaults";
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
+import {
+  AUTH_ACTIONS_CLASS,
+  AUTH_FORM_CARD_CLASS,
+  AUTH_INPUT_CLASS,
+  AUTH_PRIMARY_BUTTON_CLASS,
+  AUTH_SECONDARY_BUTTON_CLASS,
+} from "./ui/tailwind_classes";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
@@ -103,7 +110,6 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
-
 type PendingPermissionJumpState = {
   toolCallId: string;
   sessionId: string | null;
@@ -2549,14 +2555,18 @@ export function App() {
       )}
 
       {!auth && (
-        <section className="auth">
-          <h2>Password + Passkey Login</h2>
+        <section className={AUTH_FORM_CARD_CLASS}>
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+            Password + Passkey Login
+          </h2>
           <input
+            className={AUTH_INPUT_CLASS}
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
           <input
+            className={AUTH_INPUT_CLASS}
             placeholder="Password"
             type="password"
             value={password}
@@ -2564,16 +2574,24 @@ export function App() {
           />
           {rootInitialized === false && (
             <input
+              className={AUTH_INPUT_CLASS}
               placeholder="Display Name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
           )}
-          <div className="actions">
+          <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false && (
-              <button onClick={() => onRegister("root")}>Bootstrap Root</button>
+              <button
+                className={AUTH_SECONDARY_BUTTON_CLASS}
+                onClick={() => onRegister("root")}
+              >
+                Bootstrap Root
+              </button>
             )}
-            <button onClick={onLogin}>Login</button>
+            <button className={AUTH_PRIMARY_BUTTON_CLASS} onClick={onLogin}>
+              Login
+            </button>
           </div>
         </section>
       )}

@@ -187,9 +187,17 @@ export function AcpConversation({
   ansi,
 }: AcpConversationProps) {
   return (
-    <div className="acp-conversation" ref={containerRef} onScroll={onScroll}>
-      <div className="acp-conversation-inner">
-        {topHint ? <div className="acp-conversation-top-hint">{topHint}</div> : null}
+    <div
+      className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-3"
+      ref={containerRef}
+      onScroll={onScroll}
+    >
+      <div className="acp-conversation-inner flex w-full flex-col gap-3">
+        {topHint ? (
+          <div className="acp-conversation-top-hint rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {topHint}
+          </div>
+        ) : null}
         {virtualTopSpacer > 0 && (
           <div
             className="acp-conversation-spacer virtual-top"
@@ -206,7 +214,7 @@ export function AcpConversation({
           return (
             <div
               key={key}
-              className={`acp-conversation-item${isFocusedToolCall ? " is-focused" : ""}`}
+              className={`acp-conversation-item${isFocusedToolCall ? " is-focused ring-2 ring-sky-300 ring-offset-2 ring-offset-white" : ""}`}
               data-conversation-item-key={key}
               data-tool-call-id={getConversationItemToolCallId(msg)}
             >
@@ -268,10 +276,12 @@ const ConversationBubble = React.memo(
       const thinkingLabel = deriveThinkingLabel(msg.text);
       const label = msg.live ? `${thinkingLabel} (live)` : thinkingLabel;
       return (
-        <div className="acp-bubble agent_thinking">
-          <div className="acp-thinking-title">{label}</div>
+        <div className="acp-bubble agent_thinking rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+          <div className="acp-thinking-title text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {label}
+          </div>
           <div
-            className="acp-text"
+            className="acp-text mt-1 text-sm text-slate-700"
             dangerouslySetInnerHTML={{ __html: renderMarkdownCached(msg.text) }}
           />
         </div>
@@ -331,10 +341,14 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
   className,
   text,
 }: MarkdownBubbleProps) {
+  const bubbleToneClassName =
+    className === "agent_message"
+      ? "border-slate-200 bg-white text-slate-800"
+      : "border-sky-200 bg-sky-50 text-sky-900";
   return (
-    <div className={`acp-bubble ${className}`}>
+    <div className={`acp-bubble ${className} rounded-xl border px-3 py-2 shadow-sm ${bubbleToneClassName}`}>
       <div
-        className="acp-text"
+        className="acp-text text-sm leading-6"
         dangerouslySetInnerHTML={{
           __html: renderMarkdownCached(text),
         }}
@@ -401,7 +415,11 @@ const ToolCallBubble = React.memo(
       : `Tool Call${msg.title ? `: ${msg.title}` : ""}`;
 
     return (
-      <div className={`acp-bubble tool_call${grouped ? " acp-tool-group-entry" : " tool-call-enter"}`}>
+      <div
+        className={`acp-bubble tool_call ${
+          grouped ? "acp-tool-group-entry" : "tool-call-enter"
+        }`}
+      >
         <details
           className={`acp-tool-fold${grouped ? " acp-tool-fold-nested" : ""}`}
           ref={detailsRef}
@@ -421,11 +439,15 @@ const ToolCallBubble = React.memo(
                   <span className="acp-tool-status-dot" />
                 </span>
               )}
-              {title}
-              {callHint ? ` · ${callHint}` : ""}
+              <span>
+                {title}
+                {callHint ? ` · ${callHint}` : ""}
+              </span>
             </span>
             {msg.status && (
-              <span className="acp-tool-status">{statusLabel}</span>
+              <span className="acp-tool-status">
+                {statusLabel}
+              </span>
             )}
           </summary>
           {msg.content && (
@@ -507,8 +529,8 @@ const ToolCallGroupBubble = React.memo(
     }, []);
     const wasLiveRef = React.useRef(isLive);
     const titlePreview = React.useMemo(() => summarizeToolGroupTitles(msg.calls), [msg.calls]);
-    const statusLabel = React.useMemo(
-      () => deriveToolGroupStatusLabel(msg.calls, runStatus),
+    const statusSummary = React.useMemo(
+      () => deriveToolGroupStatusSummary(msg.calls, runStatus),
       [msg.calls, runStatus]
     );
 
@@ -537,8 +559,12 @@ const ToolCallGroupBubble = React.memo(
               Tool Calls ({msg.calls.length})
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
-            {statusLabel && (
-              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            {statusSummary && (
+              <span
+                className={`acp-tool-status acp-tool-group-status tone-${statusSummary.tone}`}
+              >
+                {statusSummary.label}
+              </span>
             )}
           </summary>
           <div className="acp-tool-group-list">
@@ -594,8 +620,8 @@ const ExploreGroupBubble = React.memo(
       () => summarizeExploreGroupPreview(msg.items),
       [msg.items]
     );
-    const statusLabel = React.useMemo(
-      () => deriveToolGroupStatusLabel(calls, runStatus),
+    const statusSummary = React.useMemo(
+      () => deriveToolGroupStatusSummary(calls, runStatus),
       [calls, runStatus]
     );
 
@@ -626,8 +652,12 @@ const ExploreGroupBubble = React.memo(
               Explore ({calls.length} tools)
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
-            {statusLabel && (
-              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            {statusSummary && (
+              <span
+                className={`acp-tool-status acp-tool-group-status tone-${statusSummary.tone}`}
+              >
+                {statusSummary.label}
+              </span>
             )}
           </summary>
           <div className="acp-tool-group-list acp-explore-group-list">
@@ -687,7 +717,9 @@ function ExploreThinkingEntry({
   return (
     <div className="acp-tool-group-item acp-explore-thinking-item">
       <div className="acp-bubble agent_thinking acp-tool-group-entry">
-        <div className="acp-thinking-title">{label}</div>
+        <div className="acp-thinking-title">
+          {label}
+        </div>
         <div
           className="acp-text"
           dangerouslySetInnerHTML={{ __html: renderMarkdownCached(item.text) }}
@@ -817,34 +849,46 @@ const PlanBubble = React.memo(
         ? `Plan: ${preview}`
         : "Plan (collapsed)";
     return (
-      <div className="acp-bubble agent_plan">
+      <div className="acp-bubble agent_plan rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-2 shadow-sm">
         <details className="acp-thought-fold acp-plan-fold">
-          <summary>{summary}</summary>
-          <div className="acp-text">
+          <summary className="cursor-pointer text-sm font-semibold text-violet-800">{summary}</summary>
+          <div className="acp-text mt-2 text-sm text-slate-700">
             {planSummary.total > 0 ? (
-              <div className="acp-plan-card">
+              <div className="acp-plan-card rounded-lg border border-violet-200 bg-white p-3">
                 <div className="acp-plan-progress">
-                  <div className="acp-plan-progress-meta">
+                  <div className="acp-plan-progress-meta flex flex-wrap gap-3 text-xs text-slate-600">
                     <span>{planSummary.completed}/{planSummary.total} completed</span>
                     <span>{planSummary.active} active</span>
                     <span>{planSummary.pending} pending</span>
                   </div>
-                  <div className="acp-plan-progress-bar">
-                    <span style={{ width: `${planSummary.ratio}%` }} />
+                  <div className="acp-plan-progress-bar mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <span
+                      className="block h-full rounded-full bg-violet-500"
+                      style={{ width: `${planSummary.ratio}%` }}
+                    />
                   </div>
                 </div>
-                <ol className="acp-plan-list">
+                <ol className="acp-plan-list mt-3 space-y-2">
                   {msg.plan_entries?.map((entry, idx) => {
                     const status = normalizePlanEntryStatus(entry.status);
                     return (
-                      <li key={`${idx}-${entry.content}`} className={`acp-plan-item ${status}`}>
-                        <span className="acp-plan-index">{idx + 1}</span>
-                        <span className="acp-plan-content">{entry.content}</span>
+                      <li
+                        key={`${idx}-${entry.content}`}
+                        className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5`}
+                      >
+                        <span className="acp-plan-index inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold text-slate-600">
+                          {idx + 1}
+                        </span>
+                        <span className="acp-plan-content text-sm text-slate-800">{entry.content}</span>
                         {entry.priority && (
-                          <span className="acp-plan-priority">{entry.priority}</span>
+                          <span className="acp-plan-priority rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            {entry.priority}
+                          </span>
                         )}
                         {entry.status && (
-                          <span className="acp-plan-status">{entry.status}</span>
+                          <span className="acp-plan-status rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                            {entry.status}
+                          </span>
                         )}
                       </li>
                     );
@@ -852,7 +896,9 @@ const PlanBubble = React.memo(
                 </ol>
               </div>
             ) : (
-              <pre>{msg.text}</pre>
+              <pre className="overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
+                {msg.text}
+              </pre>
             )}
           </div>
         </details>
@@ -902,9 +948,13 @@ function FoldSection({
     >
       <summary>
         <span>{label}</span>
-        {preview ? <span className="acp-subfold-preview">{preview}</span> : null}
+        {preview ? (
+          <span className="acp-subfold-preview">
+            {preview}
+          </span>
+        ) : null}
       </summary>
-      {shouldRenderBody ? children : null}
+      {shouldRenderBody ? <div>{children}</div> : null}
     </details>
   );
 }
@@ -1114,11 +1164,13 @@ function summarizeToolGroupTitles(calls: ToolCallConversationItem[]): string {
   return `${previews.join(" · ")} +${calls.length - 2} more`;
 }
 
-function deriveToolGroupStatusLabel(
+type ToolGroupStatusTone = "running" | "failure" | "success";
+
+function deriveToolGroupStatusSummary(
   calls: ToolCallConversationItem[],
   runStatus?: string | null
-): string {
-  if (calls.length === 0) return "";
+): { label: string; tone: ToolGroupStatusTone } | null {
+  if (calls.length === 0) return null;
   let liveCount = 0;
   let failedCount = 0;
   for (const call of calls) {
@@ -1131,9 +1183,9 @@ function deriveToolGroupStatusLabel(
       failedCount += 1;
     }
   }
-  if (liveCount > 0) return `${liveCount} running`;
-  if (failedCount > 0) return `${failedCount} failed`;
-  return `${calls.length} completed`;
+  if (liveCount > 0) return { label: `${liveCount} running`, tone: "running" };
+  if (failedCount > 0) return { label: `${failedCount} failed`, tone: "failure" };
+  return { label: `${calls.length} completed`, tone: "success" };
 }
 
 function normalizeToolCallStatus(status?: string): string {
@@ -1258,13 +1310,13 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
       return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
     }
     return (
-      <div className="acp-payload-card">
+      <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
         {renderPayloadValue(payload.parsed, 0)}
       </div>
     );
   }
   return (
-    <div className="acp-payload-card">
+    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
       {renderPayloadValue(payload.value, 0)}
     </div>
   );
@@ -1272,13 +1324,13 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
 
 function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
   if (value == null) {
-    return <span className="acp-payload-scalar muted">null</span>;
+    return <span className="acp-payload-scalar muted text-xs text-slate-400">null</span>;
   }
   if (typeof value === "string") {
     return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName="acp-payload-markdown" />;
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return <span className="acp-payload-scalar">{String(value)}</span>;
+    return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
   }
   if (Array.isArray(value)) {
     return <PayloadArrayView value={value} depth={depth} />;
@@ -1286,7 +1338,7 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
   if (isPlainObject(value)) {
     return <PayloadObjectView value={value} depth={depth} />;
   }
-  return <span className="acp-payload-scalar">{String(value)}</span>;
+  return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
 }
 
 function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number }) {
@@ -1295,14 +1347,14 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (value.length === 0) return <span className="acp-payload-scalar muted">[]</span>;
+  if (value.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">[]</span>;
   const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
   const visibleItems = value.slice(0, visibleCount);
 
   if (allScalar) {
     return (
-      <div className="acp-payload-segmented">
-        <span className="acp-payload-scalar">
+      <div className="acp-payload-segmented space-y-2">
+        <span className="acp-payload-scalar text-sm text-slate-700">
           {visibleItems.map((item) => summarizeScalarValue(item)).join(", ")}
           {hasMore ? ` … (+${remaining} more)` : ""}
         </span>
@@ -1318,8 +1370,8 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
   }
 
   return (
-    <div className="acp-payload-segmented">
-      <ol className="acp-payload-list">
+    <div className="acp-payload-segmented space-y-2">
+      <ol className="acp-payload-list list-decimal space-y-1 pl-5 text-sm text-slate-700">
         {visibleItems.map((item, index) => (
           <li key={index}>
             {renderNestedPayloadValue(item, depth + 1)}
@@ -1350,15 +1402,15 @@ function PayloadObjectView({
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (entries.length === 0) return <span className="acp-payload-scalar muted">{"{}"}</span>;
+  if (entries.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">{"{}"}</span>;
   const visibleEntries = entries.slice(0, visibleCount);
   return (
-    <div className="acp-payload-segmented">
-      <dl className="acp-payload-grid">
+    <div className="acp-payload-segmented space-y-2">
+      <dl className="acp-payload-grid grid gap-3">
         {visibleEntries.map(([key, item]) => (
-          <div className="acp-payload-row" key={key}>
+          <div className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" key={key}>
             <dt>{key}</dt>
-            <dd>{renderNestedPayloadValue(item, depth + 1)}</dd>
+            <dd className="text-sm text-slate-700">{renderNestedPayloadValue(item, depth + 1)}</dd>
           </div>
         ))}
       </dl>
@@ -1376,13 +1428,15 @@ function PayloadObjectView({
 function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
   const isStructured = Array.isArray(value) || isPlainObject(value);
   if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
-    return <span className="acp-payload-scalar">{summarizePayloadValue(value)}</span>;
+    return <span className="acp-payload-scalar text-sm text-slate-600">{summarizePayloadValue(value)}</span>;
   }
   if (isStructured) {
     return (
-      <details className="acp-payload-nested">
-        <summary>{summarizePayloadValue(value)}</summary>
-        <div className="acp-payload-nested-body">
+      <details className="acp-payload-nested rounded-md border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-slate-600">
+          {summarizePayloadValue(value)}
+        </summary>
+        <div className="acp-payload-nested-body border-t border-slate-200 px-2 py-2">
           {renderPayloadValue(value, depth)}
         </div>
       </details>
@@ -1416,8 +1470,8 @@ function ToolTextContent({
   }
   if (markdownText && tooLargeForMarkdown) {
     return (
-      <div className="acp-segmented-block">
-        <div className="acp-segmented-note">
+      <div className="acp-segmented-block space-y-2">
+        <div className="acp-segmented-note rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
           Large markdown payload is rendered as plain text for performance.
         </div>
         <ToolPlainTextView text={text} asciiLike={false} />
@@ -1442,7 +1496,7 @@ function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boole
     ? "acp-content acp-payload-text acp-payload-ascii"
     : "acp-content acp-payload-text";
   return (
-    <div className="acp-segmented-block">
+    <div className="acp-segmented-block space-y-2">
       <pre className={className}>{visibleText}</pre>
       {hasMore && (
         <SegmentedMoreFooter
@@ -1477,8 +1531,8 @@ function TerminalOutputView({
     [ansi, visibleText]
   );
   return (
-    <div className="acp-segmented-block">
-      <pre className="acp-content">{rendered}</pre>
+    <div className="acp-segmented-block space-y-2">
+      <pre className="acp-content rounded-md border border-slate-200 bg-slate-950 p-2 text-xs text-slate-100">{rendered}</pre>
       {hasMore && (
         <SegmentedMoreFooter
           remaining={remaining}
@@ -1542,13 +1596,13 @@ function SegmentedMoreFooter({
   onShowMore: () => void;
 }) {
   return (
-    <div className="acp-segmented-footer">
-      <span className="acp-segmented-meta">
+    <div className="acp-segmented-footer flex items-center justify-between gap-3">
+      <span className="acp-segmented-meta text-xs text-slate-500">
         {remaining} more {unitLabel}
       </span>
       <button
         type="button"
-        className="acp-segmented-button"
+        className="acp-segmented-button inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
         onClick={onShowMore}
         aria-label={`Show ${remaining} more ${unitLabel}`}
       >
@@ -1624,8 +1678,8 @@ function ToolDiffView({ text }: { text: string }) {
   );
   const visibleLines = lines.slice(0, visibleCount);
   return (
-    <div className="acp-segmented-block">
-      <pre className="acp-content acp-diff-view">
+    <div className="acp-segmented-block space-y-2">
+      <pre className="acp-content acp-diff-view overflow-auto rounded-md border border-slate-200 bg-slate-950 p-2 text-xs text-slate-100">
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);
           return (

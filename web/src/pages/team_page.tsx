@@ -2099,22 +2099,36 @@ export function TeamPage(props: TeamPageProps) {
     setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
   };
 
+  const panelPrimaryButtonClassName =
+    "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
+  const panelSecondaryButtonClassName =
+    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const panelGhostButtonClassName =
+    "ghost inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const modalFieldClassName =
+    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+  const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+
   return (
-    <div className="app">
-      <header>
-        <h1>AgentHub Teams</h1>
-        <div className="session">
+    <div className="app mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 lg:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+          AgentHub Teams
+        </h1>
+        <div className="session flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm">
           <a className="icon-button" href="/" title="Back" aria-label="Back">
             <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
-          <span>{props.auth.username}</span>
-          <button onClick={props.onLogout}>Logout</button>
+          <span className="text-sm font-medium text-slate-700">{props.auth.username}</span>
+          <button className={panelSecondaryButtonClassName} onClick={props.onLogout}>
+            Logout
+          </button>
         </div>
       </header>
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <section className="teams-layout">
+      <section className="teams-layout grid gap-4 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
@@ -2132,11 +2146,13 @@ export function TeamPage(props: TeamPageProps) {
           }}
         />
 
-        <div className="teams-main">
+        <div className="teams-main flex min-w-0 flex-col gap-4">
           {!selectedTeam && (
-            <div className="card">
-              <h2>Team Workbench</h2>
-              <p>Select a team from the left panel to manage runs, steps, and messages.</p>
+            <div className="card rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Select a team from the left panel to manage runs, steps, and messages.
+              </p>
             </div>
           )}
 
@@ -2175,11 +2191,12 @@ export function TeamPage(props: TeamPageProps) {
 
               {activeRun && (
                 <>
-                  <div className="card">
-                    <div className="toolbar">
-                      <h3>Active Run</h3>
-                      <div className="actions">
+                  <div className="card rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                    <div className="toolbar flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="text-base font-semibold text-slate-900">Active Run</h3>
+                      <div className="actions flex flex-wrap items-center gap-2">
                         <button
+                          className={panelSecondaryButtonClassName}
                           onClick={() => {
                             if (!activeRunId) return;
                             void refreshRun(activeRunId).catch((err) =>
@@ -2190,6 +2207,7 @@ export function TeamPage(props: TeamPageProps) {
                           Refresh Run
                         </button>
                         <button
+                          className={panelSecondaryButtonClassName}
                           onClick={onCancelRun}
                           disabled={busy === "cancel-run" || activeRun.status === "canceled"}
                         >
@@ -2197,11 +2215,11 @@ export function TeamPage(props: TeamPageProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="teams-run-meta">
-                      <span>
+                    <div className="teams-run-meta mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3">
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>ID:</strong> <code>{activeRun.id}</code>
                       </span>
-                      <span>
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Status:</strong>{" "}
                         <StatusBadge
                           label={activeRun.status}
@@ -2210,48 +2228,68 @@ export function TeamPage(props: TeamPageProps) {
                           title={`run status: ${activeRun.status}`}
                         />
                       </span>
-                      <span>
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Context:</strong> {activeRun.context_id}
                       </span>
-                      <span>
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Created:</strong> {formatTs(activeRun.created_at)}
                       </span>
-                      <span>
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Started:</strong> {formatTs(activeRun.started_at)}
                       </span>
-                      <span>
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <strong>Ended:</strong> {formatTs(activeRun.ended_at)}
                       </span>
                     </div>
                   </div>
 
-                  <div className="tab-bar">
+                  <div className="tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
                     <button
-                      className={tab === "overview" ? "tab active" : "tab"}
+                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "overview"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
                       onClick={() => setTab("overview")}
                     >
                       Overview
                     </button>
                     <button
-                      className={tab === "events" ? "tab active" : "tab"}
+                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "events"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
                       onClick={() => setTab("events")}
                     >
                       Events
                     </button>
                     <button
-                      className={tab === "steps" ? "tab active" : "tab"}
+                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "steps"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
                       onClick={() => setTab("steps")}
                     >
                       Steps
                     </button>
                     <button
-                      className={tab === "mailbox" ? "tab active" : "tab"}
+                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "mailbox"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
                       onClick={() => setTab("mailbox")}
                     >
                       Mailbox
                     </button>
                     <button
-                      className={tab === "member_console" ? "tab active" : "tab"}
+                      className={`tab rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "member_console"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
                       onClick={() => setTab("member_console")}
                     >
                       Member Console
@@ -2401,7 +2439,7 @@ export function TeamPage(props: TeamPageProps) {
 
       {showCreateTeamModal && (
         <div
-          className="modal-backdrop team-create-modal-backdrop"
+          className="modal-backdrop team-create-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-3 py-6 sm:py-10"
           role="presentation"
           onClick={(event) => {
             if (event.target === event.currentTarget && busy !== "create-team") {
@@ -2410,24 +2448,26 @@ export function TeamPage(props: TeamPageProps) {
           }}
         >
           <div
-            className="modal team-create-modal"
+            className="modal team-create-modal w-full max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5"
             role="dialog"
             aria-modal="true"
             aria-labelledby="team-create-title"
           >
-            <div className="modal-head">
-              <h3 id="team-create-title">Team Forge</h3>
-              <div className="team-create-head-meta">
-                <span className="badge">
+            <div className="modal-head flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+              <h3 id="team-create-title" className="text-lg font-semibold tracking-tight text-slate-900">
+                Team Forge
+              </h3>
+              <div className="team-create-head-meta flex flex-wrap items-center gap-2">
+                <span className="badge rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                   Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
                 </span>
-                <span className="badge">
+                <span className="badge rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                   {useSpecOverride ? "Manual Spec" : "Guided Wizard"}
                 </span>
               </div>
             </div>
 
-            <div className="team-create-progress">
+            <div className="team-create-progress mt-4 grid gap-2 md:grid-cols-4">
               {CREATE_TEAM_STAGE_TITLES.map((title, index) => {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
@@ -2438,15 +2478,15 @@ export function TeamPage(props: TeamPageProps) {
                 return (
                   <button
                     key={title}
-                    className={
+                    className={`team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition ${
                       isActive
-                        ? "team-create-stage active"
+                        ? "active border-slate-900 bg-slate-900 text-white shadow-sm"
                         : isCompleted
-                          ? "team-create-stage completed"
+                          ? "completed border-emerald-300 bg-emerald-50 text-emerald-700"
                           : isLocked
-                            ? "team-create-stage locked"
-                          : "team-create-stage"
-                    }
+                            ? "locked cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                    }`}
                     onClick={() => onSelectCreateTeamStage(stageIndex)}
                     type="button"
                     aria-disabled={isLocked && !isActive && !isCompleted}
@@ -2457,27 +2497,29 @@ export function TeamPage(props: TeamPageProps) {
                           : "Complete previous stage requirements first"
                         : undefined
                     }
-                  >
-                    <span className="team-create-stage-index">#{index + 1}</span>
-                    <span className="team-create-stage-title">{title}</span>
+                    >
+                    <span className="team-create-stage-index text-[11px] font-medium uppercase tracking-wide opacity-80">
+                      #{index + 1}
+                    </span>
+                    <span className="team-create-stage-title text-sm font-semibold">{title}</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="modal-body">
-              <div className="team-create-checklist">
+            <div className="modal-body mt-4 space-y-4">
+              <div className="team-create-checklist grid gap-2 sm:grid-cols-2">
                 {questChecklist.map((item) => (
                   <div
                     key={item.key}
-                    className={
+                    className={`team-create-check-item flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
                       item.ready
-                        ? "team-create-check-item ready"
-                        : "team-create-check-item pending"
-                    }
+                        ? "ready border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : "pending border-slate-200 bg-slate-50 text-slate-600"
+                    }`}
                   >
                     <span
-                      className="team-create-check-icon"
+                      className="team-create-check-icon inline-flex h-5 w-5 items-center justify-center rounded-full border border-current text-[11px]"
                       aria-hidden="true"
                     >
                       {item.ready ? "✓" : "○"}
@@ -2488,10 +2530,11 @@ export function TeamPage(props: TeamPageProps) {
               </div>
 
               {createTeamStage !== 0 && (
-                <div className="team-create-agent-entry">
-                  <div className="team-create-agent-entry-head">
-                    <h4>Agent Forge</h4>
+                <div className="team-create-agent-entry rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-base font-semibold text-slate-900">Agent Forge</h4>
                     <button
+                      className={panelSecondaryButtonClassName}
                       onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
                       disabled={!canForgeAgentsInStage || forgeAgentBusy}
                       type="button"
@@ -2499,21 +2542,21 @@ export function TeamPage(props: TeamPageProps) {
                       {showForgeAgentForm ? "Hide" : "New Agent"}
                     </button>
                   </div>
-                  <p className="muted">
+                  <p className="muted mt-2 text-sm text-slate-600">
                     Role tag follows the current stage. Leader stage creates leader agents, worker
                     stage creates worker agents.
                   </p>
-                  <div className="team-create-forge-agent-meta mono">
+                  <div className="team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                     <span>role_tag</span>
-                    <span>{forgeRoleTag ?? "-"}</span>
+                    <span className="text-slate-900">{forgeRoleTag ?? "-"}</span>
                   </div>
                   {!canForgeAgentsInStage && (
-                    <div className="team-create-stage-note">
+                    <div className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       Agent Forge is available only in Leader Forge or Recruit Workers stage.
                     </div>
                   )}
                   {showForgeAgentForm && (
-                    <div className="team-create-stage-note">
+                    <div className="team-create-stage-note mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700">
                       Agent create modal is open. Submit to create and auto-assign by role tag.
                     </div>
                   )}
@@ -2521,30 +2564,32 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 0 && (
-                <div className="team-create-panel">
-                  <h4>Mission Brief</h4>
-                  <div className="team-create-mission-intro">
-                    <p className="muted">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <h4 className="text-base font-semibold text-slate-900">Mission Brief</h4>
+                  <div className="team-create-mission-intro mt-2">
+                    <p className="muted text-sm text-slate-600">
                       Pick a team name and description first. This is the party identity shown in
                       the workbench.
                     </p>
                   </div>
-                  <p className="team-create-stage-note">
+                  <p className="team-create-stage-note mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700">
                     {useSpecOverride
                       ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
                       : "Guided Wizard entry selected. Continue to Leader Forge next."}
                   </p>
                   {!isMissionBriefReady && (
-                    <p className="team-create-stage-note">
+                    <p className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       Team name is required before entering the next stage.
                     </p>
                   )}
                   <input
+                    className={`${modalFieldClassName} mt-3`}
                     placeholder="team name"
                     value={newTeamName}
                     onChange={(event) => setNewTeamName(event.target.value)}
                   />
                   <input
+                    className={`${modalFieldClassName} mt-3`}
                     placeholder="description (optional)"
                     value={newTeamDescription}
                     onChange={(event) => setNewTeamDescription(event.target.value)}
@@ -2553,22 +2598,23 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 1 && (
-                <div className="team-create-panel">
-                  <h4>Leader Forge</h4>
-                  <p className="muted">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <h4 className="text-base font-semibold text-slate-900">Leader Forge</h4>
+                  <p className="muted mt-2 text-sm text-slate-600">
                     Choose the leader from agents created in this Team Forge session only.
                   </p>
                   {!isLeaderForgeReady && hasForgeAgents && (
-                    <p className="team-create-stage-note">
+                    <p className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       Select one forged leader agent to continue.
                     </p>
                   )}
                   {!hasForgeAgents && (
-                    <p className="muted">
+                    <p className="muted mt-2 text-sm text-slate-600">
                       No forged agents yet. Create one in the Agent Forge entry above.
                     </p>
                   )}
                   <select
+                    className={`${modalFieldClassName} mt-3`}
                     value={leaderMemberId}
                     onChange={(event) => setLeaderMemberId(event.target.value)}
                     disabled={useSpecOverride || !hasForgeAgents}
@@ -2580,11 +2626,12 @@ export function TeamPage(props: TeamPageProps) {
                       </option>
                     ))}
                   </select>
-                  <div className="teams-step-body mono">
+                  <div className="teams-step-body mono mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                     <div>agent_id: {leaderMemberId || "-"}</div>
                     <div>workdir: {leaderAgent?.workdir ?? "-"}</div>
                   </div>
                   <select
+                    className={`${modalFieldClassName} mt-3`}
                     value={leaderModel}
                     onChange={(event) => setLeaderModel(event.target.value)}
                     disabled={useSpecOverride}
@@ -2595,7 +2642,7 @@ export function TeamPage(props: TeamPageProps) {
                       </option>
                     ))}
                   </select>
-                  <div className="team-skill-tags">
+                  <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                     {TEAM_SKILL_OPTIONS.map((skill) => {
                       const selected = leaderSkills.includes(skill);
                       const isRequired = REQUIRED_TEAM_LEADER_SKILLS.includes(skill);
@@ -2603,7 +2650,11 @@ export function TeamPage(props: TeamPageProps) {
                         <button
                           key={`leader-skill-${skill}`}
                           type="button"
-                          className={selected ? "team-skill-tag selected" : "team-skill-tag"}
+                          className={
+                            selected
+                              ? "team-skill-tag selected rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white transition"
+                              : "team-skill-tag rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                          }
                           onClick={() =>
                             setLeaderSkills((prev) =>
                               toggleSkillSelection(
@@ -2622,13 +2673,14 @@ export function TeamPage(props: TeamPageProps) {
                     })}
                   </div>
                   <input
+                    className={`${modalFieldClassName} mt-3`}
                     placeholder="leader custom skills (comma separated, optional)"
                     value={leaderCustomSkills}
                     onChange={(event) => setLeaderCustomSkills(event.target.value)}
                     disabled={useSpecOverride}
                   />
                   <textarea
-                    className="mono"
+                    className={`${modalMonoFieldClassName} mt-3`}
                     rows={4}
                     placeholder="leader prompt"
                     value={leaderPrompt}
@@ -2639,14 +2691,19 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 2 && (
-                <div className="team-create-panel">
-                  <div className="toolbar">
-                    <h4>Recruit Workers</h4>
-                    <div className="toolbar-actions">
-                      <button onClick={onAddWorker} disabled={useSpecOverride || !hasForgeAgents}>
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="toolbar flex flex-wrap items-center justify-between gap-3">
+                    <h4 className="text-base font-semibold text-slate-900">Recruit Workers</h4>
+                    <div className="toolbar-actions flex flex-wrap gap-2">
+                      <button
+                        className={panelSecondaryButtonClassName}
+                        onClick={onAddWorker}
+                        disabled={useSpecOverride || !hasForgeAgents}
+                      >
                         Add Worker
                       </button>
                       <button
+                        className={panelSecondaryButtonClassName}
                         onClick={onAddAllRemainingWorkers}
                         disabled={
                           useSpecOverride || !hasForgeAgents || availableWorkerAgentCount === 0
@@ -2657,18 +2714,18 @@ export function TeamPage(props: TeamPageProps) {
                       </button>
                     </div>
                   </div>
-                  <p className="muted">
+                  <p className="muted mt-2 text-sm text-slate-600">
                     Build your party from Team Forge agents only. Worker model/prompt/skills can
                     still be customized at team level.
                   </p>
                   {unassignedWorkerSlots > 0 && (
-                    <p className="team-create-stage-note">
+                    <p className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       {unassignedWorkerSlots} worker slot
                       {unassignedWorkerSlots > 1 ? "s are" : " is"} currently unassigned and will
                       be ignored unless selected.
                     </p>
                   )}
-                  <div className="team-create-worker-grid">
+                  <div className="team-create-worker-grid mt-3 grid gap-3 lg:grid-cols-2">
                     {workers.map((worker, index) => {
                       const selectedByOthers = new Set(
                         workers
@@ -2694,10 +2751,14 @@ export function TeamPage(props: TeamPageProps) {
                         (agent) => agent.id === worker.member_id
                       );
                       return (
-                        <div key={`worker-${index}`} className="teams-worker-card">
-                          <div className="team-create-worker-head">
+                        <div
+                          key={`worker-${index}`}
+                          className="teams-worker-card rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                        >
+                          <div className="team-create-worker-head flex items-center justify-between gap-2">
                             <strong>Worker {index + 1}</strong>
                             <button
+                              className={panelGhostButtonClassName}
                               onClick={() => onRemoveWorker(index)}
                               disabled={useSpecOverride}
                               type="button"
@@ -2706,6 +2767,7 @@ export function TeamPage(props: TeamPageProps) {
                             </button>
                           </div>
                           <select
+                            className={`${modalFieldClassName} mt-3`}
                             value={worker.member_id}
                             onChange={(event) =>
                               onUpdateWorker(index, "member_id", event.target.value)
@@ -2719,11 +2781,12 @@ export function TeamPage(props: TeamPageProps) {
                               </option>
                             ))}
                           </select>
-                          <div className="teams-step-body mono">
+                          <div className="teams-step-body mono mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                             <div>agent_id: {worker.member_id || "-"}</div>
                             <div>workdir: {workerAgent?.workdir ?? "-"}</div>
                           </div>
                           <select
+                            className={`${modalFieldClassName} mt-3`}
                             value={worker.model}
                             onChange={(event) =>
                               onUpdateWorker(index, "model", event.target.value)
@@ -2736,7 +2799,7 @@ export function TeamPage(props: TeamPageProps) {
                               </option>
                             ))}
                           </select>
-                          <div className="team-skill-tags">
+                          <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                             {TEAM_SKILL_OPTIONS.map((skill) => {
                               const selected = worker.skills.includes(skill);
                               const isRequired = REQUIRED_TEAM_WORKER_SKILLS.includes(skill);
@@ -2745,7 +2808,9 @@ export function TeamPage(props: TeamPageProps) {
                                   key={`worker-skill-${index}-${skill}`}
                                   type="button"
                                   className={
-                                    selected ? "team-skill-tag selected" : "team-skill-tag"
+                                    selected
+                                      ? "team-skill-tag selected rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white transition"
+                                      : "team-skill-tag rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
                                   }
                                   onClick={() => onToggleWorkerSkill(index, skill)}
                                   disabled={useSpecOverride || isRequired}
@@ -2757,6 +2822,7 @@ export function TeamPage(props: TeamPageProps) {
                             })}
                           </div>
                           <input
+                            className={`${modalFieldClassName} mt-3`}
                             placeholder="worker custom skills (comma separated, optional)"
                             value={worker.custom_skills}
                             onChange={(event) =>
@@ -2765,7 +2831,7 @@ export function TeamPage(props: TeamPageProps) {
                             disabled={useSpecOverride}
                           />
                           <textarea
-                            className="mono"
+                            className={`${modalMonoFieldClassName} mt-3`}
                             rows={3}
                             placeholder="worker prompt"
                             value={worker.prompt}
@@ -2779,15 +2845,21 @@ export function TeamPage(props: TeamPageProps) {
                     })}
                   </div>
                   {workers.length === 0 && (
-                    <p className="muted">No workers configured. Team will run with leader only.</p>
+                    <p className="muted mt-3 text-sm text-slate-600">
+                      No workers configured. Team will run with leader only.
+                    </p>
                   )}
                   {hasDuplicateMembers && (
-                    <div className="team-create-warning">
-                      <p className="muted">
+                    <div className="team-create-warning mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                      <p className="muted text-sm text-rose-700">
                         Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
                         and workers must reference different agents.
                       </p>
-                      <button onClick={onResolveDuplicateWorkers} type="button">
+                      <button
+                        className={`${panelSecondaryButtonClassName} mt-2`}
+                        onClick={onResolveDuplicateWorkers}
+                        type="button"
+                      >
                         Resolve Duplicates
                       </button>
                     </div>
@@ -2796,28 +2868,34 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 3 && (
-                <div className="team-create-panel">
-                  <h4>Launch Team</h4>
-                  <p className="muted">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <h4 className="text-base font-semibold text-slate-900">Launch Team</h4>
+                  <p className="muted mt-2 text-sm text-slate-600">
                     Final review before deployment.
                   </p>
-                  <div className="teams-run-meta mono">
-                    <span>team={newTeamName.trim() || "-"}</span>
-                    <span>leader={leaderMemberId.trim() || "-"}</span>
-                    <span>workers={configuredWorkerCount}</span>
+                  <div className="teams-run-meta mono mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
+                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      team={newTeamName.trim() || "-"}
+                    </span>
+                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      leader={leaderMemberId.trim() || "-"}
+                    </span>
+                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      workers={configuredWorkerCount}
+                    </span>
                   </div>
                   {useSpecOverride ? (
-                    <p className="muted">
+                    <p className="muted mt-3 text-sm text-slate-600">
                       Manual Spec mode: edit full team spec JSON directly.
                     </p>
                   ) : (
-                    <p className="muted">
+                    <p className="muted mt-3 text-sm text-slate-600">
                       Guided wizard generated this spec:
                       `leader_plan` → `worker_*` → `leader_synthesize`.
                     </p>
                   )}
                   <textarea
-                    className="mono"
+                    className={`${modalMonoFieldClassName} mt-3`}
                     rows={12}
                     value={displayedTeamSpec}
                     onChange={(event) => setNewTeamSpec(event.target.value)}
@@ -2827,12 +2905,14 @@ export function TeamPage(props: TeamPageProps) {
               )}
             </div>
 
-            <div className="modal-actions team-create-actions">
+            <div className="modal-actions team-create-actions mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
               {!canAdvanceCreateStage && currentStageBlockReason && (
-                <span className="team-create-actions-note">{currentStageBlockReason}</span>
+                <span className="team-create-actions-note mr-auto text-sm text-amber-700">
+                  {currentStageBlockReason}
+                </span>
               )}
               <button
-                className="ghost"
+                className={panelGhostButtonClassName}
                 onClick={closeCreateTeamModal}
                 disabled={busy === "create-team"}
                 type="button"
@@ -2840,7 +2920,7 @@ export function TeamPage(props: TeamPageProps) {
                 Cancel
               </button>
               <button
-                className="ghost"
+                className={panelGhostButtonClassName}
                 onClick={goToPrevCreateTeamStage}
                 disabled={createTeamStage === 0 || busy === "create-team"}
                 type="button"
@@ -2849,6 +2929,7 @@ export function TeamPage(props: TeamPageProps) {
               </button>
               {createTeamStage < 3 && (
                 <button
+                  className={panelPrimaryButtonClassName}
                   onClick={goToNextCreateTeamStage}
                   disabled={!canAdvanceCreateStage || busy === "create-team"}
                   type="button"
@@ -2858,6 +2939,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
               {createTeamStage === 3 && (
                 <button
+                  className={panelPrimaryButtonClassName}
                   onClick={onCreateTeam}
                   disabled={
                     busy === "create-team" ||

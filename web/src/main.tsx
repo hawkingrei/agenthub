@@ -5,6 +5,7 @@ import { App } from "./app";
 import "highlight.js/styles/github-dark.css";
 import "@mantine/core/styles.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
+import "./tailwind.css";
 import "./styles.css";
 import { mantineTheme } from "./ui/mantine_theme";
 

@@ -15,6 +15,19 @@ type InputDockProps = {
   isComposingRef: React.MutableRefObject<boolean>;
 };
 
+const INPUT_DOCK_ROOT_CLASS =
+  "input docked rounded-2xl border border-slate-200/80 bg-white/85 p-3 shadow-sm backdrop-blur";
+const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
+  "acp-interrupt-button input-interrupt-button rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:border-amber-400";
+const INPUT_DOCK_HISTORY_BUTTON_CLASS =
+  "history-toggle rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:border-slate-500";
+const INPUT_DOCK_HISTORY_MENU_CLASS =
+  "input-history-menu rounded-lg border border-slate-300 bg-white p-1 shadow";
+const INPUT_DOCK_HISTORY_ITEM_CLASS =
+  "input-history-item block w-full rounded-md px-2 py-1 text-left text-sm hover:bg-slate-100";
+const INPUT_DOCK_TEXTAREA_CLASS =
+  "min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+
 type VerticalRect = {
   top: number;
   bottom: number;
@@ -315,11 +328,11 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className="input docked" ref={inputDockRef}>
+    <div className={INPUT_DOCK_ROOT_CLASS} ref={inputDockRef}>
       <div className="input-row" role="group" aria-label="Input actions">
         {showInterrupt && (
           <button
-            className="acp-interrupt-button input-interrupt-button"
+            className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
             onClick={onInterrupt}
             disabled={!canInterrupt}
             title="Interrupt current run"
@@ -331,7 +344,7 @@ export function InputDock({
         {historyCommands.length > 0 && (
           <div className="input-history" ref={historyContainerRef}>
             <button
-              className="history-toggle"
+              className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
               onClick={() => setShowHistory((prev) => !prev)}
               title="Show sent command history"
               aria-label="Show sent command history"
@@ -340,11 +353,11 @@ export function InputDock({
               History
             </button>
             {showHistory && (
-              <div className="input-history-menu">
+              <div className={INPUT_DOCK_HISTORY_MENU_CLASS}>
                 {visibleHistory.map((item, idx) => (
                   <button
                     key={`${idx}-${item}`}
-                    className="input-history-item"
+                    className={INPUT_DOCK_HISTORY_ITEM_CLASS}
                     title={item}
                     onClick={() => {
                       onSelectHistoryCommand(item);
@@ -371,6 +384,7 @@ export function InputDock({
       )}
       <div className="input-editor-row">
         <textarea
+          className={INPUT_DOCK_TEXTAREA_CLASS}
           ref={textareaRef}
           placeholder={inputPlaceholder}
           value={input}

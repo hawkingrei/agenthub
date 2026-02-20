@@ -27,15 +27,57 @@ type AdminProps = {
   setSafePathInput: (value: string) => void;
 };
 
+const ADMIN_APP_CLASS =
+  "app min-h-screen bg-gradient-to-b from-slate-100/80 to-white text-slate-900";
+const ADMIN_HEADER_CLASS =
+  "flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 py-3 backdrop-blur";
+const ADMIN_TITLE_CLASS = "text-lg font-semibold tracking-tight text-slate-900";
+const ADMIN_SESSION_CLASS = "session flex items-center gap-2 text-sm text-slate-700";
+const ADMIN_SECTION_CLASS =
+  "admin mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5";
+const ADMIN_TOOLBAR_CLASS =
+  "toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm";
+const ADMIN_TAB_BAR_CLASS =
+  "tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm";
+const ADMIN_TAB_BUTTON_BASE_CLASS =
+  "tab inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition";
+const ADMIN_TAB_BUTTON_ACTIVE_CLASS =
+  "active border border-slate-900 bg-slate-900 text-white shadow-sm";
+const ADMIN_TAB_BUTTON_IDLE_CLASS =
+  "border border-transparent bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900";
+const ADMIN_CARD_CLASS =
+  "card rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-sm";
+const ADMIN_CARD_TITLE_CLASS = "mb-3 text-base font-semibold text-slate-900";
+const ADMIN_FORM_ROW_CLASS = "form-row mb-3 flex flex-wrap items-center gap-2";
+const ADMIN_INPUT_CLASS =
+  "min-w-[16rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+const ADMIN_PRIMARY_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
+const ADMIN_SECONDARY_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-500";
+const ADMIN_DANGER_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100";
+const ADMIN_LIST_CLASS = "space-y-2";
+const ADMIN_LIST_ITEM_CLASS =
+  "flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2";
+const ADMIN_MUTED_TEXT_CLASS = "text-sm text-slate-600";
+const ADMIN_QR_CLASS = "mt-2 max-w-xs rounded-lg border border-slate-200 bg-white p-2";
+const ADMIN_KV_LIST_CLASS = "kv-list space-y-2";
+const ADMIN_KV_ROW_CLASS =
+  "kv-row grid gap-1 sm:grid-cols-[9rem_1fr] sm:items-start";
+const ADMIN_LABEL_CLASS = "label text-sm font-medium text-slate-700";
+const ADMIN_VALUE_CLASS = "value break-all text-sm text-slate-900";
+const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-slate-500";
+
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid"
   >("safe");
   return (
-    <div className="app">
-      <header>
-        <h1>AgentHub Admin</h1>
-        <div className="session">
+    <div className={ADMIN_APP_CLASS}>
+      <header className={ADMIN_HEADER_CLASS}>
+        <h1 className={ADMIN_TITLE_CLASS}>AgentHub Admin</h1>
+        <div className={ADMIN_SESSION_CLASS}>
           <a className="icon-button" href="/" title="Back" aria-label="Back">
             <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
@@ -47,38 +89,43 @@ export function AdminPage(props: AdminProps) {
         <ErrorBanner message={props.error} onClose={() => props.setError(null)} />
       )}
 
-      <section className="admin">
-        <div className="toolbar">
+      <section className={ADMIN_SECTION_CLASS}>
+        <div className={ADMIN_TOOLBAR_CLASS}>
           <h2>Admin</h2>
-          <button onClick={props.onCreateJoin}>Create Join QR</button>
-        </div>
-        <div className="tab-bar">
           <button
-            className={tab === "safe" ? "tab active" : "tab"}
+            className={ADMIN_PRIMARY_BUTTON_CLASS}
+            onClick={props.onCreateJoin}
+          >
+            Create Join QR
+          </button>
+        </div>
+        <div className={ADMIN_TAB_BAR_CLASS}>
+          <button
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "safe" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("safe")}
           >
             Safe Paths
           </button>
           <button
-            className={tab === "devices" ? "tab active" : "tab"}
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "devices" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("devices")}
           >
             Devices
           </button>
           <button
-            className={tab === "audits" ? "tab active" : "tab"}
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "audits" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("audits")}
           >
             Login Audits
           </button>
           <button
-            className={tab === "join" ? "tab active" : "tab"}
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "join" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("join")}
           >
             Join Device
           </button>
           <button
-            className={tab === "vapid" ? "tab active" : "tab"}
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "vapid" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("vapid")}
           >
             VAPID Keys
@@ -87,18 +134,24 @@ export function AdminPage(props: AdminProps) {
 
         <div className="admin-panel">
           {tab === "safe" && (
-            <div className="card">
-              <h3>Safe Paths</h3>
-              <div className="form-row">
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>Safe Paths</h3>
+              <div className={ADMIN_FORM_ROW_CLASS}>
                 <input
+                  className={ADMIN_INPUT_CLASS}
                   placeholder="Add safe path"
                   value={props.safePathInput}
                   onChange={(e) => props.setSafePathInput(e.target.value)}
                 />
-                <button onClick={props.onAddSafePath}>Add Path</button>
+                <button
+                  className={ADMIN_PRIMARY_BUTTON_CLASS}
+                  onClick={props.onAddSafePath}
+                >
+                  Add Path
+                </button>
               </div>
-              <div className="form-row">
-                <label className="checkbox">
+              <div className={ADMIN_FORM_ROW_CLASS}>
+                <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
                     checked={
@@ -111,22 +164,28 @@ export function AdminPage(props: AdminProps) {
                   />
                   Select All
                 </label>
-                <button onClick={props.onDeleteSelectedSafePaths}>
+                <button
+                  className={ADMIN_DANGER_BUTTON_CLASS}
+                  onClick={props.onDeleteSelectedSafePaths}
+                >
                   Delete Selected
                 </button>
               </div>
-              <ul>
+              <ul className={ADMIN_LIST_CLASS}>
                 {props.safePaths.map((p) => (
-                  <li key={p.path}>
-                    <label className="checkbox">
+                  <li className={ADMIN_LIST_ITEM_CLASS} key={p.path}>
+                    <label className="checkbox inline-flex items-center">
                       <input
                         type="checkbox"
                         checked={props.selectedSafePaths.has(p.path)}
                         onChange={() => props.onToggleSafePath(p.path)}
                       />
                     </label>
-                    <span>{p.path}</span>
-                    <button onClick={() => props.onDeleteSafePath(p.path)}>
+                    <span className="mono flex-1 text-sm text-slate-800">{p.path}</span>
+                    <button
+                      className={ADMIN_DANGER_BUTTON_CLASS}
+                      onClick={() => props.onDeleteSafePath(p.path)}
+                    >
                       Delete
                     </button>
                   </li>
@@ -136,16 +195,19 @@ export function AdminPage(props: AdminProps) {
           )}
 
           {tab === "devices" && (
-            <div className="card">
-              <h3>Devices</h3>
-              <ul>
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>Devices</h3>
+              <ul className={ADMIN_LIST_CLASS}>
                 {props.devices.map((device) => (
-                  <li key={device.id}>
-                    <span>
+                  <li className={ADMIN_LIST_ITEM_CLASS} key={device.id}>
+                    <span className="text-sm text-slate-800">
                       {device.name} - {device.status}
                     </span>
                     {device.status === "active" && (
-                      <button onClick={() => props.onRevokeDevice(device.id)}>
+                      <button
+                        className={ADMIN_DANGER_BUTTON_CLASS}
+                        onClick={() => props.onRevokeDevice(device.id)}
+                      >
                         Revoke
                       </button>
                     )}
@@ -156,12 +218,12 @@ export function AdminPage(props: AdminProps) {
           )}
 
           {tab === "audits" && (
-            <div className="card">
-              <h3>Login Audits</h3>
-              <ul>
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>Login Audits</h3>
+              <ul className={ADMIN_LIST_CLASS}>
                 {props.audits.map((audit) => (
-                  <li key={audit.id}>
-                    <span>
+                  <li className={ADMIN_LIST_ITEM_CLASS} key={audit.id}>
+                    <span className={ADMIN_MUTED_TEXT_CLASS}>
                       {new Date(audit.ts * 1000).toLocaleString()} -
                       {` ${audit.event}`}
                     </span>
@@ -172,46 +234,56 @@ export function AdminPage(props: AdminProps) {
           )}
 
           {tab === "join" && (
-            <div className="card join-card">
-              <h3>Join Device</h3>
+            <div className={`${ADMIN_CARD_CLASS} join-card`}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>Join Device</h3>
               {props.joinQr && (
                 <img
+                  className={ADMIN_QR_CLASS}
                   src={props.joinQr}
                   alt="Join device QR code (encodes token and PIN)"
                 />
               )}
-              {props.joinToken && <p>Token: {props.joinToken}</p>}
-              {props.joinPin && <p>PIN: {props.joinPin}</p>}
+              {props.joinToken && (
+                <p className={ADMIN_MUTED_TEXT_CLASS}>Token: {props.joinToken}</p>
+              )}
+              {props.joinPin && (
+                <p className={ADMIN_MUTED_TEXT_CLASS}>PIN: {props.joinPin}</p>
+              )}
             </div>
           )}
           {tab === "vapid" && (
-            <div className="card">
-              <h3>VAPID Keys</h3>
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>VAPID Keys</h3>
               {props.vapidInfo ? (
-                <div className="kv-list">
-                  <div className="kv-row">
-                    <span className="label">Subject</span>
-                    <span className="value">{props.vapidInfo.subject}</span>
+                <div className={ADMIN_KV_LIST_CLASS}>
+                  <div className={ADMIN_KV_ROW_CLASS}>
+                    <span className={ADMIN_LABEL_CLASS}>Subject</span>
+                    <span className={ADMIN_VALUE_CLASS}>{props.vapidInfo.subject}</span>
                   </div>
-                  <div className="kv-row">
-                    <span className="label">Public Key</span>
-                    <span className="value mono">
+                  <div className={ADMIN_KV_ROW_CLASS}>
+                    <span className={ADMIN_LABEL_CLASS}>Public Key</span>
+                    <span className={`${ADMIN_VALUE_CLASS} mono`}>
                       {props.vapidInfo.public_key}
                     </span>
                   </div>
-                  <div className="kv-row">
-                    <span className="label">Keys Path</span>
-                    <span className="value mono">
+                  <div className={ADMIN_KV_ROW_CLASS}>
+                    <span className={ADMIN_LABEL_CLASS}>Keys Path</span>
+                    <span className={`${ADMIN_VALUE_CLASS} mono`}>
                       {props.vapidInfo.keys_path}
                     </span>
                   </div>
                 </div>
               ) : (
-                <p>VAPID keys not loaded.</p>
+                <p className={ADMIN_EMPTY_TEXT_CLASS}>VAPID keys not loaded.</p>
               )}
               {/* TODO: add copy button and rotate confirmation. */}
-              <div className="form-row">
-                <button onClick={props.onRotateVapid}>Rotate Keys</button>
+              <div className={ADMIN_FORM_ROW_CLASS}>
+                <button
+                  className={ADMIN_SECONDARY_BUTTON_CLASS}
+                  onClick={props.onRotateVapid}
+                >
+                  Rotate Keys
+                </button>
               </div>
             </div>
           )}
