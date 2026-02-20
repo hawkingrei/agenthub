@@ -2,7 +2,7 @@
 
 ## Background
 
-`src/api/openapi.rs` mixed three concerns in one large file:
+OpenAPI route module previously mixed three concerns in one large file:
 
 - OpenAPI route handlers (`/api/openapi.json`, `/api/openapi/docs`)
 - OpenAPI JSON document assembly
@@ -14,7 +14,7 @@ The spec assembly function was large enough to make router/handler reviews noisy
 
 - Move OpenAPI spec assembly into a dedicated submodule:
   - `src/api/openapi/spec.rs`
-- Keep `src/api/openapi.rs` focused on:
+- Keep OpenAPI route module focused on:
   - route wiring
   - auth guard handling for `/openapi.json`
   - docs-page HTML response
@@ -22,7 +22,7 @@ The spec assembly function was large enough to make router/handler reviews noisy
 
 ## Key Decisions
 
-- Use `mod spec;` under `src/api/openapi.rs` so spec evolution stays colocated with the OpenAPI API surface.
+- Keep spec evolution colocated with the OpenAPI route module via `mod spec;`.
 - Keep the public surface minimal (`pub(super) fn openapi_spec()`) and avoid exposing spec internals outside the `api::openapi` module.
 - Do not perform schema/path semantic edits in this change; this is a structural migration only.
 
