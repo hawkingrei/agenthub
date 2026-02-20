@@ -562,7 +562,7 @@ export const api = {
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   getAgent: (token: string, id: string) =>
-    apiFetch<AgentRecord>(`/api/agents/${id}`, token),
+    apiFetch<AgentRecord>(`/api/agents/${encodeURIComponent(id)}`, token),
   sendInput: (
     token: string,
     id: string,
