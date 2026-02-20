@@ -474,6 +474,22 @@ body:not(.teams-page) select:not([class*="mantine-"]):focus-visible {
   box-shadow: var(--focus-ring);
 }
 
+body.teams-page button:not([class*="mantine-"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+body.teams-page button:not([class*="mantine-"]):disabled {
+  cursor: not-allowed;
+}
+
 .input {
   display: flex;
   gap: 12px;
