@@ -1070,18 +1070,14 @@ mod tests {
         run_git(&repo_dir, &["commit", "-m", "init"]);
 
         let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(repo_dir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert repo safe path");
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(workdir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert workdir safe path");
+        for path in [&repo_dir, &workdir] {
+            sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+                .bind(path.to_string_lossy().to_string())
+                .bind(now)
+                .execute(&state.db)
+                .await
+                .expect("insert safe path");
+        }
 
         let create_resp = app
             .clone()
