@@ -531,6 +531,7 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::process::Command as StdCommand;
     use std::sync::Arc;
     use std::time::Duration;
@@ -728,16 +729,32 @@ mod tests {
         let _ = err;
     }
 
-    async fn create_test_db() -> SqlitePool {
-        let options = SqliteConnectOptions::new()
-            .filename(":memory:")
-            .create_if_missing(true)
-            .foreign_keys(true);
+    async fn create_test_db_with_options(options: SqliteConnectOptions) -> SqlitePool {
         SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(options)
             .await
             .expect("connect sqlite")
+    }
+
+    async fn create_test_db() -> SqlitePool {
+        create_test_db_with_options(
+            SqliteConnectOptions::new()
+                .filename(":memory:")
+                .create_if_missing(true)
+                .foreign_keys(true),
+        )
+        .await
+    }
+
+    async fn create_test_db_at(path: &Path) -> SqlitePool {
+        create_test_db_with_options(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true)
+                .foreign_keys(true),
+        )
+        .await
     }
 
     async fn init_test_schema(db: &SqlitePool) {
@@ -887,9 +904,7 @@ mod tests {
         .expect("create team_steps");
     }
 
-    async fn build_test_state() -> AppState {
-        let db = create_test_db().await;
-        init_test_schema(&db).await;
+    async fn build_test_state_with_db(db: SqlitePool) -> AppState {
         let keys_dir = std::env::temp_dir().join(format!("agenthub-api-agents-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&keys_dir).expect("create keys dir");
         let keys_path = keys_dir.join("vapid.json");
@@ -932,6 +947,12 @@ mod tests {
             acp_permissions: permissions,
             default_worktree_root: config.default_worktree_root(),
         }
+    }
+
+    async fn build_test_state() -> AppState {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        build_test_state_with_db(db).await
     }
 
     fn remove_dir_best_effort(path: &std::path::Path) {
@@ -1132,6 +1153,136 @@ mod tests {
             .expect("stop create_worktree agent (second)");
         assert_eq!(stop_second.status(), StatusCode::OK);
 
+        remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn create_worktree_agent_can_start_after_state_rebuild() {
+        if !is_git_available() {
+            eprintln!(
+                "skipping create_worktree_agent_can_start_after_state_rebuild: `git` is not available on PATH"
+            );
+            return;
+        }
+
+        let base =
+            std::env::temp_dir().join(format!("agenthub-create-worktree-rebuild-{}", Uuid::new_v4()));
+        let repo_dir = base.join("repo");
+        let workdir = base.join("worktree-agent");
+        let db_path = base.join("agents.sqlite");
+        std::fs::create_dir_all(&repo_dir).expect("create repo dir");
+
+        run_git(&repo_dir, &["init"]);
+        run_git(
+            &repo_dir,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&repo_dir, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
+        run_git(&repo_dir, &["add", "README.md"]);
+        run_git(&repo_dir, &["commit", "-m", "init"]);
+
+        let db = create_test_db_at(&db_path).await;
+        init_test_schema(&db).await;
+        let state = build_test_state_with_db(db).await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(repo_dir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert repo safe path");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert workdir safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "create-worktree-state-rebuild",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": repo_dir.to_string_lossy().to_string(),
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create create_worktree agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id").to_string();
+
+        let start_first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (first)");
+        assert_eq!(start_first.status(), StatusCode::OK);
+
+        let stop_first = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (first)");
+        assert_eq!(stop_first.status(), StatusCode::OK);
+
+        drop(state);
+
+        let reloaded_db = create_test_db_at(&db_path).await;
+        let reloaded_state = build_test_state_with_db(reloaded_db).await;
+        reloaded_state
+            .agents
+            .mark_exited_on_startup()
+            .await
+            .expect("mark exited on startup");
+        let reloaded_app = router(reloaded_state.clone());
+
+        let start_after_rebuild = reloaded_app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/start"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("start create_worktree agent (after state rebuild)");
+        assert_eq!(start_after_rebuild.status(), StatusCode::OK);
+
+        let stop_after_rebuild = reloaded_app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop create_worktree agent (after state rebuild)");
+        assert_eq!(stop_after_rebuild.status(), StatusCode::OK);
+
+        drop(reloaded_state);
         remove_dir_best_effort(&base);
     }
 
