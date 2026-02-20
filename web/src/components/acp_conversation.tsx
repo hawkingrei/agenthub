@@ -507,8 +507,8 @@ const ToolCallGroupBubble = React.memo(
     }, []);
     const wasLiveRef = React.useRef(isLive);
     const titlePreview = React.useMemo(() => summarizeToolGroupTitles(msg.calls), [msg.calls]);
-    const statusLabel = React.useMemo(
-      () => deriveToolGroupStatusLabel(msg.calls, runStatus),
+    const groupStatus = React.useMemo(
+      () => deriveToolGroupStatus(msg.calls, runStatus),
       [msg.calls, runStatus]
     );
 
@@ -537,8 +537,10 @@ const ToolCallGroupBubble = React.memo(
               Tool Calls ({msg.calls.length})
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
-            {statusLabel && (
-              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            {groupStatus && (
+              <span className={`acp-tool-status acp-tool-group-status tone-${groupStatus.tone}`}>
+                {groupStatus.label}
+              </span>
             )}
           </summary>
           <div className="acp-tool-group-list">
@@ -594,8 +596,8 @@ const ExploreGroupBubble = React.memo(
       () => summarizeExploreGroupPreview(msg.items),
       [msg.items]
     );
-    const statusLabel = React.useMemo(
-      () => deriveToolGroupStatusLabel(calls, runStatus),
+    const groupStatus = React.useMemo(
+      () => deriveToolGroupStatus(calls, runStatus),
       [calls, runStatus]
     );
 
@@ -626,8 +628,10 @@ const ExploreGroupBubble = React.memo(
               Explore ({calls.length} tools)
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
-            {statusLabel && (
-              <span className="acp-tool-status acp-tool-group-status">{statusLabel}</span>
+            {groupStatus && (
+              <span className={`acp-tool-status acp-tool-group-status tone-${groupStatus.tone}`}>
+                {groupStatus.label}
+              </span>
             )}
           </summary>
           <div className="acp-tool-group-list acp-explore-group-list">
@@ -1114,11 +1118,13 @@ function summarizeToolGroupTitles(calls: ToolCallConversationItem[]): string {
   return `${previews.join(" · ")} +${calls.length - 2} more`;
 }
 
-function deriveToolGroupStatusLabel(
+type ToolGroupStatusTone = "running" | "failed" | "completed";
+
+function deriveToolGroupStatus(
   calls: ToolCallConversationItem[],
   runStatus?: string | null
-): string {
-  if (calls.length === 0) return "";
+): { label: string; tone: ToolGroupStatusTone } | null {
+  if (calls.length === 0) return null;
   let liveCount = 0;
   let failedCount = 0;
   for (const call of calls) {
@@ -1131,9 +1137,9 @@ function deriveToolGroupStatusLabel(
       failedCount += 1;
     }
   }
-  if (liveCount > 0) return `${liveCount} running`;
-  if (failedCount > 0) return `${failedCount} failed`;
-  return `${calls.length} completed`;
+  if (liveCount > 0) return { label: `${liveCount} running`, tone: "running" };
+  if (failedCount > 0) return { label: `${failedCount} failed`, tone: "failed" };
+  return { label: `${calls.length} completed`, tone: "completed" };
 }
 
 function normalizeToolCallStatus(status?: string): string {
