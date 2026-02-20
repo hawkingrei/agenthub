@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Tailwind v4 changed the default border color to currentColor.
+   Keep v3-like neutral borders during migration to avoid unexpected dark frames. */
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-slate-200, #e2e8f0);
+  }
+}
