@@ -480,6 +480,44 @@ fn openapi_spec() -> Value {
             }
           }
         },
+        "/api/teams/runs/{run_id}/resume": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Resume run",
+            "parameters": [
+              { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Resumed run",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamRunRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/runs/{run_id}/restart": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Restart run",
+            "parameters": [
+              { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Restarted run",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamRunRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "/api/teams/runs/{run_id}/snapshot": {
           "get": {
             "tags": ["teams"],
@@ -926,6 +964,8 @@ mod tests {
         assert_eq!(value["openapi"], Value::from("3.0.3"));
         assert!(value["paths"]["/api/teams/{id}"]["delete"].is_object());
         assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
+        assert!(value["paths"]["/api/teams/runs/{run_id}/resume"].is_object());
+        assert!(value["paths"]["/api/teams/runs/{run_id}/restart"].is_object());
         assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     }
 }

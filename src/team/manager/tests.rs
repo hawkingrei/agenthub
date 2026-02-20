@@ -1563,6 +1563,170 @@ async fn list_active_runs_returns_non_terminal_runs_only() {
 }
 
 #[tokio::test]
+async fn resume_run_handles_active_terminal_and_completed_statuses() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "resume-run-team".to_string(),
+            description: Some("team to verify run resume strategy".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let submitted_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-resume-submitted"),
+            json!({"payload":"submitted"}),
+        )
+        .await
+        .expect("create submitted run");
+    let resumed_submitted = manager
+        .resume_run(&submitted_run.id)
+        .await
+        .expect("resume submitted run");
+    assert_eq!(resumed_submitted.id, submitted_run.id);
+
+    let failed_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-resume-failed"),
+            json!({"payload":"failed"}),
+        )
+        .await
+        .expect("create failed run");
+    let failed_step = manager
+        .submit_step(
+            &failed_run.id,
+            "step_failed",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"fail"})),
+        )
+        .await
+        .expect("submit failed step");
+    let _ = manager
+        .start_step(&failed_step.id, Some("remote-failed"))
+        .await
+        .expect("start failed step");
+    let _ = manager
+        .fail_step(&failed_step.id, "forced fail")
+        .await
+        .expect("fail step");
+    let resumed_failed = manager
+        .resume_run(&failed_run.id)
+        .await
+        .expect("resume failed run");
+    assert_ne!(resumed_failed.id, failed_run.id);
+    assert_eq!(resumed_failed.team_id, failed_run.team_id);
+    assert_eq!(resumed_failed.context_id, failed_run.context_id);
+    assert_eq!(resumed_failed.input, failed_run.input);
+    assert_eq!(resumed_failed.status, TeamRunStatus::Submitted);
+    let failed_after_resume = manager
+        .get_run(&failed_run.id)
+        .await
+        .expect("get original failed run");
+    assert_eq!(failed_after_resume.status, TeamRunStatus::Failed);
+
+    let canceled_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-resume-canceled"),
+            json!({"payload":"canceled"}),
+        )
+        .await
+        .expect("create canceled run");
+    let _ = manager
+        .cancel_run(&canceled_run.id)
+        .await
+        .expect("cancel run");
+    let resumed_canceled = manager
+        .resume_run(&canceled_run.id)
+        .await
+        .expect("resume canceled run");
+    assert_ne!(resumed_canceled.id, canceled_run.id);
+    assert_eq!(resumed_canceled.context_id, canceled_run.context_id);
+    assert_eq!(resumed_canceled.input, canceled_run.input);
+    assert_eq!(resumed_canceled.status, TeamRunStatus::Submitted);
+
+    let completed_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-resume-completed"),
+            json!({"payload":"completed"}),
+        )
+        .await
+        .expect("create completed run");
+    let completed_step = manager
+        .submit_step(
+            &completed_run.id,
+            "step_completed",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"done"})),
+        )
+        .await
+        .expect("submit completed step");
+    let _ = manager
+        .start_step(&completed_step.id, Some("remote-completed"))
+        .await
+        .expect("start completed step");
+    let _ = manager
+        .complete_step(&completed_step.id, Some(json!({"ok":true})))
+        .await
+        .expect("complete step");
+    let err = manager
+        .resume_run(&completed_run.id)
+        .await
+        .expect_err("completed run should reject resume");
+    assert!(
+        err.to_string().contains("completed run cannot be resumed"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn restart_run_creates_new_submission_with_same_context_and_input() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "restart-run-team".to_string(),
+            description: Some("team to verify run restart strategy".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-restart"),
+            json!({"payload":"restart-me"}),
+        )
+        .await
+        .expect("create source run");
+    let restarted = manager.restart_run(&run.id).await.expect("restart run");
+
+    assert_ne!(restarted.id, run.id);
+    assert_eq!(restarted.team_id, run.team_id);
+    assert_eq!(restarted.context_id, run.context_id);
+    assert_eq!(restarted.input, run.input);
+    assert_eq!(restarted.status, TeamRunStatus::Submitted);
+
+    let events = manager
+        .list_run_events(&restarted.id, 10, None)
+        .await
+        .expect("list restarted run events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_type, "run_submitted");
+}
+
+#[tokio::test]
 async fn list_runs_supports_status_filter_and_cursor() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

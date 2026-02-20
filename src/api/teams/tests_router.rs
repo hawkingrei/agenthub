@@ -161,6 +161,38 @@ async fn teams_router_http_contract() {
     let canceled = decode_json_body(cancel_run_resp).await;
     assert_eq!(canceled["status"], "canceled");
 
+    let resume_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{run_id}/resume"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("resume run via router");
+    assert_eq!(resume_run_resp.status(), StatusCode::OK);
+    let resumed = decode_json_body(resume_run_resp).await;
+    assert_eq!(resumed["status"], "submitted");
+    assert_ne!(resumed["id"].as_str(), Some(run_id.as_str()));
+    assert_eq!(resumed["team_id"], team_id);
+
+    let restart_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{run_id}/restart"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("restart run via router");
+    assert_eq!(restart_run_resp.status(), StatusCode::OK);
+    let restarted = decode_json_body(restart_run_resp).await;
+    assert_eq!(restarted["status"], "submitted");
+    assert_ne!(restarted["id"].as_str(), Some(run_id.as_str()));
+    assert_eq!(restarted["team_id"], team_id);
+
     let events_resp = app
         .clone()
         .oneshot(build_json_request(

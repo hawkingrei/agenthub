@@ -415,6 +415,14 @@ export const api = {
     apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/cancel`, token, {
       method: "POST",
     }),
+  resumeTeamRun: (token: string, runId: string) =>
+    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/resume`, token, {
+      method: "POST",
+    }),
+  restartTeamRun: (token: string, runId: string) =>
+    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/restart`, token, {
+      method: "POST",
+    }),
   listTeamRunEvents: (
     token: string,
     runId: string,
@@ -553,6 +561,8 @@ export const api = {
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
+  getAgent: (token: string, id: string) =>
+    apiFetch<AgentRecord>(`/api/agents/${encodeURIComponent(id)}`, token),
   sendInput: (
     token: string,
     id: string,

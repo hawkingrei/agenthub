@@ -31,9 +31,9 @@ use super::{
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
     cancel_team_run, complete_team_run_step, create_team, create_team_run, delete_team,
     fail_team_run_step, get_team, get_team_run, get_team_run_snapshot, list_team_run_events,
-    list_team_run_inbox, list_team_run_steps, list_team_runs, list_teams, resume_team_run_step,
-    send_team_run_message, set_team_run_step_input_required, start_team_run_step,
-    submit_team_run_step,
+    list_team_run_inbox, list_team_run_steps, list_team_runs, list_teams, restart_team_run,
+    resume_team_run, resume_team_run_step, send_team_run_message, set_team_run_step_input_required,
+    start_team_run_step, submit_team_run_step,
 };
 
 pub(crate) async fn build_test_state() -> AppState {
