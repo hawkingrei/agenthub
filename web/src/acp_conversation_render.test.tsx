@@ -335,7 +335,6 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("acp-tool-status-mark tone-success");
     expect(html).toContain("acp-tool-status-dot");
     expect(html).toContain("aria-label=\"Completed\"");
-    expect(html).toContain("acp-tool-status tone-completed");
   });
 
   it("shows error status dot for failed tool calls", () => {

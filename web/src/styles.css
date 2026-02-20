@@ -1958,25 +1958,6 @@ select:not([class*="mantine-"]):focus-visible {
   border-radius: 999px;
   background: #ffe7c2;
   color: #8a5a13;
-  border: 1px solid #f0c992;
-}
-
-.acp-tool-status.tone-running {
-  background: #dcecff;
-  color: #1f4d86;
-  border-color: #bcd9ff;
-}
-
-.acp-tool-status.tone-failed {
-  background: #fde8e7;
-  color: #8f1f16;
-  border-color: #f4c7c3;
-}
-
-.acp-tool-status.tone-completed {
-  background: #dff2e2;
-  color: #295d52;
-  border-color: #bfdfc4;
 }
 
 .acp-tool-group-list {
