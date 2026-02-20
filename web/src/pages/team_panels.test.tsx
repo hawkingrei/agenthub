@@ -616,6 +616,92 @@ describe("team panels interactions", () => {
     expect(onStepResumePayloadChange).toHaveBeenCalledWith('{"answer":"yes"}');
   });
 
+  it("TeamStepsPanel supports list-only and controls-only modes", () => {
+    act(() => {
+      root.render(
+        <TeamStepsPanel
+          mode="list_only"
+          steps={[buildStep({ id: "step-1", status: "working" })]}
+          onRefreshSteps={() => {}}
+          stepKey=""
+          onStepKeyChange={() => {}}
+          stepMemberId=""
+          onStepMemberIdChange={() => {}}
+          stepDependsOn=""
+          onStepDependsOnChange={() => {}}
+          stepInput="{}"
+          onStepInputChange={() => {}}
+          onSubmitStep={() => {}}
+          busy={null}
+          selectedStepId=""
+          onSelectedStepIdChange={() => {}}
+          stepAction="start"
+          onStepActionChange={() => {}}
+          stepRemoteTaskId=""
+          onStepRemoteTaskIdChange={() => {}}
+          stepOutput="{}"
+          onStepOutputChange={() => {}}
+          stepFailText=""
+          onStepFailTextChange={() => {}}
+          stepInputReason=""
+          onStepInputReasonChange={() => {}}
+          stepInputRequiredPayload="{}"
+          onStepInputRequiredPayloadChange={() => {}}
+          stepResumePayload="{}"
+          onStepResumePayloadChange={() => {}}
+          onApplyStepAction={() => {}}
+        />
+      );
+    });
+    expect(container.textContent).toContain("Step operations were moved to Debug -> Step Ops.");
+    expect(container.querySelector(".teams-step-list")).not.toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("Submit Step")
+      )
+    ).toBe(false);
+
+    act(() => {
+      root.render(
+        <TeamStepsPanel
+          mode="controls_only"
+          steps={[buildStep({ id: "step-1", status: "working" })]}
+          onRefreshSteps={() => {}}
+          stepKey=""
+          onStepKeyChange={() => {}}
+          stepMemberId=""
+          onStepMemberIdChange={() => {}}
+          stepDependsOn=""
+          onStepDependsOnChange={() => {}}
+          stepInput="{}"
+          onStepInputChange={() => {}}
+          onSubmitStep={() => {}}
+          busy={null}
+          selectedStepId=""
+          onSelectedStepIdChange={() => {}}
+          stepAction="start"
+          onStepActionChange={() => {}}
+          stepRemoteTaskId=""
+          onStepRemoteTaskIdChange={() => {}}
+          stepOutput="{}"
+          onStepOutputChange={() => {}}
+          stepFailText=""
+          onStepFailTextChange={() => {}}
+          stepInputReason=""
+          onStepInputReasonChange={() => {}}
+          stepInputRequiredPayload="{}"
+          onStepInputRequiredPayloadChange={() => {}}
+          stepResumePayload="{}"
+          onStepResumePayloadChange={() => {}}
+          onApplyStepAction={() => {}}
+        />
+      );
+    });
+    expect(findButtonByText(container, "Submit Step")).toBeDefined();
+    expect(findButtonByText(container, "Apply Step Action")).toBeDefined();
+    expect(container.querySelector(".teams-step-list")).toBeNull();
+  });
+
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
     const onEventsAutoRefreshChange = vi.fn();
     const onRefreshEvents = vi.fn();
@@ -966,6 +1052,74 @@ describe("team panels interactions", () => {
     });
     clickElement(findButtonByText(container, "Send Chat"));
 
+    expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
+    expect(onConversationScroll).toHaveBeenCalledTimes(1);
+    expect(onJumpToBottom).toHaveBeenCalledTimes(1);
+    expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
+    expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
+    expect(onSendChatMessage).toHaveBeenCalledTimes(2);
+    expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          mode="advanced_only"
+          snapshot={buildSnapshot()}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{ "worker-agent": 2 }}
+          onSelectMember={onSelectMember}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={onConversationScroll}
+          onJumpToBottom={onJumpToBottom}
+          conversationMessages={[pendingMessage, deliveredMessage]}
+          toPrettyJson={toPrettyJson}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={onAckMessage}
+          chatDraft="draft"
+          onChatDraftChange={onChatDraftChange}
+          onSendChatMessage={onSendChatMessage}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={onMsgFromActorIdChange}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={onMsgToActorIdChange}
+          msgChannel="default"
+          onMsgChannelChange={onMsgChannelChange}
+          msgTransport="local"
+          onMsgTransportChange={onMsgTransportChange}
+          msgRoute="{}"
+          onMsgRouteChange={onMsgRouteChange}
+          mailboxTemplateOptions={[
+            { value: "leader_task_assignment", label: "Leader Assignment" },
+            { value: "worker_done", label: "Worker Done" },
+          ]}
+          msgTemplate="leader_task_assignment"
+          onMsgTemplateChange={onMsgTemplateChange}
+          onApplyMessageTemplate={onApplyMessageTemplate}
+          msgPayload="{}"
+          onMsgPayloadChange={onMsgPayloadChange}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
+          onSendMessage={onSendMessage}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={onInboxActorIdChange}
+          inboxLimit="20"
+          onInboxLimitChange={onInboxLimitChange}
+          inboxAfterId=""
+          onInboxAfterIdChange={onInboxAfterIdChange}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
+          onRefreshInbox={onRefreshInbox}
+        />
+      );
+    });
+
     changeInputValue(
       required(container.querySelector('input[placeholder="from_actor_id"]') as HTMLInputElement | null, "from_actor_id missing"),
       "leader-2"
@@ -1030,12 +1184,6 @@ describe("team panels interactions", () => {
     );
     clickElement(findButtonByAriaLabel(container, "Refresh inbox"));
 
-    expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
-    expect(onConversationScroll).toHaveBeenCalledTimes(1);
-    expect(onJumpToBottom).toHaveBeenCalledTimes(1);
-    expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
-    expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
-    expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(onMsgFromActorIdChange).toHaveBeenCalledWith("leader-2");
     expect(onMsgToActorIdChange).toHaveBeenCalledWith("worker-2");
     expect(onMsgChannelChange).toHaveBeenCalledWith("alerts");
@@ -1051,7 +1199,6 @@ describe("team panels interactions", () => {
     expect(onInboxAfterIdChange).toHaveBeenCalledWith("22");
     expect(onInboxIncludeDeliveredChange).toHaveBeenCalledWith(true);
     expect(onRefreshInbox).toHaveBeenCalledTimes(1);
-    expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
 
     act(() => {
       root.render(

@@ -718,7 +718,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await page.getByRole("button", { name: "Mailbox" }).click();
+  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -1382,12 +1382,11 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   expect(counters.snapshot).toBeGreaterThan(snapshotBeforePolling);
   expect(counters.inbox).toBeGreaterThan(inboxBeforePolling);
 
-  await page.locator("details.teams-message-advanced summary").click();
+  await page.getByRole("button", { name: "Debug" }).click();
+  await page.getByRole("button", { name: "Mailbox Raw" }).click();
   await expect(page.getByRole("heading", { name: "Send Message (JSON)" })).toBeVisible();
 
-  const advancedPanel = page
-    .locator("details.teams-message-advanced .teams-message-panel")
-    .first();
+  const advancedPanel = page.locator(".teams-message-advanced .teams-message-panel").first();
   await advancedPanel.getByPlaceholder("from_actor_id").fill("agent-leader-1");
   await advancedPanel.getByPlaceholder("to_actor_id").fill("agent-worker-2");
   await advancedPanel
@@ -1395,6 +1394,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .fill('{"type":"chat_message","text":"advanced-mailbox-ping"}');
   await advancedPanel.getByRole("button", { name: "Send Message" }).click();
 
+  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
   await expect(page.locator(".teams-chat-messages")).toContainText("advanced-mailbox-ping");
   expect(counters.send).toBeGreaterThan(0);
 });

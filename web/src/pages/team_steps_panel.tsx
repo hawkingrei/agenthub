@@ -15,6 +15,7 @@ type StepAction = "start" | "complete" | "fail" | "input_required" | "resume";
 
 type TeamStepsPanelProps = {
   steps: TeamStepRecord[];
+  mode?: "full" | "list_only" | "controls_only";
   onRefreshSteps: () => Promise<void> | void;
   stepKey: string;
   onStepKeyChange: (value: string) => void;
@@ -54,6 +55,7 @@ const STEPS_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
 export function TeamStepsPanel(props: TeamStepsPanelProps) {
   const {
     steps,
+    mode = "full",
     onRefreshSteps,
     stepKey,
     onStepKeyChange,
@@ -83,6 +85,8 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
     onStepResumePayloadChange,
     onApplyStepAction,
   } = props;
+  const showControls = mode !== "list_only";
+  const showList = mode !== "controls_only";
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -101,152 +105,162 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
         </button>
       </div>
 
-      <div className={STEPS_GRID_CLASS}>
-        <div className={STEPS_PANEL_CLASS}>
-          <h4 className={STEPS_PANEL_TITLE_CLASS}>Submit Step</h4>
-          <input
-            className={TEAM_PANEL_INPUT_CLASS}
-            placeholder="step_key"
-            value={stepKey}
-            onChange={(event) => onStepKeyChange(event.target.value)}
-          />
-          <input
-            className={TEAM_PANEL_INPUT_CLASS}
-            placeholder="member_id"
-            value={stepMemberId}
-            onChange={(event) => onStepMemberIdChange(event.target.value)}
-          />
-          <input
-            className={TEAM_PANEL_INPUT_CLASS}
-            placeholder="depends_on (comma separated)"
-            value={stepDependsOn}
-            onChange={(event) => onStepDependsOnChange(event.target.value)}
-          />
-          <textarea
-            className={TEAM_PANEL_TEXTAREA_CLASS}
-            rows={4}
-            value={stepInput}
-            onChange={(event) => onStepInputChange(event.target.value)}
-          />
-          <button
-            onClick={() => {
-              void onSubmitStep();
-            }}
-            disabled={busy === "submit-step"}
-            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-          >
-            Submit Step
-          </button>
-        </div>
-
-        <div className={STEPS_PANEL_CLASS}>
-          <h4 className={STEPS_PANEL_TITLE_CLASS}>Step Action</h4>
-          <select
-            className={TEAM_PANEL_INPUT_CLASS}
-            value={selectedStepId}
-            onChange={(event) => onSelectedStepIdChange(event.target.value)}
-          >
-            <option value="">Select step</option>
-            {steps.map((step) => (
-              <option key={step.id} value={step.id}>
-                {step.step_key} ({step.status})
-              </option>
-            ))}
-          </select>
-          <select
-            className={TEAM_PANEL_INPUT_CLASS}
-            value={stepAction}
-            onChange={(event) => onStepActionChange(event.target.value as StepAction)}
-          >
-            <option value="start">start</option>
-            <option value="complete">complete</option>
-            <option value="fail">fail</option>
-            <option value="input_required">input_required</option>
-            <option value="resume">resume</option>
-          </select>
-
-          {stepAction === "start" && (
+      {showControls && (
+        <div className={STEPS_GRID_CLASS}>
+          <div className={STEPS_PANEL_CLASS}>
+            <h4 className={STEPS_PANEL_TITLE_CLASS}>Submit Step</h4>
             <input
               className={TEAM_PANEL_INPUT_CLASS}
-              placeholder="remote_task_id (optional)"
-              value={stepRemoteTaskId}
-              onChange={(event) => onStepRemoteTaskIdChange(event.target.value)}
+              placeholder="step_key"
+              value={stepKey}
+              onChange={(event) => onStepKeyChange(event.target.value)}
             />
-          )}
-
-          {stepAction === "complete" && (
+            <input
+              className={TEAM_PANEL_INPUT_CLASS}
+              placeholder="member_id"
+              value={stepMemberId}
+              onChange={(event) => onStepMemberIdChange(event.target.value)}
+            />
+            <input
+              className={TEAM_PANEL_INPUT_CLASS}
+              placeholder="depends_on (comma separated)"
+              value={stepDependsOn}
+              onChange={(event) => onStepDependsOnChange(event.target.value)}
+            />
             <textarea
               className={TEAM_PANEL_TEXTAREA_CLASS}
               rows={4}
-              value={stepOutput}
-              onChange={(event) => onStepOutputChange(event.target.value)}
+              value={stepInput}
+              onChange={(event) => onStepInputChange(event.target.value)}
             />
-          )}
+            <button
+              onClick={() => {
+                void onSubmitStep();
+              }}
+              disabled={busy === "submit-step"}
+              className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+            >
+              Submit Step
+            </button>
+          </div>
 
-          {stepAction === "fail" && (
-            <input
+          <div className={STEPS_PANEL_CLASS}>
+            <h4 className={STEPS_PANEL_TITLE_CLASS}>Step Action</h4>
+            <select
               className={TEAM_PANEL_INPUT_CLASS}
-              placeholder="error_text"
-              value={stepFailText}
-              onChange={(event) => onStepFailTextChange(event.target.value)}
-            />
-          )}
+              value={selectedStepId}
+              onChange={(event) => onSelectedStepIdChange(event.target.value)}
+            >
+              <option value="">Select step</option>
+              {steps.map((step) => (
+                <option key={step.id} value={step.id}>
+                  {step.step_key} ({step.status})
+                </option>
+              ))}
+            </select>
+            <select
+              className={TEAM_PANEL_INPUT_CLASS}
+              value={stepAction}
+              onChange={(event) => onStepActionChange(event.target.value as StepAction)}
+            >
+              <option value="start">start</option>
+              <option value="complete">complete</option>
+              <option value="fail">fail</option>
+              <option value="input_required">input_required</option>
+              <option value="resume">resume</option>
+            </select>
 
-          {stepAction === "input_required" && (
-            <>
+            {stepAction === "start" && (
               <input
                 className={TEAM_PANEL_INPUT_CLASS}
-                placeholder="reason (optional)"
-                value={stepInputReason}
-                onChange={(event) => onStepInputReasonChange(event.target.value)}
+                placeholder="remote_task_id (optional)"
+                value={stepRemoteTaskId}
+                onChange={(event) => onStepRemoteTaskIdChange(event.target.value)}
               />
+            )}
+
+            {stepAction === "complete" && (
               <textarea
                 className={TEAM_PANEL_TEXTAREA_CLASS}
                 rows={4}
-                value={stepInputRequiredPayload}
-                onChange={(event) => onStepInputRequiredPayloadChange(event.target.value)}
+                value={stepOutput}
+                onChange={(event) => onStepOutputChange(event.target.value)}
               />
-            </>
-          )}
+            )}
 
-          {stepAction === "resume" && (
-            <textarea
-              className={TEAM_PANEL_TEXTAREA_CLASS}
-              rows={4}
-              value={stepResumePayload}
-              onChange={(event) => onStepResumePayloadChange(event.target.value)}
-            />
-          )}
+            {stepAction === "fail" && (
+              <input
+                className={TEAM_PANEL_INPUT_CLASS}
+                placeholder="error_text"
+                value={stepFailText}
+                onChange={(event) => onStepFailTextChange(event.target.value)}
+              />
+            )}
 
-          <button
-            onClick={() => {
-              void onApplyStepAction();
-            }}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          >
-            Apply Step Action
-          </button>
+            {stepAction === "input_required" && (
+              <>
+                <input
+                  className={TEAM_PANEL_INPUT_CLASS}
+                  placeholder="reason (optional)"
+                  value={stepInputReason}
+                  onChange={(event) => onStepInputReasonChange(event.target.value)}
+                />
+                <textarea
+                  className={TEAM_PANEL_TEXTAREA_CLASS}
+                  rows={4}
+                  value={stepInputRequiredPayload}
+                  onChange={(event) => onStepInputRequiredPayloadChange(event.target.value)}
+                />
+              </>
+            )}
+
+            {stepAction === "resume" && (
+              <textarea
+                className={TEAM_PANEL_TEXTAREA_CLASS}
+                rows={4}
+                value={stepResumePayload}
+                onChange={(event) => onStepResumePayloadChange(event.target.value)}
+              />
+            )}
+
+            <button
+              onClick={() => {
+                void onApplyStepAction();
+              }}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            >
+              Apply Step Action
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      <ul className={STEPS_LIST_CLASS}>
-        {steps.map((step) => (
-          <li key={step.id} className={STEPS_ITEM_CLASS}>
-            <div className="teams-step-head">
-              <span className="mono">{step.id}</span>
-              <span>{step.step_key}</span>
-              <span>{step.status}</span>
-            </div>
-            <div className="teams-step-body mono">
-              <div>member_id: {step.member_id}</div>
-              <div>attempt: {step.attempt}</div>
-              <div>depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}</div>
-              <div>remote_task_id: {step.remote_task_id ?? "-"}</div>
-              {step.error_text && <div>error_text: {step.error_text}</div>}
-            </div>
-          </li>
-        ))}
-      </ul>
+      {mode === "list_only" && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
+        </div>
+      )}
+
+      {showList && (
+        <ul className={STEPS_LIST_CLASS}>
+          {steps.map((step) => (
+            <li key={step.id} className={STEPS_ITEM_CLASS}>
+              <div className="teams-step-head">
+                <span className="mono">{step.id}</span>
+                <span>{step.step_key}</span>
+                <span>{step.status}</span>
+              </div>
+              <div className="teams-step-body mono">
+                <div>member_id: {step.member_id}</div>
+                <div>attempt: {step.attempt}</div>
+                <div>depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}</div>
+                <div>remote_task_id: {step.remote_task_id ?? "-"}</div>
+                {step.error_text && <div>error_text: {step.error_text}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

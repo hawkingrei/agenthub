@@ -169,11 +169,13 @@ type TeamPageProps = {
   onLogout: () => void;
 };
 type TeamCreateEntryMode = "wizard" | "manual_spec";
+type TeamDebugTag = "step_ops" | "mailbox_raw";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("step_ops");
 
   const [teamUiState, dispatchTeamUi] = useReducer(
     reduceTeamUiState,
@@ -2373,7 +2375,7 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
 
-                  <div className="tab-bar team-tab-bar flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+                  <div className="tab-bar team-tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
                     <button
                       className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "overview"
@@ -2424,142 +2426,278 @@ export function TeamPage(props: TeamPageProps) {
                     >
                       Member Console
                     </button>
+                    <button
+                      className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                        tab === "debug"
+                          ? "active bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                      onClick={() => setTab("debug")}
+                    >
+                      Debug
+                    </button>
                   </div>
 
-                  {tab === "overview" && (
-                    <TeamOverviewPanel
-                      snapshot={snapshot}
-                      snapshotLoading={snapshotLoading}
-                      onRefreshSnapshot={onRefreshOverviewSnapshot}
-                      selectedMemberId={selectedMemberId}
-                      onOpenMailboxForMember={onOpenMailboxForMember}
-                    />
-                  )}
+                  <div className="teams-output-stack flex min-w-0 flex-col gap-3">
+                    {tab === "overview" && (
+                      <TeamOverviewPanel
+                        snapshot={snapshot}
+                        snapshotLoading={snapshotLoading}
+                        onRefreshSnapshot={onRefreshOverviewSnapshot}
+                        selectedMemberId={selectedMemberId}
+                        onOpenMailboxForMember={onOpenMailboxForMember}
+                      />
+                    )}
 
-                  {tab === "events" && (
-                    <TeamEventsPanel
-                      eventsAutoRefresh={eventsAutoRefresh}
-                      onEventsAutoRefreshChange={setEventsAutoRefresh}
-                      onRefreshEvents={onRefreshEventsPanel}
-                      onLoadOlderEvents={onLoadOlderEventsPanel}
-                      eventsLoading={eventsLoading}
-                      previewMode={previewMode}
-                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
-                      eventsHasMore={eventsHasMore}
-                      oldestEventId={oldestEventId}
-                      displayedRunEvents={displayedRunEvents}
-                      formatTs={formatTs}
-                      toPrettyJson={toPrettyJson}
-                    />
-                  )}
+                    {tab === "events" && (
+                      <TeamEventsPanel
+                        eventsAutoRefresh={eventsAutoRefresh}
+                        onEventsAutoRefreshChange={setEventsAutoRefresh}
+                        onRefreshEvents={onRefreshEventsPanel}
+                        onLoadOlderEvents={onLoadOlderEventsPanel}
+                        eventsLoading={eventsLoading}
+                        previewMode={previewMode}
+                        previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                        eventsHasMore={eventsHasMore}
+                        oldestEventId={oldestEventId}
+                        displayedRunEvents={displayedRunEvents}
+                        formatTs={formatTs}
+                        toPrettyJson={toPrettyJson}
+                      />
+                    )}
 
-                  {tab === "steps" && (
-                    <TeamStepsPanel
-                      steps={steps}
-                      onRefreshSteps={async () => {
-                        await refreshSteps(activeRun.id);
-                      }}
-                      stepKey={stepKey}
-                      onStepKeyChange={setStepKey}
-                      stepMemberId={stepMemberId}
-                      onStepMemberIdChange={setStepMemberId}
-                      stepDependsOn={stepDependsOn}
-                      onStepDependsOnChange={setStepDependsOn}
-                      stepInput={stepInput}
-                      onStepInputChange={setStepInput}
-                      onSubmitStep={onSubmitStep}
-                      busy={busy}
-                      selectedStepId={selectedStepId}
-                      onSelectedStepIdChange={setSelectedStepId}
-                      stepAction={stepAction}
-                      onStepActionChange={setStepAction}
-                      stepRemoteTaskId={stepRemoteTaskId}
-                      onStepRemoteTaskIdChange={setStepRemoteTaskId}
-                      stepOutput={stepOutput}
-                      onStepOutputChange={setStepOutput}
-                      stepFailText={stepFailText}
-                      onStepFailTextChange={setStepFailText}
-                      stepInputReason={stepInputReason}
-                      onStepInputReasonChange={setStepInputReason}
-                      stepInputRequiredPayload={stepInputRequiredPayload}
-                      onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
-                      stepResumePayload={stepResumePayload}
-                      onStepResumePayloadChange={setStepResumePayload}
-                      onApplyStepAction={onApplyStepAction}
-                    />
-                  )}
+                    {tab === "steps" && (
+                      <TeamStepsPanel
+                        mode="list_only"
+                        steps={steps}
+                        onRefreshSteps={async () => {
+                          await refreshSteps(activeRun.id);
+                        }}
+                        stepKey={stepKey}
+                        onStepKeyChange={setStepKey}
+                        stepMemberId={stepMemberId}
+                        onStepMemberIdChange={setStepMemberId}
+                        stepDependsOn={stepDependsOn}
+                        onStepDependsOnChange={setStepDependsOn}
+                        stepInput={stepInput}
+                        onStepInputChange={setStepInput}
+                        onSubmitStep={onSubmitStep}
+                        busy={busy}
+                        selectedStepId={selectedStepId}
+                        onSelectedStepIdChange={setSelectedStepId}
+                        stepAction={stepAction}
+                        onStepActionChange={setStepAction}
+                        stepRemoteTaskId={stepRemoteTaskId}
+                        onStepRemoteTaskIdChange={setStepRemoteTaskId}
+                        stepOutput={stepOutput}
+                        onStepOutputChange={setStepOutput}
+                        stepFailText={stepFailText}
+                        onStepFailTextChange={setStepFailText}
+                        stepInputReason={stepInputReason}
+                        onStepInputReasonChange={setStepInputReason}
+                        stepInputRequiredPayload={stepInputRequiredPayload}
+                        onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+                        stepResumePayload={stepResumePayload}
+                        onStepResumePayloadChange={setStepResumePayload}
+                        onApplyStepAction={onApplyStepAction}
+                      />
+                    )}
 
-                  {tab === "mailbox" && (
-                    <TeamMailboxPanel
-                      snapshot={snapshot}
-                      selectedMemberId={selectedMemberId}
-                      unreadByMemberId={unreadByMemberId}
-                      onSelectMember={setSelectedMemberId}
-                      chatActors={chatActors}
-                      chatStickToBottom={chatStickToBottom}
-                      chatMessagesRef={chatMessagesRef}
-                      onConversationScroll={onConversationScroll}
-                      onJumpToBottom={onJumpConversationToBottom}
-                      conversationMessages={conversationMessages}
-                      toPrettyJson={toPrettyJson}
-                      formatTs={formatTs}
-                      busy={busy}
-                      onAckMessage={onAckMessage}
-                      chatDraft={chatDraft}
-                      onChatDraftChange={setChatDraft}
-                      onSendChatMessage={onSendChatMessage}
-                      msgFromActorId={msgFromActorId}
-                      onMsgFromActorIdChange={setMsgFromActorId}
-                      msgToActorId={msgToActorId}
-                      onMsgToActorIdChange={setMsgToActorId}
-                      msgChannel={msgChannel}
-                      onMsgChannelChange={setMsgChannel}
-                      msgTransport={msgTransport}
-                      onMsgTransportChange={setMsgTransport}
-                      msgRoute={msgRoute}
-                      onMsgRouteChange={setMsgRoute}
-                      mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
-                      msgTemplate={msgTemplate}
-                      onMsgTemplateChange={(value) =>
-                        setMsgTemplate(value as MailboxTemplateKey)
-                      }
-                      onApplyMessageTemplate={onApplyMessageTemplate}
-                      msgPayload={msgPayload}
-                      onMsgPayloadChange={setMsgPayload}
-                      msgIdempotencyKey={msgIdempotencyKey}
-                      onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
-                      onSendMessage={onSendMessage}
-                      inboxActorId={inboxActorId}
-                      onInboxActorIdChange={setInboxActorId}
-                      inboxLimit={inboxLimit}
-                      onInboxLimitChange={setInboxLimit}
-                      inboxAfterId={inboxAfterId}
-                      onInboxAfterIdChange={setInboxAfterId}
-                      inboxIncludeDelivered={inboxIncludeDelivered}
-                      onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
-                      onRefreshInbox={onRefreshInbox}
-                    />
-                  )}
+                    {tab === "mailbox" && (
+                      <TeamMailboxPanel
+                        mode="full"
+                        snapshot={snapshot}
+                        selectedMemberId={selectedMemberId}
+                        unreadByMemberId={unreadByMemberId}
+                        onSelectMember={setSelectedMemberId}
+                        chatActors={chatActors}
+                        chatStickToBottom={chatStickToBottom}
+                        chatMessagesRef={chatMessagesRef}
+                        onConversationScroll={onConversationScroll}
+                        onJumpToBottom={onJumpConversationToBottom}
+                        conversationMessages={conversationMessages}
+                        toPrettyJson={toPrettyJson}
+                        formatTs={formatTs}
+                        busy={busy}
+                        onAckMessage={onAckMessage}
+                        chatDraft={chatDraft}
+                        onChatDraftChange={setChatDraft}
+                        onSendChatMessage={onSendChatMessage}
+                        msgFromActorId={msgFromActorId}
+                        onMsgFromActorIdChange={setMsgFromActorId}
+                        msgToActorId={msgToActorId}
+                        onMsgToActorIdChange={setMsgToActorId}
+                        msgChannel={msgChannel}
+                        onMsgChannelChange={setMsgChannel}
+                        msgTransport={msgTransport}
+                        onMsgTransportChange={setMsgTransport}
+                        msgRoute={msgRoute}
+                        onMsgRouteChange={setMsgRoute}
+                        mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+                        msgTemplate={msgTemplate}
+                        onMsgTemplateChange={(value) =>
+                          setMsgTemplate(value as MailboxTemplateKey)
+                        }
+                        onApplyMessageTemplate={onApplyMessageTemplate}
+                        msgPayload={msgPayload}
+                        onMsgPayloadChange={setMsgPayload}
+                        msgIdempotencyKey={msgIdempotencyKey}
+                        onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+                        onSendMessage={onSendMessage}
+                        inboxActorId={inboxActorId}
+                        onInboxActorIdChange={setInboxActorId}
+                        inboxLimit={inboxLimit}
+                        onInboxLimitChange={setInboxLimit}
+                        inboxAfterId={inboxAfterId}
+                        onInboxAfterIdChange={setInboxAfterId}
+                        inboxIncludeDelivered={inboxIncludeDelivered}
+                        onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+                        onRefreshInbox={onRefreshInbox}
+                      />
+                    )}
 
-                  {tab === "member_console" && (
-                    <TeamMemberConsolePanel
-                      snapshot={snapshot}
-                      selectedMemberId={selectedMemberId}
-                      onSelectedMemberIdChange={setSelectedMemberId}
-                      selectedMemberSnapshot={selectedMemberSnapshot}
-                      memberEvents={memberEvents}
-                      memberEventsHasMore={memberEventsHasMore}
-                      memberEventsLoading={memberEventsLoading}
-                      eventsLoading={eventsLoading}
-                      oldestMemberEventId={oldestMemberEventId}
-                      displayedRunEvents={displayedRunEvents}
-                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
-                      onRefresh={onRefreshMemberConsole}
-                      onLoadOlder={onLoadOlderMemberConsole}
-                      toPrettyJson={toPrettyJson}
-                      formatTs={formatTs}
-                    />
-                  )}
+                    {tab === "member_console" && (
+                      <TeamMemberConsolePanel
+                        snapshot={snapshot}
+                        selectedMemberId={selectedMemberId}
+                        onSelectedMemberIdChange={setSelectedMemberId}
+                        selectedMemberSnapshot={selectedMemberSnapshot}
+                        memberEvents={memberEvents}
+                        memberEventsHasMore={memberEventsHasMore}
+                        memberEventsLoading={memberEventsLoading}
+                        eventsLoading={eventsLoading}
+                        oldestMemberEventId={oldestMemberEventId}
+                        displayedRunEvents={displayedRunEvents}
+                        previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                        onRefresh={onRefreshMemberConsole}
+                        onLoadOlder={onLoadOlderMemberConsole}
+                        toPrettyJson={toPrettyJson}
+                        formatTs={formatTs}
+                      />
+                    )}
+
+                    {tab === "debug" && (
+                      <>
+                        <div className="relative z-20 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h3 className="text-sm font-semibold text-slate-900">Debug Tools</h3>
+                            <div className="relative z-30 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                              <button
+                                className={`tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                  teamDebugTag === "step_ops"
+                                    ? "active bg-slate-900 text-white shadow-sm"
+                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                }`}
+                                onClick={() => setTeamDebugTag("step_ops")}
+                              >
+                                Step Ops
+                              </button>
+                              <button
+                                className={`tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                  teamDebugTag === "mailbox_raw"
+                                    ? "active bg-slate-900 text-white shadow-sm"
+                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                }`}
+                                onClick={() => setTeamDebugTag("mailbox_raw")}
+                              >
+                                Mailbox Raw
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {teamDebugTag === "step_ops" && (
+                          <TeamStepsPanel
+                            mode="controls_only"
+                            steps={steps}
+                            onRefreshSteps={async () => {
+                              await refreshSteps(activeRun.id);
+                            }}
+                            stepKey={stepKey}
+                            onStepKeyChange={setStepKey}
+                            stepMemberId={stepMemberId}
+                            onStepMemberIdChange={setStepMemberId}
+                            stepDependsOn={stepDependsOn}
+                            onStepDependsOnChange={setStepDependsOn}
+                            stepInput={stepInput}
+                            onStepInputChange={setStepInput}
+                            onSubmitStep={onSubmitStep}
+                            busy={busy}
+                            selectedStepId={selectedStepId}
+                            onSelectedStepIdChange={setSelectedStepId}
+                            stepAction={stepAction}
+                            onStepActionChange={setStepAction}
+                            stepRemoteTaskId={stepRemoteTaskId}
+                            onStepRemoteTaskIdChange={setStepRemoteTaskId}
+                            stepOutput={stepOutput}
+                            onStepOutputChange={setStepOutput}
+                            stepFailText={stepFailText}
+                            onStepFailTextChange={setStepFailText}
+                            stepInputReason={stepInputReason}
+                            onStepInputReasonChange={setStepInputReason}
+                            stepInputRequiredPayload={stepInputRequiredPayload}
+                            onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+                            stepResumePayload={stepResumePayload}
+                            onStepResumePayloadChange={setStepResumePayload}
+                            onApplyStepAction={onApplyStepAction}
+                          />
+                        )}
+
+                        {teamDebugTag === "mailbox_raw" && (
+                          <TeamMailboxPanel
+                            mode="advanced_only"
+                            snapshot={snapshot}
+                            selectedMemberId={selectedMemberId}
+                            unreadByMemberId={unreadByMemberId}
+                            onSelectMember={setSelectedMemberId}
+                            chatActors={chatActors}
+                            chatStickToBottom={chatStickToBottom}
+                            chatMessagesRef={chatMessagesRef}
+                            onConversationScroll={onConversationScroll}
+                            onJumpToBottom={onJumpConversationToBottom}
+                            conversationMessages={conversationMessages}
+                            toPrettyJson={toPrettyJson}
+                            formatTs={formatTs}
+                            busy={busy}
+                            onAckMessage={onAckMessage}
+                            chatDraft={chatDraft}
+                            onChatDraftChange={setChatDraft}
+                            onSendChatMessage={onSendChatMessage}
+                            msgFromActorId={msgFromActorId}
+                            onMsgFromActorIdChange={setMsgFromActorId}
+                            msgToActorId={msgToActorId}
+                            onMsgToActorIdChange={setMsgToActorId}
+                            msgChannel={msgChannel}
+                            onMsgChannelChange={setMsgChannel}
+                            msgTransport={msgTransport}
+                            onMsgTransportChange={setMsgTransport}
+                            msgRoute={msgRoute}
+                            onMsgRouteChange={setMsgRoute}
+                            mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+                            msgTemplate={msgTemplate}
+                            onMsgTemplateChange={(value) =>
+                              setMsgTemplate(value as MailboxTemplateKey)
+                            }
+                            onApplyMessageTemplate={onApplyMessageTemplate}
+                            msgPayload={msgPayload}
+                            onMsgPayloadChange={setMsgPayload}
+                            msgIdempotencyKey={msgIdempotencyKey}
+                            onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+                            onSendMessage={onSendMessage}
+                            inboxActorId={inboxActorId}
+                            onInboxActorIdChange={setInboxActorId}
+                            inboxLimit={inboxLimit}
+                            onInboxLimitChange={setInboxLimit}
+                            inboxAfterId={inboxAfterId}
+                            onInboxAfterIdChange={setInboxAfterId}
+                            inboxIncludeDelivered={inboxIncludeDelivered}
+                            onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+                            onRefreshInbox={onRefreshInbox}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
                 </>
               )}
             </>
