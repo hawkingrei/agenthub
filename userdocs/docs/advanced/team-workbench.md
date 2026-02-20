@@ -37,6 +37,32 @@ Examples:
 5. Inspect or operate `Steps` as needed.
 6. Use `Messages` for actor-level coordination.
 
+## Single-Node Bootstrap
+
+Before starting Team runs on a single node, bootstrap Team role skills into
+your local `skills.json`:
+
+```bash
+scripts/setup_team_skills.sh
+```
+
+This command copies Team skill files into:
+
+- `~/.agenthub/worktrees/team-skills`
+
+and appends those paths into:
+
+- `~/.agenthub/skills.json`
+
+Because `~/.agenthub/worktrees` is part of default `safe_paths`, these skill
+paths are accepted by ACP skill loading without extra config.
+
+If you explicitly want repository paths instead of copied files, use:
+
+```bash
+scripts/setup_team_skills.sh --use-repo-skill-paths
+```
+
 ## Step Actions in UI
 
 Available actions:
