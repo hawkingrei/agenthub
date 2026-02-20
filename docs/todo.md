@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify auth/login/join pages consume shared Tailwind auth class constants and keep frontend checks green (`build` + `lint`) after maintainability refactor; keep low-risk maintainability review suggestions as direct in-PR fixes by default (see `docs/features/2026-02-20-auth-tailwind-shared-class-maintainability.md`).
 - [x] Verify Team mailbox E2E `Mailbox` tab remains clickable after Team run panel/UI style updates and fix E2E coverage merge URL-scheme errors (`ERR_INVALID_URL_SCHEME`) so `web e2e:coverage` emits numeric coverage summary (see `docs/features/2026-02-20-web-e2e-mailbox-tab-and-coverage-merge-fix.md`).
 - [x] Verify ACP tool-call summary alignment uses top-aligned layout (no vertical centering) across desktop/mobile for single call, grouped calls, and explore groups after restoring semantic style control (see `docs/features/2026-02-20-acp-tool-call-summary-top-align.md`).
 - [x] Verify Tailwind UI migration phase-10 visual parity for admin/runtime shell (`AdminPage`, `ErrorBanner`, `TerminalOutput`) across desktop/mobile while preserving admin tab workflows, error-dismiss behavior, and terminal output stream readability (see `docs/features/2026-02-20-web-tailwind-ui-phase10-admin-error-terminal-shell.md`).
