@@ -385,6 +385,7 @@ const ToolCallBubble = React.memo(
     );
     const statusLabel = formatToolCallStatus(msg.status);
     const statusMark = getToolCallStatusMark(msg.status);
+    const statusTone = getToolCallStatusTone(msg.status, runStatus);
 
     React.useEffect(() => {
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
@@ -425,7 +426,9 @@ const ToolCallBubble = React.memo(
               {callHint ? ` · ${callHint}` : ""}
             </span>
             {msg.status && (
-              <span className="acp-tool-status">{statusLabel}</span>
+              <span className={`acp-tool-status${statusTone ? ` tone-${statusTone}` : ""}`}>
+                {statusLabel}
+              </span>
             )}
           </summary>
           {msg.content && (
@@ -1118,12 +1121,12 @@ function summarizeToolGroupTitles(calls: ToolCallConversationItem[]): string {
   return `${previews.join(" · ")} +${calls.length - 2} more`;
 }
 
-type ToolGroupStatusTone = "running" | "failed" | "completed";
+type ToolStatusTone = "running" | "failed" | "completed";
 
 function deriveToolGroupStatus(
   calls: ToolCallConversationItem[],
   runStatus?: string | null
-): { label: string; tone: ToolGroupStatusTone } | null {
+): { label: string; tone: ToolStatusTone } | null {
   if (calls.length === 0) return null;
   let liveCount = 0;
   let failedCount = 0;
@@ -1140,6 +1143,18 @@ function deriveToolGroupStatus(
   if (liveCount > 0) return { label: `${liveCount} running`, tone: "running" };
   if (failedCount > 0) return { label: `${failedCount} failed`, tone: "failed" };
   return { label: `${calls.length} completed`, tone: "completed" };
+}
+
+function getToolCallStatusTone(
+  status?: string,
+  runStatus?: string | null
+): ToolStatusTone | null {
+  if (!status) return null;
+  if (isToolCallEffectivelyLive(status, runStatus)) return "running";
+  const normalized = normalizeToolCallStatus(status);
+  if (FAILED_TOOL_STATUSES.has(normalized)) return "failed";
+  if (normalized === "completed") return "completed";
+  return null;
 }
 
 function normalizeToolCallStatus(status?: string): string {
