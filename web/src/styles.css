@@ -1962,24 +1962,11 @@ select:not([class*="mantine-"]):focus-visible {
 
 .acp-tool-group-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
-  width: 100%;
-  min-width: 0;
 }
 
 .acp-tool-group-fold[open] > .acp-tool-group-list {
   animation: acp-tool-group-expand 180ms ease-out;
-}
-
-.acp-tool-group-item {
-  width: 100%;
-  min-width: 0;
-}
-
-.acp-tool-group-item > * {
-  max-width: 100%;
-  min-width: 0;
 }
 
 .acp-tool-group-item + .acp-tool-group-item {
@@ -1991,13 +1978,10 @@ select:not([class*="mantine-"]):focus-visible {
   background: #fff8ef;
   border-color: #f2d7ad;
   padding: 8px 10px;
-  width: 100%;
-  min-width: 0;
 }
 
 .acp-tool-fold-nested {
   margin: 0;
-  min-width: 0;
 }
 
 .acp-tool-group-status {
