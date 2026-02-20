@@ -36,6 +36,7 @@ At the same time, team member MCP-related capability visibility in `Member Conso
 5. Replace Team workbench refresh text buttons with icon-only refresh actions:
    - Convert refresh actions in sidebar/run/events/steps/overview/member-console/mailbox/active-run toolbars to `bi-arrow-clockwise` icon buttons.
    - Keep explicit `title` + `aria-label` on each button so tests and accessibility remain stable after removing visible text labels.
+   - Use shared Tailwind utility class constants (`TEAM_PANEL_ICON_BUTTON_CLASS`) for these actions instead of adding new handcrafted CSS blocks.
 
 ## Validation Evidence (2026-02-20)
 

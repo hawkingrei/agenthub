@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamStepRecord } from "../api";
 import {
+  TEAM_PANEL_ICON_BUTTON_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
@@ -91,7 +92,7 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
           onClick={() => {
             void onRefreshSteps();
           }}
-          className="icon-button small"
+          className={TEAM_PANEL_ICON_BUTTON_CLASS}
           title="Refresh steps"
           aria-label="Refresh steps"
         >

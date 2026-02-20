@@ -7,6 +7,7 @@ import {
 } from "../api";
 import {
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_ICON_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -86,7 +87,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               void onRefresh();
             }}
             disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            className="icon-button small"
+            className={TEAM_PANEL_ICON_BUTTON_CLASS}
             title="Refresh member console"
             aria-label="Refresh member console"
           >

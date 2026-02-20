@@ -3,6 +3,7 @@ import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_ICON_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
@@ -401,7 +402,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               include_delivered
             </label>
             <button
-              className="icon-button small"
+              className={TEAM_PANEL_ICON_BUTTON_CLASS}
               onClick={onRefreshInbox}
               disabled={busy === "refresh-inbox"}
               title="Refresh inbox"
