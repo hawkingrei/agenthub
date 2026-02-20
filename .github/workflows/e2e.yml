@@ -34,4 +34,4 @@ jobs:
           files: web/coverage/e2e/lcov.info
           flags: web-e2e
           name: web-e2e-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
