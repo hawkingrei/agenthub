@@ -2368,7 +2368,7 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
 
-                  <div className="tab-bar flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+                  <div className="tab-bar team-tab-bar flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
                     <button
                       className={`tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
                         tab === "overview"

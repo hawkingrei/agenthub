@@ -2929,6 +2929,11 @@ select:not([class*="mantine-"]):focus-visible {
   z-index: 2;
 }
 
+.team-tab-bar {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 .tab {
   background: #f0f0f0;
   color: #222;
@@ -3801,7 +3806,8 @@ select:not([class*="mantine-"]):focus-visible {
     font-size: 20px;
   }
 
-  .session {
+  .session,
+  .team-session {
     gap: 6px;
   }
 
