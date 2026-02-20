@@ -176,6 +176,12 @@ export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
+  useEffect(() => {
+    document.body.classList.add("teams-page");
+    return () => {
+      document.body.classList.remove("teams-page");
+    };
+  }, []);
 
   const [teamUiState, dispatchTeamUi] = useReducer(
     reduceTeamUiState,
@@ -2278,9 +2284,9 @@ export function TeamPage(props: TeamPageProps) {
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 
   return (
-    <div className="app mx-auto flex min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 px-3 py-3 sm:px-4 lg:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+    <div className="mx-auto flex min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 px-3 py-3 sm:px-4 lg:px-6">
+      <header className="mb-0 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="whitespace-normal text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
           AgentHub Teams
         </h1>
         <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
@@ -2298,7 +2304,7 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <section className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+      <div className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
@@ -2808,7 +2814,7 @@ export function TeamPage(props: TeamPageProps) {
             </>
           )}
         </div>
-      </section>
+      </div>
 
       {showCreateTeamModal && (
         <div

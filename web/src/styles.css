@@ -405,7 +405,7 @@ section {
   height: 100%;
 }
 
-input:not([class*="mantine-"]) {
+body:not(.teams-page) input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -417,7 +417,7 @@ input:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-textarea:not([class*="mantine-"]) {
+body:not(.teams-page) textarea:not([class*="mantine-"]) {
   width: 100%;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -432,7 +432,7 @@ textarea:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-select:not([class*="mantine-"]) {
+body:not(.teams-page) select:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -444,7 +444,7 @@ select:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button:not([class*="mantine-"]) {
+body:not(.teams-page) button:not([class*="mantine-"]) {
   border: none;
   background: var(--ink);
   color: white;
@@ -456,19 +456,19 @@ button:not([class*="mantine-"]) {
   transition: transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-button:not([class*="mantine-"]):active {
+body:not(.teams-page) button:not([class*="mantine-"]):active {
   transform: translateY(1px);
 }
 
-button:not([class*="mantine-"]):disabled {
+body:not(.teams-page) button:not([class*="mantine-"]):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-button:not([class*="mantine-"]):focus-visible,
-input:not([class*="mantine-"]):focus-visible,
-textarea:not([class*="mantine-"]):focus-visible,
-select:not([class*="mantine-"]):focus-visible {
+body:not(.teams-page) button:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) input:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) textarea:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) select:not([class*="mantine-"]):focus-visible {
   outline: none;
   border-color: var(--focus-border);
   box-shadow: var(--focus-ring);
