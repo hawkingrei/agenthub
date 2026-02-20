@@ -1,6 +1,7 @@
 # TODO
 
 - [x] Verify `TeamMemberConsolePanel` and `TeamMailboxPanel` reuse shared Team Tailwind panel constants while keeping panel interaction tests green (`team_panels`) and passing `web` lint/build (see `docs/features/2026-02-20-web-team-member-mailbox-shared-tailwind-classes.md`).
+- [ ] Verify Codecov upload strict mode (`fail_ci_if_error: true`) stays stable for `Rust`/`Web`/`Web E2E` workflows on both `push` and `pull_request` events; record workflow run IDs before marking done (see `docs/features/2026-02-20-ci-codecov-fail-fast-upload.md`).
 - [x] Verify Team workbench shared Tailwind class extraction across `TeamRunPanel`/`TeamOverviewPanel`/`TeamEventsPanel`/`TeamStepsPanel` keeps interaction tests green (`team_panels`), passes `web` lint/build, and preserves existing callback/reducer behavior (see `docs/features/2026-02-20-web-team-panel-shared-tailwind-classes.md`).
 - [x] Verify auth/login/join pages consume shared Tailwind auth class constants and keep frontend checks green (`build` + `lint`) after maintainability refactor; keep low-risk maintainability review suggestions as direct in-PR fixes by default (see `docs/features/2026-02-20-auth-tailwind-shared-class-maintainability.md`).
 - [x] Verify Team mailbox E2E `Mailbox` tab remains clickable after Team run panel/UI style updates and fix E2E coverage merge URL-scheme errors (`ERR_INVALID_URL_SCHEME`) so `web e2e:coverage` emits numeric coverage summary (see `docs/features/2026-02-20-web-e2e-mailbox-tab-and-coverage-merge-fix.md`).
