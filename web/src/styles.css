@@ -3066,12 +3066,22 @@ select:not([class*="mantine-"]):focus-visible {
 
 .team-item .team-name {
   font-weight: 600;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-item .team-id,
 .team-item .team-status {
   font-size: 12px;
   opacity: 0.88;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-item .team-status.status-badge {
@@ -3122,6 +3132,10 @@ select:not([class*="mantine-"]):focus-visible {
   font-size: 12px;
   font-weight: 600;
   color: #1f2a37;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-member-row-meta {
@@ -3140,6 +3154,10 @@ select:not([class*="mantine-"]):focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.team-session {
+  min-width: 0;
 }
 
 .team-role-chip {

@@ -43,10 +43,17 @@ type TeamMemberLiveState = {
 
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
-const RUN_PANEL_SECTION_CLASS = "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
-const RUN_PANEL_LIST_CLASS = "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
+const RUN_PANEL_MEMBER_CLASS =
+  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/60 p-4";
+const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
+const RUN_PANEL_SECTION_CLASS =
+  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
+const RUN_PANEL_LIST_CLASS =
+  "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
+const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
+const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -128,7 +135,8 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </button>
         </div>
       </div>
-      <div className={RUN_PANEL_SECTION_CLASS}>
+      <div className={RUN_PANEL_MEMBER_CLASS}>
+        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Health</p>
         <div className="teams-member-status-panel">
           <div className="teams-member-summary-line mono">
             {`active=${selectedTeamMemberSummary.active} inactive=${selectedTeamMemberSummary.inactive} missing=${selectedTeamMemberSummary.missing} total=${selectedTeamMemberSummary.total}`}
@@ -164,112 +172,119 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             </div>
           )}
         </div>
-        <h3>Create / Load Run</h3>
-        <p className="muted">
-          <strong>Create Run</strong> starts a new execution for this team spec.
-          <br />
-          <strong>Load Run</strong> opens an existing run by `run_id` (even if it was created earlier) and auto-switches to its team.
-        </p>
-        <div className="form-row">
-          <input
-            className={TEAM_PANEL_INPUT_CLASS}
-            placeholder="context_id (optional, auto-generated when empty)"
-            value={runContextId}
-            onChange={(event) => onRunContextIdChange(event.target.value)}
-          />
-          <button
-            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-            onClick={onCreateRun}
-            disabled={busy === "create-run"}
-          >
-            Create Run
-          </button>
-        </div>
-        <textarea
-          className={TEAM_PANEL_TEXTAREA_CLASS}
-          rows={4}
-          value={runInput}
-          onChange={(event) => onRunInputChange(event.target.value)}
-        />
-        <div className="form-row">
-          <input
-            className={TEAM_PANEL_INPUT_CLASS}
-            placeholder="existing run_id"
-            value={runLookupId}
-            onChange={(event) => onRunLookupIdChange(event.target.value)}
-          />
-          <button
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={onLoadRunById}
-            disabled={busy === "load-run"}
-          >
-            Load Run
-          </button>
-        </div>
       </div>
-      <div className={RUN_PANEL_LIST_CLASS}>
-        <div className={RUN_PANEL_LIST_HEAD_CLASS}>
-          <h3>Runs</h3>
-          <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-            <select
+      <div className={RUN_PANEL_GRID_CLASS}>
+        <div className={RUN_PANEL_SECTION_CLASS}>
+          <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Controls</p>
+          <h3>Create / Load Run</h3>
+          <p className="muted">
+            <strong>Create Run</strong> starts a new execution for this team spec.
+            <br />
+            <strong>Load Run</strong> opens an existing run by `run_id` (even if it was created earlier) and auto-switches to its team.
+          </p>
+          <div className="form-row">
+            <input
               className={TEAM_PANEL_INPUT_CLASS}
-              value={runStatusFilter}
-              onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
-              aria-label="Run status filter"
-            >
-              {runStatusFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              placeholder="context_id (optional, auto-generated when empty)"
+              value={runContextId}
+              onChange={(event) => onRunContextIdChange(event.target.value)}
+            />
             <button
-              onClick={() => {
-                void onRefreshRuns();
-              }}
-              disabled={runsLoading}
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+              onClick={onCreateRun}
+              disabled={busy === "create-run"}
             >
-              Refresh Runs
+              Create Run
+            </button>
+          </div>
+          <textarea
+            className={TEAM_PANEL_TEXTAREA_CLASS}
+            rows={4}
+            value={runInput}
+            onChange={(event) => onRunInputChange(event.target.value)}
+          />
+          <div className="form-row">
+            <input
+              className={TEAM_PANEL_INPUT_CLASS}
+              placeholder="existing run_id"
+              value={runLookupId}
+              onChange={(event) => onRunLookupIdChange(event.target.value)}
+            />
+            <button
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={onLoadRunById}
+              disabled={busy === "load-run"}
+            >
+              Load Run
             </button>
           </div>
         </div>
-        {visibleRuns.length === 0 && (
-          <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
-        )}
-        {isActiveRunHiddenByFilter && activeRun && (
-          <p className="muted">
-            Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
-          </p>
-        )}
-        {visibleRuns.map((run) => (
-          <button
-            key={run.id}
-            className={run.id === activeRunId ? "team-item active" : "team-item"}
-            onClick={() => onActiveRunChange(run.id)}
-          >
-            <span className="team-name mono">{run.id}</span>
-            <StatusBadge
-              label={run.status}
-              tone={resolveTeamRunStatusTone(run.status)}
-              className="team-status"
-              title={`run status: ${run.status}`}
-            />
-          </button>
-        ))}
-        <div className="teams-run-list-foot">
-          <span className="mono">
-            showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
-          </span>
-          <button
-            onClick={() => {
-              void onLoadMoreRuns();
-            }}
-            disabled={runsLoading || !runsHasMore || !selectedTeamId}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          >
-            {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
-          </button>
+        <div className={RUN_PANEL_LIST_CLASS}>
+          <div className={RUN_PANEL_LIST_HEAD_CLASS}>
+            <h3>Runs</h3>
+            <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
+              <select
+                className={TEAM_PANEL_INPUT_CLASS}
+                value={runStatusFilter}
+                onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
+                aria-label="Run status filter"
+              >
+                {runStatusFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  void onRefreshRuns();
+                }}
+                disabled={runsLoading}
+                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              >
+                Refresh Runs
+              </button>
+            </div>
+          </div>
+          <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
+            {visibleRuns.length === 0 && (
+              <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
+            )}
+            {isActiveRunHiddenByFilter && activeRun && (
+              <p className="muted">
+                Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
+              </p>
+            )}
+            {visibleRuns.map((run) => (
+              <button
+                key={run.id}
+                className={run.id === activeRunId ? "team-item active" : "team-item"}
+                onClick={() => onActiveRunChange(run.id)}
+              >
+                <span className="team-name mono">{run.id}</span>
+                <StatusBadge
+                  label={run.status}
+                  tone={resolveTeamRunStatusTone(run.status)}
+                  className="team-status"
+                  title={`run status: ${run.status}`}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="teams-run-list-foot">
+            <span className="mono">
+              showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
+            </span>
+            <button
+              onClick={() => {
+                void onLoadMoreRuns();
+              }}
+              disabled={runsLoading || !runsHasMore || !selectedTeamId}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            >
+              {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

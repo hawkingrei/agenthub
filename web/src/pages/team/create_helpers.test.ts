@@ -72,6 +72,8 @@ describe("team create helpers", () => {
       ])
     );
     expect(spec.members[1]?.prompt).toContain("You are a Worker in an AgentHub team");
+    expect(spec.members[1]?.prompt).toContain("Work in your own git worktree only.");
+    expect(spec.members[1]?.prompt).toContain("Create a random branch at start");
     expect(spec.members[1]?.skills).toEqual(
       expect.arrayContaining([
         "agenthub-actor-runtime",
