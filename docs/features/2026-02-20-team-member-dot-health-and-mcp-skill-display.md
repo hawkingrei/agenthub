@@ -23,7 +23,8 @@ At the same time, team member MCP-related capability visibility in `Member Conso
 
 1. Simplify the Team health section into a compact member indicator strip:
    - Replace row-heavy `Team Health` details with `team_number=<total>` summary.
-   - Render one member token per member with a dot + member id.
+   - Render one member token per member with a role badge (`L` for leader, `W` for worker), status dot, and member id.
+   - Sort member tokens with leader first for quick visual anchoring.
 2. Use binary startup visual status for fast recognition:
    - `active` lifecycle => green dot.
    - non-active lifecycle (`inactive` / `missing`) => red dot.

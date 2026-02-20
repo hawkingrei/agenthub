@@ -417,6 +417,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("team_number=2");
     expect(container.textContent).toContain("leader-agent");
     expect(container.textContent).toContain("worker-agent");
+    expect(container.querySelectorAll('[aria-label="Leader member"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-label="Worker member"]')).toHaveLength(1);
     expect(container.querySelectorAll(".teams-member-dot.active")).toHaveLength(1);
     expect(container.querySelectorAll(".teams-member-dot.inactive")).toHaveLength(1);
 

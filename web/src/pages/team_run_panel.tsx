@@ -53,6 +53,16 @@ const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col 
 const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
 const RUN_PANEL_MEMBER_SUMMARY_CLASS =
   "teams-member-summary-line mono mb-2 text-left text-xs tracking-wide text-slate-600";
+const RUN_PANEL_MEMBER_ROLE_BADGE_CLASS =
+  "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+
+function normalizeMemberRole(role: string): string {
+  return role.trim().toLowerCase();
+}
+
+function isLeaderRole(role: string): boolean {
+  return normalizeMemberRole(role) === "leader";
+}
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -116,6 +126,14 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeamId,
     onLoadMoreRuns,
   } = props;
+  const orderedTeamMemberLiveStates = [...selectedTeamMemberLiveStates].sort((left, right) => {
+    const leftLeader = isLeaderRole(left.role);
+    const rightLeader = isLeaderRole(right.role);
+    if (leftLeader !== rightLeader) {
+      return leftLeader ? -1 : 1;
+    }
+    return left.member_id.localeCompare(right.member_id);
+  });
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -140,18 +158,29 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <div className={RUN_PANEL_MEMBER_SUMMARY_CLASS}>
             {`team_number=${selectedTeamMemberSummary.total}`}
           </div>
-          {selectedTeamMemberLiveStates.length === 0 ? (
+          {orderedTeamMemberLiveStates.length === 0 ? (
             <p className="muted">No members declared in team spec.</p>
           ) : (
             <div className="teams-member-strip compact">
-              {selectedTeamMemberLiveStates.map((member) => {
+              {orderedTeamMemberLiveStates.map((member) => {
                 const isRunning = member.lifecycle_tone === "active";
+                const leader = isLeaderRole(member.role);
                 return (
                   <span
                     key={`${selectedTeam.id}:${member.member_id}`}
                     className="teams-member-dot-item mono"
                     title={`member=${member.member_id} status=${member.lifecycle_status}`}
                   >
+                    <span
+                      className={
+                        leader
+                          ? `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-blue-100 text-blue-700`
+                          : `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-slate-200 text-slate-700`
+                      }
+                      aria-label={leader ? "Leader member" : "Worker member"}
+                    >
+                      {leader ? "L" : "W"}
+                    </span>
                     <span
                       aria-hidden="true"
                       className={`teams-member-dot ${isRunning ? "active" : "inactive"}`}
