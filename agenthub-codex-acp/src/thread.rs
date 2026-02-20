@@ -21,7 +21,6 @@ use agent_client_protocol::{
     UnstructuredCommandInput,
 };
 use codex_apply_patch::parse_patch;
-use codex_common::approval_presets::{ApprovalPreset, builtin_approval_presets};
 use codex_core::{
     AuthManager, CodexThread,
     config::{Config, set_project_trust_level},
@@ -35,7 +34,7 @@ use codex_core::{
         ExecApprovalRequestEvent, ExecCommandBeginEvent, ExecCommandEndEvent,
         ExecCommandOutputDeltaEvent, ExitedReviewModeEvent, FileChange, ItemCompletedEvent,
         ItemStartedEvent, ListCustomPromptsResponseEvent, McpInvocation, McpStartupCompleteEvent,
-        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, Op,
+        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent, Op,
         PatchApplyBeginEvent, PatchApplyEndEvent, ReasoningContentDeltaEvent,
         ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
         ReviewTarget, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent, TurnAbortedEvent,
@@ -57,6 +56,7 @@ use codex_protocol::{
     protocol::RolloutItem,
     user_input::UserInput,
 };
+use codex_utils_approval_presets::{ApprovalPreset, builtin_approval_presets};
 use heck::ToTitleCase;
 use itertools::Itertools;
 use serde_json::{Number, Value, json};
@@ -92,20 +92,19 @@ impl CodexThreadImpl for CodexThread {
 
 #[async_trait::async_trait]
 pub trait ModelsManagerImpl {
-    async fn get_model(&self, model_id: &Option<String>, config: &Config) -> String;
-    async fn list_models(&self, config: &Config) -> Vec<ModelPreset>;
+    async fn get_model(&self, model_id: &Option<String>) -> String;
+    async fn list_models(&self) -> Vec<ModelPreset>;
 }
 
 #[async_trait::async_trait]
 impl ModelsManagerImpl for ModelsManager {
-    async fn get_model(&self, model_id: &Option<String>, config: &Config) -> String {
-        self.get_default_model(model_id, config, RefreshStrategy::OnlineIfUncached)
+    async fn get_model(&self, model_id: &Option<String>) -> String {
+        self.get_default_model(model_id, RefreshStrategy::OnlineIfUncached)
             .await
     }
 
-    async fn list_models(&self, config: &Config) -> Vec<ModelPreset> {
-        self.list_models(config, RefreshStrategy::OnlineIfUncached)
-            .await
+    async fn list_models(&self) -> Vec<ModelPreset> {
+        self.list_models(RefreshStrategy::OnlineIfUncached).await
     }
 }
 
@@ -363,7 +362,6 @@ struct PromptState {
     thread: Arc<dyn CodexThreadImpl>,
     event_count: usize,
     response_tx: Option<oneshot::Sender<Result<StopReason, Error>>>,
-    submission_id: String,
     seen_message_deltas: bool,
     seen_reasoning_deltas: bool,
     chunk_counters: HashMap<String, u64>,
@@ -373,7 +371,6 @@ impl PromptState {
     fn new(
         thread: Arc<dyn CodexThreadImpl>,
         response_tx: oneshot::Sender<Result<StopReason, Error>>,
-        submission_id: String,
     ) -> Self {
         Self {
             active_commands: HashMap::new(),
@@ -381,7 +378,6 @@ impl PromptState {
             thread,
             event_count: 0,
             response_tx: Some(response_tx),
-            submission_id,
             seen_message_deltas: false,
             seen_reasoning_deltas: false,
             chunk_counters: HashMap::new(),
@@ -572,7 +568,10 @@ impl PromptState {
             EventMsg::ItemCompleted(ItemCompletedEvent { thread_id, turn_id, item }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
-            EventMsg::TurnComplete(TurnCompleteEvent { last_agent_message}) => {
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                last_agent_message,
+                ..
+            }) => {
                 info!(
                     "Task completed successfully after {} events. Last agent message: {last_agent_message:?}", self.event_count
                 );
@@ -606,7 +605,7 @@ impl PromptState {
                     response_tx.send(Err(Error::internal_error().data(json!({ "message": message, "codex_error_info": codex_error_info })))).ok();
                 }
             }
-            EventMsg::TurnAborted(TurnAbortedEvent { reason }) => {
+            EventMsg::TurnAborted(TurnAbortedEvent { reason, .. }) => {
                 info!("Turn aborted: {reason:?}");
                 if let Some(response_tx) = self.response_tx.take() {
                     response_tx.send(Ok(StopReason::Cancelled)).ok();
@@ -662,6 +661,13 @@ impl PromptState {
                     drop(response_tx.send(Err(err)));
                 }
             }
+            EventMsg::ModelReroute(ModelRerouteEvent {
+                from_model,
+                to_model,
+                reason,
+            }) => {
+                info!("Model reroute: from={from_model}, to={to_model}, reason={reason:?}");
+            }
 
             // Ignore these events
             EventMsg::AgentReasoningRawContent(..)
@@ -686,7 +692,9 @@ impl PromptState {
             | EventMsg::CollabWaitingBegin(..)
             | EventMsg::CollabWaitingEnd(..)
             | EventMsg::CollabCloseBegin(..)
-            | EventMsg::CollabCloseEnd(..) => {},
+            | EventMsg::CollabCloseEnd(..)
+            | EventMsg::CollabResumeBegin(..)
+            | EventMsg::CollabResumeEnd(..) => {},
             e @ (EventMsg::McpListToolsResponse(..)
             // returned from Op::ListCustomPrompts, ignore
             | EventMsg::ListCustomPromptsResponse(..)
@@ -833,7 +841,7 @@ impl PromptState {
         let response = client
             .request_permission(
                 ToolCallUpdate::new(
-                    call_id,
+                    call_id.clone(),
                     ToolCallUpdateFields::new()
                         .kind(ToolKind::Edit)
                         .status(ToolCallStatus::Pending)
@@ -865,7 +873,7 @@ impl PromptState {
 
         self.thread
             .submit(Op::PatchApproval {
-                id: self.submission_id.clone(),
+                id: call_id,
                 decision,
             })
             .await
@@ -905,6 +913,7 @@ impl PromptState {
             success,
             changes,
             turn_id: _,
+            status: _,
         } = event;
 
         let (title, locations, content) = if !changes.is_empty() {
@@ -991,11 +1000,13 @@ impl PromptState {
         let ExecApprovalRequestEvent {
             call_id,
             command: _,
-            turn_id: _,
+            turn_id,
             cwd,
             reason,
             parsed_cmd,
             proposed_execpolicy_amendment,
+            approval_id,
+            network_approval_context: _,
         } = event;
 
         // Create a new tool call for the command execution
@@ -1080,7 +1091,8 @@ impl PromptState {
 
         self.thread
             .submit(Op::ExecApproval {
-                id: self.submission_id.clone(),
+                id: approval_id.unwrap_or(call_id),
+                turn_id: Some(turn_id),
                 decision,
             })
             .await
@@ -1212,6 +1224,7 @@ impl PromptState {
             duration: _,
             formatted_output: _,
             process_id: _,
+            status: _,
         } = event;
         if let Some(active_command) = self.active_commands.remove(&call_id) {
             let is_success = exit_code == 0;
@@ -1795,8 +1808,8 @@ impl<A: Auth> ThreadActor<A> {
         let current_mode_id = APPROVAL_PRESETS
             .iter()
             .find(|preset| {
-                &preset.approval == self.config.approval_policy.get()
-                    && &preset.sandbox == self.config.sandbox_policy.get()
+                &preset.approval == self.config.permissions.approval_policy.get()
+                    && &preset.sandbox == self.config.permissions.sandbox_policy.get()
             })
             .map(|preset| SessionModeId::new(preset.id))?;
 
@@ -1812,7 +1825,7 @@ impl<A: Auth> ThreadActor<A> {
     }
 
     async fn find_current_model(&self) -> Option<ModelId> {
-        let model_presets = self.models_manager.list_models(&self.config).await;
+        let model_presets = self.models_manager.list_models().await;
         let config_model = self.get_current_model().await;
         let preset = model_presets
             .iter()
@@ -1864,7 +1877,7 @@ impl<A: Auth> ThreadActor<A> {
             );
         }
 
-        let presets = self.models_manager.list_models(&self.config).await;
+        let presets = self.models_manager.list_models().await;
 
         let current_model = self.get_current_model().await;
         let current_preset = presets.iter().find(|p| p.model == current_model).cloned();
@@ -1973,7 +1986,7 @@ impl<A: Auth> ThreadActor<A> {
     async fn handle_set_config_model(&mut self, value: SessionConfigValueId) -> Result<(), Error> {
         let model_id = value.0;
 
-        let presets = self.models_manager.list_models(&self.config).await;
+        let presets = self.models_manager.list_models().await;
         let preset = presets.iter().find(|p| p.id.as_str() == &*model_id);
 
         let model_to_use = preset
@@ -2030,7 +2043,7 @@ impl<A: Auth> ThreadActor<A> {
             serde_json::from_value(value.0.as_ref().into()).map_err(|_| Error::invalid_params())?;
 
         let current_model = self.get_current_model().await;
-        let presets = self.models_manager.list_models(&self.config).await;
+        let presets = self.models_manager.list_models().await;
         let Some(preset) = presets.iter().find(|p| p.model == current_model) else {
             return Err(Error::invalid_params()
                 .data("Reasoning effort can only be set for known model presets"));
@@ -2081,7 +2094,7 @@ impl<A: Auth> ThreadActor<A> {
 
         available_models.extend(
             self.models_manager
-                .list_models(&self.config)
+                .list_models()
                 .await
                 .iter()
                 .filter(|model| model.show_in_picker || model.model == config_model)
@@ -2211,11 +2224,8 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = SubmissionState::Prompt(Box::new(PromptState::new(
-            self.thread.clone(),
-            response_tx,
-            submission_id.clone(),
-        )));
+        let state =
+            SubmissionState::Prompt(Box::new(PromptState::new(self.thread.clone(), response_tx)));
 
         self.submissions.insert(submission_id, state);
 
@@ -2312,13 +2322,15 @@ impl<A: Auth> ThreadActor<A> {
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
         self.config
+            .permissions
             .approval_policy
             .set(preset.approval)
-            .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            .map_err(|e| Error::internal_error().data(e.to_string()))?;
         self.config
+            .permissions
             .sandbox_policy
             .set(preset.sandbox.clone())
-            .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            .map_err(|e| Error::internal_error().data(e.to_string()))?;
 
         match preset.sandbox {
             // Treat this user action as a trusted dir
@@ -2331,16 +2343,14 @@ impl<A: Auth> ThreadActor<A> {
                     TrustLevel::Trusted,
                 )?;
             }
-            SandboxPolicy::ReadOnly => {}
+            SandboxPolicy::ReadOnly { .. } => {}
         }
 
         Ok(())
     }
 
     async fn get_current_model(&self) -> String {
-        self.models_manager
-            .get_model(&self.config.model, &self.config)
-            .await
+        self.models_manager.get_model(&self.config.model).await
     }
 
     async fn handle_set_model(&mut self, model: ModelId) -> Result<(), Error> {
@@ -2858,8 +2868,7 @@ mod tests {
 
     use agent_client_protocol::TextContent;
     use codex_core::{
-        config::ConfigOverrides, models_manager::model_presets::all_model_presets,
-        protocol::AgentMessageEvent,
+        config::ConfigOverrides, protocol::AgentMessageEvent, test_support::all_model_presets,
     };
     use tokio::{
         sync::{Mutex, mpsc::UnboundedSender},
@@ -3507,11 +3516,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ModelsManagerImpl for StubModelsManager {
-        async fn get_model(&self, _model_id: &Option<String>, _config: &Config) -> String {
+        async fn get_model(&self, _model_id: &Option<String>) -> String {
             all_model_presets()[0].to_owned().id
         }
 
-        async fn list_models(&self, _config: &Config) -> Vec<ModelPreset> {
+        async fn list_models(&self) -> Vec<ModelPreset> {
             all_model_presets().to_owned()
         }
     }
@@ -3605,6 +3614,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "a\n".into(),
                             process_id: None,
+                            status: codex_core::protocol::ExecCommandStatus::Completed,
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             turn_id: turn_id.clone(),
@@ -3621,8 +3631,10 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "b\n".into(),
                             process_id: None,
+                            status: codex_core::protocol::ExecCommandStatus::Completed,
                         }));
                         send(EventMsg::TurnComplete(TurnCompleteEvent {
+                            turn_id: turn_id.clone(),
                             last_agent_message: None,
                         }));
                     } else {
@@ -3650,6 +3662,7 @@ mod tests {
                             .send(Event {
                                 id: id.to_string(),
                                 msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                    turn_id: id.to_string(),
                                     last_agent_message: None,
                                 }),
                             })
@@ -3661,6 +3674,7 @@ mod tests {
                         .send(Event {
                             id: id.to_string(),
                             msg: EventMsg::TurnStarted(TurnStartedEvent {
+                                turn_id: id.to_string(),
                                 model_context_window: None,
                                 collaboration_mode_kind: Default::default(),
                             }),
@@ -3678,6 +3692,7 @@ mod tests {
                         .send(Event {
                             id: id.to_string(),
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                turn_id: id.to_string(),
                                 last_agent_message: None,
                             }),
                         })
@@ -3707,6 +3722,7 @@ mod tests {
                         .send(Event {
                             id: id.to_string(),
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                turn_id: id.to_string(),
                                 last_agent_message: None,
                             }),
                         })
@@ -3739,6 +3755,7 @@ mod tests {
                         .send(Event {
                             id: id.to_string(),
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                turn_id: id.to_string(),
                                 last_agent_message: None,
                             }),
                         })

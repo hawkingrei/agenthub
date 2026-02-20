@@ -8,6 +8,7 @@ const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 enum ActorCommand {
+    Help,
     Inbox {
         run_id: String,
         actor_id: String,
@@ -345,7 +346,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 idempotency_key: resolved_idempotency_key,
             })
         }
-        "help" | "--help" | "-h" => Err(anyhow::anyhow!("{}", actor_usage())),
+        "help" | "--help" | "-h" => Ok(ActorCommand::Help),
         other => Err(anyhow::anyhow!(
             "unknown actor subcommand: {}\n{}",
             other,
@@ -355,9 +356,10 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
 }
 
 async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
-    let db = crate::db::init_db().await?;
-    let manager = TeamManager::new(db);
     match command {
+        ActorCommand::Help => {
+            println!("{}", actor_usage());
+        }
         ActorCommand::Inbox {
             run_id,
             actor_id,
@@ -365,6 +367,8 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             after_id,
             include_delivered,
         } => {
+            let db = crate::db::init_db().await?;
+            let manager = TeamManager::new(db);
             let messages = manager
                 .list_actor_inbox(&run_id, &actor_id, limit, after_id, include_delivered)
                 .await?;
@@ -375,6 +379,8 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             actor_id,
             message_id,
         } => {
+            let db = crate::db::init_db().await?;
+            let manager = TeamManager::new(db);
             let message = manager
                 .ack_actor_message(&run_id, &actor_id, message_id)
                 .await?;
@@ -390,6 +396,8 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             payload,
             idempotency_key,
         } => {
+            let db = crate::db::init_db().await?;
+            let manager = TeamManager::new(db);
             let message = manager
                 .send_actor_message(SendActorMessageInput {
                     run_id: &run_id,
@@ -577,5 +585,14 @@ mod tests {
         );
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_help_command_is_supported() {
+        for arg in ["help", "--help", "-h"] {
+            let args = vec![arg.to_string()];
+            let parsed = parse_actor_command(&args).expect("parse help");
+            assert!(matches!(parsed, ActorCommand::Help));
+        }
     }
 }
