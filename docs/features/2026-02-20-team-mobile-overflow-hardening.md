@@ -30,11 +30,16 @@ touch interaction difficult on narrow screens.
 5. Strengthen mobile regression coverage:
    - mobile E2E case now uses intentionally long member IDs.
    - assert no horizontal overflow (`scrollWidth - clientWidth <= 1`).
+6. Keep Team run tabs readable on narrow screens:
+   - introduce Team-only `team-tab-bar` class to force `nowrap` while preserving horizontal scroll.
+   - sync small-screen session gap rule to include `.team-session` after header class rename.
 
 ## Validation Evidence (2026-02-20)
 
 - `npm --prefix web run test -- src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts`
 - `PLAYWRIGHT_MINIMAL_RUNTIME=1 PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_PORT=4174 npm --prefix web run e2e -- --grep "team page keeps single-column proportions on mobile viewport" tests/e2e/team_page.e2e.ts`
+- `PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts --grep "team page keeps single-column proportions on mobile viewport"`
+- `PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts --grep before_created_at`
 - `npm --prefix web run lint`
 - `npm --prefix web run build`
 
