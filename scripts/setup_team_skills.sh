@@ -66,6 +66,11 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       skills_file="$2"
+      if [[ -z "${skills_file}" ]]; then
+        echo "error: --skills-file requires a non-empty value" >&2
+        usage >&2
+        exit 1
+      fi
       shift 2
       ;;
     --install-dir)
@@ -75,6 +80,11 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       install_dir="$2"
+      if [[ -z "${install_dir}" ]]; then
+        echo "error: --install-dir requires a non-empty value" >&2
+        usage >&2
+        exit 1
+      fi
       shift 2
       ;;
     --use-repo-skill-paths)

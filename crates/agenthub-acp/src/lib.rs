@@ -235,7 +235,7 @@ fn load_mcp_servers_from_path(
     path: &Path,
     actor_context: Option<&AcpActorSkillContext>,
 ) -> Vec<McpServer> {
-    let contents = match fs::read_to_string(&path) {
+    let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) if err.kind() == ErrorKind::NotFound => {
             if let Some(context) = actor_context {
@@ -1298,20 +1298,34 @@ mod tests {
         }
     }
 
-    fn temp_mcp_config_path() -> PathBuf {
-        std::env::temp_dir()
-            .join(format!("agenthub-acp-test-{}", Uuid::new_v4()))
-            .join(".agenthub")
-            .join("mcp.json")
+    struct TempMcpConfig {
+        path: PathBuf,
     }
 
-    fn cleanup_temp_mcp_config(path: &Path) {
-        if let Some(root) = path
-            .parent()
-            .and_then(Path::parent)
-            .filter(|dir| dir.exists())
-        {
-            let _ = fs::remove_dir_all(root);
+    impl TempMcpConfig {
+        fn new() -> Self {
+            let path = std::env::temp_dir()
+                .join(format!("agenthub-acp-test-{}", Uuid::new_v4()))
+                .join(".agenthub")
+                .join("mcp.json");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempMcpConfig {
+        fn drop(&mut self) {
+            if let Some(root) = self
+                .path
+                .parent()
+                .and_then(Path::parent)
+                .filter(|dir| dir.exists())
+            {
+                let _ = fs::remove_dir_all(root);
+            }
         }
     }
 
@@ -1419,21 +1433,20 @@ mod tests {
 
     #[test]
     fn load_mcp_servers_injects_actor_mailbox_when_config_missing() {
-        let path = temp_mcp_config_path();
+        let config = TempMcpConfig::new();
         let context = test_actor_context();
-        let servers = load_mcp_servers_from_path(&path, Some(&context));
+        let servers = load_mcp_servers_from_path(config.path(), Some(&context));
         assert_eq!(servers.len(), 1);
         assert_eq!(server_name(&servers[0]), ACTOR_MAILBOX_MCP_SERVER_NAME);
-        cleanup_temp_mcp_config(&path);
     }
 
     #[test]
     fn load_mcp_servers_appends_actor_mailbox_to_existing_config_servers() {
-        let path = temp_mcp_config_path();
-        fs::create_dir_all(path.parent().expect("mcp config parent"))
+        let config = TempMcpConfig::new();
+        fs::create_dir_all(config.path().parent().expect("mcp config parent"))
             .expect("create mcp config parent");
         fs::write(
-            &path,
+            config.path(),
             r#"
             {
               "mcpServers": {
@@ -1448,11 +1461,10 @@ mod tests {
         .expect("write mcp config");
 
         let context = test_actor_context();
-        let servers = load_mcp_servers_from_path(&path, Some(&context));
+        let servers = load_mcp_servers_from_path(config.path(), Some(&context));
         assert_eq!(servers.len(), 2);
         let names = servers.iter().map(server_name).collect::<Vec<_>>();
         assert!(names.contains(&"local-stdio"));
         assert!(names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME));
-        cleanup_temp_mcp_config(&path);
     }
 }
