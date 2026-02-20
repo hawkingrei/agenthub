@@ -3,10 +3,10 @@ import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_ICON_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
@@ -402,13 +402,14 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               include_delivered
             </label>
             <button
-              className={TEAM_PANEL_ICON_BUTTON_CLASS}
+              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
               onClick={onRefreshInbox}
               disabled={busy === "refresh-inbox"}
               title="Refresh inbox"
               aria-label="Refresh inbox"
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
             </button>
           </div>
         </div>

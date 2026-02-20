@@ -1,6 +1,6 @@
 import React from "react";
 import { TeamDefinitionRecord } from "../api";
-import { TEAM_PANEL_ICON_BUTTON_CLASS } from "../ui/tailwind_classes";
+import { TEAM_PANEL_REFRESH_BUTTON_CLASS } from "../ui/tailwind_classes";
 
 type TeamMemberSummary = {
   active: number;
@@ -55,11 +55,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
             void onRefreshTeams();
           }}
           disabled={busy === "refresh-teams"}
-          className={TEAM_PANEL_ICON_BUTTON_CLASS}
+          className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
           title="Refresh teams"
           aria-label="Refresh teams"
         >
           <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+          <span>Refresh</span>
         </button>
       </div>
 

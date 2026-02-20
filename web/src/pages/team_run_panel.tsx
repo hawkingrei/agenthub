@@ -2,10 +2,10 @@ import React from "react";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
-  TEAM_PANEL_ICON_BUTTON_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -231,11 +231,12 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                   void onRefreshRuns();
                 }}
                 disabled={runsLoading}
-                className={TEAM_PANEL_ICON_BUTTON_CLASS}
+                className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
                 title="Refresh runs"
                 aria-label="Refresh runs"
               >
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                <span>Refresh</span>
               </button>
             </div>
           </div>
