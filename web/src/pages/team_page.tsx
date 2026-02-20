@@ -2304,7 +2304,7 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <div className="teams-layout grid min-h-0 gap-5 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+      <div className="teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <TeamSidebar
           busy={busy}
           onRefreshTeams={refreshTeams}
