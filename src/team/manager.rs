@@ -6,6 +6,7 @@ mod tests;
 
 use std::collections::HashMap;
 
+pub use agenthub_team_domain::TeamRunResumeError;
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Row, SqlitePool};
@@ -25,12 +26,6 @@ use super::{
 #[derive(Clone)]
 pub struct TeamManager {
     db: SqlitePool,
-}
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum TeamRunResumeError {
-    #[error("completed run cannot be resumed")]
-    CompletedRun,
 }
 
 impl TeamManager {

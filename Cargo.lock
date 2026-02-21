@@ -67,6 +67,7 @@ dependencies = [
  "agent-client-protocol",
  "agenthub-acp",
  "agenthub-team-actor",
+ "agenthub-team-domain",
  "anyhow",
  "argon2",
  "async-trait",
@@ -173,6 +174,15 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "agenthub-team-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
