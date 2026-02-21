@@ -23,7 +23,6 @@ import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import {
-  normalizeRuntimeWorktreeRoot,
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
@@ -88,6 +87,7 @@ import {
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
+import { useTeamCreateModalLifecycleEffects } from "./team/use_team_create_modal_lifecycle_effects";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import {
@@ -1303,46 +1303,17 @@ export function TeamPage(props: TeamPageProps) {
     markConversationSeen,
   });
 
-  useEffect(() => {
-    if (!props.token) {
-      setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
-      return;
-    }
-    api
-      .getRuntimeDefaults(props.token)
-      .then((defaults) => {
-        const root = normalizeRuntimeWorktreeRoot(
-          defaults.default_worktree_root,
-          DEFAULT_WORKTREE_ROOT
-        );
-        setForgeDefaultWorktreeRoot(root);
-      })
-      .catch(() => undefined);
-  }, [props.token]);
-
-  useEffect(() => {
-    if (!showCreateTeamModal) return;
-    if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
-      return;
-    }
-    const fallbackLeaderId = teamForgeAgents[0]?.id ?? "";
-    setLeaderMemberId(fallbackLeaderId);
-  }, [leaderMemberId, setLeaderMemberId, showCreateTeamModal, teamForgeAgents]);
-
-  useEffect(() => {
-    if (!showCreateTeamModal) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (busy === "create-team") return;
-      event.preventDefault();
-      setShowCreateTeamModal(false);
-      setCreateTeamStage(0);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [busy, setCreateTeamStage, setShowCreateTeamModal, showCreateTeamModal]);
+  useTeamCreateModalLifecycleEffects({
+    token: props.token,
+    busy,
+    showCreateTeamModal,
+    leaderMemberId,
+    teamForgeAgents,
+    setForgeDefaultWorktreeRoot,
+    setLeaderMemberId,
+    setShowCreateTeamModal,
+    setCreateTeamStage,
+  });
 
   const openCreateTeamModal = useCallback(
     (mode: TeamCreateEntryMode) => {
