@@ -19,6 +19,8 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 ## 3. Technical and Architecture Constraints
 
 - Backend: Rust (single-process service)
+- Build system: Bazel is a first-class build/test path; Rust changes should keep `bazel build //...` and `bazel test //...` viable
+- Rust packaging policy: prefer workspace crates under `crates/` with clear functional ownership; avoid unrelated "grab-bag" crates
 - Frontend: mainstream TS framework (default React + Vite SPA), static assets embedded in the Rust service
 - Frontend UI standard: all new UI features and UI refactors must use the project UI library (`@mantine/core`) plus Tailwind CSS utility classes as the default styling path
 - CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
@@ -34,12 +36,21 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 3) Agent lifecycle is managed by the backend process; sessions and runtime state are persisted to SQLite.
 4) Login uses username/password with token-based auth; join/bootstrap remains available for initial setup flows.
 5) ACP (Agent Control Protocol) renders structured agent output; history must be retained.
+6) Rust code should be decomposed by domain into library crates (`crates/<domain>`), not by arbitrary file split.
+7) `src/main.rs` should stay a thin bootstrap entry; business logic should live in library crates and be composed in `src/app.rs` or domain crates.
+8) New Rust domain modules should define Bazel targets with boundaries aligned to crate boundaries (one domain crate, one Bazel package as default).
 
 ## 5. Directory Plan (adjustable)
 
 ```
 agenthub/
+  crates/
+    acp/
+    openapi/
+    ...                 # domain-oriented libraries
   src/
+    app.rs              # bootstrap composition
+    lib.rs              # library entry point
     main.rs
     api/
     agent/
@@ -104,6 +115,11 @@ agenthub/
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
   - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
   - Workers may coordinate with peers when dependencies overlap, but status/evidence must still flow back to leader
+- Rust crate decomposition policy (Bazel-oriented):
+  - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
+  - Do not split into tiny crates without clear domain boundaries or ownership
+  - Cross-crate dependencies should point towards core domain crates (Dependency Inversion) and avoid cycles
+  - For each new crate, add/adjust corresponding Bazel package and targets in the same change
 
 ## 10. TODO
 
@@ -111,6 +127,7 @@ agenthub/
 - ACP HTTP3 gateway (public endpoint)
 - ACP permission UX optimization: modal confirmation
 - ACP permission event push: WebSocket instead of polling
+- Bazel-first Rust decomposition rollout: migrate legacy `src/*` domain modules into cohesive `crates/*` libraries with aligned Bazel package boundaries
 - Worktree strategy implementation and UI
 - Admin per-agent code mode toggle
 - Unified config file loading and validation
@@ -145,6 +162,11 @@ agenthub/
 - `User Docs`: Docusaurus docs install/build checks.
 
 ## 13. Change Log
+
+### 2026-02-21
+
+- Added Bazel-first Rust packaging constraints: domain-oriented crate decomposition, thin bootstrap entrypoint policy, and crate-to-Bazel boundary alignment guidance.
+- Added explicit requirement/policy notes for future Rust migrations from `src/*` modules into cohesive `crates/*` libraries.
 
 ### 2026-02-05
 
