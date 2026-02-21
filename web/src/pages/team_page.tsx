@@ -88,6 +88,7 @@ import {
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
+import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import {
   CREATE_TEAM_STAGE_TITLES,
@@ -1279,66 +1280,28 @@ export function TeamPage(props: TeamPageProps) {
     setChatStickToBottom,
   });
 
-  useEffect(() => {
-    if (!snapshot) {
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      return;
-    }
-    if (
-      selectedMemberId &&
-      snapshot.members.some((member) => member.member_id === selectedMemberId)
-    ) {
-      return;
-    }
-    setSelectedMemberId(snapshot.members[0]?.member_id ?? "");
-  }, [selectedMemberId, setSelectedMemberId, snapshot]);
-
-  useEffect(() => {
-    const actorId = chatActors.inboxActorId.trim();
-    if (!activeRunIdForSelectedTeam || !actorId) {
-      setInbox([]);
-      return;
-    }
-    setInboxActorId(actorId);
-    void loadInbox(actorId).catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [activeRunIdForSelectedTeam, chatActors.inboxActorId, loadInbox, setInbox, setInboxActorId]);
-
-  useEffect(() => {
-    if (tab !== "mailbox") {
-      return;
-    }
-    setChatStickToBottom(true);
-    window.requestAnimationFrame(() => {
-      scrollConversationToBottom();
-    });
-  }, [conversationKey, scrollConversationToBottom, setChatStickToBottom, tab]);
-
-  useEffect(() => {
-    if (tab !== "mailbox" || !chatStickToBottom) {
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      scrollConversationToBottom();
-      markConversationSeen(conversationKey, conversationLatestMessageId);
-    });
-  }, [
+  useTeamMailboxLifecycleEffects({
+    snapshot,
+    selectedMemberId,
+    activeRunIdForSelectedTeam,
+    chatInboxActorId: chatActors.inboxActorId,
+    tab,
     chatStickToBottom,
     conversationKey,
     conversationLatestMessageId,
-    conversationMessages.length,
-    markConversationSeen,
+    conversationMessagesLength: conversationMessages.length,
+    loadInbox,
+    loadMemberEvents,
+    parseError: parseErrorMessage,
+    setError,
+    setSelectedMemberId,
+    setMemberEvents,
+    setInbox,
+    setInboxActorId,
+    setChatStickToBottom,
     scrollConversationToBottom,
-    tab,
-  ]);
-
-  useEffect(() => {
-    void loadMemberEvents("replace").catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [loadMemberEvents]);
+    markConversationSeen,
+  });
 
   useEffect(() => {
     if (!props.token) {
