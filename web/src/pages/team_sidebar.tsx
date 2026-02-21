@@ -5,6 +5,8 @@ import {
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_PANEL_GHOST_BUTTON_CLASS,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -76,12 +78,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
         <div className="teams-create-entry-actions mt-3 flex flex-wrap gap-2">
           <button
             onClick={onOpenCreateTeamWizard}
-            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
           >
             Guided Wizard
           </button>
           <button
-            className="ghost rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-400"
+            className={TEAM_PANEL_GHOST_BUTTON_CLASS}
             onClick={onOpenCreateTeamManual}
           >
             Manual Spec

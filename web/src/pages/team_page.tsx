@@ -116,6 +116,13 @@ import {
   type TeamMailboxState,
   type TeamRunBrowserState,
 } from "./team/state";
+import {
+  TEAM_PANEL_GHOST_BUTTON_CLASS,
+  TEAM_PANEL_INPUT_CLASS,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+} from "../ui/tailwind_classes";
 
 export {
   buildMailboxChatPayload,
@@ -2269,16 +2276,12 @@ export function TeamPage(props: TeamPageProps) {
     setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
   };
 
-  const panelPrimaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
-  const panelSecondaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
+  const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
   const panelInputClassName =
-    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300";
-  const panelRefreshButtonClassName =
-    "inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-500 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200";
-  const panelGhostButtonClassName =
-    "ghost inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+    `${TEAM_PANEL_INPUT_CLASS} shadow-sm focus:border-slate-400 focus:ring-slate-300`;
+  const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
+  const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const modalFieldClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
