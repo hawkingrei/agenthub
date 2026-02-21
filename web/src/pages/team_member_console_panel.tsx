@@ -67,15 +67,18 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
     toPrettyJson,
     formatTs,
   } = props;
-  const mcpSkills =
-    selectedMemberSnapshot?.skills.filter((skill) => {
-      const normalized = skill.trim().toLowerCase();
-      return (
-        normalized.includes("mcp") ||
-        normalized.includes("actor-mailbox") ||
-        normalized.includes("actor-runtime")
-      );
-    }) ?? [];
+  const mcpSkills = React.useMemo(() => {
+    return (
+      selectedMemberSnapshot?.skills.filter((skill) => {
+        const normalized = skill.trim().toLowerCase();
+        return (
+          normalized.includes("mcp") ||
+          normalized.includes("actor-mailbox") ||
+          normalized.includes("actor-runtime")
+        );
+      }) ?? []
+    );
+  }, [selectedMemberSnapshot?.skills]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>

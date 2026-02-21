@@ -123,14 +123,16 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeamId,
     onLoadMoreRuns,
   } = props;
-  const orderedTeamMemberLiveStates = [...selectedTeamMemberLiveStates].sort((left, right) => {
-    const leftLeader = isLeaderRole(left.role);
-    const rightLeader = isLeaderRole(right.role);
-    if (leftLeader !== rightLeader) {
-      return leftLeader ? -1 : 1;
-    }
-    return left.member_id.localeCompare(right.member_id);
-  });
+  const orderedTeamMemberLiveStates = React.useMemo(() => {
+    return [...selectedTeamMemberLiveStates].sort((left, right) => {
+      const leftLeader = isLeaderRole(left.role);
+      const rightLeader = isLeaderRole(right.role);
+      if (leftLeader !== rightLeader) {
+        return leftLeader ? -1 : 1;
+      }
+      return left.member_id.localeCompare(right.member_id);
+    });
+  }, [selectedTeamMemberLiveStates]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
