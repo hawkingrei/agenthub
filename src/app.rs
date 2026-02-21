@@ -187,10 +187,11 @@ pub async fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use axum::{
-        body::Body,
+        body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
     use tower::util::ServiceExt;
+    use tracing_subscriber::EnvFilter;
 
     #[test]
     fn split_log_path_detects_file_and_directory_inputs() {
@@ -230,6 +231,28 @@ mod tests {
         super::log_config_details(&config, &default_info, None, None, None);
     }
 
+    #[test]
+    fn init_tracing_supports_stdout_and_file_targets() {
+        let stdout_guard =
+            super::init_tracing(EnvFilter::new("info"), None).expect("init tracing for stdout");
+        assert!(stdout_guard.is_none());
+
+        let unique = format!(
+            "agenthub-app-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration since epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        let spec = (dir.clone(), "agenthub.log".to_string());
+        let file_guard = super::init_tracing(EnvFilter::new("info"), Some(&spec))
+            .expect("init tracing for file");
+        assert!(file_guard.is_some());
+        assert!(dir.exists());
+    }
+
     #[tokio::test]
     async fn build_app_router_serves_embedded_health() {
         let state = crate::api::team_tests::build_test_state().await;
@@ -245,5 +268,43 @@ mod tests {
             .await
             .expect("request health");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn build_app_router_serves_file_system_fallback() {
+        let unique = format!(
+            "agenthub-web-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration since epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&dir).expect("create web dir");
+        std::fs::write(
+            dir.join("index.html"),
+            "<html><body>agenthub-test</body></html>",
+        )
+        .expect("write index html");
+
+        let state = crate::api::team_tests::build_test_state().await;
+        let api_router = crate::api::router(state.clone());
+        let app = super::build_app_router(state, api_router, Some(dir.to_string_lossy().as_ref()));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/not-found-path")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("request fallback path");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body_text = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body_text.contains("agenthub-test"));
     }
 }
