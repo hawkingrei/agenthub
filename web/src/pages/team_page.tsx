@@ -88,6 +88,7 @@ import {
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
+import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import {
   CREATE_TEAM_STAGE_TITLES,
   DEFAULT_TEAM_CONTROL_STATE,
@@ -1248,136 +1249,35 @@ export function TeamPage(props: TeamPageProps) {
     [props.token, selectedMemberSnapshot]
   );
 
-  useEffect(() => {
-    void refreshTeams();
-    void refreshAgents().catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [refreshAgents, refreshTeams]);
-
-  useEffect(() => {
-    if (!selectedTeamId) {
-      setActiveRunId(null);
-      setRuns([]);
-      setEvents([]);
-      setSteps([]);
-      setInbox([]);
-      setSnapshot(null);
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      return;
-    }
-    let canceled = false;
-    const loadTeamRuns = async () => {
-      try {
-        setError(null);
-        await refreshTeamRuns(selectedTeamId, "replace", {
-          statusFilter: runStatusFilter,
-        });
-        if (canceled) return;
-      } catch (err) {
-        if (!canceled) {
-          setError(parseErrorMessage(err));
-        }
-      }
-    };
-    void loadTeamRuns();
-    return () => {
-      canceled = true;
-    };
-  }, [refreshTeamRuns, runStatusFilter, selectedTeamId, setInbox, setSelectedMemberId]);
-
-  useEffect(() => {
-    if (!selectedTeamId) return;
-    setActiveRunId((prev) => {
-      if (prev && runs.some((run) => run.id === prev && run.team_id === selectedTeamId)) {
-        return prev;
-      }
-      return runs.find((run) => run.team_id === selectedTeamId)?.id ?? null;
-    });
-  }, [runs, selectedTeamId]);
-
-  useEffect(() => {
-    if (!activeRunIdForSelectedTeam) {
-      setEvents([]);
-      setSteps([]);
-      setInbox([]);
-      setSnapshot(null);
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      setChatSeenByConversation({});
-      setChatStickToBottom(true);
-      return;
-    }
-    let canceled = false;
-    const loadAll = async () => {
-      try {
-        setError(null);
-        const run = await refreshRun(activeRunIdForSelectedTeam);
-        if (canceled) return;
-        if (selectedTeamId && run.team_id !== selectedTeamId) {
-          setError(
-            `Run ${run.id} belongs to team ${run.team_id}. Select that team to view it.`
-          );
-          setActiveRunId((current) => (current === run.id ? null : current));
-          return;
-        }
-        await Promise.all([
-          refreshSteps(activeRunIdForSelectedTeam),
-          refreshEvents(activeRunIdForSelectedTeam),
-          refreshSnapshot(activeRunIdForSelectedTeam),
-        ]);
-      } catch (err) {
-        if (!canceled) {
-          setError(parseErrorMessage(err));
-        }
-      }
-    };
-    void loadAll();
-    return () => {
-      canceled = true;
-    };
-  }, [
+  useTeamRunLifecycleEffects({
+    selectedTeamId,
+    runStatusFilter,
+    runs,
     activeRunIdForSelectedTeam,
-    refreshEvents,
+    eventsAutoRefresh,
+    tab,
+    chatInboxActorId: chatActors.inboxActorId,
+    refreshAgents,
+    refreshTeams,
+    refreshTeamRuns,
     refreshRun,
-    refreshSnapshot,
     refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+    loadInbox,
+    parseError: parseErrorMessage,
+    setError,
+    setActiveRunId,
+    setRuns,
+    setEvents,
+    setSteps,
+    setInbox,
+    setSnapshot,
+    setSelectedMemberId,
+    setMemberEvents,
     setChatSeenByConversation,
     setChatStickToBottom,
-    setInbox,
-    setSelectedMemberId,
-    selectedTeamId,
-  ]);
-
-  useEffect(() => {
-    if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
-    const timer = window.setInterval(() => {
-      if (tab === "mailbox") {
-        void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
-        const actorId = chatActors.inboxActorId.trim();
-        if (actorId) {
-          void loadInbox(actorId).catch(() => undefined);
-        }
-        return;
-      }
-      void refreshRun(activeRunIdForSelectedTeam).catch(() => undefined);
-      void refreshEvents(activeRunIdForSelectedTeam).catch(() => undefined);
-      void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
-    }, 4000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
-    activeRunIdForSelectedTeam,
-    chatActors.inboxActorId,
-    eventsAutoRefresh,
-    loadInbox,
-    refreshEvents,
-    refreshRun,
-    refreshSnapshot,
-    tab,
-  ]);
+  });
 
   useEffect(() => {
     if (!snapshot) {
