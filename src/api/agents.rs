@@ -11,7 +11,7 @@ use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
     normalize_actor_cli_path,
 };
-use crate::agent::{AgentConfig, AgentRecord, WorktreeMode};
+use crate::agent::{AgentConfig, AgentRecord, AgentSendInputError, WorktreeMode};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
@@ -236,9 +236,10 @@ async fn send_input(
     {
         Ok(()) => {}
         Err(err) => {
-            let message = err.to_string();
-            if message.contains("agent session mismatch:") {
-                return Err(ApiError::conflict(&message));
+            if let Some(AgentSendInputError::SessionMismatch { .. }) =
+                err.downcast_ref::<AgentSendInputError>()
+            {
+                return Err(ApiError::conflict(&err.to_string()));
             }
             return Err(err.into());
         }

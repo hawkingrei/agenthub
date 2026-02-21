@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::TeamManager;
 use super::codec::team_run_status_from_str;
+use super::{TeamManager, TeamRunResumeError};
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
     TeamRunStatus, TeamStepStatus,
@@ -1682,8 +1682,9 @@ async fn resume_run_handles_active_terminal_and_completed_statuses() {
         .resume_run(&completed_run.id)
         .await
         .expect_err("completed run should reject resume");
-    assert!(
-        err.to_string().contains("completed run cannot be resumed"),
+    assert_eq!(
+        err.downcast_ref::<TeamRunResumeError>(),
+        Some(&TeamRunResumeError::CompletedRun),
         "unexpected error: {err}"
     );
 }
