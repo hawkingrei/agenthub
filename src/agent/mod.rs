@@ -2,7 +2,7 @@ mod manager;
 
 use serde::{Deserialize, Serialize};
 
-pub use manager::AgentManager;
+pub use manager::{AgentManager, AgentSendInputError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {

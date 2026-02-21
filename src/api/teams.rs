@@ -19,8 +19,8 @@ use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
-    TeamStepStatus,
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord,
+    TeamRunResumeError, TeamStepRecord, TeamStepStatus,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -1351,7 +1351,10 @@ fn map_not_found_error(err: anyhow::Error, msg: &str) -> ApiError {
 }
 
 fn map_resume_run_error(err: anyhow::Error) -> ApiError {
-    if err.to_string().contains("completed run cannot be resumed") {
+    if matches!(
+        err.downcast_ref::<TeamRunResumeError>(),
+        Some(TeamRunResumeError::CompletedRun)
+    ) {
         return ApiError::conflict("completed run cannot be resumed; use restart");
     }
     map_not_found_error(err, "run not found")

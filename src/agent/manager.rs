@@ -58,6 +58,12 @@ const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum AgentSendInputError {
+    #[error("agent session mismatch: expected={expected} running={running}")]
+    SessionMismatch { expected: String, running: String },
+}
+
 #[derive(Debug, Clone)]
 struct RuntimeStartPolicy {
     workdir: String,
@@ -1245,11 +1251,11 @@ impl AgentManager {
         if let Some(expected_session_id) = expected_session_id
             && expected_session_id != session_id
         {
-            anyhow::bail!(
-                "agent session mismatch: expected={} running={}",
-                expected_session_id,
-                session_id
-            );
+            return Err(AgentSendInputError::SessionMismatch {
+                expected: expected_session_id.to_string(),
+                running: session_id.clone(),
+            }
+            .into());
         }
 
         if let Some(stdin) = stdin {

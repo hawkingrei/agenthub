@@ -27,6 +27,12 @@ pub struct TeamManager {
     db: SqlitePool,
 }
 
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum TeamRunResumeError {
+    #[error("completed run cannot be resumed")]
+    CompletedRun,
+}
+
 impl TeamManager {
     pub fn new(db: SqlitePool) -> Self {
         Self { db }
@@ -244,7 +250,7 @@ impl TeamManager {
                 Ok(run)
             }
             TeamRunStatus::Failed | TeamRunStatus::Canceled => self.fork_run_submission(&run).await,
-            TeamRunStatus::Completed => Err(anyhow::anyhow!("completed run cannot be resumed")),
+            TeamRunStatus::Completed => Err(TeamRunResumeError::CompletedRun.into()),
         }
     }
 
