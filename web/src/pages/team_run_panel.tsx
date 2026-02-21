@@ -44,7 +44,7 @@ type TeamMemberLiveState = {
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_MEMBER_CLASS =
-  "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4";
+  "teams-member-panel flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4";
 const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
 const RUN_PANEL_SECTION_CLASS =
   "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4";

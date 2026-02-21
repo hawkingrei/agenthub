@@ -2291,7 +2291,7 @@ export function TeamPage(props: TeamPageProps) {
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 
   return (
-    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
+    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
       <header className="mb-0 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
