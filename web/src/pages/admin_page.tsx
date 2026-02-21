@@ -36,17 +36,17 @@ const ADMIN_SESSION_CLASS = "session flex items-center gap-2 text-sm text-slate-
 const ADMIN_SECTION_CLASS =
   "admin mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5";
 const ADMIN_TOOLBAR_CLASS =
-  "toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm";
+  "admin-toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm";
 const ADMIN_TAB_BAR_CLASS =
-  "tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm";
+  "admin-tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm";
 const ADMIN_TAB_BUTTON_BASE_CLASS =
-  "tab inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition";
+  "admin-tab-button inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition";
 const ADMIN_TAB_BUTTON_ACTIVE_CLASS =
-  "active border border-slate-900 bg-slate-900 text-white shadow-sm";
+  "border border-slate-900 bg-slate-900 text-white shadow-sm";
 const ADMIN_TAB_BUTTON_IDLE_CLASS =
   "border border-transparent bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900";
 const ADMIN_CARD_CLASS =
-  "card rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-sm";
+  "admin-card rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-sm";
 const ADMIN_CARD_TITLE_CLASS = "mb-3 text-base font-semibold text-slate-900";
 const ADMIN_FORM_ROW_CLASS = "form-row mb-3 flex flex-wrap items-center gap-2";
 const ADMIN_INPUT_CLASS =

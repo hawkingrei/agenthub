@@ -87,9 +87,9 @@ export function AcpDebug({
     ? Math.round((runtimeMetrics.ansiCacheHits / ansiTotal) * 100)
     : 0;
   const debugTabClassName = (isActive: boolean) =>
-    `tab rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+    `acp-debug-tab inline-flex min-h-[30px] items-center rounded-md px-3 py-1.5 text-xs font-medium leading-tight transition sm:text-sm ${
       isActive
-        ? "active bg-slate-900 text-white shadow-sm"
+        ? "bg-slate-900 text-white shadow-sm"
         : "text-slate-600 hover:bg-white hover:text-slate-900"
     }`;
   const debugInputClassName =

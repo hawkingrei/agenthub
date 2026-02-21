@@ -94,6 +94,7 @@ agenthub/
 - Frontend implementation policy:
   - Follow-up UI work should be built with UI library components + Tailwind CSS utilities
   - Avoid introducing new parallel style systems or expanding legacy handcrafted global CSS except compatibility patches
+  - All frontend changes must be validated with Chrome DevTools MCP before edits (baseline) and after edits (regression check), and responses should include the MCP verification result summary
 - Team role workflow policy:
   - Leader acts as architect/reviewer and should not implement feature code directly
   - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation

@@ -129,12 +129,12 @@ describe("AcpPanel layout", () => {
     const conversationButton = buttons.find(
       (btn) =>
         typeof btn.props.className === "string" &&
-        btn.props.className.includes("tab")
+        btn.props.className.includes("acp-tab-button")
     );
     const debugButton = buttons.find(
       (btn) =>
         typeof btn.props.className === "string" &&
-        btn.props.className.includes("tab") &&
+        btn.props.className.includes("acp-tab-button") &&
         JSON.stringify(btn.props.children).includes("Debug")
     );
     expect(conversationButton).toBeDefined();

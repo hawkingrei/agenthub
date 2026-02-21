@@ -405,7 +405,7 @@ section {
   height: 100%;
 }
 
-input:not([class*="mantine-"]) {
+body:not(.teams-page) input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -417,7 +417,7 @@ input:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-textarea:not([class*="mantine-"]) {
+body:not(.teams-page) textarea:not([class*="mantine-"]) {
   width: 100%;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -432,7 +432,7 @@ textarea:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-select:not([class*="mantine-"]) {
+body:not(.teams-page) select:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
   border-radius: var(--radius-sm);
@@ -444,7 +444,7 @@ select:not([class*="mantine-"]) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button:not([class*="mantine-"]) {
+body:not(.teams-page) button:not([class*="mantine-"]) {
   border: none;
   background: var(--ink);
   color: white;
@@ -456,22 +456,38 @@ button:not([class*="mantine-"]) {
   transition: transform 0.1s ease, box-shadow 0.15s ease;
 }
 
-button:not([class*="mantine-"]):active {
+body:not(.teams-page) button:not([class*="mantine-"]):active {
   transform: translateY(1px);
 }
 
-button:not([class*="mantine-"]):disabled {
+body:not(.teams-page) button:not([class*="mantine-"]):disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-button:not([class*="mantine-"]):focus-visible,
-input:not([class*="mantine-"]):focus-visible,
-textarea:not([class*="mantine-"]):focus-visible,
-select:not([class*="mantine-"]):focus-visible {
+body:not(.teams-page) button:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) input:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) textarea:not([class*="mantine-"]):focus-visible,
+body:not(.teams-page) select:not([class*="mantine-"]):focus-visible {
   outline: none;
   border-color: var(--focus-border);
   box-shadow: var(--focus-ring);
+}
+
+body.teams-page button:not([class*="mantine-"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+body.teams-page button:not([class*="mantine-"]):disabled {
+  cursor: not-allowed;
 }
 
 .input {
@@ -627,12 +643,6 @@ select:not([class*="mantine-"]):focus-visible {
 .jump-bottom:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-}
-
-.actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .agent-list {
@@ -1511,15 +1521,6 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 8px;
 }
 
-.acp-tabs .tab {
-  border: none;
-  background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: #495057;
-}
-
 .acp-interrupt-button {
   border: 1px solid #f0c3c3;
   background: #ffe9e9;
@@ -1537,22 +1538,6 @@ select:not([class*="mantine-"]):focus-visible {
   cursor: not-allowed;
 }
 
-.acp-tabs .tab.active {
-  background: #111;
-  color: #fff;
-}
-
-.acp-tabs .tab .tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 6px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: #111;
-  color: #fff;
-}
 
 .acp-conversation-spacer {
   flex: 0 0 auto;
@@ -1604,20 +1589,6 @@ select:not([class*="mantine-"]):focus-visible {
   background: #f1f3f5;
   border: 1px solid #e2e6ea;
   align-self: flex-start;
-}
-
-.acp-debug-tabs .tab {
-  border: none;
-  background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: #495057;
-}
-
-.acp-debug-tabs .tab.active {
-  background: #111;
-  color: #fff;
 }
 
 .acp-runtime {
@@ -2498,20 +2469,6 @@ select:not([class*="mantine-"]):focus-visible {
   color: #94e2d5;
 }
 
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.toolbar-actions {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
 .agents-collapse-button {
   display: none;
 }
@@ -2650,8 +2607,6 @@ select:not([class*="mantine-"]):focus-visible {
 
   .acp-tabs {
     --acp-tab-font-size: clamp(10px, 2.8vw, 11px);
-    --acp-tab-pad-y: clamp(3px, 1vw, 5px);
-    --acp-tab-pad-x: clamp(8px, 3.2vw, 11px);
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
@@ -2668,15 +2623,9 @@ select:not([class*="mantine-"]):focus-visible {
     justify-content: center;
     flex: 1 1 0;
     min-height: 30px;
-    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
+    padding: clamp(3px, 1vw, 5px) clamp(8px, 3vw, 11px);
     font-size: var(--acp-tab-font-size);
     line-height: 1.15;
-  }
-
-  .acp-tabs .tab .tab-badge {
-    margin-left: clamp(3px, 1vw, 5px);
-    padding: 1px clamp(4px, 1.4vw, 6px);
-    font-size: clamp(9px, 2.3vw, 10px);
   }
 
   .acp-interrupt-button {
@@ -2697,13 +2646,6 @@ select:not([class*="mantine-"]):focus-visible {
     flex-wrap: wrap;
     padding: clamp(2px, 0.6vw, 3px);
     gap: clamp(3px, 1vw, 5px);
-  }
-
-  .acp-debug-tabs .tab {
-    min-height: 30px;
-    padding: var(--acp-tab-pad-y) var(--acp-tab-pad-x);
-    font-size: var(--acp-tab-font-size);
-    line-height: 1.15;
   }
 
   .agents-backdrop {
@@ -2880,19 +2822,13 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 16px;
 }
 
-.card {
-  border: 1px solid #e0e0e0;
-  border-radius: var(--radius-md);
-  padding: 12px;
-  background: #fff;
-  min-height: 220px;
-}
-
-.admin .card ul:not([class*="mantine-"]) {
+.admin .card ul:not([class*="mantine-"]),
+.admin .admin-card ul:not([class*="mantine-"]) {
   padding-left: 18px;
 }
 
-.admin .card li:not([class*="mantine-"]) {
+.admin .card li:not([class*="mantine-"]),
+.admin .admin-card li:not([class*="mantine-"]) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2909,7 +2845,8 @@ select:not([class*="mantine-"]):focus-visible {
   margin: 0;
 }
 
-.card ul {
+.admin .card ul:not([class*="mantine-"]),
+.admin .admin-card ul:not([class*="mantine-"]) {
   max-height: 240px;
   overflow: auto;
   padding-right: 4px;
@@ -2919,93 +2856,14 @@ select:not([class*="mantine-"]):focus-visible {
   grid-column: 1 / -1;
 }
 
-.tab-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-  margin-bottom: 12px;
-  position: relative;
-  z-index: 2;
-}
-
-.team-tab-bar {
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
-.tab {
-  background: #f0f0f0;
-  color: #222;
-  border: 1px solid #d0d0d0;
-  padding: 6px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.tab.active {
-  background: #161616;
-  color: #fff;
-  border-color: #161616;
-}
-
 .admin-panel {
   display: grid;
   grid-template-columns: 1fr;
 }
 
-.admin .card li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
+.admin .admin-card li:not([class*="mantine-"]) button:not([class*="mantine-"]) {
   background: #444;
   padding: 4px 8px;
-}
-
-.teams-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-  gap: 16px;
-  min-height: 0;
-}
-
-.teams-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
-.teams-form,
-.teams-run-create,
-.teams-run-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.teams-run-list-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.teams-run-list-head .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.teams-run-list-head .actions select {
-  min-width: 164px;
-}
-
-.teams-run-list-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
 }
 
 .teams-create-launch {
@@ -3019,101 +2877,6 @@ select:not([class*="mantine-"]):focus-visible {
 
 .teams-create-launch p {
   margin: 0 0 4px;
-}
-
-.teams-create-entry-actions {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.teams-create-launch-meta {
-  display: grid;
-  gap: 4px;
-  color: #4d5f73;
-  font-size: 12px;
-}
-
-.teams-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
-.teams-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.team-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  width: 100%;
-  border: 1px solid #d8d8d8;
-  background: #f7f7f7;
-  color: #1c1c1c;
-  border-radius: 10px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-
-.team-item.active {
-  border-color: #161616;
-  background: #161616;
-  color: #fff;
-}
-
-.team-item .team-name {
-  font-weight: 600;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-item .team-id,
-.team-item .team-status {
-  font-size: 12px;
-  opacity: 0.88;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-item .team-status.status-badge {
-  opacity: 1;
-  font-size: 10px;
-  justify-self: start;
-}
-
-.team-member-summary {
-  opacity: 0.82;
-}
-
-.teams-member-status-panel {
-  display: grid;
-  gap: 6px;
-}
-
-.teams-member-summary-line {
-  font-size: 11px;
-  color: #5e6d80;
-  text-align: right;
-}
-
-.teams-member-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
 }
 
 .team-member-row {
@@ -3524,11 +3287,6 @@ select:not([class*="mantine-"]):focus-visible {
   color: #1f4a86;
 }
 
-.teams-run-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-}
 
 .teams-event-list,
 .teams-step-list,
@@ -3648,6 +3406,14 @@ select:not([class*="mantine-"]):focus-visible {
   align-items: center;
 }
 
+.teams-chat-head > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .teams-chat-jump-bottom {
   margin-left: auto;
   white-space: nowrap;
@@ -3711,6 +3477,8 @@ select:not([class*="mantine-"]):focus-visible {
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .mono {
@@ -3722,28 +3490,6 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 @media (max-width: 960px) {
-  .teams-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-sidebar,
-  .teams-main {
-    min-width: 0;
-  }
-
-  .teams-run-list-head .actions {
-    width: 100%;
-  }
-
-  .teams-run-list-head .actions select {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .teams-run-meta {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  }
-
   .teams-step-grid,
   .teams-message-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -3788,10 +3534,6 @@ select:not([class*="mantine-"]):focus-visible {
   .teams-message-list,
   .teams-chat-messages {
     max-height: 320px;
-  }
-
-  .team-item {
-    padding: 7px 9px;
   }
 }
 
