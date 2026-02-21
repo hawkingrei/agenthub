@@ -2606,6 +2606,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .acp-tabs {
+    --acp-tab-font-size: clamp(10px, 2.8vw, 11px);
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
@@ -2614,6 +2615,17 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     padding: clamp(2px, 0.6vw, 3px);
     gap: clamp(3px, 1vw, 5px);
     border-radius: 12px;
+  }
+
+  .acp-tabs .tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-height: 30px;
+    padding: clamp(3px, 1vw, 5px) clamp(8px, 3vw, 11px);
+    font-size: var(--acp-tab-font-size);
+    line-height: 1.15;
   }
 
   .acp-interrupt-button {
@@ -2810,10 +2822,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   gap: 16px;
 }
 
+.admin .card ul:not([class*="mantine-"]),
 .admin .admin-card ul:not([class*="mantine-"]) {
   padding-left: 18px;
 }
 
+.admin .card li:not([class*="mantine-"]),
 .admin .admin-card li:not([class*="mantine-"]) {
   display: flex;
   align-items: center;
@@ -2831,6 +2845,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   margin: 0;
 }
 
+.admin .card ul:not([class*="mantine-"]),
 .admin .admin-card ul:not([class*="mantine-"]) {
   max-height: 240px;
   overflow: auto;
