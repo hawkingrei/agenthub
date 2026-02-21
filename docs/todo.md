@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify `src/api/teams.rs` error mapping module split (`src/api/teams/errors.rs`) keeps duplicate-name conflict, resume/restart conflict mapping, and router HTTP contract behavior unchanged (see `docs/features/2026-02-21-api-teams-error-mapping-module-split.md`).
 - [x] Verify typed-error mapping replaces string-based conflict detection for Team run resume (`completed` => `409`) and Agent send-input stale session (`session mismatch` => `409`) with focused Rust tests (see `docs/features/2026-02-21-rust-error-typing-teams-agents.md`).
 - [ ] Verify Bazel-first Rust crate decomposition policy is applied to new domain migrations: extract cohesive domain libraries under `crates/*`, keep `src/main.rs` thin-bootstrap only, and align Bazel package/target boundaries with crate boundaries in the same PR (see `docs/features/2026-02-21-bazel-first-domain-crate-policy.md`).
 - [x] Verify Teams workbench style isolation after Tailwind v4 migration: legacy global form-control selectors (`button/input/textarea/select:not([class*="mantine-"])`) no longer override `/teams` Tailwind controls, and Teams shell layout remains stable after removing legacy `app` wrapper coupling (`team_page.tsx`, `styles.css`) with web Team regression tests + web build green (see `docs/features/2026-02-20-team-page-legacy-form-style-isolation.md`).
