@@ -455,6 +455,90 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Run input must be valid JSON");
   });
 
+  it("TeamRunPanel handles keyboard submit and format-json edge cases", () => {
+    const onCreateRun = vi.fn();
+    const onRunInputChange = vi.fn();
+
+    const commonProps = {
+      selectedTeam: buildTeam(),
+      busy: null as string | null,
+      onDeleteTeam: () => {},
+      runContextId: "",
+      onRunContextIdChange: () => {},
+      onCreateRun,
+      onRunInputChange,
+      runStatusFilter: "all" as const,
+      runStatusFilterOptions: [{ value: "all" as const, label: "All" }],
+      onRunStatusFilterChange: () => {},
+      onRefreshRuns: () => {},
+      runsLoading: false,
+      visibleRuns: [],
+      activeRunId: null as string | null,
+      onActiveRunChange: () => {},
+      isActiveRunHiddenByFilter: false,
+      activeRun: null as TeamRunRecord | null,
+      totalLoadedRunsForTeam: 0,
+      pageLimit: 20,
+      runsHasMore: false,
+      selectedTeamId: "team-1",
+      onLoadMoreRuns: () => {},
+    };
+
+    act(() => {
+      root.render(<TeamRunPanel {...commonProps} runInput='{"hello":"world"}' />);
+    });
+
+    const runInputTextarea = required(
+      container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null,
+      "run input textarea missing"
+    );
+    act(() => {
+      runInputTextarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+        })
+      );
+    });
+    expect(onCreateRun).toHaveBeenCalledTimes(1);
+
+    clickElement(findButtonByText(container, "Format JSON"));
+    expect(
+      onRunInputChange.mock.calls.some(
+        ([value]) => value === '{\n  "hello": "world"\n}'
+      )
+    ).toBe(true);
+
+    act(() => {
+      root.render(<TeamRunPanel {...commonProps} runInput="" />);
+    });
+    clickElement(findButtonByText(container, "Format JSON"));
+    expect(onRunInputChange).toHaveBeenCalledWith("{}");
+
+    act(() => {
+      root.render(<TeamRunPanel {...commonProps} runInput='{"broken": }' />);
+    });
+    const callsBeforeInvalidSubmit = onCreateRun.mock.calls.length;
+    const invalidTextarea = required(
+      container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null,
+      "invalid run input textarea missing"
+    );
+    act(() => {
+      invalidTextarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+        })
+      );
+    });
+    expect(onCreateRun.mock.calls.length).toBe(callsBeforeInvalidSubmit);
+    expect(findButtonByText(container, "Format JSON").disabled).toBe(true);
+  });
+
   it("TeamStepsPanel covers submit and all step action payload editors", () => {
     const onRefreshSteps = vi.fn();
     const onStepKeyChange = vi.fn();

@@ -34,10 +34,9 @@ Use worker_status payload contract:\n\
 {\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
 
 pub fn default_team_prompt_for_role(role: &str) -> &'static str {
-    if role == "leader" {
-        DEFAULT_TEAM_LEADER_PROMPT
-    } else {
-        DEFAULT_TEAM_WORKER_PROMPT
+    match role {
+        "leader" => DEFAULT_TEAM_LEADER_PROMPT,
+        _ => DEFAULT_TEAM_WORKER_PROMPT,
     }
 }
 
