@@ -4,7 +4,13 @@ import type { MailboxTemplateKey } from "./mailbox_helpers";
 import { createInitialTeamDraftState, type TeamCreateDraftState } from "./member_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
 
-export type TeamTab = "overview" | "events" | "steps" | "mailbox" | "member_console";
+export type TeamTab =
+  | "overview"
+  | "events"
+  | "steps"
+  | "mailbox"
+  | "member_console"
+  | "debug";
 export type CreateTeamStage = 0 | 1 | 2 | 3;
 export type TeamForgeRoleTag = "leader" | "worker";
 
@@ -108,7 +114,7 @@ export const DEFAULT_TEAM_UI_STATE: TeamUiState = {
 
 export const DEFAULT_TEAM_CONTROL_STATE: TeamControlState = {
   runContextId: "",
-  runInput: "{}",
+  runInput: "",
   stepKey: "",
   stepMemberId: "",
   stepDependsOn: "",

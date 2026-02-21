@@ -502,15 +502,238 @@ test("team page keeps single-column proportions on mobile viewport", async ({
     });
   expect(runFilterWidth).toBeGreaterThan(240);
 
-  const memberColumns = await page.locator(".team-member-row-main").first().evaluate((element) => {
-    return window.getComputedStyle(element).gridTemplateColumns;
-  });
-  expect(memberColumns.trim().split(/\s+/).length).toBe(3);
+  await expect(page.locator(".teams-member-strip.compact .teams-member-dot")).toHaveCount(2);
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
   });
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
+});
+
+test("team page desktop keeps long metadata blocks non-overlapping", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const longLeaderId = `leader-${"l".repeat(96)}`;
+  const longWorkerId1 = `worker-a-${"w".repeat(88)}`;
+  const longWorkerId2 = `worker-b-${"z".repeat(88)}`;
+  const longPrompt = `prompt-${"p".repeat(420)}`;
+  const teamId = "team-desktop";
+  fixture.teams.push({
+    id: teamId,
+    name: "Team Desktop",
+    description: "desktop overlap regression guard",
+    spec: {
+      leader_member_id: longLeaderId,
+      members: [
+        {
+          member_id: longLeaderId,
+          role: "leader",
+          model: "codex",
+          skills: ["agenthub-actor-runtime", "team-leader-orchestrator", `mcp-${"m".repeat(52)}`],
+        },
+        {
+          member_id: longWorkerId1,
+          role: "worker",
+          model: "gemini",
+          skills: ["agenthub-actor-runtime", "team-worker-executor", `mcp-${"a".repeat(52)}`],
+        },
+        {
+          member_id: longWorkerId2,
+          role: "worker",
+          model: "kimi",
+          skills: ["agenthub-actor-runtime", "team-worker-executor", `mcp-${"b".repeat(52)}`],
+        },
+      ],
+      steps: [{ step_key: "leader_plan" }],
+    },
+    created_at: fixture.now,
+    updated_at: fixture.now,
+  });
+  const runRecord = buildTeamRun(teamId, "working", fixture.now + 10, 1);
+  const runId = runRecord.id;
+  const runEvents: Array<Record<string, unknown>> = [];
+
+  await page.route(new RegExp(`/api/teams/${teamId}/runs(?:\\?.*)?$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([runRecord]));
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse(runRecord));
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}/steps$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}/events(?:\\?.*)?$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse(runEvents));
+  });
+
+  await page.route(
+    new RegExp(`/api/teams/runs/${runId}/snapshot(?:\\?.*)?$`),
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill(
+        jsonResponse({
+          run: runRecord,
+          team: fixture.teams.find((team) => team.id === teamId),
+          leader_member_id: longLeaderId,
+          members: [
+            {
+              member_id: longLeaderId,
+              role: "leader",
+              model: "codex",
+              prompt: longPrompt,
+              skills: ["agenthub-actor-runtime", "team-leader-orchestrator", `mcp-${"m".repeat(52)}`],
+              pending_inbox_count: 0,
+              status: "working",
+              latest_step: {
+                id: "step-leader",
+                run_id: runId,
+                step_key: "leader_plan",
+                member_id: longLeaderId,
+                remote_task_id: `remote-${"r".repeat(64)}`,
+                status: "working",
+                attempt: 1,
+                depends_on: [],
+                input: {},
+                output: null,
+                error_text: null,
+                started_at: fixture.now + 11,
+                ended_at: null,
+              },
+              session_status: "working",
+            },
+            {
+              member_id: longWorkerId1,
+              role: "worker",
+              model: "gemini",
+              prompt: longPrompt,
+              skills: ["agenthub-actor-runtime", "team-worker-executor", `mcp-${"a".repeat(52)}`],
+              pending_inbox_count: 0,
+              status: "submitted",
+              latest_step: null,
+              session_status: "idle",
+            },
+            {
+              member_id: longWorkerId2,
+              role: "worker",
+              model: "kimi",
+              prompt: longPrompt,
+              skills: ["agenthub-actor-runtime", "team-worker-executor", `mcp-${"b".repeat(52)}`],
+              pending_inbox_count: 0,
+              status: "submitted",
+              latest_step: null,
+              session_status: "idle",
+            },
+          ],
+          steps: [],
+          latest_events: [],
+          mailbox: {
+            pending: 0,
+            delivered: 0,
+            dead_letter: 0,
+            recent_messages: [],
+          },
+        })
+      );
+    }
+  );
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}/messages/inbox(?:\\?.*)?$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto("/teams");
+  await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
+  await expect(page.locator(".teams-member-strip.compact .teams-member-dot")).toHaveCount(3);
+
+  const overviewLayout = await page.evaluate(() => {
+    const selectors = [".teams-run-meta", ".teams-member-strip.compact"];
+    const overflowing = selectors.filter((selector) => {
+      const node = document.querySelector(selector) as HTMLElement | null;
+      if (!node) return false;
+      return node.scrollWidth - node.clientWidth > 1;
+    });
+    return {
+      docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      overflowing,
+    };
+  });
+  expect(overviewLayout.docOverflow).toBeLessThanOrEqual(1);
+  expect(overviewLayout.overflowing).toEqual([]);
+
+  await page.getByRole("button", { name: "Member Console" }).click();
+  const memberConsoleCard = page.locator(".card", { hasText: "Member Console" });
+  await expect(memberConsoleCard).toBeVisible();
+  await memberConsoleCard.locator("select").first().selectOption(longLeaderId);
+  await expect(memberConsoleCard).toContainText("mcp_skills");
+  await memberConsoleCard.locator("summary", { hasText: "prompt" }).click();
+
+  const memberConsoleLayout = await page.evaluate(() => {
+    const selectors = [".teams-step-body"];
+    const overflowing = selectors.filter((selector) => {
+      const node = document.querySelector(selector) as HTMLElement | null;
+      if (!node) return false;
+      return node.scrollWidth - node.clientWidth > 1;
+    });
+    return {
+      docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      overflowing,
+    };
+  });
+  expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
+  expect(memberConsoleLayout.overflowing).toEqual([]);
+
+  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+  await expect(page.locator(".teams-chat-head")).toBeVisible();
+  const mailboxLayout = await page.evaluate(() => {
+    const selectors = [".teams-chat-head"];
+    const overflowing = selectors.filter((selector) => {
+      const node = document.querySelector(selector) as HTMLElement | null;
+      if (!node) return false;
+      return node.scrollWidth - node.clientWidth > 1;
+    });
+    return {
+      docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      overflowing,
+    };
+  });
+  expect(mailboxLayout.docOverflow).toBeLessThanOrEqual(1);
+  expect(mailboxLayout.overflowing).toEqual([]);
 });
 
 test("team forge agent entry creates and binds leader in-place", async ({
@@ -1159,12 +1382,11 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   expect(counters.snapshot).toBeGreaterThan(snapshotBeforePolling);
   expect(counters.inbox).toBeGreaterThan(inboxBeforePolling);
 
-  await page.locator("details.teams-message-advanced summary").click();
+  await page.getByRole("button", { name: "Debug" }).click();
+  await page.getByRole("button", { name: "Mailbox Raw" }).click();
   await expect(page.getByRole("heading", { name: "Send Message (JSON)" })).toBeVisible();
 
-  const advancedPanel = page
-    .locator("details.teams-message-advanced .teams-message-panel")
-    .first();
+  const advancedPanel = page.locator(".teams-message-advanced .teams-message-panel").first();
   await advancedPanel.getByPlaceholder("from_actor_id").fill("agent-leader-1");
   await advancedPanel.getByPlaceholder("to_actor_id").fill("agent-worker-2");
   await advancedPanel
@@ -1172,6 +1394,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .fill('{"type":"chat_message","text":"advanced-mailbox-ping"}');
   await advancedPanel.getByRole("button", { name: "Send Message" }).click();
 
+  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
   await expect(page.locator(".teams-chat-messages")).toContainText("advanced-mailbox-ping");
   expect(counters.send).toBeGreaterThan(0);
 });

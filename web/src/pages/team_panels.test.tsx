@@ -44,6 +44,14 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
   return required(button, `button not found: ${text}`);
 }
 
+function findButtonByAriaLabel(container: HTMLElement, label: string): HTMLButtonElement {
+  const normalized = label.toLowerCase();
+  const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
+    candidate.getAttribute("aria-label")?.toLowerCase().includes(normalized)
+  ) as HTMLButtonElement | undefined;
+  return required(button, `button not found by aria-label: ${label}`);
+}
+
 function setNativeValue(
   element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   value: string
@@ -255,7 +263,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByText(container, "Guided Wizard"));
     clickElement(findButtonByText(container, "Manual Spec"));
     clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
@@ -292,8 +300,6 @@ describe("team panels interactions", () => {
     const onRunContextIdChange = vi.fn();
     const onCreateRun = vi.fn();
     const onRunInputChange = vi.fn();
-    const onRunLookupIdChange = vi.fn();
-    const onLoadRunById = vi.fn();
     const onRunStatusFilterChange = vi.fn();
     const onRefreshRuns = vi.fn();
     const onActiveRunChange = vi.fn();
@@ -336,9 +342,6 @@ describe("team panels interactions", () => {
           onCreateRun={onCreateRun}
           runInput="hello"
           onRunInputChange={onRunInputChange}
-          runLookupId="run-9"
-          onRunLookupIdChange={onRunLookupIdChange}
-          onLoadRunById={onLoadRunById}
           runStatusFilter="all"
           runStatusFilterOptions={[
             { value: "all", label: "All" },
@@ -374,13 +377,6 @@ describe("team panels interactions", () => {
       required(container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null, "run input missing"),
       "new input"
     );
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="existing run_id"]') as HTMLInputElement | null,
-        "run lookup input missing"
-      ),
-      "run-10"
-    );
     changeSelectValue(
       required(
         container.querySelector('select[aria-label="Run status filter"]') as HTMLSelectElement | null,
@@ -391,8 +387,7 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByText(container, "Delete Team"));
     clickElement(findButtonByText(container, "Create Run"));
-    clickElement(findButtonByText(container, "Load Run"));
-    clickElement(findButtonByText(container, "Refresh Runs"));
+    clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
@@ -400,13 +395,17 @@ describe("team panels interactions", () => {
     expect(onRunContextIdChange).toHaveBeenCalledWith("ctx-2");
     expect(onCreateRun).toHaveBeenCalledTimes(1);
     expect(onRunInputChange).toHaveBeenCalledWith("new input");
-    expect(onRunLookupIdChange).toHaveBeenCalledWith("run-10");
-    expect(onLoadRunById).toHaveBeenCalledTimes(1);
     expect(onRunStatusFilterChange).toHaveBeenCalledWith("working");
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
     expect(onLoadMoreRuns).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("agent_not_found");
+    expect(container.textContent).toContain("team_number=2");
+    expect(container.querySelector('[title*="member=leader-agent"]')).not.toBeNull();
+    expect(container.querySelector('[title*="member=worker-agent"]')).not.toBeNull();
+    expect(container.querySelectorAll('[aria-label="Leader member"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-label="Worker member"]')).toHaveLength(1);
+    expect(container.querySelectorAll(".teams-member-dot.active")).toHaveLength(1);
+    expect(container.querySelectorAll(".teams-member-dot.inactive")).toHaveLength(1);
 
     act(() => {
       root.render(
@@ -421,9 +420,6 @@ describe("team panels interactions", () => {
           onCreateRun={() => {}}
           runInput=""
           onRunInputChange={() => {}}
-          runLookupId=""
-          onRunLookupIdChange={() => {}}
-          onLoadRunById={() => {}}
           runStatusFilter="completed"
           runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
           onRunStatusFilterChange={() => {}}
@@ -445,7 +441,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members declared in team spec.");
     expect(container.textContent).toContain("Active run `run-hidden` is hidden by filter `completed`.");
-    expect(container.textContent).toContain("No runs loaded yet. Create one or load by run_id.");
+    expect(container.textContent).toContain("No runs loaded yet. Create one or use Debug → Run Ops.");
   });
 
   it("TeamStepsPanel covers submit and all step action payload editors", () => {
@@ -501,7 +497,7 @@ describe("team panels interactions", () => {
       root.render(<TeamStepsPanel {...baseProps} />);
     });
 
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh steps"));
     clickElement(findButtonByText(container, "Submit Step"));
     clickElement(findButtonByText(container, "Apply Step Action"));
 
@@ -602,6 +598,92 @@ describe("team panels interactions", () => {
     expect(onStepResumePayloadChange).toHaveBeenCalledWith('{"answer":"yes"}');
   });
 
+  it("TeamStepsPanel supports list-only and controls-only modes", () => {
+    act(() => {
+      root.render(
+        <TeamStepsPanel
+          mode="list_only"
+          steps={[buildStep({ id: "step-1", status: "working" })]}
+          onRefreshSteps={() => {}}
+          stepKey=""
+          onStepKeyChange={() => {}}
+          stepMemberId=""
+          onStepMemberIdChange={() => {}}
+          stepDependsOn=""
+          onStepDependsOnChange={() => {}}
+          stepInput="{}"
+          onStepInputChange={() => {}}
+          onSubmitStep={() => {}}
+          busy={null}
+          selectedStepId=""
+          onSelectedStepIdChange={() => {}}
+          stepAction="start"
+          onStepActionChange={() => {}}
+          stepRemoteTaskId=""
+          onStepRemoteTaskIdChange={() => {}}
+          stepOutput="{}"
+          onStepOutputChange={() => {}}
+          stepFailText=""
+          onStepFailTextChange={() => {}}
+          stepInputReason=""
+          onStepInputReasonChange={() => {}}
+          stepInputRequiredPayload="{}"
+          onStepInputRequiredPayloadChange={() => {}}
+          stepResumePayload="{}"
+          onStepResumePayloadChange={() => {}}
+          onApplyStepAction={() => {}}
+        />
+      );
+    });
+    expect(container.textContent).toContain("Step operations were moved to Debug -> Step Ops.");
+    expect(container.querySelector(".teams-step-list")).not.toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("Submit Step")
+      )
+    ).toBe(false);
+
+    act(() => {
+      root.render(
+        <TeamStepsPanel
+          mode="controls_only"
+          steps={[buildStep({ id: "step-1", status: "working" })]}
+          onRefreshSteps={() => {}}
+          stepKey=""
+          onStepKeyChange={() => {}}
+          stepMemberId=""
+          onStepMemberIdChange={() => {}}
+          stepDependsOn=""
+          onStepDependsOnChange={() => {}}
+          stepInput="{}"
+          onStepInputChange={() => {}}
+          onSubmitStep={() => {}}
+          busy={null}
+          selectedStepId=""
+          onSelectedStepIdChange={() => {}}
+          stepAction="start"
+          onStepActionChange={() => {}}
+          stepRemoteTaskId=""
+          onStepRemoteTaskIdChange={() => {}}
+          stepOutput="{}"
+          onStepOutputChange={() => {}}
+          stepFailText=""
+          onStepFailTextChange={() => {}}
+          stepInputReason=""
+          onStepInputReasonChange={() => {}}
+          stepInputRequiredPayload="{}"
+          onStepInputRequiredPayloadChange={() => {}}
+          stepResumePayload="{}"
+          onStepResumePayloadChange={() => {}}
+          onApplyStepAction={() => {}}
+        />
+      );
+    });
+    expect(findButtonByText(container, "Submit Step")).toBeDefined();
+    expect(findButtonByText(container, "Apply Step Action")).toBeDefined();
+    expect(container.querySelector(".teams-step-list")).toBeNull();
+  });
+
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
     const onEventsAutoRefreshChange = vi.fn();
     const onRefreshEvents = vi.fn();
@@ -630,7 +712,7 @@ describe("team panels interactions", () => {
       required(container.querySelector('input[type="checkbox"]') as HTMLInputElement | null, "events checkbox missing"),
       false
     );
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh events"));
     clickElement(findButtonByText(container, "Load Older"));
 
     expect(onEventsAutoRefreshChange).toHaveBeenCalledWith(false);
@@ -676,7 +758,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh Snapshot"));
+    clickElement(findButtonByAriaLabel(container, "Refresh snapshot"));
     clickElement(required(container.querySelectorAll(".teams-member-list .team-item")[1], "member button missing"));
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
@@ -728,7 +810,7 @@ describe("team panels interactions", () => {
       required(container.querySelector("select") as HTMLSelectElement | null, "member select missing"),
       "worker-agent"
     );
-    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByAriaLabel(container, "Refresh member console"));
 
     act(() => {
       root.render(
@@ -952,6 +1034,74 @@ describe("team panels interactions", () => {
     });
     clickElement(findButtonByText(container, "Send Chat"));
 
+    expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
+    expect(onConversationScroll).toHaveBeenCalledTimes(1);
+    expect(onJumpToBottom).toHaveBeenCalledTimes(1);
+    expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
+    expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
+    expect(onSendChatMessage).toHaveBeenCalledTimes(2);
+    expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          mode="advanced_only"
+          snapshot={buildSnapshot()}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{ "worker-agent": 2 }}
+          onSelectMember={onSelectMember}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={onConversationScroll}
+          onJumpToBottom={onJumpToBottom}
+          conversationMessages={[pendingMessage, deliveredMessage]}
+          toPrettyJson={toPrettyJson}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={onAckMessage}
+          chatDraft="draft"
+          onChatDraftChange={onChatDraftChange}
+          onSendChatMessage={onSendChatMessage}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={onMsgFromActorIdChange}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={onMsgToActorIdChange}
+          msgChannel="default"
+          onMsgChannelChange={onMsgChannelChange}
+          msgTransport="local"
+          onMsgTransportChange={onMsgTransportChange}
+          msgRoute="{}"
+          onMsgRouteChange={onMsgRouteChange}
+          mailboxTemplateOptions={[
+            { value: "leader_task_assignment", label: "Leader Assignment" },
+            { value: "worker_done", label: "Worker Done" },
+          ]}
+          msgTemplate="leader_task_assignment"
+          onMsgTemplateChange={onMsgTemplateChange}
+          onApplyMessageTemplate={onApplyMessageTemplate}
+          msgPayload="{}"
+          onMsgPayloadChange={onMsgPayloadChange}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
+          onSendMessage={onSendMessage}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={onInboxActorIdChange}
+          inboxLimit="20"
+          onInboxLimitChange={onInboxLimitChange}
+          inboxAfterId=""
+          onInboxAfterIdChange={onInboxAfterIdChange}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
+          onRefreshInbox={onRefreshInbox}
+        />
+      );
+    });
+
     changeInputValue(
       required(container.querySelector('input[placeholder="from_actor_id"]') as HTMLInputElement | null, "from_actor_id missing"),
       "leader-2"
@@ -1014,14 +1164,8 @@ describe("team panels interactions", () => {
       required(container.querySelector('.teams-message-panel input[type="checkbox"]') as HTMLInputElement | null, "include delivered checkbox missing"),
       true
     );
-    clickElement(findButtonByText(container, "Refresh Inbox"));
+    clickElement(findButtonByAriaLabel(container, "Refresh inbox"));
 
-    expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
-    expect(onConversationScroll).toHaveBeenCalledTimes(1);
-    expect(onJumpToBottom).toHaveBeenCalledTimes(1);
-    expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
-    expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
-    expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(onMsgFromActorIdChange).toHaveBeenCalledWith("leader-2");
     expect(onMsgToActorIdChange).toHaveBeenCalledWith("worker-2");
     expect(onMsgChannelChange).toHaveBeenCalledWith("alerts");
@@ -1037,7 +1181,6 @@ describe("team panels interactions", () => {
     expect(onInboxAfterIdChange).toHaveBeenCalledWith("22");
     expect(onInboxIncludeDeliveredChange).toHaveBeenCalledWith(true);
     expect(onRefreshInbox).toHaveBeenCalledTimes(1);
-    expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
 
     act(() => {
       root.render(

@@ -1,14 +1,14 @@
 import React from "react";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
-import {
-  StatusBadge,
-  resolveTeamLifecycleStatusTone,
-  resolveTeamRunStatusTone,
-} from "../components/status_badge";
+import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_LIST_ITEM_ACTIVE_CLASS,
+  TEAM_LIST_ITEM_IDLE_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -44,16 +44,28 @@ type TeamMemberLiveState = {
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_MEMBER_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/60 p-4";
+  "teams-member-panel flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4";
 const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
 const RUN_PANEL_SECTION_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
+  "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4";
 const RUN_PANEL_LIST_CLASS =
-  "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
+  "teams-run-list flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
 const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
+const RUN_PANEL_MEMBER_SUMMARY_CLASS =
+  "mono mb-2 text-left text-xs tracking-wide text-slate-600";
+const RUN_PANEL_MEMBER_ROLE_BADGE_CLASS =
+  "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+
+function normalizeMemberRole(role: string): string {
+  return role.trim().toLowerCase();
+}
+
+function isLeaderRole(role: string): boolean {
+  return normalizeMemberRole(role) === "leader";
+}
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -66,9 +78,6 @@ type TeamRunPanelProps = {
   onCreateRun: () => Promise<void> | void;
   runInput: string;
   onRunInputChange: (value: string) => void;
-  runLookupId: string;
-  onRunLookupIdChange: (value: string) => void;
-  onLoadRunById: () => Promise<void> | void;
   runStatusFilter: TeamRunStatusFilter;
   runStatusFilterOptions: TeamRunStatusFilterOption[];
   onRunStatusFilterChange: (value: TeamRunStatusFilter) => void;
@@ -98,9 +107,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     onCreateRun,
     runInput,
     onRunInputChange,
-    runLookupId,
-    onRunLookupIdChange,
-    onLoadRunById,
     runStatusFilter,
     runStatusFilterOptions,
     onRunStatusFilterChange,
@@ -117,6 +123,16 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeamId,
     onLoadMoreRuns,
   } = props;
+  const orderedTeamMemberLiveStates = React.useMemo(() => {
+    return [...selectedTeamMemberLiveStates].sort((left, right) => {
+      const leftLeader = isLeaderRole(left.role);
+      const rightLeader = isLeaderRole(right.role);
+      if (leftLeader !== rightLeader) {
+        return leftLeader ? -1 : 1;
+      }
+      return left.member_id.localeCompare(right.member_id);
+    });
+  }, [selectedTeamMemberLiveStates]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -136,37 +152,39 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         </div>
       </div>
       <div className={RUN_PANEL_MEMBER_CLASS}>
-        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Health</p>
-        <div className="teams-member-status-panel">
-          <div className="teams-member-summary-line mono">
-            {`active=${selectedTeamMemberSummary.active} inactive=${selectedTeamMemberSummary.inactive} missing=${selectedTeamMemberSummary.missing} total=${selectedTeamMemberSummary.total}`}
+        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Members</p>
+        <div className="teams-member-status-panel grid gap-1.5">
+          <div className={RUN_PANEL_MEMBER_SUMMARY_CLASS}>
+            {`team_number=${selectedTeamMemberSummary.total}`}
           </div>
-          {selectedTeamMemberLiveStates.length === 0 ? (
+          {orderedTeamMemberLiveStates.length === 0 ? (
             <p className="muted">No members declared in team spec.</p>
           ) : (
-            <div className="teams-member-strip">
-              {selectedTeamMemberLiveStates.map((member) => {
-                const roleTone = member.role.trim().toLowerCase() === "leader" ? "leader" : "worker";
+            <div className="teams-member-strip compact flex flex-wrap gap-x-2.5 gap-y-1.5">
+              {orderedTeamMemberLiveStates.map((member) => {
+                const isRunning = member.lifecycle_tone === "active";
+                const leader = isLeaderRole(member.role);
                 return (
-                  <article key={`${selectedTeam.id}:${member.member_id}`} className="team-member-row">
-                    <div className="team-member-row-main">
-                      <span className={`team-role-chip ${roleTone}`}>{member.role}</span>
-                      <span className="team-member-row-id mono">{member.member_id}</span>
-                      <StatusBadge
-                        label={member.lifecycle_status}
-                        tone={resolveTeamLifecycleStatusTone(member.lifecycle_tone)}
-                        className={`team-status-chip ${member.lifecycle_tone}`}
-                        title={`lifecycle: ${member.lifecycle_status}`}
-                      />
-                      <span className="team-member-row-meta mono">
-                        {member.agent_name ?? "agent_not_found"}
-                      </span>
-                      <span className="team-member-row-meta mono">
-                        {`run=${member.run_status} step=${member.step_status} inbox=${member.pending_inbox_count ?? "-"}`}
-                      </span>
-                    </div>
-                    <div className="team-member-workline mono">{member.current_work}</div>
-                  </article>
+                  <span
+                    key={`${selectedTeam.id}:${member.member_id}`}
+                    className="teams-member-dot-item mono inline-flex items-center gap-1.5 text-xs text-slate-800"
+                    title={`member=${member.member_id} status=${member.lifecycle_status}`}
+                  >
+                    <span
+                      className={
+                        leader
+                          ? `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-blue-100 text-blue-700`
+                          : `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-slate-200 text-slate-700`
+                      }
+                      aria-label={leader ? "Leader member" : "Worker member"}
+                    >
+                      {leader ? "L" : "W"}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`teams-member-dot inline-block h-2 w-2 rounded-full ${isRunning ? "active bg-emerald-700" : "inactive bg-rose-700"}`}
+                    />
+                  </span>
                 );
               })}
             </div>
@@ -176,11 +194,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       <div className={RUN_PANEL_GRID_CLASS}>
         <div className={RUN_PANEL_SECTION_CLASS}>
           <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Controls</p>
-          <h3>Create / Load Run</h3>
+          <h3>Create Run</h3>
           <p className="muted">
-            <strong>Create Run</strong> starts a new execution for this team spec.
-            <br />
-            <strong>Load Run</strong> opens an existing run by `run_id` (even if it was created earlier) and auto-switches to its team.
+            Start a new execution for this team spec.
           </p>
           <div className="form-row">
             <input
@@ -200,31 +216,19 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <textarea
             className={TEAM_PANEL_TEXTAREA_CLASS}
             rows={4}
+            placeholder='Optional JSON input, e.g. {"task":"sync"}'
+            aria-label="Run input JSON"
             value={runInput}
             onChange={(event) => onRunInputChange(event.target.value)}
           />
-          <div className="form-row">
-            <input
-              className={TEAM_PANEL_INPUT_CLASS}
-              placeholder="existing run_id"
-              value={runLookupId}
-              onChange={(event) => onRunLookupIdChange(event.target.value)}
-            />
-            <button
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-              onClick={onLoadRunById}
-              disabled={busy === "load-run"}
-            >
-              Load Run
-            </button>
-          </div>
+          <p className="mt-2 text-xs text-slate-500">Leave empty to use default input: {`{}`}</p>
         </div>
         <div className={RUN_PANEL_LIST_CLASS}>
           <div className={RUN_PANEL_LIST_HEAD_CLASS}>
             <h3>Runs</h3>
             <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
               <select
-                className={TEAM_PANEL_INPUT_CLASS}
+                className={`${TEAM_PANEL_INPUT_CLASS} min-w-0 sm:min-w-[164px]`}
                 value={runStatusFilter}
                 onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
                 aria-label="Run status filter"
@@ -240,15 +244,18 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                   void onRefreshRuns();
                 }}
                 disabled={runsLoading}
-                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+                title="Refresh runs"
+                aria-label="Refresh runs"
               >
-                Refresh Runs
+                <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                <span>Refresh</span>
               </button>
             </div>
           </div>
           <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
             {visibleRuns.length === 0 && (
-              <p className="muted">No runs loaded yet. Create one or load by run_id.</p>
+              <p className="muted">No runs loaded yet. Create one or use Debug → Run Ops.</p>
             )}
             {isActiveRunHiddenByFilter && activeRun && (
               <p className="muted">
@@ -258,10 +265,14 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             {visibleRuns.map((run) => (
               <button
                 key={run.id}
-                className={run.id === activeRunId ? "team-item active" : "team-item"}
+                className={
+                  run.id === activeRunId
+                    ? TEAM_LIST_ITEM_ACTIVE_CLASS
+                    : TEAM_LIST_ITEM_IDLE_CLASS
+                }
                 onClick={() => onActiveRunChange(run.id)}
               >
-                <span className="team-name mono">{run.id}</span>
+                <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} mono`}>{run.id}</span>
                 <StatusBadge
                   label={run.status}
                   tone={resolveTeamRunStatusTone(run.status)}
@@ -271,7 +282,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               </button>
             ))}
           </div>
-          <div className="teams-run-list-foot">
+          <div className="teams-run-list-foot flex flex-wrap items-center justify-between gap-2">
             <span className="mono">
               showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
             </span>
