@@ -6,6 +6,7 @@ members = [
     "crates/agenthub-acp",
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",
+    "crates/agenthub-team-prompts",
 ]
 
 [patch.crates-io]
@@ -50,6 +51,7 @@ sha2 = "0.10"
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
+agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"

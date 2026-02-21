@@ -27,16 +27,16 @@ export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
   "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
 
 export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-sm font-medium text-[#222] transition hover:border-[#222] disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_GHOST_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-sm font-medium text-[#222] transition hover:border-[#222] disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_REFRESH_BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-sm font-medium text-[#222] transition hover:border-[#222] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200";
+  "inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200";
 
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";

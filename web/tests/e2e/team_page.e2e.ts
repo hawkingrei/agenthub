@@ -502,8 +502,6 @@ test("team page keeps single-column proportions on mobile viewport", async ({
     });
   expect(runFilterWidth).toBeGreaterThan(240);
 
-  await expect(page.locator(".teams-member-strip.compact .teams-member-dot")).toHaveCount(2);
-
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
   });
@@ -679,10 +677,11 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/teams");
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
-  await expect(page.locator(".teams-member-strip.compact .teams-member-dot")).toHaveCount(3);
+  await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
+  await expect(page.locator(".teams-overview-meta")).toBeVisible();
 
   const overviewLayout = await page.evaluate(() => {
-    const selectors = [".teams-run-meta", ".teams-member-strip.compact"];
+    const selectors = [".teams-overview-meta", ".teams-member-list"];
     const overflowing = selectors.filter((selector) => {
       const node = document.querySelector(selector) as HTMLElement | null;
       if (!node) return false;

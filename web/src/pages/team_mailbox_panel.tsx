@@ -91,6 +91,9 @@ const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono muted text-slate-50
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
   "ghost teams-chat-jump-bottom rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 const MAILBOX_CONVERSATION_EMPTY_CLASS = "teams-chat-empty muted text-sm text-slate-600";
+const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid gap-3 lg:grid-cols-2";
+const MAILBOX_ADVANCED_PANEL_CLASS =
+  "teams-message-panel flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3";
 
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
@@ -144,8 +147,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const showConversation = mode === "full";
   const showAdvancedControls = mode === "advanced_only";
   const advancedControls = (
-    <div className="teams-message-grid">
-      <div className="teams-message-panel">
+    <div className={MAILBOX_ADVANCED_GRID_CLASS}>
+      <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
         <h4>Send Message (JSON)</h4>
         <input
           className={TEAM_PANEL_INPUT_CLASS}
@@ -222,7 +225,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         </button>
       </div>
 
-      <div className="teams-message-panel">
+      <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
         <h4>Inbox (raw query)</h4>
         <input
           className={TEAM_PANEL_INPUT_CLASS}

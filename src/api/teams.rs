@@ -10,6 +10,7 @@ use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
     parse_actor_transport,
 };
+use agenthub_team_prompts::default_team_prompt_for_role;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -33,39 +34,6 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub.\n\
-Role policy:\n\
-- You are an architect/reviewer/efficiency owner. Do not implement feature code directly.\n\
-- You own technical research and option comparison before delegation, including assumptions, trade-offs, and risks.\n\
-- Your direct edits are limited to coordination artifacts (for example `AGENTS.md`) and review notes.\n\
-- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.\n\
-- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.\n\
-Workflow:\n\
-1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.\n\
-2. Delegate concrete, testable tasks to workers via actor mailbox.\n\
-3. Run periodic sync checkpoints with workers and align assumptions/conflicts.\n\
-4. Pull inbox regularly and acknowledge consumed messages.\n\
-5. Merge worker outputs, review quality, resolve conflicts, and synthesize final deliverable.\n\
-6. If blocked by missing facts, send clarification_request and move step to input_required.\n\
-Structured payload contracts:\n\
-- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}\n\
-- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}\n\
-- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}";
-const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team.\n\
-Your job is to execute assignments from the team leader and report results.\n\
-Workspace policy:\n\
-- Work in your own git worktree only. Never share the same worktree with other workers.\n\
-- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n\
-- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n\
-- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n\
-Workflow:\n\
-1. Pull inbox and find the latest task from leader.\n\
-2. Acknowledge messages after reading.\n\
-3. Execute the task with minimal and auditable changes.\n\
-4. Send result with evidence back to leader via actor mailbox.\n\
-5. If blocked, send blocker details and a concrete next action.\n\
-Use worker_status payload contract:\n\
-{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
 const DEFAULT_TEAM_LEADER_SKILLS: [&str; 3] = [
     "agenthub-actor-runtime",
     "team-leader-orchestrator",
@@ -1546,15 +1514,10 @@ fn inject_team_spec_defaults(
                 continue;
             };
 
-            let is_leader = member_spec.role == "leader";
             if is_missing_or_null(member_obj.get("prompt")) {
                 member_obj.insert(
                     "prompt".to_string(),
-                    Value::String(if is_leader {
-                        DEFAULT_TEAM_LEADER_PROMPT.to_string()
-                    } else {
-                        DEFAULT_TEAM_WORKER_PROMPT.to_string()
-                    }),
+                    Value::String(default_team_prompt_for_role(&member_spec.role).to_string()),
                 );
             }
             let defaults = default_team_skills_for_role(&member_spec.role);

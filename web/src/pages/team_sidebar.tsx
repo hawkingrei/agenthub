@@ -47,7 +47,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
 
   return (
-    <aside className="teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <aside className="teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents
@@ -96,7 +96,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
         </div>
       </div>
 
-      <div className="teams-list flex max-h-80 flex-col gap-2 overflow-auto">
+      <div className="teams-list flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
         {teams.length === 0 && <p className="muted">No teams yet.</p>}
         {teams.map((team) => {
           const summary = teamMemberSummaryByTeamId.get(team.id);

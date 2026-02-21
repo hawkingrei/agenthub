@@ -3322,21 +3322,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .teams-step-grid,
 .teams-message-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
   margin-bottom: 12px;
 }
 
 .teams-step-panel,
 .teams-message-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fcfcfc;
+  min-width: 0;
 }
 
 .teams-step-panel select,

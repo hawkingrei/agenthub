@@ -1,4 +1,3 @@
-import React from "react";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
@@ -22,29 +21,13 @@ type TeamRunStatusFilterOption = {
   label: string;
 };
 
-type TeamMemberSummary = {
-  active: number;
-  inactive: number;
-  missing: number;
-  total: number;
-};
-
-type TeamMemberLiveState = {
-  member_id: string;
-  role: string;
-  agent_name?: string;
-  lifecycle_status: string;
-  lifecycle_tone: "active" | "inactive" | "missing";
-  run_status: string;
-  step_status: string;
-  pending_inbox_count: number | null;
-  current_work: string;
+type RunInputValidation = {
+  parsed: unknown | undefined;
+  error: string | null;
 };
 
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
-const RUN_PANEL_MEMBER_CLASS =
-  "teams-member-panel flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4";
 const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
 const RUN_PANEL_SECTION_CLASS =
   "teams-run-create flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4";
@@ -54,25 +37,24 @@ const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
 const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
-const RUN_PANEL_MEMBER_SUMMARY_CLASS =
-  "mono mb-2 text-left text-xs tracking-wide text-slate-600";
-const RUN_PANEL_MEMBER_ROLE_BADGE_CLASS =
-  "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 
-function normalizeMemberRole(role: string): string {
-  return role.trim().toLowerCase();
-}
-
-function isLeaderRole(role: string): boolean {
-  return normalizeMemberRole(role) === "leader";
+function validateRunInputJson(raw: string): RunInputValidation {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { parsed: undefined, error: null };
+  }
+  try {
+    return { parsed: JSON.parse(trimmed), error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown parse error";
+    return { parsed: undefined, error: `Run input must be valid JSON (${message})` };
+  }
 }
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
   busy: string | null;
   onDeleteTeam: () => Promise<void> | void;
-  selectedTeamMemberSummary: TeamMemberSummary;
-  selectedTeamMemberLiveStates: TeamMemberLiveState[];
   runContextId: string;
   onRunContextIdChange: (value: string) => void;
   onCreateRun: () => Promise<void> | void;
@@ -100,8 +82,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeam,
     busy,
     onDeleteTeam,
-    selectedTeamMemberSummary,
-    selectedTeamMemberLiveStates,
     runContextId,
     onRunContextIdChange,
     onCreateRun,
@@ -123,16 +103,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeamId,
     onLoadMoreRuns,
   } = props;
-  const orderedTeamMemberLiveStates = React.useMemo(() => {
-    return [...selectedTeamMemberLiveStates].sort((left, right) => {
-      const leftLeader = isLeaderRole(left.role);
-      const rightLeader = isLeaderRole(right.role);
-      if (leftLeader !== rightLeader) {
-        return leftLeader ? -1 : 1;
-      }
-      return left.member_id.localeCompare(right.member_id);
-    });
-  }, [selectedTeamMemberLiveStates]);
+  const runInputValidation = validateRunInputJson(runInput);
+  const runInputHasError = runInputValidation.error !== null;
+  const canSubmitRun = busy !== "create-run" && !runInputHasError;
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -149,46 +122,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           >
             Delete Team
           </button>
-        </div>
-      </div>
-      <div className={RUN_PANEL_MEMBER_CLASS}>
-        <p className={RUN_PANEL_SUBTITLE_CLASS}>Team Members</p>
-        <div className="teams-member-status-panel grid gap-1.5">
-          <div className={RUN_PANEL_MEMBER_SUMMARY_CLASS}>
-            {`team_number=${selectedTeamMemberSummary.total}`}
-          </div>
-          {orderedTeamMemberLiveStates.length === 0 ? (
-            <p className="muted">No members declared in team spec.</p>
-          ) : (
-            <div className="teams-member-strip compact flex flex-wrap gap-x-2.5 gap-y-1.5">
-              {orderedTeamMemberLiveStates.map((member) => {
-                const isRunning = member.lifecycle_tone === "active";
-                const leader = isLeaderRole(member.role);
-                return (
-                  <span
-                    key={`${selectedTeam.id}:${member.member_id}`}
-                    className="teams-member-dot-item mono inline-flex items-center gap-1.5 text-xs text-slate-800"
-                    title={`member=${member.member_id} status=${member.lifecycle_status}`}
-                  >
-                    <span
-                      className={
-                        leader
-                          ? `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-blue-100 text-blue-700`
-                          : `${RUN_PANEL_MEMBER_ROLE_BADGE_CLASS} bg-slate-200 text-slate-700`
-                      }
-                      aria-label={leader ? "Leader member" : "Worker member"}
-                    >
-                      {leader ? "L" : "W"}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className={`teams-member-dot inline-block h-2 w-2 rounded-full ${isRunning ? "active bg-emerald-700" : "inactive bg-rose-700"}`}
-                    />
-                  </span>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
       <div className={RUN_PANEL_GRID_CLASS}>
@@ -208,20 +141,96 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             <button
               className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
               onClick={onCreateRun}
-              disabled={busy === "create-run"}
+              disabled={!canSubmitRun}
+              title={runInputValidation.error ?? "Create run"}
             >
               Create Run
             </button>
           </div>
+          <p className="text-xs text-slate-500">
+            <code>context_id</code> can be empty. Use one when you want retries/resume grouped
+            under the same context.
+          </p>
           <textarea
             className={TEAM_PANEL_TEXTAREA_CLASS}
-            rows={4}
+            rows={8}
             placeholder='Optional JSON input, e.g. {"task":"sync"}'
             aria-label="Run input JSON"
+            spellCheck={false}
             value={runInput}
             onChange={(event) => onRunInputChange(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSubmitRun) {
+                event.preventDefault();
+                void onCreateRun();
+              }
+            }}
           />
-          <p className="mt-2 text-xs text-slate-500">Leave empty to use default input: {`{}`}</p>
+          {runInputValidation.error ? (
+            <p className="text-xs text-rose-600" role="alert">
+              {runInputValidation.error}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run.
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() =>
+                onRunInputChange(
+                  JSON.stringify(
+                    {
+                      task: "investigate",
+                      objective: "improve-team-run",
+                    },
+                    null,
+                    2
+                  )
+                )
+              }
+            >
+              Use Example JSON
+            </button>
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => onRunInputChange("{}")}
+            >
+              Set Empty Object
+            </button>
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => {
+                const parsed = runInputValidation.parsed;
+                if (parsed === undefined && runInput.trim().length === 0) {
+                  onRunInputChange("{}");
+                  return;
+                }
+                if (runInputValidation.error || parsed === undefined) {
+                  return;
+                }
+                onRunInputChange(JSON.stringify(parsed, null, 2));
+              }}
+              disabled={runInputHasError}
+            >
+              Format JSON
+            </button>
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => onRunInputChange("")}
+              disabled={runInput.trim().length === 0}
+            >
+              Clear
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Leave empty to submit default empty input <code>{`{}`}</code>.
+          </p>
         </div>
         <div className={RUN_PANEL_LIST_CLASS}>
           <div className={RUN_PANEL_LIST_HEAD_CLASS}>

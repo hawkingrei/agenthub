@@ -114,7 +114,7 @@ export const DEFAULT_TEAM_UI_STATE: TeamUiState = {
 
 export const DEFAULT_TEAM_CONTROL_STATE: TeamControlState = {
   runContextId: "",
-  runInput: "",
+  runInput: "{}",
   stepKey: "",
   stepMemberId: "",
   stepDependsOn: "",
