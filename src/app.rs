@@ -7,7 +7,9 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, Tr
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
-fn split_log_path(path: &str) -> (std::path::PathBuf, String) {
+type LogSpec = (std::path::PathBuf, String);
+
+fn split_log_path(path: &str) -> LogSpec {
     let path_buf = std::path::Path::new(path);
     if path_buf.extension().is_some() {
         let file_name = path_buf
@@ -23,32 +25,32 @@ fn split_log_path(path: &str) -> (std::path::PathBuf, String) {
     (path_buf.to_path_buf(), "agenthub.log".to_string())
 }
 
-pub async fn run() -> anyhow::Result<()> {
-    if let Some(result) = crate::actor_mcp::maybe_run_from_args().await {
-        return result;
-    }
-    if let Some(result) = crate::actor_cli::maybe_run_from_args().await {
-        return result;
-    }
-
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let (config, info) = crate::config::AppConfig::load_with_info()?;
-    let log_path = config.log_path();
-    let log_spec = log_path.as_deref().map(split_log_path);
-    let _log_guard = if let Some((dir, file_name)) = log_spec.as_ref() {
+fn init_tracing(
+    filter: EnvFilter,
+    log_spec: Option<&LogSpec>,
+) -> anyhow::Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
+    if let Some((dir, file_name)) = log_spec {
         std::fs::create_dir_all(dir)?;
         let file_appender = tracing_appender::rolling::hourly(dir, file_name.as_str());
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        tracing_subscriber::fmt()
+        let _ = tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_writer(non_blocking)
             .with_ansi(false)
-            .init();
-        Some(guard)
-    } else {
-        tracing_subscriber::fmt().with_env_filter(filter).init();
-        None
-    };
+            .try_init();
+        return Ok(Some(guard));
+    }
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+    Ok(None)
+}
+
+fn log_config_details(
+    config: &crate::config::AppConfig,
+    info: &crate::config::ConfigLoadInfo,
+    log_path: Option<&str>,
+    log_spec: Option<&LogSpec>,
+    web_dir: Option<&str>,
+) {
     if info.file_exists {
         tracing::info!("config source: file");
         tracing::info!("config path: {}", info.path.display());
@@ -60,10 +62,10 @@ pub async fn run() -> anyhow::Result<()> {
         tracing::warn!("env overrides ignored: {}", info.env_overrides.join(", "));
     }
     tracing::info!("config listen: {}", config.listen_addr());
-    if let Some((dir, file_name)) = log_spec.as_ref() {
+    if let Some((dir, file_name)) = log_spec {
         tracing::info!(
             "config log_path: {} (dir {}, file {})",
-            log_path.as_deref().unwrap_or("<stdout>"),
+            log_path.unwrap_or("<stdout>"),
             dir.display(),
             file_name
         );
@@ -78,7 +80,6 @@ pub async fn run() -> anyhow::Result<()> {
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let web_dir = config.effective_web_dir();
     if !cfg!(debug_assertions) && config.web_dir.is_some() {
         tracing::info!("config web_dir ignored in release build");
     }
@@ -86,10 +87,7 @@ pub async fn run() -> anyhow::Result<()> {
         "config web_dir: {}",
         configured_web_dir.unwrap_or("<unset>")
     );
-    tracing::info!(
-        "effective web_dir: {}",
-        web_dir.as_deref().unwrap_or("embedded")
-    );
+    tracing::info!("effective web_dir: {}", web_dir.unwrap_or("embedded"));
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
     tracing::info!(
         "config codex_acp_default_mode: {}",
@@ -120,11 +118,13 @@ pub async fn run() -> anyhow::Result<()> {
         "config internal_grpc.security.mode: {}",
         config.internal_grpc_security_mode()
     );
-    let state = crate::state::AppState::init(config.clone()).await?;
-    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), &config).await?;
+}
 
-    let api_router = crate::api::router(state.clone());
-
+fn build_app_router(
+    state: crate::state::AppState,
+    api_router: Router,
+    web_dir: Option<&str>,
+) -> Router {
     let trace = TraceLayer::new_for_http()
         .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
         .on_response(DefaultOnResponse::new().level(Level::INFO))
@@ -139,7 +139,7 @@ pub async fn run() -> anyhow::Result<()> {
         .layer(compression);
     if let Some(dir) = web_dir {
         tracing::info!("serving web from dir: {}", dir);
-        let web_service = ServeDir::new(&dir)
+        let web_service = ServeDir::new(dir)
             .append_index_html_on_directories(true)
             .fallback(ServeFile::new(format!("{}/index.html", dir)));
         app = app.fallback_service(web_service);
@@ -147,10 +147,103 @@ pub async fn run() -> anyhow::Result<()> {
         tracing::info!("serving web from embedded assets");
         app = app.fallback(crate::web::embedded_handler);
     }
+    app
+}
+
+pub async fn run() -> anyhow::Result<()> {
+    if let Some(result) = crate::actor_mcp::maybe_run_from_args().await {
+        return result;
+    }
+    if let Some(result) = crate::actor_cli::maybe_run_from_args().await {
+        return result;
+    }
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let (config, info) = crate::config::AppConfig::load_with_info()?;
+    let log_path = config.log_path();
+    let log_spec = log_path.as_deref().map(split_log_path);
+    let web_dir = config.effective_web_dir();
+    let _log_guard = init_tracing(filter, log_spec.as_ref())?;
+    log_config_details(
+        &config,
+        &info,
+        log_path.as_deref(),
+        log_spec.as_ref(),
+        web_dir.as_deref(),
+    );
+    let state = crate::state::AppState::init(config.clone()).await?;
+    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), &config).await?;
+
+    let api_router = crate::api::router(state.clone());
+    let app = build_app_router(state.clone(), api_router, web_dir.as_deref());
 
     let addr: SocketAddr = config.listen_addr().parse()?;
 
     tracing::info!("listening on {}", addr);
     axum::serve(tokio::net::TcpListener::bind(addr).await?, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::util::ServiceExt;
+
+    #[test]
+    fn split_log_path_detects_file_and_directory_inputs() {
+        let (dir, file) = super::split_log_path("/tmp/agenthub/service.log");
+        assert!(dir.ends_with("/tmp/agenthub"));
+        assert_eq!(file, "service.log");
+
+        let (dir, file) = super::split_log_path("/tmp/agenthub/logs");
+        assert!(dir.ends_with("/tmp/agenthub/logs"));
+        assert_eq!(file, "agenthub.log");
+    }
+
+    #[test]
+    fn log_config_details_handles_all_branches() {
+        let config = crate::config::AppConfig::default();
+        let file_info = crate::config::ConfigLoadInfo {
+            path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
+            file_exists: true,
+            env_overrides: vec!["AGENTHUB_LISTEN".to_string()],
+        };
+        let default_info = crate::config::ConfigLoadInfo {
+            path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
+            file_exists: false,
+            env_overrides: vec![],
+        };
+        let spec = (
+            std::path::PathBuf::from("/tmp/agenthub/logs"),
+            "service.log".to_string(),
+        );
+        super::log_config_details(
+            &config,
+            &file_info,
+            Some("/tmp/agenthub/logs/service.log"),
+            Some(&spec),
+            Some("web/dist"),
+        );
+        super::log_config_details(&config, &default_info, None, None, None);
+    }
+
+    #[tokio::test]
+    async fn build_app_router_serves_embedded_health() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let api_router = crate::api::router(state.clone());
+        let app = super::build_app_router(state, api_router, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("request health");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }

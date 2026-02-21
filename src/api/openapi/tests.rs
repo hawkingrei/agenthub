@@ -55,3 +55,28 @@ async fn openapi_json_contains_team_runs_list_path() {
     assert!(value["paths"]["/api/teams/runs/{run_id}/restart"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
 }
+
+#[tokio::test]
+async fn openapi_docs_returns_html_page() {
+    let state = build_test_state().await;
+    let app = super::router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/openapi/docs")
+                .body(Body::empty())
+                .expect("build docs request"),
+        )
+        .await
+        .expect("request openapi docs");
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("read docs body");
+    let body = String::from_utf8(bytes.to_vec()).expect("decode docs body");
+    assert!(body.contains("AgentHub OpenAPI"));
+    assert!(body.contains("/api/openapi.json"));
+}
