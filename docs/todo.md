@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify Bazel target for new Team domain crate (`//crates/agenthub-team-domain:agenthub_team_domain`) in CI/clean environment after phase-3 crate migration, because local Bazel cache setup currently fails on `rules_rust` repository resolution (see `docs/features/2026-02-21-team-domain-crate-migration-phase3.md`).
+- [x] Verify phase-3 Team domain crate migration keeps Team API/runtime behavior unchanged while moving domain models to `crates/agenthub-team-domain` and preserving re-export compatibility in `src/team/mod.rs` (see `docs/features/2026-02-21-team-domain-crate-migration-phase3.md`).
 - [x] Verify `src/api/teams.rs` error mapping module split (`src/api/teams/errors.rs`) keeps duplicate-name conflict, resume/restart conflict mapping, and router HTTP contract behavior unchanged (see `docs/features/2026-02-21-api-teams-error-mapping-module-split.md`).
 - [x] Verify typed-error mapping replaces string-based conflict detection for Team run resume (`completed` => `409`) and Agent send-input stale session (`session mismatch` => `409`) with focused Rust tests (see `docs/features/2026-02-21-rust-error-typing-teams-agents.md`).
 - [ ] Verify Bazel-first Rust crate decomposition policy is applied to new domain migrations: extract cohesive domain libraries under `crates/*`, keep `src/main.rs` thin-bootstrap only, and align Bazel package/target boundaries with crate boundaries in the same PR (see `docs/features/2026-02-21-bazel-first-domain-crate-policy.md`).
