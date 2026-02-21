@@ -185,6 +185,7 @@ const TEAM_EVENT_PREVIEW_LIMIT = 5;
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
   useEffect(() => {
     document.body.classList.add("teams-page");
@@ -2292,9 +2293,22 @@ export function TeamPage(props: TeamPageProps) {
   return (
     <div className="mx-auto flex min-h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 px-3 py-3 sm:px-4 lg:px-6">
       <header className="mb-0 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="whitespace-normal text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-          AgentHub Teams
-        </h1>
+        <div className="flex items-center gap-2">
+          <button
+            className="icon-button small output-agents-toggle"
+            onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
+            title={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
+            aria-label={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
+          >
+            <i
+              className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
+              aria-hidden="true"
+            />
+          </button>
+          <h1 className="whitespace-normal text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+            AgentHub Teams
+          </h1>
+        </div>
         <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
           <a className="icon-button" href="/" title="Back" aria-label="Back">
             <i className="bi bi-arrow-left" aria-hidden="true" />
@@ -2310,23 +2324,31 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-      <div className="teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-        <TeamSidebar
-          busy={busy}
-          onRefreshTeams={refreshTeams}
-          onOpenCreateTeamWizard={openCreateTeamWizardModal}
-          onOpenCreateTeamManual={openCreateTeamManualModal}
-          draftTeamName={newTeamName}
-          leaderMemberId={leaderMemberId}
-          configuredWorkerCount={configuredWorkerCount}
-          teams={teams}
-          selectedTeamId={selectedTeamId}
-          teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
-          onSelectTeam={(teamId) => {
-            setSelectedTeamId(teamId);
-            setRunLookupId("");
-          }}
-        />
+      <div
+        className={
+          teamsSidebarCollapsed
+            ? "teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(0,1fr)]"
+            : "teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
+        }
+      >
+        {!teamsSidebarCollapsed && (
+          <TeamSidebar
+            busy={busy}
+            onRefreshTeams={refreshTeams}
+            onOpenCreateTeamWizard={openCreateTeamWizardModal}
+            onOpenCreateTeamManual={openCreateTeamManualModal}
+            draftTeamName={newTeamName}
+            leaderMemberId={leaderMemberId}
+            configuredWorkerCount={configuredWorkerCount}
+            teams={teams}
+            selectedTeamId={selectedTeamId}
+            teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
+            onSelectTeam={(teamId) => {
+              setSelectedTeamId(teamId);
+              setRunLookupId("");
+            }}
+          />
+        )}
 
         <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 [&>*]:shrink-0">
           {!selectedTeam && (

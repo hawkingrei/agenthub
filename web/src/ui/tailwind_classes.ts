@@ -65,7 +65,7 @@ export const TEAM_LIST_ITEM_BASE_CLASS =
   "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-slate-900 transition";
 
 export const TEAM_LIST_ITEM_ACTIVE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-900 bg-slate-900 text-white`;
+  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-300 bg-slate-50 ring-1 ring-slate-200`;
 
 export const TEAM_LIST_ITEM_IDLE_CLASS =
   `${TEAM_LIST_ITEM_BASE_CLASS} hover:border-slate-300`;
