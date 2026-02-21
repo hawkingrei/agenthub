@@ -1,0 +1,126 @@
+import { useEffect, type Dispatch, type SetStateAction } from "react";
+import type {
+  AgentEvent,
+  TeamActorMessageRecord,
+  TeamRunSnapshotRecord,
+} from "../../api";
+import type { TeamTab } from "./state";
+
+type UseTeamMailboxLifecycleEffectsOptions = {
+  snapshot: TeamRunSnapshotRecord | null;
+  selectedMemberId: string;
+  activeRunIdForSelectedTeam: string | null;
+  chatInboxActorId: string;
+  tab: TeamTab;
+  chatStickToBottom: boolean;
+  conversationKey: string;
+  conversationLatestMessageId: number | null;
+  conversationMessagesLength: number;
+  loadInbox: (actorIdOverride?: string) => Promise<void>;
+  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  parseError: (err: unknown) => string;
+  setError: Dispatch<SetStateAction<string | null>>;
+  setSelectedMemberId: (next: string) => void;
+  setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
+  setInbox: Dispatch<SetStateAction<TeamActorMessageRecord[]>>;
+  setInboxActorId: (next: string) => void;
+  setChatStickToBottom: (next: boolean) => void;
+  scrollConversationToBottom: () => void;
+  markConversationSeen: (key: string, messageId: number | null) => void;
+};
+
+export function useTeamMailboxLifecycleEffects(
+  options: UseTeamMailboxLifecycleEffectsOptions
+) {
+  const {
+    snapshot,
+    selectedMemberId,
+    activeRunIdForSelectedTeam,
+    chatInboxActorId,
+    tab,
+    chatStickToBottom,
+    conversationKey,
+    conversationLatestMessageId,
+    conversationMessagesLength,
+    loadInbox,
+    loadMemberEvents,
+    parseError,
+    setError,
+    setSelectedMemberId,
+    setMemberEvents,
+    setInbox,
+    setInboxActorId,
+    setChatStickToBottom,
+    scrollConversationToBottom,
+    markConversationSeen,
+  } = options;
+
+  useEffect(() => {
+    if (!snapshot) {
+      setSelectedMemberId("");
+      setMemberEvents([]);
+      return;
+    }
+    if (
+      selectedMemberId &&
+      snapshot.members.some((member) => member.member_id === selectedMemberId)
+    ) {
+      return;
+    }
+    setSelectedMemberId(snapshot.members[0]?.member_id ?? "");
+  }, [selectedMemberId, setSelectedMemberId, setMemberEvents, snapshot]);
+
+  useEffect(() => {
+    const actorId = chatInboxActorId.trim();
+    if (!activeRunIdForSelectedTeam || !actorId) {
+      setInbox([]);
+      return;
+    }
+    setInboxActorId(actorId);
+    void loadInbox(actorId).catch((err) => {
+      setError(parseError(err));
+    });
+  }, [
+    activeRunIdForSelectedTeam,
+    chatInboxActorId,
+    loadInbox,
+    parseError,
+    setError,
+    setInbox,
+    setInboxActorId,
+  ]);
+
+  useEffect(() => {
+    if (tab !== "mailbox") {
+      return;
+    }
+    setChatStickToBottom(true);
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+    });
+  }, [conversationKey, scrollConversationToBottom, setChatStickToBottom, tab]);
+
+  useEffect(() => {
+    if (tab !== "mailbox" || !chatStickToBottom) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      scrollConversationToBottom();
+      markConversationSeen(conversationKey, conversationLatestMessageId);
+    });
+  }, [
+    chatStickToBottom,
+    conversationKey,
+    conversationLatestMessageId,
+    conversationMessagesLength,
+    markConversationSeen,
+    scrollConversationToBottom,
+    tab,
+  ]);
+
+  useEffect(() => {
+    void loadMemberEvents("replace").catch((err) => {
+      setError(parseError(err));
+    });
+  }, [loadMemberEvents, parseError, setError]);
+}
