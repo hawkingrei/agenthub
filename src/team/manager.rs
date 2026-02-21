@@ -6,6 +6,7 @@ mod tests;
 
 use std::collections::HashMap;
 
+pub use agenthub_team_domain::TeamRunResumeError;
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Row, SqlitePool};
@@ -244,7 +245,7 @@ impl TeamManager {
                 Ok(run)
             }
             TeamRunStatus::Failed | TeamRunStatus::Canceled => self.fork_run_submission(&run).await,
-            TeamRunStatus::Completed => Err(anyhow::anyhow!("completed run cannot be resumed")),
+            TeamRunStatus::Completed => Err(TeamRunResumeError::CompletedRun.into()),
         }
     }
 
