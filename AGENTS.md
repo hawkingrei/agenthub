@@ -62,6 +62,7 @@ agenthub/
     src/
     dist/                # build output
   migrations/
+  .info/               # local reference materials (papers, notes, external repos), ignored by git
   AGENTS.md
 ```
 
@@ -140,6 +141,8 @@ agenthub/
 - Add a feature note under `docs/features/` describing background, scope, key decisions, and validation.
 - Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
 - API naming conventions live in `docs/api_naming.md` and must be followed for all AgentHub-owned payloads.
+- `.info/` is reserved for local, non-versioned research context (for example papers, reference implementations, and temporary prompts used for design/review work).
+- Do not rely on `.info/` as a source of production truth; when a decision is adopted, promote the outcome into tracked docs under `docs/features/` or `docs/todo.md`.
 
 ## 12. TODO Lifecycle And CI Verification Rules
 
@@ -167,6 +170,7 @@ agenthub/
 
 - Added Bazel-first Rust packaging constraints: domain-oriented crate decomposition, thin bootstrap entrypoint policy, and crate-to-Bazel boundary alignment guidance.
 - Added explicit requirement/policy notes for future Rust migrations from `src/*` modules into cohesive `crates/*` libraries.
+- Documented `.info/` as a git-ignored local reference directory for papers/external examples and clarified promotion rules into tracked documentation.
 
 ### 2026-02-05
 
