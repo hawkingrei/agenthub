@@ -63,7 +63,6 @@ import {
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   buildDefaultWorkerDraft,
-  buildTeamMemberLiveStates,
   createInitialTeamDraftState,
   parseTeamSpecMembers,
   resolveTeamMemberAgentStatuses,
@@ -628,18 +627,6 @@ export function TeamPage(props: TeamPageProps) {
     }
     return next;
   }, [teamMemberStatusByTeamId, teams]);
-  const selectedTeamMemberStatuses = useMemo(
-    () => (selectedTeam ? teamMemberStatusByTeamId.get(selectedTeam.id) ?? [] : []),
-    [selectedTeam, teamMemberStatusByTeamId]
-  );
-  const selectedTeamMemberSummary = useMemo(
-    () => summarizeTeamMemberAgentStatuses(selectedTeamMemberStatuses),
-    [selectedTeamMemberStatuses]
-  );
-  const selectedTeamMemberLiveStates = useMemo(
-    () => buildTeamMemberLiveStates(selectedTeamMemberStatuses, snapshot?.members),
-    [selectedTeamMemberStatuses, snapshot]
-  );
   const teamForgeAgents = useMemo(
     () => selectTeamForgeAgents(agents, teamForgeAgentIds),
     [agents, teamForgeAgentIds]
@@ -2327,8 +2314,8 @@ export function TeamPage(props: TeamPageProps) {
       <div
         className={
           teamsSidebarCollapsed
-            ? "teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(0,1fr)]"
-            : "teams-layout grid min-h-0 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
+            ? "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]"
+            : "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
         }
       >
         {!teamsSidebarCollapsed && (
@@ -2350,7 +2337,7 @@ export function TeamPage(props: TeamPageProps) {
           />
         )}
 
-        <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 [&>*]:shrink-0">
+        <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
           {!selectedTeam && (
             <div className="min-h-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
@@ -2366,8 +2353,6 @@ export function TeamPage(props: TeamPageProps) {
                 selectedTeam={selectedTeam}
                 busy={busy}
                 onDeleteTeam={onDeleteTeam}
-                selectedTeamMemberSummary={selectedTeamMemberSummary}
-                selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
                 runContextId={runContextId}
                 onRunContextIdChange={setRunContextId}
                 onCreateRun={onCreateRun}

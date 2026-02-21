@@ -5,6 +5,7 @@ members = [
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
     "crates/agenthub-team-actor",
+    "crates/agenthub-team-prompts",
 ]
 
 [patch.crates-io]
@@ -48,6 +49,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 sha2 = "0.10"
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
+agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
