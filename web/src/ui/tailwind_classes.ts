@@ -24,7 +24,7 @@ export const TEAM_PANEL_TOOLBAR_CLASS =
   "mb-3 flex flex-wrap items-center justify-between gap-2";
 
 export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
-  "flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
+  "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
 
 export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
@@ -53,7 +53,7 @@ export const TEAM_TAB_BAR_CLASS =
   "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm";
 
 const TEAM_TAB_BUTTON_BASE_CLASS =
-  "shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition";
+  "tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition";
 
 export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
   `${TEAM_TAB_BUTTON_BASE_CLASS} bg-slate-900 text-white shadow-sm`;

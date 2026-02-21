@@ -24,7 +24,7 @@ const OVERVIEW_META_CLASS =
   "mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
 const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
+  `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
 const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
   `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
 const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
