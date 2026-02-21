@@ -18,7 +18,7 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-500";
 
 export const TEAM_PANEL_CARD_CLASS =
-  "team-panel-card min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm";
+  "card team-panel-card min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm";
 
 export const TEAM_PANEL_TOOLBAR_CLASS =
   "mb-3 flex flex-wrap items-center justify-between gap-2";
@@ -56,7 +56,7 @@ const TEAM_TAB_BUTTON_BASE_CLASS =
   "tab shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition";
 
 export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} bg-slate-900 text-white shadow-sm`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} active bg-slate-900 text-white shadow-sm`;
 
 export const TEAM_TAB_BUTTON_IDLE_CLASS =
   `${TEAM_TAB_BUTTON_BASE_CLASS} text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
