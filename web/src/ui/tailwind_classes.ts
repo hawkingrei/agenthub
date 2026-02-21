@@ -49,6 +49,18 @@ export const TEAM_PANEL_TITLE_CLASS = "text-lg font-semibold tracking-tight text
 export const TEAM_PANEL_PRE_CLASS =
   "mono max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-2";
 
+export const TEAM_TAB_BAR_CLASS =
+  "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm";
+
+const TEAM_TAB_BUTTON_BASE_CLASS =
+  "shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition";
+
+export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
+  `${TEAM_TAB_BUTTON_BASE_CLASS} bg-slate-900 text-white shadow-sm`;
+
+export const TEAM_TAB_BUTTON_IDLE_CLASS =
+  `${TEAM_TAB_BUTTON_BASE_CLASS} text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
+
 export const TEAM_LIST_ITEM_BASE_CLASS =
   "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-slate-900 transition";
 

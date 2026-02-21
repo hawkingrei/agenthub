@@ -122,6 +122,9 @@ import {
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_TAB_BAR_CLASS,
+  TEAM_TAB_BUTTON_ACTIVE_CLASS,
+  TEAM_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -2455,63 +2458,43 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
 
-                  <div className="mt-2 flex min-w-0 flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                  <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`}>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                        tab === "overview"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      className={tab === "overview" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("overview")}
                     >
                       Overview
                     </button>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                        tab === "events"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      className={tab === "events" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("events")}
                     >
                       Events
                     </button>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                        tab === "steps"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      className={tab === "steps" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("steps")}
                     >
                       Steps
                     </button>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                        tab === "mailbox"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      className={tab === "mailbox" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("mailbox")}
                     >
                       Mailbox
                     </button>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      className={
                         tab === "member_console"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                          ? TEAM_TAB_BUTTON_ACTIVE_CLASS
+                          : TEAM_TAB_BUTTON_IDLE_CLASS
+                      }
                       onClick={() => setTab("member_console")}
                     >
                       Member Console
                     </button>
                     <button
-                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                        tab === "debug"
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      className={tab === "debug" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("debug")}
                     >
                       Debug
