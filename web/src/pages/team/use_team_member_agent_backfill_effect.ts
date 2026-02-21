@@ -23,6 +23,9 @@ export function useTeamMemberAgentBackfillEffect(
   } = options;
 
   useEffect(() => {
+    if (!token || teamSpecMemberIds.length === 0) {
+      return;
+    }
     const listedAgentIds = new Set(agents.map((agent) => agent.id));
     const unresolvedMemberIds = teamSpecMemberIds.filter(
       (memberId) =>
