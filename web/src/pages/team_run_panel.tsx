@@ -165,7 +165,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                 return (
                   <span
                     key={`${selectedTeam.id}:${member.member_id}`}
-                    className="teams-member-dot-item mono inline-flex min-w-0 max-w-full items-center gap-1.5 text-xs text-slate-800"
+                    className="teams-member-dot-item mono inline-flex items-center gap-1.5 text-xs text-slate-800"
                     title={`member=${member.member_id} status=${member.lifecycle_status}`}
                   >
                     <span
@@ -182,9 +182,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                       aria-hidden="true"
                       className={`teams-member-dot inline-block h-2 w-2 rounded-full ${isRunning ? "active bg-emerald-700" : "inactive bg-rose-700"}`}
                     />
-                    <span className="teams-member-dot-label min-w-0 max-w-[min(42vw,280px)] overflow-hidden text-ellipsis whitespace-nowrap">
-                      {member.member_id}
-                    </span>
                   </span>
                 );
               })}
