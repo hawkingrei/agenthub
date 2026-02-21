@@ -8,8 +8,6 @@ use agenthub_acp::{AcpEventSink, AcpStream};
 
 use crate::agent::{AgentOutput, OutputStream};
 
-pub use agenthub_acp::*;
-
 #[derive(Clone)]
 pub struct AgenthubAcpEventSink {
     db: SqlitePool,

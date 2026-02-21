@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, ensure};
 
-use crate::acp::AcpActorSkillContext;
+use agenthub_acp::AcpActorSkillContext;
 
 pub(crate) const DEFAULT_ACTOR_CHANNEL: &str = "default";
 
