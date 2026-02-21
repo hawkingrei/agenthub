@@ -88,6 +88,7 @@ import {
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
 import { useTeamCreateModalLifecycleEffects } from "./team/use_team_create_modal_lifecycle_effects";
+import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import {
@@ -572,45 +573,13 @@ export function TeamPage(props: TeamPageProps) {
     }
     return [...ids];
   }, [teams]);
-  useEffect(() => {
-    const listedAgentIds = new Set(agents.map((agent) => agent.id));
-    const unresolvedMemberIds = teamSpecMemberIds.filter(
-      (memberId) =>
-        !listedAgentIds.has(memberId) && !(memberId in teamMemberAgentsById)
-    );
-    if (unresolvedMemberIds.length === 0) {
-      return;
-    }
-
-    let canceled = false;
-    const loadMissingMemberAgents = async () => {
-      const resolved = await Promise.all(
-        unresolvedMemberIds.map(async (memberId) => {
-          try {
-            const agent = await api.getAgent(props.token, memberId);
-            return [memberId, agent] as const;
-          } catch {
-            return [memberId, null] as const;
-          }
-        })
-      );
-      if (canceled) {
-        return;
-      }
-      setTeamMemberAgentsById((prev) => {
-        const next = { ...prev };
-        for (const [memberId, agent] of resolved) {
-          next[memberId] = agent;
-        }
-        return next;
-      });
-    };
-
-    void loadMissingMemberAgents();
-    return () => {
-      canceled = true;
-    };
-  }, [agents, props.token, teamMemberAgentsById, teamSpecMemberIds]);
+  useTeamMemberAgentBackfillEffect({
+    token: props.token,
+    agents,
+    teamSpecMemberIds,
+    teamMemberAgentsById,
+    setTeamMemberAgentsById,
+  });
   const teamMemberStatusByTeamId = useMemo(() => {
     const next = new Map<string, TeamMemberAgentStatus[]>();
     for (const team of teams) {
