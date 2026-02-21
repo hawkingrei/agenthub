@@ -50,6 +50,7 @@ agenthub/
     ...                 # domain-oriented libraries
   src/
     app.rs              # bootstrap composition
+    lib.rs              # library entry point
     main.rs
     api/
     agent/
@@ -117,7 +118,7 @@ agenthub/
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership
-  - Cross-crate dependencies should flow inward through explicit interfaces and avoid cycles
+  - Cross-crate dependencies should point towards core domain crates (Dependency Inversion) and avoid cycles
   - For each new crate, add/adjust corresponding Bazel package and targets in the same change
 
 ## 10. TODO
