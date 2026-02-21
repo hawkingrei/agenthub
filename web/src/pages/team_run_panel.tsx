@@ -214,9 +214,12 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <textarea
             className={TEAM_PANEL_TEXTAREA_CLASS}
             rows={4}
+            placeholder='Optional JSON input, e.g. {"task":"sync"}'
+            aria-label="Run input JSON"
             value={runInput}
             onChange={(event) => onRunInputChange(event.target.value)}
           />
+          <p className="mt-2 text-xs text-slate-500">Leave empty to use default input: {`{}`}</p>
         </div>
         <div className={RUN_PANEL_LIST_CLASS}>
           <div className={RUN_PANEL_LIST_HEAD_CLASS}>
