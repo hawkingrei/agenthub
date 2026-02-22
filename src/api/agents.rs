@@ -610,6 +610,7 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::path::Path;
     use std::process::Command as StdCommand;
     use std::sync::Arc;
@@ -1903,17 +1904,17 @@ mod tests {
             card["runtime"]["worktree_mode"].as_str(),
             Some("create_worktree")
         );
-        let tags: Vec<&str> = card["capability_tags"]
+        let tags: HashSet<&str> = card["capability_tags"]
             .as_array()
             .expect("capability tags array")
             .iter()
             .filter_map(Value::as_str)
             .collect();
-        assert!(tags.iter().any(|tag| tag == &"team_mailbox_v1"));
-        assert!(tags.iter().any(|tag| tag == &"team_step_execution_v1"));
-        assert!(tags.iter().any(|tag| tag == &"code_mode"));
-        assert!(tags.iter().any(|tag| tag == &"git_worktree"));
-        assert!(tags.iter().any(|tag| tag == &"acp_codex"));
+        assert!(tags.contains("team_mailbox_v1"));
+        assert!(tags.contains("team_step_execution_v1"));
+        assert!(tags.contains("code_mode"));
+        assert!(tags.contains("git_worktree"));
+        assert!(tags.contains("acp_codex"));
 
         remove_dir_best_effort(&workdir);
     }

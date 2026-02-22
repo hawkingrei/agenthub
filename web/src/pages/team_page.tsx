@@ -751,10 +751,7 @@ export function TeamPage(props: TeamPageProps) {
     if (!props.token || !memberId) {
       return;
     }
-    if (
-      Object.prototype.hasOwnProperty.call(memberDiscoveryCardsById, memberId) ||
-      memberDiscoveryCardLoadingById[memberId]
-    ) {
+    if (Object.prototype.hasOwnProperty.call(memberDiscoveryCardsById, memberId)) {
       return;
     }
 
@@ -779,7 +776,6 @@ export function TeamPage(props: TeamPageProps) {
       active = false;
     };
   }, [
-    memberDiscoveryCardLoadingById,
     memberDiscoveryCardsById,
     props.token,
     selectedMemberId,

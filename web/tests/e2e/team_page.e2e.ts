@@ -1634,6 +1634,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await page.getByRole("button", { name: "Member Console" }).click();
   await expect(page.locator(".teams-step-body")).toContainText("a2a_discovery_card");
+  await expect(page.locator(".teams-step-body")).not.toContainText("Loading discovery card...");
   await expect(page.locator(".teams-step-body")).toContainText("acp_gemini");
 
   await page.getByRole("button", { name: "Events" }).click();
