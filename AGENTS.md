@@ -154,6 +154,11 @@ agenthub/
 - Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
 - API naming conventions live in `docs/api_naming.md` and must be followed for all AgentHub-owned payloads.
 - `.info/` is reserved for local, non-versioned research context (for example papers, reference implementations, and temporary prompts used for design/review work).
+- Recommended local research layout under `.info/`:
+  - `.info/papers/` for source PDFs
+  - `.info/clippings/` for clipped external notes/pages
+  - keep promoted outcomes in tracked docs (`docs/features/`, `docs/todo.md`)
+- Optional local search backend: configure `ck` MCP server (`ck --serve`) in `~/.agenthub/mcp.json` so ACP agents can use semantic/hybrid search during research and implementation review.
 - Do not rely on `.info/` as a source of production truth; when a decision is adopted, promote the outcome into tracked docs under `docs/features/` or `docs/todo.md`.
 
 ## 12. TODO Lifecycle And CI Verification Rules
@@ -181,6 +186,7 @@ agenthub/
 ### 2026-02-22
 
 - Added Team context-management policy based on stable-prefix/dynamic-tail prompt assembly, filesystem-backed context memory, append-only error/decision trails, pre-compaction memory flush, and allowed-action gating.
+- Added local research layout guidance for `.info/papers` and `.info/clippings`, plus optional `ck` MCP (`ck --serve`) integration guidance via `~/.agenthub/mcp.json`.
 
 ### 2026-02-21
 

@@ -1,6 +1,8 @@
 # TODO
 
 - [ ] [LOW] Defer Team ACL hardening (explicit owner/member permission matrix across Team main-task/run/mailbox APIs and UI visibility) until the chat-first baseline workflow and core Team features are complete.
+- [ ] Verify `scripts/setup_ck_search_context.sh` bootstraps `~/.agenthub/mcp.json` with `ck --serve` MCP server entry (`ck-search`) and preserves existing `mcpServers` entries without destructive overwrite (see `docs/features/2026-02-22-ck-search-mcp-and-info-research-layout.md`).
+- [ ] Verify local research layout bootstrap creates `.info/papers` and `.info/clippings` under configured `--info-root`, and keep the layout git-ignored while promoting adopted outcomes into tracked docs (see `docs/features/2026-02-22-ck-search-mcp-and-info-research-layout.md`).
 - [ ] Design review: lock Team long-horizon memory tiering (`L0` prompt working set / `L1` run episodic files / `L2` durable curated files), including schema ownership, `L1 -> L2` promotion rules, retrieval-budget allocation by prompt mode (`full`/`minimal`/`none`), and acceptance tests before Track 2 implementation starts (see `docs/features/2026-02-22-team-context-memory-architecture.md`, `docs/features/2026-02-22-team-memory-flush-spec.md`).
 - [ ] Design review: publish Team context contract v1 (stable prefix vs dynamic tail, append-only context logs, and allowed-action gate policy) and align leader/worker prompt assembly against it (see `docs/features/2026-02-22-team-context-memory-architecture.md`).
 - [ ] Implement filesystem-backed context memory layout for Team runs (`.cache/context/run/<run_id>/...`) and enforce pointer-first prompt policy for large tool outputs with regression coverage (see `docs/features/2026-02-22-team-context-memory-architecture.md`).
