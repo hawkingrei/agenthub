@@ -18,6 +18,7 @@ pub(super) fn parse_team_definition_row(
         name: row.get("name"),
         description: row.get("description"),
         spec,
+        owner_user_id: row.try_get("owner_user_id")?,
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })

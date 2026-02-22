@@ -22,6 +22,7 @@ use serde_json::Value;
 
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::auth::UserRecord;
 use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
@@ -50,6 +51,39 @@ const REQUIRED_TEAM_LEADER_SKILLS: [&str; 2] =
 const REQUIRED_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
 const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
+const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
+const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+const TEAM_MAIN_TASK_COMPILE_VERSION: i64 = 1;
+const TEAM_MAIN_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
+const DEFAULT_MAIN_TASK_ACCEPTANCE_CRITERION: &str =
+    "All assigned steps complete and leader synthesis is delivered.";
+const TEAM_MAIN_TASK_COMPILE_MAX_LIST_ITEMS: usize = 32;
+const TEAM_MAIN_TASK_COMPILE_MAX_TEXT_LEN: usize = 280;
+const TEAM_MAIN_TASK_COMPILE_MAX_DEADLINE_LEN: usize = 40;
+
+fn team_owner_matches_user(team: &TeamDefinitionRecord, user: &UserRecord) -> bool {
+    match team.owner_user_id.as_deref() {
+        Some(owner_user_id) => owner_user_id == user.id,
+        // Backward compatibility for legacy rows created before owner_user_id was introduced.
+        None => true,
+    }
+}
+
+async fn load_team_for_user(
+    state: &AppState,
+    team_id: &str,
+    user: &UserRecord,
+) -> Result<TeamDefinitionRecord, ApiError> {
+    let team = state
+        .teams
+        .get_team(team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    if !team_owner_matches_user(&team, user) {
+        return Err(ApiError::not_found("team not found"));
+    }
+    Ok(team)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -90,6 +124,11 @@ pub struct SendTeamMainTaskMessageRequest {
 pub struct ListTeamMainTaskMessagesQuery {
     pub limit: Option<i64>,
     pub before_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompileTeamMainTaskRunPreviewRequest {
+    pub context_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +246,45 @@ pub struct TeamMainTaskDetailResponse {
     pub conversation: TeamConversationRecord,
 }
 
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamMainTaskRunCompilePreviewResponse {
+    pub main_task_id: String,
+    pub conversation_id: String,
+    pub run_payload: TeamRunPayloadPreview,
+    pub plan: TeamMainTaskCompiledPlan,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamRunPayloadPreview {
+    pub context_id: String,
+    pub input: Value,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamMainTaskCompiledPlan {
+    pub task_list: Vec<String>,
+    pub acceptance_criteria: Vec<String>,
+    pub deadline: Option<String>,
+    pub step_template: Vec<TeamCompiledStepTemplate>,
+    pub role_assignments: Vec<TeamCompiledRoleAssignment>,
+    pub source_message_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamCompiledStepTemplate {
+    pub step_key: String,
+    pub member_id: String,
+    pub role: String,
+    pub depends_on: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamCompiledRoleAssignment {
+    pub member_id: String,
+    pub role: String,
+    pub step_keys: Vec<String>,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
@@ -219,6 +297,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/:id/main_tasks/:main_task_id/messages",
             post(send_team_main_task_message).get(list_team_main_task_messages),
+        )
+        .route(
+            "/:id/main_tasks/:main_task_id/compile_run_preview",
+            post(compile_team_main_task_run_preview),
         )
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
@@ -265,7 +347,7 @@ async fn create_team(
     headers: HeaderMap,
     Json(payload): Json<CreateTeamRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::bad_request("team name is required"));
@@ -275,11 +357,14 @@ async fn create_team(
     validate_team_spec(&spec)?;
     let team = state
         .teams
-        .create_team(TeamDefinitionConfig {
-            name,
-            description: payload.description,
-            spec,
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name,
+                description: payload.description,
+                spec,
+            },
+            Some(user.id.as_str()),
+        )
         .await
         .map_err(map_create_team_error)?;
     Ok(Json(team))
@@ -289,8 +374,14 @@ async fn list_teams(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TeamDefinitionRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let teams = state.teams.list_teams().await?;
+    let user = require_user(&headers, &state).await?;
+    let teams = state
+        .teams
+        .list_teams()
+        .await?
+        .into_iter()
+        .filter(|team| team_owner_matches_user(team, &user))
+        .collect::<Vec<_>>();
     Ok(Json(teams))
 }
 
@@ -299,12 +390,8 @@ async fn get_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     Ok(Json(team))
 }
 
@@ -313,12 +400,8 @@ async fn delete_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let member_ids = match parse_member_ids(team.spec.get("members")) {
         Ok(ids) => ids,
         Err(err) => {
@@ -356,23 +439,14 @@ async fn create_team_main_task(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamMainTaskRequest>,
 ) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(ApiError::bad_request("title is required"));
     }
-    let created_by_actor_id = payload
-        .created_by_actor_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("user")
-        .to_string();
+    let created_by_actor_id =
+        normalize_main_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
     let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
     let (task, conversation) = state
         .teams
@@ -395,12 +469,8 @@ async fn list_team_main_tasks(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamMainTasksQuery>,
 ) -> Result<Json<Vec<TeamMainTaskRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let tasks = state
         .teams
         .list_main_tasks(&team_id, query.limit.unwrap_or(100).clamp(1, 500))
@@ -414,12 +484,8 @@ async fn get_team_main_task(
     headers: HeaderMap,
     Path((team_id, main_task_id)): Path<(String, String)>,
 ) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -442,12 +508,8 @@ async fn send_team_main_task_message(
     Path((team_id, main_task_id)): Path<(String, String)>,
     Json(payload): Json<SendTeamMainTaskMessageRequest>,
 ) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -456,25 +518,28 @@ async fn send_team_main_task_message(
     if task.team_id != team_id {
         return Err(ApiError::not_found("main task not found"));
     }
-    let from_actor_id = normalize_required_field(payload.from_actor_id, "from_actor_id")?;
+    let actor_scope = parse_main_task_actor_scope(&team.spec, &user)?;
+    let from_actor_id = normalize_main_task_actor_id(
+        normalize_required_field(payload.from_actor_id, "from_actor_id")?.as_str(),
+        "from_actor_id",
+        &user,
+    )?;
     let to_actor_id = payload
         .to_actor_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string);
+        .map(|raw| normalize_main_task_actor_id(raw, "to_actor_id", &user))
+        .transpose()?;
     let route = normalize_conversation_route(payload.route.as_deref())?;
-    if route == "to_member" && to_actor_id.is_none() {
-        return Err(ApiError::bad_request(
-            "to_actor_id is required when route=to_member",
-        ));
-    }
+    validate_main_task_message_sender(&actor_scope, &from_actor_id)?;
+    let resolved_to_actor_id = resolve_main_task_message_target(&actor_scope, &route, to_actor_id)?;
     let message = state
         .teams
         .append_main_task_conversation_message(
             &main_task_id,
             &from_actor_id,
-            to_actor_id.as_deref(),
+            resolved_to_actor_id.as_deref(),
             &route,
             payload.payload,
         )
@@ -489,12 +554,8 @@ async fn list_team_main_task_messages(
     Path((team_id, main_task_id)): Path<(String, String)>,
     Query(query): Query<ListTeamMainTaskMessagesQuery>,
 ) -> Result<Json<Vec<TeamConversationMessageRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -513,6 +574,47 @@ async fn list_team_main_task_messages(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(messages))
+}
+
+async fn compile_team_main_task_run_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, main_task_id)): Path<(String, String)>,
+    Json(payload): Json<CompileTeamMainTaskRunPreviewRequest>,
+) -> Result<Json<TeamMainTaskRunCompilePreviewResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    validate_team_spec(&team.spec)?;
+    let task = state
+        .teams
+        .get_main_task(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "main task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("main task not found"));
+    }
+    let conversation = state
+        .teams
+        .get_main_task_conversation(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "conversation not found"))?;
+    let messages = state
+        .teams
+        .list_main_task_conversation_messages(
+            &main_task_id,
+            TEAM_MAIN_TASK_COMPILE_MESSAGE_LIMIT,
+            None,
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    let preview = compile_main_task_run_preview_response(
+        &team.spec,
+        &task,
+        &conversation,
+        &messages,
+        payload.context_id.as_deref(),
+    )?;
+    Ok(Json(preview))
 }
 
 async fn create_team_run(
@@ -1588,6 +1690,551 @@ fn normalize_conversation_route(value: Option<&str>) -> Result<String, ApiError>
         &TEAM_CONVERSATION_ROUTE_VALUES,
         "group_chat",
     )
+}
+
+fn canonical_user_actor_id(user: &UserRecord) -> String {
+    format!("{TEAM_SPECIAL_USER_ACTOR_PREFIX}{}", user.id)
+}
+
+fn normalize_main_task_actor_id(
+    value: &str,
+    field_name: &str,
+    user: &UserRecord,
+) -> Result<String, ApiError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(&format!("{field_name} is required")));
+    }
+    if trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS {
+        return Ok(canonical_user_actor_id(user));
+    }
+    if let Some(user_id) = trimmed.strip_prefix(TEAM_SPECIAL_USER_ACTOR_PREFIX) {
+        let user_id = user_id.trim();
+        if user_id.is_empty() {
+            return Err(ApiError::bad_request(&format!(
+                "{field_name} user actor id must be non-empty"
+            )));
+        }
+        if user_id != user.id {
+            return Err(ApiError::bad_request(&format!(
+                "{field_name} user actor id must match authenticated user"
+            )));
+        }
+        return Ok(canonical_user_actor_id(user));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalize_main_task_created_by_actor_id(
+    value: Option<&str>,
+    user: &UserRecord,
+) -> Result<String, ApiError> {
+    let Some(raw) = value else {
+        return Ok(canonical_user_actor_id(user));
+    };
+    normalize_main_task_actor_id(raw, "created_by_actor_id", user)
+}
+
+#[derive(Debug)]
+struct MainTaskActorScope {
+    user_actor_id: String,
+    member_ids: HashSet<String>,
+    leader_member_id: Option<String>,
+}
+
+fn parse_main_task_actor_scope(
+    team_spec: &Value,
+    user: &UserRecord,
+) -> Result<MainTaskActorScope, ApiError> {
+    let spec_obj = team_spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let member_ids = member_specs
+        .iter()
+        .map(|member| member.member_id.clone())
+        .collect::<HashSet<_>>();
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    Ok(MainTaskActorScope {
+        user_actor_id: canonical_user_actor_id(user),
+        member_ids,
+        leader_member_id,
+    })
+}
+
+fn validate_main_task_message_sender(
+    actor_scope: &MainTaskActorScope,
+    from_actor_id: &str,
+) -> Result<(), ApiError> {
+    if from_actor_id == actor_scope.user_actor_id || actor_scope.member_ids.contains(from_actor_id)
+    {
+        return Ok(());
+    }
+    Err(ApiError::bad_request(
+        "from_actor_id must be authenticated user actor or spec.members[].member_id",
+    ))
+}
+
+fn resolve_main_task_message_target(
+    actor_scope: &MainTaskActorScope,
+    route: &str,
+    to_actor_id: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    match route {
+        "group_chat" => {
+            if to_actor_id.is_some() {
+                return Err(ApiError::bad_request(
+                    "to_actor_id must be omitted when route=group_chat",
+                ));
+            }
+            Ok(None)
+        }
+        "to_member" => {
+            let to_actor_id = to_actor_id.ok_or_else(|| {
+                ApiError::bad_request("to_actor_id is required when route=to_member")
+            })?;
+            if !actor_scope.member_ids.contains(to_actor_id.as_str()) {
+                return Err(ApiError::bad_request(
+                    "to_actor_id must reference spec.members[].member_id when route=to_member",
+                ));
+            }
+            Ok(Some(to_actor_id))
+        }
+        "to_leader" => {
+            let leader_member_id = actor_scope.leader_member_id.as_deref().ok_or_else(|| {
+                ApiError::bad_request("route=to_leader requires a leader member in spec.members")
+            })?;
+            match to_actor_id {
+                None => Ok(Some(leader_member_id.to_string())),
+                Some(to_actor_id) => {
+                    if to_actor_id != leader_member_id {
+                        return Err(ApiError::bad_request(
+                            "to_actor_id must equal leader member_id when route=to_leader",
+                        ));
+                    }
+                    Ok(Some(to_actor_id))
+                }
+            }
+        }
+        _ => Err(ApiError::bad_request("unsupported route")),
+    }
+}
+
+#[derive(Debug, Default)]
+struct MainTaskCompileExtraction {
+    task_list: Vec<String>,
+    acceptance_criteria: Vec<String>,
+    deadline: Option<String>,
+    source_message_id: Option<i64>,
+}
+
+fn compile_main_task_run_preview_response(
+    team_spec: &Value,
+    task: &TeamMainTaskRecord,
+    conversation: &TeamConversationRecord,
+    messages: &[TeamConversationMessageRecord],
+    requested_context_id: Option<&str>,
+) -> Result<TeamMainTaskRunCompilePreviewResponse, ApiError> {
+    let spec_obj = team_spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let step_template =
+        compile_main_task_step_template(spec_obj, &member_specs, leader_member_id.as_deref())?;
+    let mut extraction = extract_main_task_compile_extraction(&task.context);
+    for message in messages {
+        if apply_main_task_compile_message_update(&message.payload, &mut extraction) {
+            extraction.source_message_id = Some(message.message_id);
+        }
+    }
+    if extraction.task_list.is_empty() {
+        extraction.task_list.push(task.title.clone());
+    }
+    if extraction.acceptance_criteria.is_empty() {
+        extraction
+            .acceptance_criteria
+            .push(DEFAULT_MAIN_TASK_ACCEPTANCE_CRITERION.to_string());
+    }
+
+    let role_assignments = build_main_task_role_assignments(
+        &step_template,
+        &member_specs,
+        leader_member_id.as_deref(),
+    );
+    let task_list = extraction.task_list.clone();
+    let acceptance_criteria = extraction.acceptance_criteria.clone();
+    let deadline = extraction.deadline.clone();
+    let source_message_id = extraction.source_message_id;
+    let step_template_for_input = step_template.clone();
+    let role_assignments_for_input = role_assignments.clone();
+    let context_id = requested_context_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| task.id.clone());
+    let run_input = serde_json::json!({
+        "main_task_compile_version": TEAM_MAIN_TASK_COMPILE_VERSION,
+        "main_task_id": task.id.as_str(),
+        "conversation_id": conversation.id.as_str(),
+        "task_title": task.title.as_str(),
+        "task_list": task_list,
+        "acceptance_criteria": acceptance_criteria,
+        "deadline": deadline,
+        "compiled_from_message_id": source_message_id,
+        "step_template": step_template_for_input,
+        "role_assignments": role_assignments_for_input,
+    });
+    let run_payload = TeamRunPayloadPreview {
+        context_id,
+        input: run_input,
+    };
+    let plan = TeamMainTaskCompiledPlan {
+        task_list,
+        acceptance_criteria,
+        deadline,
+        step_template,
+        role_assignments,
+        source_message_id,
+    };
+    Ok(TeamMainTaskRunCompilePreviewResponse {
+        main_task_id: task.id.clone(),
+        conversation_id: conversation.id.clone(),
+        run_payload,
+        plan,
+    })
+}
+
+fn compile_main_task_step_template(
+    spec_obj: &serde_json::Map<String, Value>,
+    member_specs: &[TeamMemberSpec],
+    leader_member_id: Option<&str>,
+) -> Result<Vec<TeamCompiledStepTemplate>, ApiError> {
+    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs)
+        .map(str::to_string)
+        .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
+
+    let member_role_by_id = member_specs
+        .iter()
+        .map(|member| {
+            (
+                member.member_id.clone(),
+                resolve_compiled_member_role(
+                    member.member_id.as_str(),
+                    member.role.as_str(),
+                    leader_member_id.as_str(),
+                ),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let generated_steps;
+    let step_values = if let Some(steps) = spec_obj.get("steps").and_then(Value::as_array) {
+        steps.as_slice()
+    } else {
+        let worker_member_ids = member_specs
+            .iter()
+            .map(|member| member.member_id.as_str())
+            .filter(|member_id| *member_id != leader_member_id.as_str())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        generated_steps = build_default_team_steps(leader_member_id.as_str(), &worker_member_ids);
+        generated_steps.as_slice()
+    };
+
+    let mut out = Vec::with_capacity(step_values.len());
+    for step in step_values {
+        let step_obj = step
+            .as_object()
+            .ok_or_else(|| ApiError::bad_request("spec.steps entries must be objects"))?;
+        let step_key = step_obj
+            .get("step_key")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| ApiError::bad_request("spec.steps[].step_key is required"))?;
+        let member_id = step_obj
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| ApiError::bad_request("spec.steps[].member_id is required"))?;
+        let role = member_role_by_id.get(member_id).ok_or_else(|| {
+            ApiError::bad_request("spec.steps[].member_id must reference spec.members[].member_id")
+        })?;
+        let depends_on = parse_compile_step_depends_on(step_obj.get("depends_on"))?;
+        out.push(TeamCompiledStepTemplate {
+            step_key: step_key.to_string(),
+            member_id: member_id.to_string(),
+            role: role.to_string(),
+            depends_on,
+        });
+    }
+    Ok(out)
+}
+
+fn resolve_compiled_member_role(
+    member_id: &str,
+    base_role: &str,
+    leader_member_id: &str,
+) -> String {
+    if member_id == leader_member_id {
+        "leader".to_string()
+    } else {
+        base_role.to_string()
+    }
+}
+
+fn resolve_effective_leader_member_id<'a>(
+    leader_member_id: Option<&'a str>,
+    member_specs: &'a [TeamMemberSpec],
+) -> Option<&'a str> {
+    leader_member_id
+        .or_else(|| {
+            member_specs
+                .iter()
+                .find(|member| member.role == "leader")
+                .map(|member| member.member_id.as_str())
+        })
+        .or_else(|| member_specs.first().map(|member| member.member_id.as_str()))
+}
+
+fn parse_compile_step_depends_on(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let depends_on = value
+        .as_array()
+        .ok_or_else(|| ApiError::bad_request("spec.steps[].depends_on must be an array"))?;
+    let mut out = Vec::with_capacity(depends_on.len());
+    let mut seen = HashSet::with_capacity(depends_on.len());
+    for dep in depends_on {
+        let dep = dep
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ApiError::bad_request("spec.steps[].depends_on entries must be non-empty strings")
+            })?;
+        if !seen.insert(dep.to_string()) {
+            return Err(ApiError::bad_request(
+                "spec.steps[].depends_on must not contain duplicates",
+            ));
+        }
+        out.push(dep.to_string());
+    }
+    Ok(out)
+}
+
+fn extract_main_task_compile_extraction(context: &Value) -> MainTaskCompileExtraction {
+    let Some(context_obj) = context.as_object() else {
+        return MainTaskCompileExtraction::default();
+    };
+    let mut extraction = MainTaskCompileExtraction::default();
+    let _changed = apply_main_task_compile_patch(context_obj, &mut extraction);
+    extraction
+}
+
+fn apply_main_task_compile_message_update(
+    payload: &Value,
+    extraction: &mut MainTaskCompileExtraction,
+) -> bool {
+    if let Some(patch) = payload
+        .as_object()
+        .and_then(|obj| obj.get("plan_update"))
+        .and_then(Value::as_object)
+    {
+        return apply_main_task_compile_patch(patch, extraction);
+    }
+    payload
+        .as_object()
+        .map(|patch| apply_main_task_compile_patch(patch, extraction))
+        .unwrap_or(false)
+}
+
+fn apply_main_task_compile_patch(
+    patch: &serde_json::Map<String, Value>,
+    extraction: &mut MainTaskCompileExtraction,
+) -> bool {
+    let mut changed = false;
+    if let Some(task_list) = parse_compile_string_list_patch(patch, &["task_list", "tasks"]) {
+        extraction.task_list = task_list;
+        changed = true;
+    }
+    if let Some(acceptance_criteria) =
+        parse_compile_string_list_patch(patch, &["acceptance_criteria", "acceptance"])
+    {
+        extraction.acceptance_criteria = acceptance_criteria;
+        changed = true;
+    }
+    if let Some(deadline) = parse_compile_optional_text_patch(patch, "deadline") {
+        extraction.deadline = deadline;
+        changed = true;
+    }
+    changed
+}
+
+fn parse_compile_string_list_patch(
+    patch: &serde_json::Map<String, Value>,
+    keys: &[&str],
+) -> Option<Vec<String>> {
+    let value = keys.iter().find_map(|key| patch.get(*key))?;
+    if value.is_null() {
+        return Some(Vec::new());
+    }
+    let items = value.as_array()?;
+    let mut out = Vec::with_capacity(items.len());
+    let mut seen = HashSet::with_capacity(items.len());
+    for item in items {
+        let Some(item) = item
+            .as_str()
+            .and_then(|value| sanitize_compile_text(value, TEAM_MAIN_TASK_COMPILE_MAX_TEXT_LEN))
+        else {
+            continue;
+        };
+        if out.len() >= TEAM_MAIN_TASK_COMPILE_MAX_LIST_ITEMS {
+            break;
+        }
+        if seen.insert(item.to_string()) {
+            out.push(item);
+        }
+    }
+    Some(out)
+}
+
+fn parse_compile_optional_text_patch(
+    patch: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Option<Option<String>> {
+    let value = patch.get(key)?;
+    if value.is_null() {
+        return Some(None);
+    }
+    let text = value.as_str()?;
+    let deadline = sanitize_compile_text(text, TEAM_MAIN_TASK_COMPILE_MAX_DEADLINE_LEN)?;
+    if !is_valid_compile_deadline(deadline.as_str()) {
+        return Some(None);
+    }
+    Some(Some(deadline))
+}
+
+fn build_main_task_role_assignments(
+    step_template: &[TeamCompiledStepTemplate],
+    member_specs: &[TeamMemberSpec],
+    leader_member_id: Option<&str>,
+) -> Vec<TeamCompiledRoleAssignment> {
+    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs);
+    let mut step_keys_by_member: HashMap<&str, Vec<String>> = HashMap::new();
+    for step in step_template {
+        step_keys_by_member
+            .entry(step.member_id.as_str())
+            .or_default()
+            .push(step.step_key.clone());
+    }
+    let mut assignments = member_specs
+        .iter()
+        .map(|member| TeamCompiledRoleAssignment {
+            member_id: member.member_id.clone(),
+            role: if leader_member_id == Some(member.member_id.as_str()) {
+                "leader".to_string()
+            } else {
+                member.role.clone()
+            },
+            step_keys: step_keys_by_member
+                .remove(member.member_id.as_str())
+                .unwrap_or_default(),
+        })
+        .collect::<Vec<_>>();
+    assignments.sort_by(|left, right| {
+        role_sort_order(left.role.as_str())
+            .cmp(&role_sort_order(right.role.as_str()))
+            .then_with(|| left.member_id.cmp(&right.member_id))
+    });
+    assignments
+}
+
+fn sanitize_compile_text(value: &str, max_len: usize) -> Option<String> {
+    let text = value.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let mut cleaned = String::with_capacity(text.len().min(max_len));
+    for ch in text.chars() {
+        if ch.is_control() {
+            if ch == '\n' || ch == '\r' || ch == '\t' {
+                cleaned.push(' ');
+            }
+            continue;
+        }
+        if !is_allowed_compile_char(ch) {
+            continue;
+        }
+        cleaned.push(ch);
+        if cleaned.len() >= max_len {
+            break;
+        }
+    }
+    let normalized = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized)
+}
+
+fn is_allowed_compile_char(ch: char) -> bool {
+    ch.is_alphanumeric()
+        || ch.is_whitespace()
+        || matches!(
+            ch,
+            '.' | ','
+                | ':'
+                | ';'
+                | '!'
+                | '?'
+                | '-'
+                | '_'
+                | '/'
+                | '+'
+                | '#'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '\''
+                | '"'
+                | '&'
+                | '@'
+        )
+}
+
+fn is_valid_compile_deadline(value: &str) -> bool {
+    let mut parts = value.split('-');
+    let (Some(year), Some(month), Some(day), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    if year.len() != 4 || month.len() != 2 || day.len() != 2 {
+        return false;
+    }
+    let Ok(year) = year.parse::<i32>() else {
+        return false;
+    };
+    let Ok(month) = month.parse::<u32>() else {
+        return false;
+    };
+    let Ok(day) = day.parse::<u32>() else {
+        return false;
+    };
+    chrono::NaiveDate::from_ymd_opt(year, month, day).is_some()
+}
+
+fn role_sort_order(role: &str) -> i32 {
+    match role {
+        "leader" => 0,
+        "worker" => 1,
+        _ => 2,
+    }
 }
 
 fn normalize_enum_value(

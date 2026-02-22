@@ -233,6 +233,40 @@ export type TeamRunSnapshotRecord = {
   mailbox: TeamMailboxSnapshot;
 };
 
+export type TeamCompiledStepTemplateRecord = {
+  step_key: string;
+  member_id: string;
+  role: string;
+  depends_on: string[];
+};
+
+export type TeamCompiledRoleAssignmentRecord = {
+  member_id: string;
+  role: string;
+  step_keys: string[];
+};
+
+export type TeamMainTaskCompiledPlanRecord = {
+  task_list: string[];
+  acceptance_criteria: string[];
+  deadline?: string | null;
+  step_template: TeamCompiledStepTemplateRecord[];
+  role_assignments: TeamCompiledRoleAssignmentRecord[];
+  source_message_id?: number | null;
+};
+
+export type TeamRunPayloadPreviewRecord = {
+  context_id: string;
+  input: unknown;
+};
+
+export type TeamMainTaskRunCompilePreviewRecord = {
+  main_task_id: string;
+  conversation_id: string;
+  run_payload: TeamRunPayloadPreviewRecord;
+  plan: TeamMainTaskCompiledPlanRecord;
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -370,6 +404,20 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
+  compileTeamMainTaskRunPreview: (
+    token: string,
+    teamId: string,
+    mainTaskId: string,
+    payload: { context_id?: string }
+  ) =>
+    apiFetch<TeamMainTaskRunCompilePreviewRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/compile_run_preview`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
   listTeamRuns: (
     token: string,
     teamId: string,

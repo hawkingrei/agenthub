@@ -846,6 +846,7 @@ mod tests {
                 name TEXT NOT NULL UNIQUE,
                 description TEXT,
                 spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );

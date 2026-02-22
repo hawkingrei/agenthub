@@ -5,6 +5,7 @@ import {
   api,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
+  TeamMainTaskRunCompilePreviewRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
@@ -73,6 +74,7 @@ import {
   formatTs,
   pickNextWorkerAgentId,
   toPrettyJson,
+  upsertRun,
 } from "./team/page_helpers";
 import {
   selectTeamPreviewEvents,
@@ -465,6 +467,10 @@ export function TeamPage(props: TeamPageProps) {
   const activeRunIdRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<TeamRunSnapshotRecord | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [compileMainTaskId, setCompileMainTaskId] = useState("");
+  const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
+  const [compiledRunPreview, setCompiledRunPreview] =
+    useState<TeamMainTaskRunCompilePreviewRecord | null>(null);
 
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
@@ -576,6 +582,11 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  useEffect(() => {
+    setCompiledRunPreview(null);
+    setCompileMainTaskId("");
+    setCompilePreviewContextId("");
+  }, [selectedTeamId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
     for (const team of teams) {
@@ -979,6 +990,25 @@ export function TeamPage(props: TeamPageProps) {
     memberEventsRef.current = memberEvents;
   }, [memberEvents]);
 
+  const applyCreatedRunState = useCallback(
+    (created: TeamRunRecord, syncRunEditor: boolean) => {
+      setRuns((prev) => upsertRun(prev, created));
+      setActiveRunId(created.id);
+      setRunLookupId(created.id);
+      if (syncRunEditor) {
+        setRunContextId(created.context_id);
+        setRunInput(toPrettyJson(created.input));
+      }
+    },
+    [setActiveRunId, setRunContextId, setRunInput, setRunLookupId, setRuns]
+  );
+  const onRunCreated = useCallback(
+    (created: TeamRunRecord) => {
+      applyCreatedRunState(created, false);
+    },
+    [applyCreatedRunState]
+  );
+
   const {
     refreshAgents,
     refreshTeams,
@@ -1038,6 +1068,7 @@ export function TeamPage(props: TeamPageProps) {
     setMemberEventsHasMore,
     setActiveRunId,
     setRunLookupId,
+    onRunCreated,
   });
 
   const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
@@ -1631,13 +1662,152 @@ export function TeamPage(props: TeamPageProps) {
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
+  const canCompileMainTask = busy !== "compile-main-task" && compileMainTaskId.trim().length > 0;
   const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const modalFieldClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+  const onCompileMainTaskRunPreview = useCallback(async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    const mainTaskId = compileMainTaskId.trim();
+    if (!mainTaskId) {
+      setError("Main task ID is required");
+      return;
+    }
+    setBusy("compile-main-task");
+    setError(null);
+    try {
+      const preview = await api.compileTeamMainTaskRunPreview(
+        props.token,
+        selectedTeamId,
+        mainTaskId,
+        {
+          context_id: compilePreviewContextId.trim() || undefined,
+        }
+      );
+      setCompiledRunPreview(preview);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    compileMainTaskId,
+    compilePreviewContextId,
+    props.token,
+    selectedTeamId,
+    setBusy,
+    setError,
+  ]);
+  const onUseCompiledRunPayload = useCallback(() => {
+    if (!compiledRunPreview) {
+      return;
+    }
+    setRunContextId(compiledRunPreview.run_payload.context_id);
+    setRunInput(toPrettyJson(compiledRunPreview.run_payload.input));
+  }, [compiledRunPreview, setRunContextId, setRunInput]);
+  const onCreateRunFromCompiledPreview = useCallback(async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    if (!compiledRunPreview) {
+      setError("Compile preview first");
+      return;
+    }
+    setBusy("create-run");
+    setError(null);
+    try {
+      const created = await api.createTeamRun(props.token, selectedTeamId, {
+        context_id: compiledRunPreview.run_payload.context_id,
+        input: compiledRunPreview.run_payload.input,
+      });
+      applyCreatedRunState(created, true);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    applyCreatedRunState,
+    compiledRunPreview,
+    props.token,
+    selectedTeamId,
+    setBusy,
+    setError,
+  ]);
   const runOpsPanel = (
     <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h4 className="text-sm font-semibold text-slate-900">Compile Main Task</h4>
+        <p className="muted mt-2 text-sm text-slate-600">
+          Compile chat-approved main task into a deterministic run payload preview.
+        </p>
+        <div className="form-row mt-3">
+          <input
+            className={panelInputClassName}
+            placeholder="main_task_id"
+            value={compileMainTaskId}
+            onChange={(event) => setCompileMainTaskId(event.target.value)}
+          />
+          <button
+            className={panelPrimaryButtonClassName}
+            onClick={onCompileMainTaskRunPreview}
+            disabled={!canCompileMainTask}
+          >
+            Compile Preview
+          </button>
+        </div>
+        <input
+          className={`${panelInputClassName} mt-2`}
+          placeholder="context_id override (optional)"
+          value={compilePreviewContextId}
+          onChange={(event) => setCompilePreviewContextId(event.target.value)}
+        />
+        {compiledRunPreview ? (
+          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mono text-xs text-slate-700">
+              <div>
+                <strong>main_task_id:</strong> {compiledRunPreview.main_task_id}
+              </div>
+              <div>
+                <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
+              </div>
+              <div>
+                <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={panelSecondaryButtonClassName}
+                onClick={onUseCompiledRunPayload}
+              >
+                Use Payload in Create Run
+              </button>
+              <button
+                type="button"
+                className={panelPrimaryButtonClassName}
+                onClick={onCreateRunFromCompiledPreview}
+                disabled={busy === "create-run"}
+              >
+                Create Run from Preview
+              </button>
+            </div>
+            <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              {toPrettyJson(compiledRunPreview)}
+            </pre>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            Submit a <code>main_task_id</code> to preview compiled run payload.
+          </p>
+        )}
+      </div>
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h4 className="text-sm font-semibold text-slate-900">Create Run</h4>
         <p className="muted mt-2 text-sm text-slate-600">
