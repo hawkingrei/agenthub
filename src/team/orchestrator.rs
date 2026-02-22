@@ -324,7 +324,7 @@ impl TeamOrchestratorWorker {
         let continuity_mode = parse_run_continuity_mode(&run.input);
         let continuity_max_chars = parse_run_continuity_max_chars(&run.input);
         let member_role = self
-            .resolve_member_role_for_step(run_id, &step.member_id)
+            .resolve_member_role_for_step(&run.team_id, &step.member_id)
             .await
             .unwrap_or_else(|err| {
                 tracing::warn!(
@@ -508,11 +508,10 @@ impl TeamOrchestratorWorker {
 
     async fn resolve_member_role_for_step(
         &self,
-        run_id: &str,
+        team_id: &str,
         member_id: &str,
     ) -> anyhow::Result<Option<String>> {
-        let run = self.teams.get_run(run_id).await?;
-        let team = self.teams.get_team(&run.team_id).await?;
+        let team = self.teams.get_team(team_id).await?;
         Ok(parse_member_role(&team.spec, member_id))
     }
 }

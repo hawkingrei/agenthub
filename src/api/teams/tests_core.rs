@@ -1317,6 +1317,7 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
             "run_working",
             "step_working",
             "step_completed",
+            "continuity_state_updated",
             "run_completed"
         ]
     );
@@ -1586,6 +1587,7 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
             "run_working",
             "step_resumed",
             "step_completed",
+            "continuity_state_updated",
             "run_completed"
         ]
     );

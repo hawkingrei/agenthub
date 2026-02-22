@@ -197,6 +197,11 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
 
+        sqlx::query("DELETE FROM team_member_continuity_state WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query("DELETE FROM team_runs WHERE team_id = ?1")
             .bind(team_id)
             .execute(&mut *tx)
@@ -754,15 +759,9 @@ impl TeamManager {
 
     async fn upsert_member_continuity_state_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        team_id: &str,
-        member_id: &str,
-        source_run_id: &str,
-        source_session_id: Option<&str>,
-        summary_text: &str,
-        history_window: &Value,
-        updated_at: i64,
+        continuity_state: &TeamMemberContinuityStateRecord,
     ) -> anyhow::Result<()> {
-        let history_window_json = serde_json::to_string(history_window)?;
+        let history_window_json = serde_json::to_string(&continuity_state.history_window)?;
         sqlx::query(
             r#"
             INSERT INTO team_member_continuity_state (
@@ -784,13 +783,13 @@ impl TeamManager {
                 updated_at = excluded.updated_at
             "#,
         )
-        .bind(team_id)
-        .bind(member_id)
-        .bind(source_run_id)
-        .bind(source_session_id)
-        .bind(summary_text)
+        .bind(&continuity_state.team_id)
+        .bind(&continuity_state.member_id)
+        .bind(&continuity_state.source_run_id)
+        .bind(continuity_state.source_session_id.as_deref())
+        .bind(&continuity_state.summary_text)
         .bind(history_window_json)
-        .bind(updated_at)
+        .bind(continuity_state.updated_at)
         .execute(&mut **tx)
         .await?;
         Ok(())
@@ -1203,27 +1202,26 @@ impl TeamManager {
                 serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
             let continuity_mode = extract_continuity_mode_from_input(&run_input);
             let (summary_text, history_window) = build_continuity_snapshot(step.output.as_ref());
-            Self::upsert_member_continuity_state_tx(
-                &mut tx,
-                team_id.as_str(),
-                step.member_id.as_str(),
-                step.run_id.as_str(),
-                step.remote_task_id.as_deref(),
-                summary_text.as_str(),
-                &history_window,
-                now,
-            )
-            .await?;
+            let continuity_state = TeamMemberContinuityStateRecord {
+                team_id: team_id.clone(),
+                member_id: step.member_id.clone(),
+                source_run_id: step.run_id.clone(),
+                source_session_id: step.remote_task_id.clone(),
+                summary_text,
+                history_window,
+                updated_at: now,
+            };
+            Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
 
             let continuity_payload = serde_json::json!({
-                "team_id": team_id,
-                "member_id": step.member_id,
+                "team_id": continuity_state.team_id,
+                "member_id": continuity_state.member_id,
                 "step_id": step.id,
                 "step_key": step.step_key,
                 "mode": continuity_mode,
-                "source_run_id": step.run_id,
-                "source_session_id": step.remote_task_id,
-                "summary_chars": summary_text.chars().count(),
+                "source_run_id": continuity_state.source_run_id,
+                "source_session_id": continuity_state.source_session_id,
+                "summary_chars": continuity_state.summary_text.chars().count(),
             });
             sqlx::query(
                 r#"
@@ -1811,16 +1809,7 @@ fn truncate_continuity_text(raw: &str, max_chars: usize) -> String {
     if max_chars == 0 {
         return String::new();
     }
-    let mut out = String::with_capacity(raw.len().min(max_chars));
-    let mut char_count = 0usize;
-    for ch in raw.chars() {
-        if char_count >= max_chars {
-            break;
-        }
-        out.push(ch);
-        char_count += 1;
-    }
-    out.trim().to_string()
+    raw.chars().take(max_chars).collect::<String>()
 }
 
 fn redact_sensitive_json(value: &Value) -> Value {
