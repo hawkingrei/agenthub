@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Verify Team mailbox action callbacks (`onSendChatMessage` / `onSendMessage` / `onRefreshInbox` / `onAckMessage`) are extracted from `web/src/pages/team_page.tsx` into `useTeamMailboxActions`, with branch behavior tests and `web` lint/test/build green (see `docs/features/2026-02-22-team-page-mailbox-actions-hook-extraction.md`).
 - [x] Verify Team step operation callbacks (`onSubmitStep` / `onApplyStepAction`) are extracted from `web/src/pages/team_page.tsx` into `useTeamStepActions`, with focused payload/validation tests and `web` lint/test/build green (see `docs/features/2026-02-22-team-page-step-actions-hook-extraction.md`).
 - [x] Verify Team run/mailbox action callback extraction from `web/src/pages/team_page.tsx` into `useTeamActions` keeps behavior stable while reducing main-page callback density; add callback identity stability tests and keep `web` lint/test/build green (see `docs/features/2026-02-21-team-page-actions-hook-and-stability-tests.md`).
 - [x] Verify Team workbench adopts a conversation-first primary flow by removing `Create Run` controls from the primary `TeamRunPanel`, keeping run creation/loading in `Debug -> Run Ops`, and preserving run-browser interactions/tests (`team_panels`, `team_page.runs`) with web build green (see `docs/features/2026-02-21-team-chat-first-run-ops-entry.md`).

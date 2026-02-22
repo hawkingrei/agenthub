@@ -39,13 +39,11 @@ import {
   clampCreateTeamStage,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
-  parseOptionalJson,
   parseRequiredJson,
   resolveTeamModelOptions,
 } from "./team/create_helpers";
 import {
   MailboxTemplateKey,
-  buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
@@ -82,6 +80,7 @@ import {
 } from "./team/run_helpers";
 import { useTeamCreateModalLifecycleEffects } from "./team/use_team_create_modal_lifecycle_effects";
 import { useTeamActions } from "./team/use_team_actions";
+import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
@@ -1065,6 +1064,30 @@ export function TeamPage(props: TeamPageProps) {
     refreshSnapshot,
   });
 
+  const { onSendChatMessage, onSendMessage, onRefreshInbox, onAckMessage } =
+    useTeamMailboxActions({
+      token: props.token,
+      tab,
+      activeRunIdForSelectedTeam,
+      chatFromActorId: chatActors.fromActorId,
+      chatToActorId: chatActors.toActorId,
+      chatDraft,
+      msgFromActorId,
+      msgToActorId,
+      msgChannel,
+      msgTransport,
+      msgRoute,
+      msgPayload,
+      msgIdempotencyKey,
+      inboxActorId,
+      setBusy,
+      setError,
+      setChatDraft,
+      loadInbox,
+      refreshSnapshot,
+      refreshEvents,
+    });
+
   const markConversationSeen = useCallback(
     (key: string, messageId: number | null) => {
       if (!key || messageId == null) {
@@ -1455,127 +1478,6 @@ export function TeamPage(props: TeamPageProps) {
 
   const onApplyMessageTemplate = () => {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
-  };
-
-  const onSendChatMessage = async () => {
-    if (!activeRunIdForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    const fromActorId = chatActors.fromActorId.trim();
-    const toActorId = chatActors.toActorId.trim();
-    const text = chatDraft.trim();
-    if (!fromActorId || !toActorId) {
-      setError("Select a valid member conversation first");
-      return;
-    }
-    if (!text) {
-      setError("Chat message is required");
-      return;
-    }
-    setBusy("send-chat");
-    setError(null);
-    try {
-      await api.sendTeamRunMessage(props.token, activeRunIdForSelectedTeam, {
-        from_actor_id: fromActorId,
-        to_actor_id: toActorId,
-        channel: "default",
-        transport: "local",
-        payload: buildMailboxChatPayload(text),
-      });
-      setChatDraft("");
-      await refreshSnapshot(activeRunIdForSelectedTeam);
-      await loadInbox(toActorId);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onSendMessage = async () => {
-    if (!activeRunIdForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    const fromActorId = msgFromActorId.trim();
-    const toActorId = msgToActorId.trim();
-    if (!fromActorId || !toActorId) {
-      setError("from_actor_id and to_actor_id are required");
-      return;
-    }
-    setBusy("send-message");
-    setError(null);
-    try {
-      await api.sendTeamRunMessage(props.token, activeRunIdForSelectedTeam, {
-        from_actor_id: fromActorId,
-        to_actor_id: toActorId,
-        channel: msgChannel.trim() || undefined,
-        transport: msgTransport,
-        route: parseOptionalJson(msgRoute, "Message route"),
-        payload: parseRequiredJson(msgPayload, "Message payload"),
-        idempotency_key: msgIdempotencyKey.trim() || undefined,
-      });
-      if (tab === "mailbox") {
-        await refreshSnapshot(activeRunIdForSelectedTeam);
-        if (inboxActorId.trim()) {
-          await loadInbox();
-        }
-      } else {
-        await Promise.all([
-          refreshEvents(activeRunIdForSelectedTeam),
-          refreshSnapshot(activeRunIdForSelectedTeam),
-        ]);
-      }
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRefreshInbox = async () => {
-    if (!activeRunIdForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    setBusy("refresh-inbox");
-    setError(null);
-    try {
-      await loadInbox();
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onAckMessage = async (message: TeamActorMessageRecord) => {
-    if (!activeRunIdForSelectedTeam) return;
-    const actorId = inboxActorId.trim() || message.to_actor_id;
-    setBusy(`ack-${message.message_id}`);
-    setError(null);
-    try {
-      await api.ackTeamRunMessage(
-        props.token,
-        activeRunIdForSelectedTeam,
-        message.message_id,
-        actorId
-      );
-      if (tab === "mailbox") {
-        await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunIdForSelectedTeam)]);
-      } else {
-        await Promise.all([
-          loadInbox(),
-          refreshEvents(activeRunIdForSelectedTeam),
-          refreshSnapshot(activeRunIdForSelectedTeam),
-        ]);
-      }
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
   };
 
   const onRefreshMemberConsole = useCallback(async () => {
