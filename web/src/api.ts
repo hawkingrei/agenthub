@@ -30,6 +30,28 @@ export type AgentRecord = {
   updated_at: number;
 };
 
+export type AgentDiscoveryIdentityRecord = {
+  agent_id: string;
+  name: string;
+  status: string;
+};
+
+export type AgentDiscoveryRuntimeRecord = {
+  acp_provider?: string | null;
+  code_mode: boolean;
+  worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
+  worktree_repo?: string | null;
+  worktree_ref?: string | null;
+};
+
+export type AgentDiscoveryCardRecord = {
+  card_id: string;
+  schema_version: string;
+  identity: AgentDiscoveryIdentityRecord;
+  runtime: AgentDiscoveryRuntimeRecord;
+  capability_tags: string[];
+};
+
 export type AgentEvent = {
   event_id: number;
   agent_id: string;
@@ -630,6 +652,11 @@ export const api = {
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   getAgent: (token: string, id: string) =>
     apiFetch<AgentRecord>(`/api/agents/${encodePathSegment(id)}`, token),
+  getAgentDiscoveryCard: (token: string, id: string) =>
+    apiFetch<AgentDiscoveryCardRecord>(
+      `/api/agents/${encodePathSegment(id)}/.well-known/agent-card`,
+      token
+    ),
   sendInput: (
     token: string,
     id: string,

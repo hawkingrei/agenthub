@@ -53,10 +53,10 @@ operators had to manually create a new run and re-enter context/input.
 cargo test -q resume_run_handles_active_terminal_and_completed_statuses
 cargo test -q restart_run_creates_new_submission_with_same_context_and_input
 cargo test -q team_runs_api_supports_resume_and_restart_strategy
+cargo test -q teams_router_resume_restart_strategy_survives_state_reopen
 cargo test -q teams_router_http_contract
 cargo test -q openapi_json_contains_team_runs_list_path
 npm --prefix web run test -- src/pages/team_page.runs.test.ts
 npm --prefix web run test -- src/pages/team_panels.test.tsx
 npm --prefix web run lint -- src/pages/team_page.tsx src/api.ts
 ```
-

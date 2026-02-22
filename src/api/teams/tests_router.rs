@@ -146,7 +146,10 @@ async fn teams_router_http_contract() {
         ))
         .await
         .expect("outsider create main task via router");
-    assert_eq!(outsider_create_main_task_resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        outsider_create_main_task_resp.status(),
+        StatusCode::NOT_FOUND
+    );
 
     let list_main_tasks_resp = app
         .clone()
@@ -240,7 +243,10 @@ async fn teams_router_http_contract() {
         .expect("compile run preview via router");
     assert_eq!(compile_preview_resp.status(), StatusCode::OK);
     let compile_preview = decode_json_body(compile_preview_resp).await;
-    assert_eq!(compile_preview["main_task_id"], Value::from(main_task_id.clone()));
+    assert_eq!(
+        compile_preview["main_task_id"],
+        Value::from(main_task_id.clone())
+    );
     assert_eq!(
         compile_preview["run_payload"]["context_id"],
         Value::from(main_task_id.clone())
@@ -264,7 +270,10 @@ async fn teams_router_http_contract() {
         ))
         .await
         .expect("outsider compile preview via router");
-    assert_eq!(outsider_compile_preview_resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        outsider_compile_preview_resp.status(),
+        StatusCode::NOT_FOUND
+    );
 
     let create_run_resp = app
         .clone()
@@ -972,6 +981,314 @@ async fn teams_router_http_contract() {
 }
 
 #[tokio::test]
+async fn teams_router_resume_restart_strategy_survives_state_reopen() {
+    let base = std::env::temp_dir().join(format!("agenthub-team-run-recover-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&base).expect("create temp base");
+    let db_path = base.join("teams.sqlite");
+
+    let state = build_test_state_with_db_path(&db_path).await;
+    let token = create_auth_token(&state).await;
+    let app = super::router(state.clone());
+
+    let create_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "router-restart-strategy-team",
+                "description": "verify run resume/restart across state reopen",
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner","role":"leader"}]
+                }
+            })),
+        ))
+        .await
+        .expect("create team");
+    assert_eq!(create_team_resp.status(), StatusCode::OK);
+    let created_team = decode_json_body(create_team_resp).await;
+    let team_id = created_team["id"].as_str().expect("team id").to_string();
+
+    let create_failed_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id":"ctx-reopen-failed",
+                "input":{"prompt":"failed run"}
+            })),
+        ))
+        .await
+        .expect("create failed run");
+    assert_eq!(create_failed_run_resp.status(), StatusCode::OK);
+    let failed_run = decode_json_body(create_failed_run_resp).await;
+    let failed_run_id = failed_run["id"]
+        .as_str()
+        .expect("failed run id")
+        .to_string();
+
+    let submit_failed_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{failed_run_id}/steps"),
+            Some(&token),
+            Some(json!({
+                "step_key":"failed-step",
+                "member_id":"planner",
+                "depends_on":[],
+                "input":{"goal":"fail"}
+            })),
+        ))
+        .await
+        .expect("submit failed step");
+    assert_eq!(submit_failed_step_resp.status(), StatusCode::OK);
+    let failed_step = decode_json_body(submit_failed_step_resp).await;
+    let failed_step_id = failed_step["id"].as_str().expect("failed step id");
+
+    let start_failed_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{failed_run_id}/steps/{failed_step_id}/start"),
+            Some(&token),
+            Some(json!({"remote_task_id":"remote-failed"})),
+        ))
+        .await
+        .expect("start failed step");
+    assert_eq!(start_failed_step_resp.status(), StatusCode::OK);
+
+    let fail_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{failed_run_id}/steps/{failed_step_id}/fail"),
+            Some(&token),
+            Some(json!({"error_text":"forced failure"})),
+        ))
+        .await
+        .expect("fail step");
+    assert_eq!(fail_step_resp.status(), StatusCode::OK);
+
+    let failed_run_status_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{failed_run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get failed run");
+    assert_eq!(failed_run_status_resp.status(), StatusCode::OK);
+    let failed_run_status = decode_json_body(failed_run_status_resp).await;
+    assert_eq!(failed_run_status["status"], "failed");
+
+    let create_canceled_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id":"ctx-reopen-canceled",
+                "input":{"prompt":"canceled run"}
+            })),
+        ))
+        .await
+        .expect("create canceled run");
+    assert_eq!(create_canceled_run_resp.status(), StatusCode::OK);
+    let canceled_run = decode_json_body(create_canceled_run_resp).await;
+    let canceled_run_id = canceled_run["id"]
+        .as_str()
+        .expect("canceled run id")
+        .to_string();
+
+    let cancel_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{canceled_run_id}/cancel"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("cancel run");
+    assert_eq!(cancel_run_resp.status(), StatusCode::OK);
+    let canceled_run_status = decode_json_body(cancel_run_resp).await;
+    assert_eq!(canceled_run_status["status"], "canceled");
+
+    let create_completed_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&token),
+            Some(json!({
+                "context_id":"ctx-reopen-completed",
+                "input":{"prompt":"completed run"}
+            })),
+        ))
+        .await
+        .expect("create completed run");
+    assert_eq!(create_completed_run_resp.status(), StatusCode::OK);
+    let completed_run = decode_json_body(create_completed_run_resp).await;
+    let completed_run_id = completed_run["id"]
+        .as_str()
+        .expect("completed run id")
+        .to_string();
+
+    let submit_completed_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{completed_run_id}/steps"),
+            Some(&token),
+            Some(json!({
+                "step_key":"completed-step",
+                "member_id":"planner",
+                "depends_on":[],
+                "input":{"goal":"finish"}
+            })),
+        ))
+        .await
+        .expect("submit completed step");
+    assert_eq!(submit_completed_step_resp.status(), StatusCode::OK);
+    let completed_step = decode_json_body(submit_completed_step_resp).await;
+    let completed_step_id = completed_step["id"].as_str().expect("completed step id");
+
+    let start_completed_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{completed_run_id}/steps/{completed_step_id}/start"),
+            Some(&token),
+            Some(json!({"remote_task_id":"remote-completed"})),
+        ))
+        .await
+        .expect("start completed step");
+    assert_eq!(start_completed_step_resp.status(), StatusCode::OK);
+
+    let complete_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{completed_run_id}/steps/{completed_step_id}/complete"),
+            Some(&token),
+            Some(json!({"output":{"result":"ok"}})),
+        ))
+        .await
+        .expect("complete step");
+    assert_eq!(complete_step_resp.status(), StatusCode::OK);
+
+    let completed_run_status_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{completed_run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get completed run");
+    assert_eq!(completed_run_status_resp.status(), StatusCode::OK);
+    let completed_run_status = decode_json_body(completed_run_status_resp).await;
+    assert_eq!(completed_run_status["status"], "completed");
+
+    drop(app);
+    drop(state);
+
+    let reopened_state = reopen_test_state_with_db_path(&db_path).await;
+    let reopened_app = super::router(reopened_state);
+
+    let resumed_failed_resp = reopened_app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{failed_run_id}/resume"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("resume failed run after reopen");
+    assert_eq!(resumed_failed_resp.status(), StatusCode::OK);
+    let resumed_failed = decode_json_body(resumed_failed_resp).await;
+    assert_ne!(resumed_failed["id"], failed_run["id"]);
+    assert_eq!(resumed_failed["status"], "submitted");
+    assert_eq!(resumed_failed["context_id"], failed_run["context_id"]);
+    assert_eq!(resumed_failed["input"], failed_run["input"]);
+
+    let resumed_canceled_resp = reopened_app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{canceled_run_id}/resume"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("resume canceled run after reopen");
+    assert_eq!(resumed_canceled_resp.status(), StatusCode::OK);
+    let resumed_canceled = decode_json_body(resumed_canceled_resp).await;
+    assert_ne!(resumed_canceled["id"], canceled_run["id"]);
+    assert_eq!(resumed_canceled["status"], "submitted");
+    assert_eq!(resumed_canceled["context_id"], canceled_run["context_id"]);
+    assert_eq!(resumed_canceled["input"], canceled_run["input"]);
+
+    let resume_completed_resp = reopened_app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{completed_run_id}/resume"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("resume completed run after reopen");
+    assert_eq!(resume_completed_resp.status(), StatusCode::CONFLICT);
+
+    let restarted_completed_resp = reopened_app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{completed_run_id}/restart"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("restart completed run after reopen");
+    assert_eq!(restarted_completed_resp.status(), StatusCode::OK);
+    let restarted_completed = decode_json_body(restarted_completed_resp).await;
+    assert_ne!(restarted_completed["id"], completed_run["id"]);
+    assert_eq!(restarted_completed["status"], "submitted");
+    assert_eq!(
+        restarted_completed["context_id"],
+        completed_run["context_id"]
+    );
+    assert_eq!(restarted_completed["input"], completed_run["input"]);
+
+    let original_completed_resp = reopened_app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{completed_run_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get original completed run after restart");
+    assert_eq!(original_completed_resp.status(), StatusCode::OK);
+    let original_completed = decode_json_body(original_completed_resp).await;
+    assert_eq!(original_completed["status"], "completed");
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
 async fn teams_router_orchestrator_converges_with_real_executor() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
@@ -1055,12 +1372,17 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
 
     let mut step_remote_task_id = None;
     for _ in 0..20 {
-        let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
+        let db_steps = state
+            .teams
+            .list_steps(&run_id)
+            .await
+            .expect("list db steps");
         if let Some(step) = db_steps.first()
-            && step.status == crate::team::TeamStepStatus::Working {
-                step_remote_task_id = step.remote_task_id.clone();
-                break;
-            }
+            && step.status == crate::team::TeamStepStatus::Working
+        {
+            step_remote_task_id = step.remote_task_id.clone();
+            break;
+        }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     let remote_task_id = step_remote_task_id.expect("step should reach working state");
@@ -1099,7 +1421,11 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     if !converged_failed {
-        let db_steps = state.teams.list_steps(&run_id).await.expect("list db steps");
+        let db_steps = state
+            .teams
+            .list_steps(&run_id)
+            .await
+            .expect("list db steps");
         let db_step = db_steps.first().expect("first db step");
         let session_status = match db_step.remote_task_id.as_deref() {
             Some(session_id) => state
@@ -1130,9 +1456,7 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let steps = steps_payload.as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0]["status"], "failed");
-    let final_remote_task_id = steps[0]["remote_task_id"]
-        .as_str()
-        .expect("remote task id");
+    let final_remote_task_id = steps[0]["remote_task_id"].as_str().expect("remote task id");
     assert_eq!(final_remote_task_id, remote_task_id);
 
     let events_resp = app

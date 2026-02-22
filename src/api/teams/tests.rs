@@ -1,3 +1,4 @@
+use std::path::Path as StdPath;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -41,8 +42,28 @@ use super::{
 };
 
 pub(crate) async fn build_test_state() -> AppState {
-    let db = create_test_db().await;
-    init_test_schema(&db).await;
+    build_test_state_with_db_source(None, true).await
+}
+
+pub(crate) async fn build_test_state_with_db_path(path: &StdPath) -> AppState {
+    build_test_state_with_db_source(Some(path), true).await
+}
+
+pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
+    build_test_state_with_db_source(Some(path), false).await
+}
+
+async fn build_test_state_with_db_source(
+    path: Option<&StdPath>,
+    initialize_schema: bool,
+) -> AppState {
+    let db = match path {
+        Some(path) => create_test_db_at(path).await,
+        None => create_test_db().await,
+    };
+    if initialize_schema {
+        init_test_schema(&db).await;
+    }
     let keys_dir = std::env::temp_dir().join(format!("agenthub-a2a-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&keys_dir).expect("create keys dir");
     let keys_path = keys_dir.join("vapid.json");
@@ -90,6 +111,18 @@ pub(crate) async fn build_test_state() -> AppState {
 async fn create_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(":memory:")
+        .create_if_missing(true)
+        .foreign_keys(true);
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .expect("connect sqlite")
+}
+
+async fn create_test_db_at(path: &StdPath) -> SqlitePool {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
         .create_if_missing(true)
         .foreign_keys(true);
     SqlitePoolOptions::new()
