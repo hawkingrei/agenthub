@@ -36,6 +36,7 @@ impl TeamManager {
         Self { db }
     }
 
+    #[cfg(test)]
     pub async fn create_team(
         &self,
         config: TeamDefinitionConfig,
