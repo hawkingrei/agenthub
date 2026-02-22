@@ -1573,30 +1573,39 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
 }
 
 fn normalize_conversation_mode(value: Option<&str>) -> Result<String, ApiError> {
-    let mode = value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("group_chat");
-    if TEAM_CONVERSATION_MODE_VALUES.contains(&mode) {
-        return Ok(mode.to_string());
-    }
-    Err(ApiError::bad_request(&format!(
-        "conversation_mode must be one of: {}",
-        TEAM_CONVERSATION_MODE_VALUES.join(", ")
-    )))
+    normalize_enum_value(
+        value,
+        "conversation_mode",
+        &TEAM_CONVERSATION_MODE_VALUES,
+        "group_chat",
+    )
 }
 
 fn normalize_conversation_route(value: Option<&str>) -> Result<String, ApiError> {
-    let route = value
+    normalize_enum_value(
+        value,
+        "route",
+        &TEAM_CONVERSATION_ROUTE_VALUES,
+        "group_chat",
+    )
+}
+
+fn normalize_enum_value(
+    value: Option<&str>,
+    field_name: &str,
+    allowed_values: &[&str],
+    default_value: &str,
+) -> Result<String, ApiError> {
+    let value = value
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("group_chat");
-    if TEAM_CONVERSATION_ROUTE_VALUES.contains(&route) {
-        return Ok(route.to_string());
+        .filter(|item| !item.is_empty())
+        .unwrap_or(default_value);
+    if allowed_values.contains(&value) {
+        return Ok(value.to_string());
     }
     Err(ApiError::bad_request(&format!(
-        "route must be one of: {}",
-        TEAM_CONVERSATION_ROUTE_VALUES.join(", ")
+        "{field_name} must be one of: {}",
+        allowed_values.join(", ")
     )))
 }
 

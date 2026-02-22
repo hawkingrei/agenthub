@@ -335,9 +335,13 @@ impl TeamManager {
     ) -> anyhow::Result<TeamConversationMessageRecord> {
         let now = Utc::now().timestamp();
         let conversation = self.get_main_task_conversation(main_task_id).await?;
-        let payload_json = redact_sensitive_json(&payload).to_string();
-        let to_actor_id = to_actor_id.map(str::trim).filter(|value| !value.is_empty());
-        sqlx::query(
+        let redacted_payload = redact_sensitive_json(&payload);
+        let payload_json = redacted_payload.to_string();
+        let to_actor_id = to_actor_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let result = sqlx::query(
             r#"
             INSERT INTO team_conversation_messages (
                 conversation_id,
@@ -354,34 +358,23 @@ impl TeamManager {
         .bind(&conversation.id)
         .bind(main_task_id)
         .bind(from_actor_id)
-        .bind(to_actor_id)
+        .bind(to_actor_id.as_deref())
         .bind(route)
         .bind(payload_json)
         .bind(now)
         .execute(&self.db)
         .await?;
 
-        let row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                conversation_id,
-                main_task_id,
-                from_actor_id,
-                to_actor_id,
-                route,
-                payload_json,
-                created_at
-            FROM team_conversation_messages
-            WHERE conversation_id = ?1
-            ORDER BY id DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(&conversation.id)
-        .fetch_one(&self.db)
-        .await?;
-        parse_team_conversation_message_row(&row)
+        Ok(TeamConversationMessageRecord {
+            message_id: result.last_insert_rowid(),
+            conversation_id: conversation.id,
+            main_task_id: main_task_id.to_string(),
+            from_actor_id: from_actor_id.to_string(),
+            to_actor_id,
+            route: route.to_string(),
+            payload: redacted_payload,
+            created_at: now,
+        })
     }
 
     pub async fn list_main_task_conversation_messages(
