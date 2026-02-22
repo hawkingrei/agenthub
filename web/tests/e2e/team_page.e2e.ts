@@ -128,9 +128,9 @@ async function createForgeAgentFromModal(
   workdir: string
 ): Promise<void> {
   const teamForgeDialog = page.getByRole("dialog", { name: "Team Forge" });
-  await expect(
-    teamForgeDialog.getByRole("dialog", { name: "Create Agent" })
-  ).toHaveCount(0);
+  const createAgentDialog = page.getByRole("dialog", { name: "Create Agent" });
+  await expect(createAgentDialog).toBeVisible();
+  await expect(teamForgeDialog.getByRole("dialog", { name: "Create Agent" })).toHaveCount(0);
   const forgeDialog = page
     .locator(".mantine-Modal-content")
     .filter({ hasText: "Create Agent" })
