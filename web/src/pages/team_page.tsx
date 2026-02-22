@@ -39,7 +39,6 @@ import {
   clampCreateTeamStage,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
-  parseOptionalInteger,
   parseOptionalJson,
   parseRequiredJson,
   resolveTeamModelOptions,
@@ -76,18 +75,13 @@ import {
   formatTs,
   pickNextWorkerAgentId,
   toPrettyJson,
-  upsertAgentEventList,
-  upsertEventList,
-  upsertRun,
 } from "./team/page_helpers";
 import {
-  mergeRunPages,
-  mergeTeamRunList,
-  resolveRunStatusFilter,
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
 import { useTeamCreateModalLifecycleEffects } from "./team/use_team_create_modal_lifecycle_effects";
+import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
@@ -98,9 +92,7 @@ import {
   DEFAULT_TEAM_RUN_BROWSER_STATE,
   DEFAULT_TEAM_UI_STATE,
   DEFAULT_WORKTREE_ROOT,
-  EVENT_PAGE_LIMIT,
   MAILBOX_TEMPLATE_OPTIONS,
-  MEMBER_EVENT_PAGE_LIMIT,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
   TEAM_RUN_PAGE_LIMIT,
   createInitialTeamCreateState,
@@ -975,144 +967,6 @@ export function TeamPage(props: TeamPageProps) {
     });
   }, [patchTeamCreate]);
 
-  const refreshAgents = useCallback(async () => {
-    const list = await api.listAgents(props.token);
-    setAgents(list);
-    return list;
-  }, [props.token]);
-
-  const refreshTeams = useCallback(async () => {
-    setBusy("refresh-teams");
-    setError(null);
-    try {
-      const list = await api.listTeams(props.token);
-      setTeams(list);
-      setSelectedTeamId((prev) => {
-        if (prev && list.some((team) => team.id === prev)) {
-          return prev;
-        }
-        return list[0]?.id ?? null;
-      });
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [props.token]);
-
-  const refreshRun = useCallback(
-    async (runId: string) => {
-      const run = await api.getTeamRun(props.token, runId);
-      setRuns((prev) => upsertRun(prev, run));
-      return run;
-    },
-    [props.token]
-  );
-
-  const refreshTeamRuns = useCallback(
-    async (
-      teamId: string,
-      mode: "replace" | "append" = "replace",
-      options?: {
-        statusFilter?: TeamRunStatusFilter;
-        beforeCreatedAt?: number;
-      }
-    ) => {
-      setRunsLoading(true);
-      try {
-        const statusFilter = options?.statusFilter ?? "all";
-        const beforeCreatedAt =
-          mode === "append" ? options?.beforeCreatedAt : undefined;
-        const list = await api.listTeamRuns(props.token, teamId, {
-          limit: TEAM_RUN_PAGE_LIMIT,
-          before_created_at: beforeCreatedAt,
-          status: resolveRunStatusFilter(statusFilter),
-        });
-        setRuns((prev) => {
-          const otherTeamRuns = prev.filter((run) => run.team_id !== teamId);
-          const currentTeamRuns = prev.filter((run) => run.team_id === teamId);
-          const merged = mergeTeamRunList(
-            currentTeamRuns,
-            list,
-            mode,
-            activeRunIdRef.current
-          );
-          return mergeRunPages(otherTeamRuns, merged);
-        });
-        const hasMore = list.length >= TEAM_RUN_PAGE_LIMIT;
-        const nextBeforeCreatedAt =
-          list.length > 0 ? list[list.length - 1]?.created_at : undefined;
-        setTeamRunBrowserByTeam((prev) => {
-          return {
-            ...prev,
-            [teamId]: {
-              statusFilter,
-              hasMore,
-              beforeCreatedAt: hasMore ? nextBeforeCreatedAt : undefined,
-            },
-          };
-        });
-        return list;
-      } finally {
-        setRunsLoading(false);
-      }
-    },
-    [props.token]
-  );
-
-  const refreshSteps = useCallback(
-    async (runId: string) => {
-      const list = await api.listTeamRunSteps(props.token, runId);
-      setSteps(list);
-      setSelectedStepId((prev) => {
-        if (prev && list.some((step) => step.id === prev)) {
-          return prev;
-        }
-        return list[0]?.id ?? "";
-      });
-      return list;
-    },
-    [props.token, setSelectedStepId]
-  );
-
-  const refreshEvents = useCallback(
-    async (runId: string, mode: "replace" | "prepend" = "replace") => {
-      setEventsLoading(true);
-      try {
-        const beforeId =
-          mode === "prepend" ? eventsRef.current[0]?.event_id : undefined;
-        const list = await api.listTeamRunEvents(
-          props.token,
-          runId,
-          EVENT_PAGE_LIMIT,
-          beforeId
-        );
-        setEvents((prev) => upsertEventList(prev, list, mode));
-        setEventsHasMore(list.length >= EVENT_PAGE_LIMIT);
-      } finally {
-        setEventsLoading(false);
-      }
-    },
-    [props.token]
-  );
-
-  const refreshSnapshot = useCallback(
-    async (runId: string) => {
-      setSnapshotLoading(true);
-      try {
-        const next = await api.getTeamRunSnapshot(props.token, runId, {
-          event_limit: 200,
-          message_limit: 200,
-        });
-        setSnapshot(next);
-        return next;
-      } finally {
-        setSnapshotLoading(false);
-      }
-    },
-    [props.token]
-  );
-
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
@@ -1125,30 +979,66 @@ export function TeamPage(props: TeamPageProps) {
     memberEventsRef.current = memberEvents;
   }, [memberEvents]);
 
-  const loadInbox = useCallback(async (actorIdOverride?: string) => {
-    if (!activeRunIdForSelectedTeam) return;
-    const actorId = (actorIdOverride ?? inboxActorId).trim();
-    if (!actorId) {
-      throw new Error("Inbox actor_id is required");
-    }
-    const limit = parseOptionalInteger(inboxLimit, "Inbox limit") ?? 100;
-    const afterId = parseOptionalInteger(inboxAfterId, "Inbox after_id");
-    const list = await api.listTeamRunInbox(props.token, activeRunIdForSelectedTeam, {
-      actor_id: actorId,
-      limit,
-      after_id: afterId,
-      include_delivered: inboxIncludeDelivered,
-    });
-    setInbox(list);
-  }, [
+  const {
+    refreshAgents,
+    refreshTeams,
+    refreshRun,
+    refreshTeamRuns,
+    refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+    loadInbox,
+    loadMemberEvents,
+    onCreateRun,
+    onLoadRunById,
+    onRefreshRuns,
+    onLoadMoreRuns,
+    onCancelRun,
+    onResumeRun,
+    onRestartRun,
+  } = useTeamActions({
+    token: props.token,
+    selectedTeamId,
+    runContextId,
+    runInput,
+    runLookupId,
+    runStatusFilter,
+    runsLoading,
+    runsHasMore,
+    runsBeforeCreatedAt,
+    selectedStepId,
     activeRunIdForSelectedTeam,
+    activeRunForSelectedTeam,
     inboxActorId,
+    inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    inboxLimit,
-    props.token,
+    selectedMemberSnapshot,
+    activeRunIdRef,
+    eventsRef,
+    memberEventsRef,
+    setBusy,
+    setError,
+    setAgents,
+    setTeams,
+    setSelectedTeamId,
+    setRuns,
+    setTeamRunBrowserByTeam,
+    setRunsLoading,
+    setSteps,
+    setSelectedStepId,
+    setEvents,
+    setEventsLoading,
+    setEventsHasMore,
+    setSnapshot,
+    setSnapshotLoading,
     setInbox,
-  ]);
+    setMemberEvents,
+    setMemberEventsLoading,
+    setMemberEventsHasMore,
+    setActiveRunId,
+    setRunLookupId,
+  });
 
   const markConversationSeen = useCallback(
     (key: string, messageId: number | null) => {
@@ -1203,41 +1093,6 @@ export function TeamPage(props: TeamPageProps) {
     scrollConversationToBottom,
     setChatStickToBottom,
   ]);
-
-  const loadMemberEvents = useCallback(
-    async (mode: "replace" | "prepend" = "replace") => {
-      if (!selectedMemberSnapshot) {
-        setMemberEvents([]);
-        setMemberEventsHasMore(false);
-        return;
-      }
-      const memberAgentId = selectedMemberSnapshot.member_id;
-      const sessionId = selectedMemberSnapshot.latest_step?.remote_task_id ?? undefined;
-      if (!sessionId) {
-        setMemberEvents([]);
-        setMemberEventsHasMore(false);
-        return;
-      }
-
-      setMemberEventsLoading(true);
-      try {
-        const beforeId =
-          mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
-        const list = await api.listAgentEvents(
-          props.token,
-          memberAgentId,
-          MEMBER_EVENT_PAGE_LIMIT,
-          sessionId,
-          beforeId
-        );
-        setMemberEvents((prev) => upsertAgentEventList(prev, list, mode));
-        setMemberEventsHasMore(list.length >= MEMBER_EVENT_PAGE_LIMIT);
-      } finally {
-        setMemberEventsLoading(false);
-      }
-    },
-    [props.token, selectedMemberSnapshot]
-  );
 
   useTeamRunLifecycleEffects({
     selectedTeamId,
@@ -1517,28 +1372,6 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
-  const onCreateRun = async () => {
-    if (!selectedTeamId) {
-      setError("Select a team first");
-      return;
-    }
-    setBusy("create-run");
-    setError(null);
-    try {
-      const created = await api.createTeamRun(props.token, selectedTeamId, {
-        context_id: runContextId.trim() || undefined,
-        input: parseOptionalJson(runInput, "Run input") ?? {},
-      });
-      setRuns((prev) => upsertRun(prev, created));
-      setActiveRunId(created.id);
-      setRunLookupId(created.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const onDeleteTeam = async () => {
     if (!selectedTeam) {
       setError("Select a team first");
@@ -1580,34 +1413,6 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
-  const onLoadRunById = async () => {
-    if (!selectedTeamId) {
-      setError("Select a team first");
-      return;
-    }
-    const runId = runLookupId.trim();
-    if (!runId) {
-      setError("Run ID is required");
-      return;
-    }
-    setBusy("load-run");
-    setError(null);
-    try {
-      const run = await refreshRun(runId);
-      if (run.team_id !== selectedTeamId) {
-        setError(
-          `Run ${run.id} belongs to team ${run.team_id}. Load Run only applies to the selected team.`
-        );
-        return;
-      }
-      setActiveRunId(run.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const onRunStatusFilterChange = useCallback(
     (nextFilter: TeamRunStatusFilter) => {
       if (!selectedTeamId) return;
@@ -1622,117 +1427,6 @@ export function TeamPage(props: TeamPageProps) {
     },
     [selectedTeamId]
   );
-
-  const onRefreshRuns = useCallback(async () => {
-    if (!selectedTeamId) return;
-    setError(null);
-    try {
-      await refreshTeamRuns(selectedTeamId, "replace", {
-        statusFilter: runStatusFilter,
-      });
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [refreshTeamRuns, runStatusFilter, selectedTeamId]);
-
-  const onLoadMoreRuns = useCallback(async () => {
-    if (!selectedTeamId || runsLoading || !runsHasMore) {
-      return;
-    }
-    setError(null);
-    try {
-      await refreshTeamRuns(selectedTeamId, "append", {
-        statusFilter: runStatusFilter,
-        beforeCreatedAt: runsBeforeCreatedAt,
-      });
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [
-    refreshTeamRuns,
-    runStatusFilter,
-    runsBeforeCreatedAt,
-    runsHasMore,
-    runsLoading,
-    selectedTeamId,
-  ]);
-
-  const onCancelRun = async () => {
-    if (!activeRunForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    const runId = activeRunForSelectedTeam.id;
-    setBusy("cancel-run");
-    setError(null);
-    try {
-      const canceled = await api.cancelTeamRun(props.token, runId);
-      if (selectedTeamId && canceled.team_id !== selectedTeamId) {
-        setError(
-          `Run ${canceled.id} belongs to team ${canceled.team_id}. Cancel applies only to the selected team.`
-        );
-        return;
-      }
-      setRuns((prev) => upsertRun(prev, canceled));
-      await Promise.all([refreshEvents(runId), refreshSnapshot(runId)]);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onResumeRun = async () => {
-    if (!activeRunForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    const runId = activeRunForSelectedTeam.id;
-    setBusy("resume-run");
-    setError(null);
-    try {
-      const resumed = await api.resumeTeamRun(props.token, runId);
-      if (selectedTeamId && resumed.team_id !== selectedTeamId) {
-        setError(
-          `Run ${resumed.id} belongs to team ${resumed.team_id}. Resume applies only to the selected team.`
-        );
-        return;
-      }
-      setRuns((prev) => upsertRun(prev, resumed));
-      setActiveRunId(resumed.id);
-      setRunLookupId(resumed.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRestartRun = async () => {
-    if (!activeRunForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    const runId = activeRunForSelectedTeam.id;
-    setBusy("restart-run");
-    setError(null);
-    try {
-      const restarted = await api.restartTeamRun(props.token, runId);
-      if (selectedTeamId && restarted.team_id !== selectedTeamId) {
-        setError(
-          `Run ${restarted.id} belongs to team ${restarted.team_id}. Restart applies only to the selected team.`
-        );
-        return;
-      }
-      setRuns((prev) => upsertRun(prev, restarted));
-      setActiveRunId(restarted.id);
-      setRunLookupId(restarted.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const onSubmitStep = async () => {
     if (!activeRunIdForSelectedTeam) {
