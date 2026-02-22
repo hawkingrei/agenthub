@@ -12,7 +12,7 @@ type UseTeamRunLifecycleActionsParams = {
   parseErrorMessage: (error: unknown) => string;
   refreshRun: (runId: string) => Promise<TeamRunRecord>;
   refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<void>;
-  refreshSnapshot: (runId: string) => Promise<unknown>;
+  refreshSnapshot: (runId: string) => Promise<void>;
   setRuns: Dispatch<SetStateAction<TeamRunRecord[]>>;
   setSelectedTeamId: (teamId: string | null) => void;
   setActiveRunId: (runId: string | null) => void;

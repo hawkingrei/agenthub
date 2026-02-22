@@ -18,7 +18,7 @@ type RefreshTeamRuns = (
     statusFilter?: TeamRunStatusFilter;
     beforeCreatedAt?: number;
   }
-) => Promise<unknown>;
+) => Promise<void>;
 
 type UseTeamRunEffectsParams = {
   selectedTeamId: string | null;
@@ -28,14 +28,14 @@ type UseTeamRunEffectsParams = {
   eventsAutoRefresh: boolean;
   tab: TeamTab;
   chatInboxActorId: string;
-  refreshTeams: () => Promise<unknown>;
-  refreshAgents: () => Promise<unknown>;
+  refreshTeams: () => Promise<void>;
+  refreshAgents: () => Promise<void>;
   refreshTeamRuns: RefreshTeamRuns;
   refreshRun: (runId: string) => Promise<TeamRunRecord>;
-  refreshSteps: (runId: string) => Promise<unknown>;
-  refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<unknown>;
-  refreshSnapshot: (runId: string) => Promise<unknown>;
-  loadInbox: (actorIdOverride?: string) => Promise<unknown>;
+  refreshSteps: (runId: string) => Promise<void>;
+  refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<void>;
+  refreshSnapshot: (runId: string) => Promise<void>;
+  loadInbox: (actorIdOverride?: string) => Promise<void>;
   parseErrorMessage: (error: unknown) => string;
   setError: (value: string | null) => void;
   setSelectedTeamId: (value: string | null) => void;
