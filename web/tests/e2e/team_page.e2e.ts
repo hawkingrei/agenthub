@@ -1122,7 +1122,7 @@ test("team debug run ops compiles main task preview and applies payload to creat
   );
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
 
   await page.getByPlaceholder("main_task_id").fill("main-task-compile-1");
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
