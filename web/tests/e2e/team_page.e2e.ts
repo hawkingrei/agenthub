@@ -127,6 +127,10 @@ async function createForgeAgentFromModal(
   page: import("@playwright/test").Page,
   workdir: string
 ): Promise<void> {
+  const teamForgeDialog = page.getByRole("dialog", { name: "Team Forge" });
+  await expect(
+    teamForgeDialog.getByRole("dialog", { name: "Create Agent" })
+  ).toHaveCount(0);
   const forgeDialog = page
     .locator(".mantine-Modal-content")
     .filter({ hasText: "Create Agent" })
@@ -440,10 +444,13 @@ test("team forge manual spec mode skips leader/worker stages", async ({
   await page.getByRole("button", { name: "Manual Spec" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
+  await expect(dialog.getByRole("checkbox", { name: /manual/i })).toHaveCount(0);
+  await expect(dialog.getByRole("switch", { name: /manual/i })).toHaveCount(0);
   await dialog.getByPlaceholder("team name").fill("manual-spec-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
   await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
   await expect(dialog.getByText("Stage 4/4")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "New Agent" })).toHaveCount(0);
 
   const customSpec = {
     spec_version: 1,
