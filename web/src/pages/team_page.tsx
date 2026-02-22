@@ -124,6 +124,7 @@ import {
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_TAB_BAR_CLASS,
   TEAM_TAB_BUTTON_ACTIVE_CLASS,
   TEAM_TAB_BUTTON_IDLE_CLASS,
@@ -184,6 +185,25 @@ type TeamCreateEntryMode = "wizard" | "manual_spec";
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
+
+type RunInputValidation = {
+  parsed: unknown | undefined;
+  error: string | null;
+};
+
+function validateRunInputJson(raw: string): RunInputValidation {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { parsed: undefined, error: null };
+  }
+  try {
+    return { parsed: JSON.parse(trimmed), error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown parse error";
+    return { parsed: undefined, error: `Run input must be valid JSON (${message})` };
+  }
+}
+
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -2074,11 +2094,145 @@ export function TeamPage(props: TeamPageProps) {
   const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
   const panelInputClassName =
     `${TEAM_PANEL_INPUT_CLASS} shadow-sm focus:border-slate-400 focus:ring-slate-300`;
+  const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
+  const runInputHasError = runInputValidation.error !== null;
+  const canCreateRun = busy !== "create-run" && !runInputHasError;
   const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const modalFieldClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+  const runOpsPanel = (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h4 className="text-sm font-semibold text-slate-900">Create Run</h4>
+        <p className="muted mt-2 text-sm text-slate-600">
+          Debug entry for manually starting a Team run.
+        </p>
+        <div className="form-row mt-3">
+          <input
+            className={panelInputClassName}
+            placeholder="context_id (optional, auto-generated when empty)"
+            value={runContextId}
+            onChange={(event) => setRunContextId(event.target.value)}
+          />
+          <button
+            className={panelPrimaryButtonClassName}
+            onClick={onCreateRun}
+            disabled={!canCreateRun}
+            title={runInputValidation.error ?? "Create run"}
+          >
+            Create Run
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          <code>context_id</code> can be empty. Use one when you want retries/resume grouped
+          under the same context.
+        </p>
+        <textarea
+          className={`${TEAM_PANEL_TEXTAREA_CLASS} mt-3`}
+          rows={8}
+          placeholder='Optional JSON input, e.g. {"task":"sync"}'
+          aria-label="Run input JSON"
+          spellCheck={false}
+          value={runInput}
+          onChange={(event) => setRunInput(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCreateRun) {
+              event.preventDefault();
+              void onCreateRun();
+            }
+          }}
+        />
+        {runInputValidation.error ? (
+          <p className="mt-2 text-xs text-rose-600" role="alert">
+            {runInputValidation.error}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run.
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={panelSecondaryButtonClassName}
+            onClick={() =>
+              setRunInput(
+                JSON.stringify(
+                  {
+                    task: "investigate",
+                    objective: "improve-team-run",
+                  },
+                  null,
+                  2
+                )
+              )
+            }
+          >
+            Use Example JSON
+          </button>
+          <button
+            type="button"
+            className={panelSecondaryButtonClassName}
+            onClick={() => setRunInput("{}")}
+          >
+            Set Empty Object
+          </button>
+          <button
+            type="button"
+            className={panelSecondaryButtonClassName}
+            onClick={() => {
+              const parsed = runInputValidation.parsed;
+              if (parsed === undefined && runInput.trim().length === 0) {
+                setRunInput("{}");
+                return;
+              }
+              if (runInputValidation.error || parsed === undefined) {
+                return;
+              }
+              setRunInput(JSON.stringify(parsed, null, 2));
+            }}
+            disabled={runInputHasError}
+          >
+            Format JSON
+          </button>
+          <button
+            type="button"
+            className={panelSecondaryButtonClassName}
+            onClick={() => setRunInput("")}
+            disabled={runInput.trim().length === 0}
+          >
+            Clear
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Leave empty to submit default empty input <code>{`{}`}</code>.
+        </p>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h4 className="text-sm font-semibold text-slate-900">Load Existing Run</h4>
+        <p className="muted mt-2 text-sm text-slate-600">
+          Load by <code>run_id</code> for the currently selected team only.
+        </p>
+        <div className="form-row mt-3">
+          <input
+            className={panelInputClassName}
+            placeholder="existing run_id"
+            value={runLookupId}
+            onChange={(event) => setRunLookupId(event.target.value)}
+          />
+          <button
+            className={panelSecondaryButtonClassName}
+            onClick={onLoadRunById}
+            disabled={busy === "load-run"}
+          >
+            Load Run
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
@@ -2156,11 +2310,6 @@ export function TeamPage(props: TeamPageProps) {
                 selectedTeam={selectedTeam}
                 busy={busy}
                 onDeleteTeam={onDeleteTeam}
-                runContextId={runContextId}
-                onRunContextIdChange={setRunContextId}
-                onCreateRun={onCreateRun}
-                runInput={runInput}
-                onRunInputChange={setRunInput}
                 runStatusFilter={runStatusFilter}
                 runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                 onRunStatusFilterChange={onRunStatusFilterChange}
@@ -2181,6 +2330,16 @@ export function TeamPage(props: TeamPageProps) {
               {runsLoading && !activeRunForSelectedTeam && (
                 <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-sm text-slate-600">Loading run context for selected team...</p>
+                </div>
+              )}
+
+              {!activeRunForSelectedTeam && !runsLoading && (
+                <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-base font-semibold text-slate-900">Debug Run Ops</h3>
+                  <p className="mt-2 text-sm text-slate-600">
+                    No active run is selected. Use debug run operations to create or load one.
+                  </p>
+                  <div className="mt-3">{runOpsPanel}</div>
                 </div>
               )}
 
@@ -2489,29 +2648,7 @@ export function TeamPage(props: TeamPageProps) {
                           </div>
                         </div>
 
-                        {teamDebugTag === "run_ops" && (
-                          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <h4 className="text-sm font-semibold text-slate-900">Load Existing Run</h4>
-                            <p className="muted mt-2 text-sm text-slate-600">
-                              Load by <code>run_id</code> for the currently selected team only.
-                            </p>
-                            <div className="form-row mt-3">
-                              <input
-                                className={panelInputClassName}
-                                placeholder="existing run_id"
-                                value={runLookupId}
-                                onChange={(event) => setRunLookupId(event.target.value)}
-                              />
-                              <button
-                                className={panelSecondaryButtonClassName}
-                                onClick={onLoadRunById}
-                                disabled={busy === "load-run"}
-                              >
-                                Load Run
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                        {teamDebugTag === "run_ops" && runOpsPanel}
 
                         {teamDebugTag === "step_ops" && (
                           <TeamStepsPanel

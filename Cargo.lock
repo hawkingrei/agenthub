@@ -178,10 +178,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agenthub-team-prompts"
-version = "0.1.0"
-
-[[package]]
 name = "agenthub-team-domain"
 version = "0.1.0"
 dependencies = [
@@ -189,6 +185,10 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "agenthub-team-prompts"
+version = "0.1.0"
 
 [[package]]
 name = "ahash"

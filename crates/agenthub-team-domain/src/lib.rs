@@ -19,6 +19,9 @@ pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
     "canceled",
 ];
 
+pub const TEAM_MAIN_TASK_STATUS_VALUES: [&str; 4] =
+    ["open", "in_progress", "completed", "canceled"];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamDefinitionConfig {
     pub name: String,
@@ -57,6 +60,50 @@ pub struct TeamRunRecord {
     pub created_at: i64,
     pub started_at: Option<i64>,
     pub ended_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamMainTaskStatus {
+    Open,
+    InProgress,
+    Completed,
+    Canceled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamMainTaskRecord {
+    pub id: String,
+    pub team_id: String,
+    pub title: String,
+    pub status: TeamMainTaskStatus,
+    pub created_by_actor_id: String,
+    pub context: Value,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamConversationRecord {
+    pub id: String,
+    pub team_id: String,
+    pub main_task_id: String,
+    pub mode: String,
+    pub topic: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamConversationMessageRecord {
+    pub message_id: i64,
+    pub conversation_id: String,
+    pub main_task_id: String,
+    pub from_actor_id: String,
+    pub to_actor_id: Option<String>,
+    pub route: String,
+    pub payload: Value,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,12 +154,16 @@ pub enum TeamRunResumeError {
 
 #[cfg(test)]
 mod tests {
-    use super::{TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES, TeamRunResumeError};
+    use super::{
+        TEAM_MAIN_TASK_STATUS_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
+        TeamRunResumeError,
+    };
 
     #[test]
     fn status_values_keep_expected_length() {
         assert_eq!(TEAM_RUN_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_STEP_STATUS_VALUES.len(), 6);
+        assert_eq!(TEAM_MAIN_TASK_STATUS_VALUES.len(), 4);
     }
 
     #[test]

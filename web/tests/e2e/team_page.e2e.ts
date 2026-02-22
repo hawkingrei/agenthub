@@ -1035,9 +1035,9 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     .getByPlaceholder("context_id (optional, auto-generated when empty)")
     .fill("quant-run-ctx");
   await page
-    .locator(".teams-run-create textarea")
+    .getByLabel("Run input JSON")
     .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
-  await page.getByRole("button", { name: "Create Run" }).click();
+  await page.getByRole("button", { name: "Create Run", exact: true }).click();
 
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "quant-run-1"
