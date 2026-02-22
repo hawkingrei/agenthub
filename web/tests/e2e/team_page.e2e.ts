@@ -1054,6 +1054,93 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("team debug run ops compiles main task preview and applies payload to create-run form", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const teamId = "team-compile";
+  const teamCreatedAt = fixture.now + 120;
+  const previewResponse = {
+    main_task_id: "main-task-compile-1",
+    conversation_id: "conversation-compile-1",
+    run_payload: {
+      context_id: "ctx-main-task-compile-1",
+      input: {
+        main_task_compile_version: 1,
+        main_task_id: "main-task-compile-1",
+        task_list: ["Implement compile preview", "Wire run ops"],
+      },
+    },
+    plan: {
+      task_list: ["Implement compile preview", "Wire run ops"],
+      acceptance_criteria: ["Compile payload is deterministic"],
+      deadline: "2026-03-08",
+      step_template: [
+        {
+          step_key: "leader_plan",
+          member_id: "planner",
+          role: "leader",
+          depends_on: [],
+        },
+      ],
+      role_assignments: [
+        {
+          member_id: "planner",
+          role: "leader",
+          step_keys: ["leader_plan"],
+        },
+      ],
+      source_message_id: 12,
+    },
+  };
+  const compileRequests: Array<{ context_id?: string }> = [];
+
+  fixture.teams.push({
+    id: teamId,
+    name: "Compile Team",
+    description: "compile preview e2e",
+    spec: {
+      leader_member_id: "planner",
+      members: [{ member_id: "planner", role: "leader", model: "codex" }],
+      steps: [{ step_key: "leader_plan" }],
+    },
+    created_at: teamCreatedAt,
+    updated_at: teamCreatedAt,
+  });
+
+  await page.route(
+    new RegExp(`/api/teams/${teamId}/main_tasks/[^/]+/compile_run_preview$`),
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const payload = request.postDataJSON() as { context_id?: string };
+      compileRequests.push(payload);
+      await route.fulfill(jsonResponse(previewResponse));
+    }
+  );
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
+
+  await page.getByPlaceholder("main_task_id").fill("main-task-compile-1");
+  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+
+  await expect(page.getByText("main_task_id: main-task-compile-1")).toBeVisible();
+  await expect(page.getByText("conversation_id: conversation-compile-1")).toBeVisible();
+  await expect(page.getByText("context_id: ctx-main-task-compile-1")).toBeVisible();
+  expect(compileRequests).toEqual([{}]);
+
+  await page.getByRole("button", { name: "Use Payload in Create Run" }).click();
+  await expect(
+    page.getByPlaceholder("context_id (optional, auto-generated when empty)")
+  ).toHaveValue("ctx-main-task-compile-1");
+  await expect(page.getByLabel("Run input JSON")).toContainText(
+    '"main_task_id": "main-task-compile-1"'
+  );
+});
+
 test("team mailbox IM mode supports conversation focus, unread, auto-follow and advanced controls", async ({
   page,
 }) => {

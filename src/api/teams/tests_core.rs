@@ -2449,6 +2449,7 @@ async fn team_main_task_api_creates_lists_and_redacts_context() {
     .expect("create main task");
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
+    assert!(created.task.created_by_actor_id.starts_with("user:"));
     assert_eq!(created.task.context["token"], json!("[redacted]"));
     assert_eq!(created.task.context["nested"]["secret"], json!("[redacted]"));
     assert_eq!(created.conversation.mode, "group_chat");
@@ -2487,7 +2488,13 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
         Json(CreateTeamRequest {
             name: "main-task-msg-team".to_string(),
             description: Some("main task message api coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
         }),
     )
     .await
@@ -2507,13 +2514,14 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     )
     .await
     .expect("create main task");
+    assert!(created.task.created_by_actor_id.starts_with("user:"));
 
     let missing_to_member_err = send_team_main_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "leader".to_string(),
+            from_actor_id: "user".to_string(),
             to_actor_id: None,
             route: Some("to_member".to_string()),
             payload: json!({"text":"assign"}),
@@ -2523,12 +2531,45 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     .expect_err("route=to_member should require to_actor_id");
     assert_eq!(missing_to_member_err.into_response().status(), StatusCode::BAD_REQUEST);
 
+    let invalid_sender_err = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "outsider".to_string(),
+            to_actor_id: Some("worker-1".to_string()),
+            route: Some("to_member".to_string()),
+            payload: json!({"text":"assign"}),
+        }),
+    )
+    .await
+    .expect_err("unknown sender should be rejected");
+    assert_eq!(invalid_sender_err.into_response().status(), StatusCode::BAD_REQUEST);
+
+    let invalid_group_chat_target_err = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "user".to_string(),
+            to_actor_id: Some("planner".to_string()),
+            route: Some("group_chat".to_string()),
+            payload: json!({"text":"broadcast"}),
+        }),
+    )
+    .await
+    .expect_err("group_chat should not allow to_actor_id");
+    assert_eq!(
+        invalid_group_chat_target_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
     let Json(message) = send_team_main_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "leader".to_string(),
+            from_actor_id: "user".to_string(),
             to_actor_id: Some("worker-1".to_string()),
             route: Some("to_member".to_string()),
             payload: json!({
@@ -2541,9 +2582,42 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("send main task message");
     assert_eq!(message.route, "to_member");
+    assert!(message.from_actor_id.starts_with("user:"));
     assert_eq!(message.to_actor_id.as_deref(), Some("worker-1"));
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["api_key"], json!("[redacted]"));
+
+    let Json(to_leader_message) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "worker-1".to_string(),
+            to_actor_id: None,
+            route: Some("to_leader".to_string()),
+            payload: json!({"text":"need clarification"}),
+        }),
+    )
+    .await
+    .expect("send to leader message");
+    assert_eq!(to_leader_message.route, "to_leader");
+    assert_eq!(to_leader_message.to_actor_id.as_deref(), Some("planner"));
+
+    let Json(group_message) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({"text":"status update"}),
+        }),
+    )
+    .await
+    .expect("send group chat message");
+    assert_eq!(group_message.route, "group_chat");
+    assert_eq!(group_message.to_actor_id, None);
 
     let Json(messages) = list_team_main_task_messages(
         State(state.clone()),
@@ -2556,8 +2630,13 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     )
     .await
     .expect("list messages");
-    assert_eq!(messages.len(), 1);
+    assert_eq!(messages.len(), 3);
     assert_eq!(messages[0].message_id, message.message_id);
+    assert_eq!(messages[1].message_id, to_leader_message.message_id);
+    assert_eq!(messages[2].message_id, group_message.message_id);
+    assert_eq!(messages[0].route, "to_member");
+    assert_eq!(messages[1].route, "to_leader");
+    assert_eq!(messages[2].route, "group_chat");
 
     let Json(empty_page) = list_team_main_task_messages(
         State(state),
@@ -2571,4 +2650,187 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("list messages with before_id");
     assert!(empty_page.is_empty());
+}
+
+#[tokio::test]
+async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "main-task-compile-team".to_string(),
+            description: Some("main task compile preview coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-dev","role":"worker"},
+                    {"member_id":"qa-review","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_main_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Implement chat-first compile".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "task_list":["Bootstrap compile endpoint"],
+                "acceptance_criteria":["Compile preview API returns deterministic payload"]
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("planning".to_string()),
+        }),
+    )
+    .await
+    .expect("create main task");
+
+    let Json(plan_update_one) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "plan_update":{
+                    "task_list":["Implement compile endpoint","Add API tests"],
+                    "acceptance_criteria":["All team main-task API tests pass","Route-level contract is covered"],
+                    "deadline":"2026-03-05"
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send first plan update");
+
+    let _ = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "worker-dev".to_string(),
+            to_actor_id: Some("planner".to_string()),
+            route: Some("to_leader".to_string()),
+            payload: json!({"text":"working on compile details"}),
+        }),
+    )
+    .await
+    .expect("send non-plan message");
+
+    let Json(plan_update_two) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "acceptance":[
+                    "All team main-task API tests pass",
+                    "Route-level contract is covered",
+                    "Feature note and todo are updated"
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("send second plan update");
+
+    let Json(preview_a) = compile_team_main_task_run_preview(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect("compile preview first pass");
+    let Json(preview_b) = compile_team_main_task_run_preview(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect("compile preview second pass");
+
+    assert_eq!(preview_a, preview_b);
+    assert_eq!(preview_a.main_task_id, created.task.id);
+    assert_eq!(preview_a.conversation_id, created.conversation.id);
+    assert_eq!(preview_a.run_payload.context_id, created.task.id);
+    assert_eq!(
+        preview_a.run_payload.input["main_task_compile_version"],
+        Value::from(1)
+    );
+    assert_eq!(
+        preview_a.run_payload.input["main_task_id"],
+        Value::from(created.task.id.clone())
+    );
+    assert_eq!(
+        preview_a.run_payload.input["conversation_id"],
+        Value::from(created.conversation.id.clone())
+    );
+    assert_eq!(
+        preview_a.plan.task_list,
+        vec![
+            "Implement compile endpoint".to_string(),
+            "Add API tests".to_string(),
+        ]
+    );
+    assert_eq!(
+        preview_a.plan.acceptance_criteria,
+        vec![
+            "All team main-task API tests pass".to_string(),
+            "Route-level contract is covered".to_string(),
+            "Feature note and todo are updated".to_string(),
+        ]
+    );
+    assert_eq!(preview_a.plan.deadline.as_deref(), Some("2026-03-05"));
+    assert_eq!(preview_a.plan.source_message_id, Some(plan_update_two.message_id));
+    assert!(plan_update_one.message_id < plan_update_two.message_id);
+    assert_eq!(preview_a.plan.step_template.len(), 4);
+
+    let planner_assignment = preview_a
+        .plan
+        .role_assignments
+        .iter()
+        .find(|item| item.member_id == "planner")
+        .expect("find planner assignment");
+    assert_eq!(planner_assignment.role, "leader");
+    assert_eq!(
+        planner_assignment.step_keys,
+        vec![
+            "leader_plan".to_string(),
+            "leader_synthesize".to_string(),
+        ]
+    );
+
+    let dev_assignment = preview_a
+        .plan
+        .role_assignments
+        .iter()
+        .find(|item| item.member_id == "worker-dev")
+        .expect("find worker-dev assignment");
+    assert_eq!(dev_assignment.role, "worker");
+    assert_eq!(dev_assignment.step_keys, vec!["worker_1_worker_dev".to_string()]);
+
+    let qa_assignment = preview_a
+        .plan
+        .role_assignments
+        .iter()
+        .find(|item| item.member_id == "qa-review")
+        .expect("find qa-review assignment");
+    assert_eq!(qa_assignment.role, "worker");
+    assert_eq!(qa_assignment.step_keys, vec!["worker_2_qa_review".to_string()]);
 }

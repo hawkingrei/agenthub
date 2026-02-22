@@ -25,13 +25,14 @@ use crate::state::AppState;
 use crate::team::TeamManager;
 
 use super::{
-    AckTeamRunMessageRequest, CompleteTeamRunStepRequest, CreateTeamMainTaskRequest,
-    CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest, ListTeamMainTaskMessagesQuery,
-    ListTeamMainTasksQuery, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
-    ResumeTeamRunStepRequest, SendTeamMainTaskMessageRequest, SendTeamRunMessageRequest,
-    SetTeamRunStepInputRequiredRequest, StartTeamRunStepRequest, SubmitTeamRunStepRequest,
-    TeamRunSnapshotQuery, ack_team_run_message, cancel_team_run, complete_team_run_step,
-    create_team, create_team_main_task, create_team_run, delete_team, fail_team_run_step, get_team,
+    AckTeamRunMessageRequest, CompileTeamMainTaskRunPreviewRequest, CompleteTeamRunStepRequest,
+    CreateTeamMainTaskRequest, CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest,
+    ListTeamMainTaskMessagesQuery, ListTeamMainTasksQuery, ListTeamRunEventsQuery,
+    ListTeamRunInboxQuery, ListTeamRunsQuery, ResumeTeamRunStepRequest,
+    SendTeamMainTaskMessageRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
+    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
+    cancel_team_run, compile_team_main_task_run_preview, complete_team_run_step, create_team,
+    create_team_main_task, create_team_run, delete_team, fail_team_run_step, get_team,
     get_team_main_task, get_team_run, get_team_run_snapshot, list_team_main_task_messages,
     list_team_main_tasks, list_team_run_events, list_team_run_inbox, list_team_run_steps,
     list_team_runs, list_teams, restart_team_run, resume_team_run, resume_team_run_step,

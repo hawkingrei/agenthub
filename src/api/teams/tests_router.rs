@@ -36,7 +36,13 @@ async fn teams_router_http_contract() {
             Some(json!({
                 "name": "router-team",
                 "description": "router-level contract",
-                "spec": {"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
             })),
         ))
         .await
@@ -66,7 +72,13 @@ async fn teams_router_http_contract() {
             Some(json!({
                 "name": "router-team",
                 "description": null,
-                "spec": {"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
             })),
         ))
         .await
@@ -111,6 +123,12 @@ async fn teams_router_http_contract() {
         created_main_task["task"]["context"]["token"],
         Value::from("[redacted]")
     );
+    assert!(
+        created_main_task["task"]["created_by_actor_id"]
+            .as_str()
+            .map(|value| value.starts_with("user:"))
+            .unwrap_or(false)
+    );
 
     let list_main_tasks_resp = app
         .clone()
@@ -145,7 +163,7 @@ async fn teams_router_http_contract() {
             &format!("/{team_id}/main_tasks/{main_task_id}/messages"),
             Some(&token),
             Some(json!({
-                "from_actor_id": "leader",
+                "from_actor_id": "planner",
                 "to_actor_id": "worker-1",
                 "route": "to_member",
                 "payload": {"authorization":"Bearer x","text":"assign"}
@@ -160,6 +178,24 @@ async fn teams_router_http_contract() {
         Value::from("[redacted]")
     );
 
+    let send_to_leader_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks/{main_task_id}/messages"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id": "worker-1",
+                "route": "to_leader",
+                "payload": {"text":"need decision"}
+            })),
+        ))
+        .await
+        .expect("send to leader via router");
+    assert_eq!(send_to_leader_resp.status(), StatusCode::OK);
+    let to_leader_message = decode_json_body(send_to_leader_resp).await;
+    assert_eq!(to_leader_message["to_actor_id"], Value::from("planner"));
+
     let list_main_task_messages_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -172,7 +208,33 @@ async fn teams_router_http_contract() {
         .expect("list main task messages via router");
     assert_eq!(list_main_task_messages_resp.status(), StatusCode::OK);
     let listed_main_task_messages = decode_json_body(list_main_task_messages_resp).await;
-    assert_eq!(listed_main_task_messages.as_array().map(Vec::len), Some(1));
+    assert_eq!(listed_main_task_messages.as_array().map(Vec::len), Some(2));
+
+    let compile_preview_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks/{main_task_id}/compile_run_preview"),
+            Some(&token),
+            Some(json!({})),
+        ))
+        .await
+        .expect("compile run preview via router");
+    assert_eq!(compile_preview_resp.status(), StatusCode::OK);
+    let compile_preview = decode_json_body(compile_preview_resp).await;
+    assert_eq!(compile_preview["main_task_id"], Value::from(main_task_id.clone()));
+    assert_eq!(
+        compile_preview["run_payload"]["context_id"],
+        Value::from(main_task_id.clone())
+    );
+    assert_eq!(
+        compile_preview["run_payload"]["input"]["main_task_compile_version"],
+        Value::from(1)
+    );
+    assert_eq!(
+        compile_preview["plan"]["role_assignments"][0]["member_id"],
+        Value::from("planner")
+    );
 
     let create_run_resp = app
         .clone()
