@@ -12,5 +12,7 @@ pub use agenthub_team_domain::{
     TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
     TeamStepStatus,
 };
-pub use manager::{SendActorMessageInput, TeamManager, TeamRemoteRelayWorkerSettings};
+pub use manager::{
+    SendActorMessageInput, TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings,
+};
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};

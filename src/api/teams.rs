@@ -27,8 +27,8 @@ use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamMainTaskRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
-    TeamStepStatus,
+    TeamDefinitionRecord, TeamMainTaskRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
+    TeamRunRecord, TeamStepRecord, TeamStepStatus,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -58,6 +58,7 @@ const TEAM_MAIN_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
 const DEFAULT_MAIN_TASK_ACCEPTANCE_CRITERION: &str =
     "All assigned steps complete and leader synthesis is delivered.";
 const TEAM_MAIN_TASK_COMPILE_MAX_LIST_ITEMS: usize = 32;
+const TEAM_MEMORY_FLUSH_TRIGGER_VALUES: [&str; 3] = ["manual", "soft_threshold", "hard_error"];
 const TEAM_MAIN_TASK_COMPILE_MAX_TEXT_LEN: usize = 280;
 const TEAM_MAIN_TASK_COMPILE_MAX_DEADLINE_LEN: usize = 40;
 
@@ -204,6 +205,29 @@ pub struct ListTeamRunInboxQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FlushTeamRunContextRequest {
+    pub member_id: String,
+    pub session_id: Option<String>,
+    pub trigger: Option<String>,
+    pub max_events: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FlushTeamRunContextResponse {
+    pub status: String,
+    pub run_id: String,
+    pub team_id: String,
+    pub member_id: String,
+    pub session_id: Option<String>,
+    pub trigger: String,
+    pub reason: Option<String>,
+    pub artifact_pointer: Option<Value>,
+    pub event_id_from: Option<i64>,
+    pub event_id_to: Option<i64>,
+    pub flushed_events: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AckTeamRunMessageRequest {
     pub actor_id: String,
 }
@@ -309,6 +333,7 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/:run_id/restart", post(restart_team_run))
         .route("/runs/:run_id/snapshot", get(get_team_run_snapshot))
         .route("/runs/:run_id/events", get(list_team_run_events))
+        .route("/runs/:run_id/context/flush", post(flush_team_run_context))
         .route(
             "/runs/:run_id/steps",
             post(submit_team_run_step).get(list_team_run_steps),
@@ -863,6 +888,48 @@ async fn list_team_run_events(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(events))
+}
+
+async fn flush_team_run_context(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(payload): Json<FlushTeamRunContextRequest>,
+) -> Result<Json<FlushTeamRunContextResponse>, ApiError> {
+    let _ = require_user(&headers, &state).await?;
+    let member_id = payload.member_id.trim().to_string();
+    if member_id.is_empty() {
+        return Err(ApiError::bad_request("member_id is required"));
+    }
+    let trigger = normalize_memory_flush_trigger(payload.trigger.as_deref())?;
+
+    let result = state
+        .teams
+        .flush_run_context(
+            &run_id,
+            TeamMemoryFlushRequest {
+                member_id,
+                session_id: payload.session_id,
+                trigger: trigger.to_string(),
+                max_events: payload.max_events,
+            },
+        )
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+
+    Ok(Json(FlushTeamRunContextResponse {
+        status: result.status,
+        run_id: result.run_id,
+        team_id: result.team_id,
+        member_id: result.member_id,
+        session_id: result.session_id,
+        trigger: result.trigger,
+        reason: result.reason,
+        artifact_pointer: result.artifact_pointer,
+        event_id_from: result.event_id_from,
+        event_id_to: result.event_id_to,
+        flushed_events: result.flushed_events,
+    }))
 }
 
 async fn list_team_run_steps(
@@ -1671,6 +1738,27 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
     Err(ApiError::bad_request(&format!(
         "status must be one of: {}",
         TEAM_RUN_STATUS_VALUES.join(", ")
+    )))
+}
+
+fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, ApiError> {
+    let Some(raw) = value else {
+        return Ok("manual");
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok("manual");
+    }
+    if TEAM_MEMORY_FLUSH_TRIGGER_VALUES.contains(&trimmed) {
+        return Ok(match trimmed {
+            "soft_threshold" => "soft_threshold",
+            "hard_error" => "hard_error",
+            _ => "manual",
+        });
+    }
+    Err(ApiError::bad_request(&format!(
+        "trigger must be one of: {}",
+        TEAM_MEMORY_FLUSH_TRIGGER_VALUES.join(", ")
     )))
 }
 

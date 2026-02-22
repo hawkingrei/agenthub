@@ -391,6 +391,24 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_context_flush_checkpoint (
+            team_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            last_event_id INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (run_id, member_id, session_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -631,6 +649,20 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_context_artifacts_run_seq: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_context_flush_checkpoint_run_member
+        ON team_context_flush_checkpoint(run_id, member_id, updated_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_context_flush_checkpoint_run_member: {}",
             err
         );
     }
@@ -896,14 +928,15 @@ mod tests {
                 'team_conversation_messages',
                 'team_actor_messages',
                 'team_member_continuity_state',
-                'team_context_artifacts'
+                'team_context_artifacts',
+                'team_context_flush_checkpoint'
               )
             "#,
         )
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 10);
+        assert_eq!(table_count, 11);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)

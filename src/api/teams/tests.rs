@@ -28,17 +28,17 @@ use crate::team::TeamManager;
 use super::{
     AckTeamRunMessageRequest, CompileTeamMainTaskRunPreviewRequest, CompleteTeamRunStepRequest,
     CreateTeamMainTaskRequest, CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest,
-    ListTeamMainTaskMessagesQuery, ListTeamMainTasksQuery, ListTeamRunEventsQuery,
-    ListTeamRunInboxQuery, ListTeamRunsQuery, ResumeTeamRunStepRequest,
+    FlushTeamRunContextRequest, ListTeamMainTaskMessagesQuery, ListTeamMainTasksQuery,
+    ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery, ResumeTeamRunStepRequest,
     SendTeamMainTaskMessageRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
     cancel_team_run, compile_team_main_task_run_preview, complete_team_run_step, create_team,
-    create_team_main_task, create_team_run, delete_team, fail_team_run_step, get_team,
-    get_team_main_task, get_team_run, get_team_run_snapshot, list_team_main_task_messages,
-    list_team_main_tasks, list_team_run_events, list_team_run_inbox, list_team_run_steps,
-    list_team_runs, list_teams, restart_team_run, resume_team_run, resume_team_run_step,
-    send_team_main_task_message, send_team_run_message, set_team_run_step_input_required,
-    start_team_run_step, submit_team_run_step,
+    create_team_main_task, create_team_run, delete_team, fail_team_run_step,
+    flush_team_run_context, get_team, get_team_main_task, get_team_run, get_team_run_snapshot,
+    list_team_main_task_messages, list_team_main_tasks, list_team_run_events, list_team_run_inbox,
+    list_team_run_steps, list_team_runs, list_teams, restart_team_run, resume_team_run,
+    resume_team_run_step, send_team_main_task_message, send_team_run_message,
+    set_team_run_step_input_required, start_team_run_step, submit_team_run_step,
 };
 
 pub(crate) async fn build_test_state() -> AppState {
@@ -471,6 +471,24 @@ async fn init_test_schema(db: &SqlitePool) {
     .await
     .expect("create team_context_artifacts");
 
+    sqlx::query(
+        r#"
+        CREATE TABLE team_context_flush_checkpoint (
+            team_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            last_event_id INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (run_id, member_id, session_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_context_flush_checkpoint");
 }
 
 async fn auth_headers(state: &AppState) -> HeaderMap {

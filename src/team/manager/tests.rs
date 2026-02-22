@@ -241,6 +241,25 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_context_flush_checkpoint (
+            team_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            last_event_id INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (run_id, member_id, session_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_context_flush_checkpoint");
+
+    sqlx::query(
+        r#"
         CREATE TABLE agents (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -261,6 +280,24 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create agents");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            seq TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            stream TEXT NOT NULL,
+            message TEXT NOT NULL,
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create agent_events");
 
     sqlx::query(
         r#"
@@ -850,6 +887,226 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
     );
 
     let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
+async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace = std::env::temp_dir().join(format!("agenthub-memory-flush-{unique_suffix}"));
+    std::fs::create_dir_all(&workspace).expect("create workspace directory");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "flush-team".to_string(),
+            description: Some("team with flushable context".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-flush"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "flush_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"flush"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("session-flush-1"))
+        .await
+        .expect("start step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("planner")
+    .bind("session-flush-1")
+    .bind("1")
+    .bind(100_i64)
+    .bind("acp")
+    .bind(r#"{"type":"agent_message","content":"first signal","api_key":"secret"}"#)
+    .execute(&db)
+    .await
+    .expect("insert first agent event");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("planner")
+    .bind("session-flush-1")
+    .bind("2")
+    .bind(101_i64)
+    .bind("system")
+    .bind("plain text event")
+    .execute(&db)
+    .await
+    .expect("insert second agent event");
+
+    let first = manager
+        .flush_run_context(
+            &run.id,
+            crate::team::TeamMemoryFlushRequest {
+                member_id: "planner".to_string(),
+                session_id: None,
+                trigger: "manual".to_string(),
+                max_events: None,
+            },
+        )
+        .await
+        .expect("flush context first time");
+    assert_eq!(first.status, "persisted");
+    assert_eq!(first.flushed_events, 2);
+    assert!(first.artifact_pointer.is_some());
+    assert_eq!(first.reason, None);
+
+    let checkpoint_event_id: i64 = sqlx::query_scalar(
+        r#"
+        SELECT last_event_id
+        FROM team_context_flush_checkpoint
+        WHERE run_id = ?1 AND member_id = ?2 AND session_id = ?3
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .bind("session-flush-1")
+    .fetch_one(&db)
+    .await
+    .expect("fetch checkpoint");
+    assert!(checkpoint_event_id > 0);
+
+    let second = manager
+        .flush_run_context(
+            &run.id,
+            crate::team::TeamMemoryFlushRequest {
+                member_id: "planner".to_string(),
+                session_id: Some("session-flush-1".to_string()),
+                trigger: "manual".to_string(),
+                max_events: None,
+            },
+        )
+        .await
+        .expect("flush context second time");
+    assert_eq!(second.status, "noop");
+    assert_eq!(second.reason.as_deref(), Some("no_new_events"));
+    assert_eq!(second.flushed_events, 0);
+
+    let events = manager
+        .list_run_events(&run.id, 200, None)
+        .await
+        .expect("list run events");
+    let event_types = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        event_types.contains(&"memory_flush_started"),
+        "memory_flush_started event should be recorded"
+    );
+    assert!(
+        event_types.contains(&"memory_flush_persisted"),
+        "memory_flush_persisted event should be recorded"
+    );
+    assert!(
+        event_types.contains(&"memory_flush_noop"),
+        "memory_flush_noop event should be recorded"
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
+async fn flush_run_context_fails_when_session_mapping_missing() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "flush-missing-session-team".to_string(),
+            description: Some("team with no session mapping".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-missing-session"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let result = manager
+        .flush_run_context(
+            &run.id,
+            crate::team::TeamMemoryFlushRequest {
+                member_id: "planner".to_string(),
+                session_id: None,
+                trigger: "manual".to_string(),
+                max_events: None,
+            },
+        )
+        .await
+        .expect("flush context should return failed result");
+    assert_eq!(result.status, "failed");
+    assert_eq!(result.reason.as_deref(), Some("session_mapping_missing"));
+    assert!(result.artifact_pointer.is_none());
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let event_types = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        event_types.contains(&"memory_flush_started"),
+        "memory_flush_started event should be recorded"
+    );
+    assert!(
+        event_types.contains(&"memory_flush_failed"),
+        "memory_flush_failed event should be recorded"
+    );
 }
 
 #[tokio::test]
