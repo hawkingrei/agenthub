@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] [LOW] Defer Team ACL hardening (explicit owner/member permission matrix across Team main-task/run/mailbox APIs and UI visibility) until the chat-first baseline workflow and core Team features are complete.
 - [x] Verify PR #83 review hardening: dynamic Team/Agent API path segments are centralized with `encodeURIComponent` in `web/src/api.ts`, and `useTeamActions` lifecycle-facing callbacks (`refreshSteps`, `loadInbox`, `onLoadMoreRuns`) keep stable identity under non-token UI input churn with focused hook tests + web lint/build green (see `docs/features/2026-02-22-pr83-review-hardening-path-encoding-and-callback-stability.md`).
 - [x] Verify Team mailbox action callbacks (`onSendChatMessage` / `onSendMessage` / `onRefreshInbox` / `onAckMessage`) are extracted from `web/src/pages/team_page.tsx` into `useTeamMailboxActions`, with branch behavior tests and `web` lint/test/build green (see `docs/features/2026-02-22-team-page-mailbox-actions-hook-extraction.md`).
 - [x] Verify Team step operation callbacks (`onSubmitStep` / `onApplyStepAction`) are extracted from `web/src/pages/team_page.tsx` into `useTeamStepActions`, with focused payload/validation tests and `web` lint/test/build green (see `docs/features/2026-02-22-team-page-step-actions-hook-extraction.md`).
