@@ -800,6 +800,23 @@ describe("team panels interactions", () => {
           oldestMemberEventId={1}
           displayedRunEvents={[]}
           previewLimit={5}
+          memberDiscoveryCard={{
+            card_id: "agenthub://agents/worker-agent",
+            schema_version: "agenthub.a2a.discovery_card.v1",
+            identity: {
+              agent_id: "worker-agent",
+              name: "worker-agent",
+              status: "running",
+            },
+            runtime: {
+              acp_provider: "codex",
+              code_mode: true,
+              worktree_mode: "create_worktree",
+              worktree_repo: "/tmp/repo",
+              worktree_ref: "main",
+            },
+            capability_tags: ["team_mailbox_v1", "acp_codex"],
+          }}
           onRefresh={onRefresh}
           onLoadOlder={onLoadOlder}
           toPrettyJson={(value) => JSON.stringify(value)}
@@ -829,6 +846,23 @@ describe("team panels interactions", () => {
           oldestMemberEventId={1}
           displayedRunEvents={[]}
           previewLimit={5}
+          memberDiscoveryCard={{
+            card_id: "agenthub://agents/worker-agent",
+            schema_version: "agenthub.a2a.discovery_card.v1",
+            identity: {
+              agent_id: "worker-agent",
+              name: "worker-agent",
+              status: "running",
+            },
+            runtime: {
+              acp_provider: "codex",
+              code_mode: true,
+              worktree_mode: "create_worktree",
+              worktree_repo: "/tmp/repo",
+              worktree_ref: "main",
+            },
+            capability_tags: ["team_mailbox_v1", "acp_codex"],
+          }}
           onRefresh={onRefresh}
           onLoadOlder={onLoadOlder}
           toPrettyJson={(value) => JSON.stringify(value)}
@@ -867,6 +901,23 @@ describe("team panels interactions", () => {
           oldestMemberEventId={1}
           displayedRunEvents={[]}
           previewLimit={5}
+          memberDiscoveryCard={{
+            card_id: "agenthub://agents/worker-agent",
+            schema_version: "agenthub.a2a.discovery_card.v1",
+            identity: {
+              agent_id: "worker-agent",
+              name: "worker-agent",
+              status: "running",
+            },
+            runtime: {
+              acp_provider: "codex",
+              code_mode: true,
+              worktree_mode: "create_worktree",
+              worktree_repo: "/tmp/repo",
+              worktree_ref: "main",
+            },
+            capability_tags: ["team_mailbox_v1", "acp_codex"],
+          }}
           onRefresh={onRefresh}
           onLoadOlder={onLoadOlder}
           toPrettyJson={(value) => JSON.stringify(value)}
@@ -876,6 +927,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("worker output");
+    expect(container.textContent).toContain("acp_codex");
     expect(onSelectedMemberIdChange).toHaveBeenCalledWith("worker-agent");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(1);

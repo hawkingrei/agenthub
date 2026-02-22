@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
+  AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
   api,
@@ -467,6 +468,12 @@ export function TeamPage(props: TeamPageProps) {
   const activeRunIdRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<TeamRunSnapshotRecord | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [memberDiscoveryCardsById, setMemberDiscoveryCardsById] = useState<
+    Record<string, AgentDiscoveryCardRecord | null>
+  >({});
+  const [memberDiscoveryCardLoadingById, setMemberDiscoveryCardLoadingById] = useState<
+    Record<string, boolean>
+  >({});
   const [compileMainTaskId, setCompileMainTaskId] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
@@ -729,6 +736,50 @@ export function TeamPage(props: TeamPageProps) {
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
   );
+  const selectedMemberDiscoveryCard = useMemo(() => {
+    const memberId = selectedMemberId.trim();
+    if (!memberId) return null;
+    return memberDiscoveryCardsById[memberId] ?? null;
+  }, [memberDiscoveryCardsById, selectedMemberId]);
+  const selectedMemberDiscoveryCardLoading = useMemo(() => {
+    const memberId = selectedMemberId.trim();
+    if (!memberId) return false;
+    return memberDiscoveryCardLoadingById[memberId] ?? false;
+  }, [memberDiscoveryCardLoadingById, selectedMemberId]);
+  useEffect(() => {
+    const memberId = selectedMemberId.trim();
+    if (!props.token || !memberId) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(memberDiscoveryCardsById, memberId)) {
+      return;
+    }
+
+    let active = true;
+    setMemberDiscoveryCardLoadingById((prev) => ({ ...prev, [memberId]: true }));
+    void api
+      .getAgentDiscoveryCard(props.token, memberId)
+      .then((card) => {
+        if (!active) return;
+        setMemberDiscoveryCardsById((prev) => ({ ...prev, [memberId]: card }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setMemberDiscoveryCardsById((prev) => ({ ...prev, [memberId]: null }));
+      })
+      .finally(() => {
+        if (!active) return;
+        setMemberDiscoveryCardLoadingById((prev) => ({ ...prev, [memberId]: false }));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    memberDiscoveryCardsById,
+    props.token,
+    selectedMemberId,
+  ]);
   const chatMemberIds = useMemo(
     () => snapshot?.members.map((member) => member.member_id) ?? [],
     [snapshot]
@@ -2305,6 +2356,8 @@ export function TeamPage(props: TeamPageProps) {
                         oldestMemberEventId={oldestMemberEventId}
                         displayedRunEvents={displayedRunEvents}
                         previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                        memberDiscoveryCard={selectedMemberDiscoveryCard}
+                        memberDiscoveryCardLoading={selectedMemberDiscoveryCardLoading}
                         onRefresh={onRefreshMemberConsole}
                         onLoadOlder={onLoadOlderMemberConsole}
                         toPrettyJson={toPrettyJson}

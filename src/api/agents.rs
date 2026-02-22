@@ -37,6 +37,31 @@ pub struct StartAgentResponse {
     pub session_id: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct AgentDiscoveryCardResponse {
+    pub card_id: String,
+    pub schema_version: String,
+    pub identity: AgentDiscoveryIdentity,
+    pub runtime: AgentDiscoveryRuntime,
+    pub capability_tags: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentDiscoveryIdentity {
+    pub agent_id: String,
+    pub name: String,
+    pub status: crate::agent::AgentStatus,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentDiscoveryRuntime {
+    pub acp_provider: Option<String>,
+    pub code_mode: bool,
+    pub worktree_mode: WorktreeMode,
+    pub worktree_repo: Option<String>,
+    pub worktree_ref: Option<String>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct StartAgentRequest {
     pub actor_runtime: Option<StartAgentActorRuntimeRequest>,
@@ -106,6 +131,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent).get(list_agents))
         .route("/:id", get(get_agent))
+        .route("/:id/.well-known/agent-card", get(get_agent_discovery_card))
         .route("/:id/start", post(start_agent))
         .route("/:id/stop", post(stop_agent))
         .route("/:id/input", post(send_input))
@@ -177,6 +203,19 @@ async fn get_agent(
     let _user = require_user(&headers, &state).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     Ok(Json(agent))
+}
+
+async fn get_agent_discovery_card(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<AgentDiscoveryCardResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let agent = state.agents.get_agent(&agent_id).await?;
+    let provider = state
+        .agents
+        .acp_provider_for_agent(&agent.command, &agent.args);
+    Ok(Json(build_agent_discovery_card(&agent, provider)))
 }
 
 async fn start_agent(
@@ -487,6 +526,46 @@ fn sanitize_worktree_segment(value: &str) -> String {
     }
 }
 
+fn build_agent_discovery_card(
+    agent: &AgentRecord,
+    acp_provider: Option<&str>,
+) -> AgentDiscoveryCardResponse {
+    let mut capability_tags = vec![
+        "team_mailbox_v1".to_string(),
+        "team_step_execution_v1".to_string(),
+    ];
+    if agent.code_mode {
+        capability_tags.push("code_mode".to_string());
+    }
+    if matches!(
+        agent.worktree_mode,
+        WorktreeMode::CreateWorktree | WorktreeMode::ReuseWorktree
+    ) {
+        capability_tags.push("git_worktree".to_string());
+    }
+    if let Some(provider) = acp_provider {
+        capability_tags.push(format!("acp_{provider}"));
+    }
+
+    AgentDiscoveryCardResponse {
+        card_id: format!("agenthub://agents/{}", agent.id),
+        schema_version: "agenthub.a2a.discovery_card.v1".to_string(),
+        identity: AgentDiscoveryIdentity {
+            agent_id: agent.id.clone(),
+            name: agent.name.clone(),
+            status: agent.status.clone(),
+        },
+        runtime: AgentDiscoveryRuntime {
+            acp_provider: acp_provider.map(str::to_string),
+            code_mode: agent.code_mode,
+            worktree_mode: agent.worktree_mode.clone(),
+            worktree_repo: agent.worktree_repo.clone(),
+            worktree_ref: agent.worktree_ref.clone(),
+        },
+        capability_tags,
+    }
+}
+
 fn parse_start_actor_runtime_context(
     payload: Option<StartAgentRequest>,
 ) -> Result<Option<AcpActorSkillContext>, ApiError> {
@@ -531,6 +610,7 @@ fn parse_start_actor_runtime_context(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::path::Path;
     use std::process::Command as StdCommand;
     use std::sync::Arc;
@@ -554,9 +634,9 @@ mod tests {
     use crate::team::TeamManager;
 
     use super::{
-        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, parse_agent_source,
-        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
-        router, sanitize_worktree_segment,
+        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
+        parse_agent_source, parse_start_actor_runtime_context, parse_worktree_mode,
+        resolve_create_agent_workdir, router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -591,6 +671,44 @@ mod tests {
             "team_forge"
         );
         assert!(parse_agent_source(Some("invalid")).is_err());
+    }
+
+    #[test]
+    fn build_agent_discovery_card_includes_runtime_tags() {
+        let agent = crate::agent::AgentRecord {
+            id: "agent-1".to_string(),
+            name: "Worker One".to_string(),
+            workdir: "/tmp/agent-1".to_string(),
+            command: "agenthub-codex-acp".to_string(),
+            args: vec![],
+            worktree_mode: WorktreeMode::CreateWorktree,
+            worktree_repo: Some("/tmp/repo".to_string()),
+            worktree_ref: Some("main".to_string()),
+            code_mode: true,
+            status: crate::agent::AgentStatus::Running,
+            created_at: 1,
+            updated_at: 2,
+        };
+
+        let card = build_agent_discovery_card(&agent, Some("codex"));
+        assert_eq!(card.card_id, "agenthub://agents/agent-1");
+        assert_eq!(card.schema_version, "agenthub.a2a.discovery_card.v1");
+        assert_eq!(card.identity.agent_id, "agent-1");
+        assert_eq!(card.identity.name, "Worker One");
+        assert_eq!(card.runtime.acp_provider.as_deref(), Some("codex"));
+        assert!(
+            card.capability_tags
+                .iter()
+                .any(|tag| tag == "team_mailbox_v1")
+        );
+        assert!(
+            card.capability_tags
+                .iter()
+                .any(|tag| tag == "team_step_execution_v1")
+        );
+        assert!(card.capability_tags.iter().any(|tag| tag == "code_mode"));
+        assert!(card.capability_tags.iter().any(|tag| tag == "git_worktree"));
+        assert!(card.capability_tags.iter().any(|tag| tag == "acp_codex"));
     }
 
     #[test]
@@ -1713,6 +1831,90 @@ mod tests {
             !env_file.exists(),
             "agent mode should reject actor_runtime payload and must not spawn process"
         );
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn discovery_card_route_exposes_agent_capabilities() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir =
+            std::env::temp_dir().join(format!("agenthub-discovery-card-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO safe_paths (path, created_at)
+            VALUES (?1, ?2)
+            "#,
+        )
+        .bind(workdir.to_string_lossy().to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "discovery-card-agent",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": workdir.to_string_lossy().to_string(),
+                    "worktree_ref": "main",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let card_resp = app
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("/{agent_id}/.well-known/agent-card"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("get discovery card");
+        assert_eq!(card_resp.status(), StatusCode::OK);
+        let card = decode_json_body(card_resp).await;
+        let expected_card_id = format!("agenthub://agents/{agent_id}");
+        assert_eq!(card["card_id"].as_str(), Some(expected_card_id.as_str()));
+        assert_eq!(
+            card["schema_version"].as_str(),
+            Some("agenthub.a2a.discovery_card.v1")
+        );
+        assert_eq!(card["identity"]["agent_id"].as_str(), Some(agent_id));
+        assert_eq!(card["runtime"]["acp_provider"].as_str(), Some("codex"));
+        assert_eq!(card["runtime"]["code_mode"].as_bool(), Some(true));
+        assert_eq!(
+            card["runtime"]["worktree_mode"].as_str(),
+            Some("create_worktree")
+        );
+        let tags: HashSet<&str> = card["capability_tags"]
+            .as_array()
+            .expect("capability tags array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(tags.contains("team_mailbox_v1"));
+        assert!(tags.contains("team_step_execution_v1"));
+        assert!(tags.contains("code_mode"));
+        assert!(tags.contains("git_worktree"));
+        assert!(tags.contains("acp_codex"));
 
         remove_dir_best_effort(&workdir);
     }

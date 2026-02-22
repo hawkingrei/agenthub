@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  AgentDiscoveryCardRecord,
   AgentEvent,
   TeamMemberSnapshot,
   TeamRunEventRecord,
@@ -28,6 +29,8 @@ type TeamMemberConsolePanelProps = {
   oldestMemberEventId: number | null;
   displayedRunEvents: TeamRunEventRecord[];
   previewLimit: number;
+  memberDiscoveryCard?: AgentDiscoveryCardRecord | null;
+  memberDiscoveryCardLoading?: boolean;
   onRefresh: () => Promise<void> | void;
   onLoadOlder: () => Promise<void> | void;
   toPrettyJson: (value: unknown) => string;
@@ -43,6 +46,7 @@ const MEMBER_CONSOLE_DETAIL_VALUE_CLASS =
   "mono mt-1 block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-slate-800";
 const MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS =
   "mono mt-1 block min-w-0 whitespace-pre-wrap break-words text-slate-800";
+const MEMBER_CONSOLE_DISCOVERY_CLASS = "mt-2 rounded-lg border border-slate-200 bg-white p-2";
 const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
 const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
 const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
@@ -62,6 +66,8 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
     oldestMemberEventId,
     displayedRunEvents,
     previewLimit,
+    memberDiscoveryCard,
+    memberDiscoveryCardLoading = false,
     onRefresh,
     onLoadOlder,
     toPrettyJson,
@@ -183,6 +189,59 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               {selectedMemberSnapshot.prompt ?? "-"}
             </pre>
           </details>
+          <div className={MEMBER_CONSOLE_DISCOVERY_CLASS}>
+            <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>a2a_discovery_card</div>
+            {memberDiscoveryCardLoading && (
+              <p className="mt-1 text-sm text-slate-600">Loading discovery card...</p>
+            )}
+            {!memberDiscoveryCardLoading && memberDiscoveryCard && (
+              <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>card_id</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                    {memberDiscoveryCard.card_id}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>schema_version</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                    {memberDiscoveryCard.schema_version}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>acp_provider</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                    {memberDiscoveryCard.runtime.acp_provider ?? "-"}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>worktree_mode</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                    {memberDiscoveryCard.runtime.worktree_mode}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>code_mode</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
+                    {memberDiscoveryCard.runtime.code_mode ? "true" : "false"}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>capability_tags</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+                    {memberDiscoveryCard.capability_tags.length > 0
+                      ? memberDiscoveryCard.capability_tags.join(", ")
+                      : "-"}
+                  </span>
+                </div>
+              </div>
+            )}
+            {!memberDiscoveryCardLoading && !memberDiscoveryCard && (
+              <p className="mt-1 text-sm text-slate-600">
+                Discovery card unavailable for this member.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

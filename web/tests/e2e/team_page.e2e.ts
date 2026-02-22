@@ -236,6 +236,56 @@ async function mockTeamPageApis(
     await route.fallback();
   });
 
+  await page.route(/\/api\/agents\/[^/]+\/\.well-known\/agent-card$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/");
+    const agentId = segments[segments.length - 3] ?? "";
+    const agent = agents.find((item) => item.id === agentId);
+    if (!agent) {
+      await route.fulfill(jsonResponse({ error: "agent not found" }, 404));
+      return;
+    }
+    const commandName = agent.command.split("/").pop() ?? agent.command;
+    const acpProvider =
+      commandName === "gemini"
+        ? "gemini"
+        : commandName === "kimi"
+          ? "kimi"
+          : "codex";
+    const capabilityTags = ["team_mailbox_v1", "team_step_execution_v1"];
+    if (agent.code_mode) capabilityTags.push("code_mode");
+    if (
+      agent.worktree_mode === "create_worktree" ||
+      agent.worktree_mode === "reuse_worktree"
+    ) {
+      capabilityTags.push("git_worktree");
+    }
+    capabilityTags.push(`acp_${acpProvider}`);
+    await route.fulfill(
+      jsonResponse({
+        card_id: `agenthub://agents/${agent.id}`,
+        schema_version: "agenthub.a2a.discovery_card.v1",
+        identity: {
+          agent_id: agent.id,
+          name: agent.name,
+          status: agent.status,
+        },
+        runtime: {
+          acp_provider: acpProvider,
+          code_mode: agent.code_mode,
+          worktree_mode: agent.worktree_mode,
+          worktree_repo: agent.worktree_repo ?? null,
+          worktree_ref: agent.worktree_ref ?? null,
+        },
+        capability_tags: capabilityTags,
+      })
+    );
+  });
+
   await page.route("**/api/teams", async (route, request) => {
     if (request.method() === "GET") {
       await route.fulfill(jsonResponse(teams));
@@ -1138,6 +1188,458 @@ test("team debug run ops compiles main task preview and applies payload to creat
   ).toHaveValue("ctx-main-task-compile-1");
   await expect(page.getByLabel("Run input JSON")).toContainText(
     '"main_task_id": "main-task-compile-1"'
+  );
+});
+
+test("team chat-first path compiles preview, creates run, and captures worker plus final synthesis evidence", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const teamId = "team-chat-first";
+  const runId = "run-chat-first-1";
+  const teamCreatedAt = fixture.now + 180;
+  const runCreatedAt = fixture.now + 260;
+  const previewResponse = {
+    main_task_id: "main-task-chat-1",
+    conversation_id: "conversation-chat-1",
+    run_payload: {
+      context_id: "ctx-chat-first-1",
+      input: {
+        main_task_compile_version: 1,
+        main_task_id: "main-task-chat-1",
+        conversation_id: "conversation-chat-1",
+        task_list: [
+          "Negotiate scope with leader",
+          "Worker implements endpoint",
+          "Leader synthesizes final deliverable",
+        ],
+      },
+    },
+    plan: {
+      task_list: [
+        "Negotiate scope with leader",
+        "Worker implements endpoint",
+        "Leader synthesizes final deliverable",
+      ],
+      acceptance_criteria: ["Endpoint implemented", "Final summary delivered"],
+      deadline: "2026-03-12",
+      step_template: [
+        {
+          step_key: "leader_plan",
+          member_id: "agent-leader-1",
+          role: "leader",
+          depends_on: [],
+        },
+        {
+          step_key: "worker_execute",
+          member_id: "agent-worker-1",
+          role: "worker",
+          depends_on: ["leader_plan"],
+        },
+        {
+          step_key: "leader_synthesize",
+          member_id: "agent-leader-1",
+          role: "leader",
+          depends_on: ["worker_execute"],
+        },
+      ],
+      role_assignments: [
+        {
+          member_id: "agent-leader-1",
+          role: "leader",
+          step_keys: ["leader_plan", "leader_synthesize"],
+        },
+        {
+          member_id: "agent-worker-1",
+          role: "worker",
+          step_keys: ["worker_execute"],
+        },
+      ],
+      source_message_id: 18,
+    },
+  };
+
+  fixture.teams.push({
+    id: teamId,
+    name: "Chat First Team",
+    description: "chat-first e2e flow",
+    spec: {
+      leader_member_id: "agent-leader-1",
+      members: [
+        { member_id: "agent-leader-1", role: "leader", model: "codex" },
+        { member_id: "agent-worker-1", role: "worker", model: "gemini" },
+      ],
+      steps: [
+        { step_key: "leader_plan" },
+        { step_key: "worker_execute" },
+        { step_key: "leader_synthesize" },
+      ],
+    },
+    created_at: teamCreatedAt,
+    updated_at: teamCreatedAt,
+  });
+
+  let activeRun: TeamRunRecord | null = null;
+  let nextMessageId = 50;
+  const createRunRequests: Array<{ context_id?: string; input?: unknown }> = [];
+  const sentMessagePayloads: Array<{
+    from_actor_id: string;
+    to_actor_id: string;
+    payload: unknown;
+  }> = [];
+  const messages: TeamActorMessageRecord[] = [
+    {
+      message_id: 1,
+      run_id: runId,
+      from_actor_id: "agent-leader-1",
+      to_actor_id: "agent-worker-1",
+      channel: "default",
+      transport: "local",
+      route: null,
+      payload: {
+        type: "chat_message",
+        text: "Please implement endpoint scaffolding and tests.",
+      },
+      status: "pending",
+      created_at: runCreatedAt + 1,
+      delivered_at: null,
+    },
+    {
+      message_id: 2,
+      run_id: runId,
+      from_actor_id: "agent-worker-1",
+      to_actor_id: "agent-leader-1",
+      channel: "default",
+      transport: "local",
+      route: null,
+      payload: {
+        type: "worker_status",
+        status: "done",
+        result: "Endpoint and tests are complete.",
+        evidence: ["go test ./..."],
+      },
+      status: "pending",
+      created_at: runCreatedAt + 2,
+      delivered_at: null,
+    },
+  ];
+
+  const runEvents = [
+    {
+      event_id: 201,
+      run_id: runId,
+      step_id: "step-worker-execute",
+      event_type: "step_completed",
+      ts: runCreatedAt + 10,
+      payload: {
+        step_key: "worker_execute",
+        summary: "Worker implementation completed with tests.",
+      },
+    },
+    {
+      event_id: 202,
+      run_id: runId,
+      step_id: "step-leader-synthesize",
+      event_type: "leader_synthesized",
+      ts: runCreatedAt + 20,
+      payload: {
+        final_deliverable: "Final deliverable prepared and returned to user.",
+      },
+    },
+  ];
+
+  const buildSnapshot = () => {
+    if (!activeRun) {
+      return null;
+    }
+    return {
+      run: activeRun,
+      team: fixture.teams.find((team) => team.id === teamId),
+      leader_member_id: "agent-leader-1",
+      members: [
+        {
+          member_id: "agent-leader-1",
+          role: "leader",
+          model: "codex",
+          prompt: "leader prompt",
+          skills: ["agenthub-actor-runtime", "team-leader-orchestrator"],
+          pending_inbox_count: messages.filter(
+            (message) =>
+              message.to_actor_id === "agent-leader-1" &&
+              message.status === "pending"
+          ).length,
+          status: "working",
+          latest_step: {
+            id: "step-leader-synthesize",
+            run_id: runId,
+            step_key: "leader_synthesize",
+            member_id: "agent-leader-1",
+            remote_task_id: "task-leader-1",
+            status: "working",
+            attempt: 1,
+            depends_on: ["worker_execute"],
+            input: {},
+            output: null,
+            error_text: null,
+            started_at: runCreatedAt + 8,
+            ended_at: null,
+          },
+          session_status: "working",
+        },
+        {
+          member_id: "agent-worker-1",
+          role: "worker",
+          model: "gemini",
+          prompt: "worker prompt",
+          skills: ["agenthub-actor-runtime", "team-worker-executor"],
+          pending_inbox_count: messages.filter(
+            (message) =>
+              message.to_actor_id === "agent-worker-1" &&
+              message.status === "pending"
+          ).length,
+          status: "working",
+          latest_step: {
+            id: "step-worker-execute",
+            run_id: runId,
+            step_key: "worker_execute",
+            member_id: "agent-worker-1",
+            remote_task_id: "task-worker-1",
+            status: "completed",
+            attempt: 1,
+            depends_on: ["leader_plan"],
+            input: {},
+            output: { summary: "done" },
+            error_text: null,
+            started_at: runCreatedAt + 4,
+            ended_at: runCreatedAt + 9,
+          },
+          session_status: "idle",
+        },
+      ],
+      steps: [],
+      latest_events: runEvents,
+      mailbox: {
+        pending: messages.filter((message) => message.status === "pending").length,
+        delivered: messages.filter((message) => message.status === "delivered").length,
+        dead_letter: 0,
+        recent_messages: [...messages].sort((left, right) => left.message_id - right.message_id),
+      },
+    };
+  };
+
+  await page.route(
+    new RegExp(`/api/teams/${teamId}/main_tasks/[^/]+/compile_run_preview$`),
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill(jsonResponse(previewResponse));
+    }
+  );
+
+  await page.route(new RegExp(`/api/teams/${teamId}/runs(?:\\?.*)?$`), async (route, request) => {
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(activeRun ? [activeRun] : []));
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { context_id?: string; input?: unknown };
+      createRunRequests.push(payload);
+      activeRun = {
+        id: runId,
+        team_id: teamId,
+        context_id: payload.context_id ?? "ctx-chat-first-fallback",
+        status: "working",
+        input: (payload.input as Record<string, unknown>) ?? {},
+        created_at: runCreatedAt,
+        started_at: runCreatedAt + 1,
+        ended_at: null,
+      };
+      await route.fulfill(jsonResponse(activeRun));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (!activeRun) {
+      await route.fulfill(jsonResponse({ error: "run not found" }, 404));
+      return;
+    }
+    await route.fulfill(jsonResponse(activeRun));
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}/steps$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(new RegExp(`/api/teams/runs/${runId}/events(?:\\?.*)?$`), async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse(activeRun ? runEvents : []));
+  });
+
+  await page.route(
+    new RegExp(`/api/teams/runs/${runId}/snapshot(?:\\?.*)?$`),
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const snapshot = buildSnapshot();
+      if (!snapshot) {
+        await route.fulfill(jsonResponse({ error: "snapshot unavailable" }, 404));
+        return;
+      }
+      await route.fulfill(jsonResponse(snapshot));
+    }
+  );
+
+  await page.route(
+    new RegExp(`/api/teams/runs/${runId}/messages/inbox(?:\\?.*)?$`),
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(request.url());
+      const actorId = url.searchParams.get("actor_id") ?? "";
+      const includeDelivered = url.searchParams.get("include_delivered") === "true";
+      const inboxMessages = messages
+        .filter((message) => message.to_actor_id === actorId)
+        .filter((message) => includeDelivered || message.status !== "delivered")
+        .sort((left, right) => left.message_id - right.message_id);
+      await route.fulfill(jsonResponse(inboxMessages));
+    }
+  );
+
+  await page.route(
+    new RegExp(`/api/teams/runs/${runId}/messages/send$`),
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const payload = request.postDataJSON() as {
+        from_actor_id: string;
+        to_actor_id: string;
+        payload: unknown;
+      };
+      sentMessagePayloads.push({
+        from_actor_id: payload.from_actor_id,
+        to_actor_id: payload.to_actor_id,
+        payload: payload.payload,
+      });
+      const created: TeamActorMessageRecord = {
+        message_id: nextMessageId,
+        run_id: runId,
+        from_actor_id: payload.from_actor_id,
+        to_actor_id: payload.to_actor_id,
+        channel: "default",
+        transport: "local",
+        route: null,
+        payload: payload.payload,
+        status: "pending",
+        created_at: runCreatedAt + nextMessageId,
+        delivered_at: null,
+      };
+      nextMessageId += 1;
+      messages.push(created);
+      await route.fulfill(jsonResponse(created));
+    }
+  );
+
+  await page.route(
+    new RegExp(`/api/teams/runs/${runId}/messages/\\d+/ack$`),
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const messageIdMatch = request.url().match(/messages\/(\d+)\/ack$/);
+      const messageId = Number(messageIdMatch?.[1] ?? "0");
+      const message = messages.find((item) => item.message_id === messageId);
+      if (!message) {
+        await route.fulfill(jsonResponse({ error: "message not found" }, 404));
+        return;
+      }
+      message.status = "delivered";
+      message.delivered_at = runCreatedAt + messageId;
+      await route.fulfill(jsonResponse(message));
+    }
+  );
+
+  await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.goto("/teams");
+  await expect(page.getByRole("heading", { name: "Chat First Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
+
+  await page.getByPlaceholder("main_task_id").fill("main-task-chat-1");
+  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await expect(page.getByText("conversation_id: conversation-chat-1")).toBeVisible();
+  await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
+
+  await page.getByRole("button", { name: "Create Run from Preview" }).click();
+  await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
+  expect(createRunRequests).toHaveLength(1);
+  expect(createRunRequests[0]).toMatchObject({
+    context_id: "ctx-chat-first-1",
+  });
+  expect(
+    (createRunRequests[0]?.input as { main_task_id?: string } | undefined)
+      ?.main_task_id
+  ).toBe("main-task-chat-1");
+
+  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+  await page
+    .locator(".teams-chat-members .team-item", { hasText: "agent-worker-1 (worker)" })
+    .click();
+  await expect(page.locator(".teams-chat-messages")).toContainText(
+    "Please implement endpoint scaffolding and tests."
+  );
+  await expect(page.locator(".teams-chat-messages")).toContainText(
+    "Endpoint and tests are complete."
+  );
+
+  await page
+    .getByPlaceholder("Type a message to selected agent")
+    .fill("Please include migration notes in the final report.");
+  await page.getByRole("button", { name: "Send Chat" }).click();
+  await expect(page.locator(".teams-chat-messages")).toContainText(
+    "Please include migration notes in the final report."
+  );
+  expect(sentMessagePayloads).toHaveLength(1);
+  expect(sentMessagePayloads[0]).toMatchObject({
+    from_actor_id: "agent-leader-1",
+    to_actor_id: "agent-worker-1",
+  });
+
+  await page.getByRole("button", { name: "Member Console" }).click();
+  await expect(page.locator(".teams-step-body")).toContainText("a2a_discovery_card");
+  await expect(page.locator(".teams-step-body")).not.toContainText("Loading discovery card...");
+  await expect(page.locator(".teams-step-body")).toContainText("acp_gemini");
+
+  await page.getByRole("button", { name: "Events" }).click();
+  await expect(page.locator(".teams-event-list")).toContainText(
+    "Final deliverable prepared and returned to user."
   );
 });
 
