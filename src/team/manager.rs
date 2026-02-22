@@ -4,12 +4,13 @@ mod mailbox;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 pub use agenthub_team_domain::TeamRunResumeError;
 use chrono::Utc;
 use serde_json::Value;
-use sqlx::{QueryBuilder, Row, SqlitePool};
+use sha2::{Digest, Sha256};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
@@ -36,6 +37,7 @@ const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
 const CONTINUITY_MODE_RESET: &str = "reset";
 const CONTINUITY_MAX_SUMMARY_CHARS: usize = 2048;
 const CONTINUITY_MAX_HISTORY_CHARS: usize = 4096;
+const CONTINUITY_ARTIFACT_KIND_OUTPUT: &str = "continuity_output";
 
 impl TeamManager {
     pub fn new(db: SqlitePool) -> Self {
@@ -198,6 +200,11 @@ impl TeamManager {
         .await?;
 
         sqlx::query("DELETE FROM team_member_continuity_state WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("DELETE FROM team_context_artifacts WHERE team_id = ?1")
             .bind(team_id)
             .execute(&mut *tx)
             .await?;
@@ -795,6 +802,106 @@ impl TeamManager {
         Ok(())
     }
 
+    async fn persist_continuity_artifact_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        team_id: &str,
+        run_id: &str,
+        member_id: &str,
+        session_id: Option<&str>,
+        snapshot: &ContinuitySnapshot,
+        now: i64,
+    ) -> anyhow::Result<Option<ContextArtifactPointer>> {
+        let Some(workdir) = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT workdir
+            FROM agents
+            WHERE id = ?1
+            "#,
+        )
+        .bind(member_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+
+        let artifact_seq: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(MAX(artifact_seq), 0) + 1
+            FROM team_context_artifacts
+            WHERE run_id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        let run_context_dir = PathBuf::from(&workdir)
+            .join(".cache")
+            .join("context")
+            .join("run")
+            .join(run_id);
+        std::fs::create_dir_all(&run_context_dir)?;
+
+        let file_name = format!("artifact-{artifact_seq}-continuity-output.json");
+        let absolute_path = run_context_dir.join(&file_name);
+        let relative_path = format!(".cache/context/run/{run_id}/{file_name}");
+        let artifact_payload = serde_json::json!({
+            "schema_version": 1,
+            "team_id": team_id,
+            "run_id": run_id,
+            "member_id": member_id,
+            "session_id": session_id,
+            "summary_text": snapshot.summary_text,
+            "redacted_output": snapshot.redacted_output,
+            "created_at": now,
+        });
+        let artifact_bytes = serde_json::to_vec(&artifact_payload)?;
+        std::fs::write(&absolute_path, &artifact_bytes)?;
+        let artifact_size_bytes = i64::try_from(artifact_bytes.len()).unwrap_or(i64::MAX);
+        let content_checksum = format!("{:x}", Sha256::digest(&artifact_bytes));
+        let absolute_path_string = absolute_path.to_string_lossy().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_context_artifacts (
+                team_id,
+                run_id,
+                member_id,
+                session_id,
+                artifact_seq,
+                artifact_kind,
+                artifact_path,
+                artifact_size_bytes,
+                content_checksum,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+        )
+        .bind(team_id)
+        .bind(run_id)
+        .bind(member_id)
+        .bind(session_id)
+        .bind(artifact_seq)
+        .bind(CONTINUITY_ARTIFACT_KIND_OUTPUT)
+        .bind(absolute_path_string)
+        .bind(artifact_size_bytes)
+        .bind(&content_checksum)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(Some(ContextArtifactPointer {
+            artifact_kind: CONTINUITY_ARTIFACT_KIND_OUTPUT.to_string(),
+            relative_path,
+            artifact_size_bytes,
+            content_checksum,
+        }))
+    }
+
     #[allow(dead_code)]
     pub async fn start_step(
         &self,
@@ -1201,19 +1308,66 @@ impl TeamManager {
             let run_input: Value =
                 serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
             let continuity_mode = extract_continuity_mode_from_input(&run_input);
-            let (summary_text, history_window) = build_continuity_snapshot(step.output.as_ref());
+            let mut continuity_snapshot = build_continuity_snapshot(step.output.as_ref());
+            let mut artifact_pointer_for_event: Option<Value> = None;
+            let mut artifact_offload_status = "inline";
+            let mut artifact_offload_reason: Option<&str> = None;
+            if should_offload_continuity_output(continuity_snapshot.redacted_output_text.as_str()) {
+                match self
+                    .persist_continuity_artifact_tx(
+                        &mut tx,
+                        &team_id,
+                        &step.run_id,
+                        &step.member_id,
+                        step.remote_task_id.as_deref(),
+                        &continuity_snapshot,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => {
+                        let pointer_payload = serde_json::json!({
+                            "kind": pointer.artifact_kind,
+                            "path": pointer.relative_path,
+                            "size_bytes": pointer.artifact_size_bytes,
+                            "checksum": pointer.content_checksum,
+                        });
+                        if let Some(history_obj) =
+                            continuity_snapshot.history_window.as_object_mut()
+                        {
+                            history_obj
+                                .insert("artifact_pointer".to_string(), pointer_payload.clone());
+                        }
+                        artifact_pointer_for_event = Some(pointer_payload);
+                        artifact_offload_status = "persisted";
+                    }
+                    Ok(None) => {
+                        artifact_offload_reason = Some("agent_workdir_missing");
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist continuity artifact: {}",
+                            err
+                        );
+                        artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
             let continuity_state = TeamMemberContinuityStateRecord {
                 team_id: team_id.clone(),
                 member_id: step.member_id.clone(),
                 source_run_id: step.run_id.clone(),
                 source_session_id: step.remote_task_id.clone(),
-                summary_text,
-                history_window,
+                summary_text: continuity_snapshot.summary_text,
+                history_window: continuity_snapshot.history_window,
                 updated_at: now,
             };
             Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
 
-            let continuity_payload = serde_json::json!({
+            let mut continuity_payload = serde_json::json!({
                 "team_id": continuity_state.team_id,
                 "member_id": continuity_state.member_id,
                 "step_id": step.id,
@@ -1222,7 +1376,19 @@ impl TeamManager {
                 "source_run_id": continuity_state.source_run_id,
                 "source_session_id": continuity_state.source_session_id,
                 "summary_chars": continuity_state.summary_text.chars().count(),
+                "artifact_offload_status": artifact_offload_status,
             });
+            if let Some(payload_obj) = continuity_payload.as_object_mut() {
+                if let Some(pointer_payload) = artifact_pointer_for_event {
+                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload);
+                }
+                if let Some(reason) = artifact_offload_reason {
+                    payload_obj.insert(
+                        "artifact_offload_reason".to_string(),
+                        Value::String(reason.to_string()),
+                    );
+                }
+            }
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -1706,6 +1872,22 @@ impl TeamManager {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ContinuitySnapshot {
+    summary_text: String,
+    history_window: Value,
+    redacted_output: Value,
+    redacted_output_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct ContextArtifactPointer {
+    artifact_kind: String,
+    relative_path: String,
+    artifact_size_bytes: i64,
+    content_checksum: String,
+}
+
 fn normalize_run_input_continuity(mut input: Value) -> Value {
     let Some(input_obj) = input.as_object_mut() else {
         return input;
@@ -1779,7 +1961,7 @@ fn extract_continuity_mode_from_input(input: &Value) -> String {
     }
 }
 
-fn build_continuity_snapshot(output: Option<&Value>) -> (String, Value) {
+fn build_continuity_snapshot(output: Option<&Value>) -> ContinuitySnapshot {
     let redacted_output = output
         .map(redact_sensitive_json)
         .unwrap_or_else(|| serde_json::json!({}));
@@ -1802,7 +1984,16 @@ fn build_continuity_snapshot(output: Option<&Value>) -> (String, Value) {
             CONTINUITY_MAX_HISTORY_CHARS
         ),
     });
-    (summary_text, history_window)
+    ContinuitySnapshot {
+        summary_text,
+        history_window,
+        redacted_output,
+        redacted_output_text: output_excerpt_seed,
+    }
+}
+
+fn should_offload_continuity_output(raw_output: &str) -> bool {
+    raw_output.chars().count() > CONTINUITY_MAX_HISTORY_CHARS
 }
 
 fn truncate_continuity_text(raw: &str, max_chars: usize) -> String {

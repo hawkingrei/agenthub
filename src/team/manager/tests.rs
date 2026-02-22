@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
 use super::{TeamManager, TeamRunResumeError};
@@ -214,6 +215,52 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_member_continuity_state");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_context_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT,
+            artifact_seq INTEGER NOT NULL,
+            artifact_kind TEXT NOT NULL,
+            artifact_path TEXT NOT NULL,
+            artifact_size_bytes INTEGER NOT NULL,
+            content_checksum TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_context_artifacts");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE agents (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            workdir TEXT NOT NULL,
+            command TEXT NOT NULL,
+            args TEXT NOT NULL,
+            worktree_mode TEXT NOT NULL,
+            worktree_repo TEXT,
+            worktree_ref TEXT,
+            code_mode INTEGER NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT 'manual',
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create agents");
 
     sqlx::query(
         r#"
@@ -663,6 +710,146 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
             "run_completed"
         ]
     );
+}
+
+#[tokio::test]
+async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace = std::env::temp_dir().join(format!("agenthub-context-artifact-{unique_suffix}"));
+    std::fs::create_dir_all(&workspace).expect("create workspace directory");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "artifact-team".to_string(),
+            description: Some("team with large continuity output".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-artifact"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "large_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"emit large output"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("remote-task-artifact"))
+        .await
+        .expect("start step");
+
+    let large_text = "x".repeat(12_000);
+    manager
+        .complete_step(
+            &step.id,
+            Some(json!({
+                "summary":"large payload",
+                "details": large_text,
+                "api_key":"secret-value"
+            })),
+        )
+        .await
+        .expect("complete step");
+
+    let continuity = manager
+        .get_member_continuity_state(&team.id, "planner")
+        .await
+        .expect("get continuity state")
+        .expect("continuity state should exist");
+    let pointer = continuity
+        .history_window
+        .get("artifact_pointer")
+        .expect("artifact pointer should exist for oversized output");
+    let pointer_path = pointer
+        .get("path")
+        .and_then(|value| value.as_str())
+        .expect("artifact pointer path should be string");
+    assert!(
+        pointer_path.starts_with(&format!(".cache/context/run/{}/artifact-", run.id)),
+        "unexpected pointer path: {pointer_path}"
+    );
+
+    let artifact_row = sqlx::query(
+        r#"
+        SELECT artifact_path, artifact_size_bytes
+        FROM team_context_artifacts
+        WHERE run_id = ?1 AND member_id = ?2
+        ORDER BY artifact_seq DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .fetch_one(&db)
+    .await
+    .expect("fetch context artifact row");
+    let artifact_path: String = artifact_row.get("artifact_path");
+    let artifact_size: i64 = artifact_row.get("artifact_size_bytes");
+    assert!(artifact_size > 0);
+    assert!(
+        std::path::Path::new(&artifact_path).exists(),
+        "artifact path should exist: {artifact_path}"
+    );
+    let artifact_content =
+        std::fs::read_to_string(&artifact_path).expect("read persisted artifact content");
+    assert!(
+        artifact_content.contains("[redacted]"),
+        "sensitive keys should be redacted in persisted artifact"
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let continuity_event = events
+        .iter()
+        .find(|event| event.event_type == "continuity_state_updated")
+        .expect("continuity_state_updated event should exist");
+    assert_eq!(
+        continuity_event.payload["artifact_offload_status"],
+        json!("persisted")
+    );
+    assert!(
+        continuity_event.payload.get("artifact_pointer").is_some(),
+        "continuity_state_updated should include artifact pointer metadata"
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
 }
 
 #[tokio::test]

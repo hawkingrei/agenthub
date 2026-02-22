@@ -447,6 +447,30 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_member_continuity_state");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_context_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT,
+            artifact_seq INTEGER NOT NULL,
+            artifact_kind TEXT NOT NULL,
+            artifact_path TEXT NOT NULL,
+            artifact_size_bytes INTEGER NOT NULL,
+            content_checksum TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_context_artifacts");
+
 }
 
 async fn auth_headers(state: &AppState) -> HeaderMap {
