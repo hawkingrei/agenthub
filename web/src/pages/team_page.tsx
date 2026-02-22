@@ -2598,7 +2598,7 @@ export function TeamPage(props: TeamPageProps) {
                 ))}
               </div>
 
-              {createTeamStage !== 0 && (
+              {createTeamStage !== 0 && !useSpecOverride && (
                 <div className="team-create-agent-entry rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-base font-semibold text-slate-900">Agent Forge</h4>
@@ -2955,7 +2955,7 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
                   {useSpecOverride ? (
                     <p className="muted mt-3 text-sm text-slate-600">
-                      Manual Spec mode: edit full team spec JSON directly.
+                      Manual Spec entry: edit full team spec JSON directly.
                     </p>
                   ) : (
                     <p className="muted mt-3 text-sm text-slate-600">
