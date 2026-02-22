@@ -1,4 +1,11 @@
-import { useCallback, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import {
   type AgentEvent,
   type AgentRecord,
@@ -201,6 +208,38 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   } = options;
 
   const teamApi = useMemo(() => buildTeamApiClient(token), [token]);
+  const selectedStepIdRef = useRef(selectedStepId);
+  selectedStepIdRef.current = selectedStepId;
+
+  const inboxQueryStateRef = useRef({
+    activeRunIdForSelectedTeam,
+    inboxActorId,
+    inboxLimit,
+    inboxAfterId,
+    inboxIncludeDelivered,
+  });
+  inboxQueryStateRef.current = {
+    activeRunIdForSelectedTeam,
+    inboxActorId,
+    inboxLimit,
+    inboxAfterId,
+    inboxIncludeDelivered,
+  };
+
+  const runPaginationStateRef = useRef({
+    selectedTeamId,
+    runsLoading,
+    runsHasMore,
+    runsBeforeCreatedAt,
+    runStatusFilter,
+  });
+  runPaginationStateRef.current = {
+    selectedTeamId,
+    runsLoading,
+    runsHasMore,
+    runsBeforeCreatedAt,
+    runStatusFilter,
+  };
 
   const refreshAgents = useCallback(async () => {
     const list = await teamApi.listAgents();
@@ -288,14 +327,16 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     async (runId: string) => {
       const list = await teamApi.listTeamRunSteps(runId);
       setSteps(list);
+      const currentSelectedStepId = selectedStepIdRef.current;
       const nextSelectedStepId =
-        selectedStepId && list.some((step) => step.id === selectedStepId)
-          ? selectedStepId
+        currentSelectedStepId &&
+        list.some((step) => step.id === currentSelectedStepId)
+          ? currentSelectedStepId
           : list[0]?.id ?? "";
       setSelectedStepId(nextSelectedStepId);
       return list;
     },
-    [selectedStepId, setSelectedStepId, setSteps, teamApi]
+    [setSelectedStepId, setSteps, teamApi]
   );
 
   const refreshEvents = useCallback(
@@ -332,30 +373,29 @@ export function useTeamActions(options: UseTeamActionsOptions) {
 
   const loadInbox = useCallback(
     async (actorIdOverride?: string) => {
-      if (!activeRunIdForSelectedTeam) return;
-      const actorId = (actorIdOverride ?? inboxActorId).trim();
+      const {
+        activeRunIdForSelectedTeam: runId,
+        inboxActorId: defaultActorId,
+        inboxLimit: currentInboxLimit,
+        inboxAfterId: currentInboxAfterId,
+        inboxIncludeDelivered: includeDelivered,
+      } = inboxQueryStateRef.current;
+      if (!runId) return;
+      const actorId = (actorIdOverride ?? defaultActorId).trim();
       if (!actorId) {
         throw new Error("Inbox actor_id is required");
       }
-      const limit = parseOptionalInteger(inboxLimit, "Inbox limit") ?? 100;
-      const afterId = parseOptionalInteger(inboxAfterId, "Inbox after_id");
-      const list = await teamApi.listTeamRunInbox(activeRunIdForSelectedTeam, {
+      const limit = parseOptionalInteger(currentInboxLimit, "Inbox limit") ?? 100;
+      const afterId = parseOptionalInteger(currentInboxAfterId, "Inbox after_id");
+      const list = await teamApi.listTeamRunInbox(runId, {
         actor_id: actorId,
         limit,
         after_id: afterId,
-        include_delivered: inboxIncludeDelivered,
+        include_delivered: includeDelivered,
       });
       setInbox(list);
     },
-    [
-      activeRunIdForSelectedTeam,
-      inboxActorId,
-      inboxAfterId,
-      inboxIncludeDelivered,
-      inboxLimit,
-      setInbox,
-      teamApi,
-    ]
+    [setInbox, teamApi]
   );
 
   const loadMemberEvents = useCallback(
@@ -472,27 +512,26 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   }, [refreshTeamRuns, runStatusFilter, selectedTeamId, setError]);
 
   const onLoadMoreRuns = useCallback(async () => {
-    if (!selectedTeamId || runsLoading || !runsHasMore) {
+    const {
+      selectedTeamId: teamId,
+      runsLoading: loading,
+      runsHasMore: hasMore,
+      runsBeforeCreatedAt: beforeCreatedAt,
+      runStatusFilter: statusFilter,
+    } = runPaginationStateRef.current;
+    if (!teamId || loading || !hasMore) {
       return;
     }
     setError(null);
     try {
-      await refreshTeamRuns(selectedTeamId, "append", {
-        statusFilter: runStatusFilter,
-        beforeCreatedAt: runsBeforeCreatedAt,
+      await refreshTeamRuns(teamId, "append", {
+        statusFilter,
+        beforeCreatedAt,
       });
     } catch (err) {
       setError(parseErrorMessage(err));
     }
-  }, [
-    refreshTeamRuns,
-    runStatusFilter,
-    runsBeforeCreatedAt,
-    runsHasMore,
-    runsLoading,
-    selectedTeamId,
-    setError,
-  ]);
+  }, [refreshTeamRuns, setError]);
 
   const onCancelRun = useCallback(async () => {
     if (!activeRunForSelectedTeam) {

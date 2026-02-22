@@ -134,6 +134,54 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("keeps critical lifecycle callbacks stable when non-token inputs change", async () => {
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const baseOptions = createBaseOptions({
+      selectedTeamId: "team-1",
+      activeRunIdForSelectedTeam: "run-1",
+      runsHasMore: true,
+      runsBeforeCreatedAt: 111,
+      selectedStepId: "step-1",
+      inboxActorId: "leader-1",
+      inboxLimit: "100",
+      inboxAfterId: "10",
+      inboxIncludeDelivered: false,
+    });
+
+    const { root, container } = await mountHarness(baseOptions, onCapture);
+    try {
+      const initial = captures[captures.length - 1];
+      expect(initial).toBeDefined();
+
+      const nextOptions = {
+        ...baseOptions,
+        selectedStepId: "step-2",
+        inboxLimit: "200",
+        inboxAfterId: "20",
+        inboxIncludeDelivered: true,
+        runsLoading: true,
+        runsHasMore: false,
+        runsBeforeCreatedAt: 222,
+        runStatusFilter: "working" as const,
+      };
+      await act(async () => {
+        root.render(<HookHarness options={nextOptions} onCapture={onCapture} />);
+        await Promise.resolve();
+      });
+
+      const rerendered = captures[captures.length - 1];
+      expect(rerendered).toBeDefined();
+      expect(rerendered.refreshSteps).toBe(initial.refreshSteps);
+      expect(rerendered.loadInbox).toBe(initial.loadInbox);
+      expect(rerendered.onLoadMoreRuns).toBe(initial.onLoadMoreRuns);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("rebuilds API callbacks only when token changes", async () => {
     const captures: TeamActions[] = [];
     const onCapture = (actions: TeamActions) => {
