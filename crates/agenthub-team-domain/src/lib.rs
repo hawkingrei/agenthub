@@ -21,6 +21,7 @@ pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
 
 pub const TEAM_MAIN_TASK_STATUS_VALUES: [&str; 4] =
     ["open", "in_progress", "completed", "canceled"];
+pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamDefinitionConfig {
@@ -62,6 +63,17 @@ pub struct TeamRunRecord {
     pub created_at: i64,
     pub started_at: Option<i64>,
     pub ended_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamMemberContinuityStateRecord {
+    pub team_id: String,
+    pub member_id: String,
+    pub source_run_id: String,
+    pub source_session_id: Option<String>,
+    pub summary_text: String,
+    pub history_window: Value,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,8 +169,8 @@ pub enum TeamRunResumeError {
 #[cfg(test)]
 mod tests {
     use super::{
-        TEAM_MAIN_TASK_STATUS_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
-        TeamRunResumeError,
+        TEAM_MAIN_TASK_STATUS_VALUES, TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES,
+        TEAM_STEP_STATUS_VALUES, TeamRunResumeError,
     };
 
     #[test]
@@ -166,6 +178,7 @@ mod tests {
         assert_eq!(TEAM_RUN_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_STEP_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_MAIN_TASK_STATUS_VALUES.len(), 4);
+        assert_eq!(TEAM_RUN_CONTINUITY_MODE_VALUES.len(), 2);
     }
 
     #[test]

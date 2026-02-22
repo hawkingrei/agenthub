@@ -4,8 +4,8 @@ use sqlx::Row;
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
-    TeamMainTaskRecord, TeamMainTaskStatus, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamStepRecord, TeamStepStatus,
+    TeamMainTaskRecord, TeamMainTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord,
+    TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
 
 pub(super) fn parse_team_definition_row(
@@ -127,6 +127,22 @@ pub(super) fn parse_team_actor_message_row(
         status: team_actor_message_status_from_str(&status_raw),
         created_at: row.get("created_at"),
         delivered_at: row.try_get("delivered_at")?,
+    })
+}
+
+pub(super) fn parse_team_member_continuity_state_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamMemberContinuityStateRecord> {
+    let history_window_json: String = row.get("history_window_json");
+    let history_window: Value = serde_json::from_str(&history_window_json)?;
+    Ok(TeamMemberContinuityStateRecord {
+        team_id: row.get("team_id"),
+        member_id: row.get("member_id"),
+        source_run_id: row.get("source_run_id"),
+        source_session_id: row.try_get("source_session_id")?,
+        summary_text: row.get("summary_text"),
+        history_window,
+        updated_at: row.get("updated_at"),
     })
 }
 

@@ -605,6 +605,7 @@ fn parse_start_actor_runtime_context(
         member_role: actor_runtime
             .member_role
             .map(|value| value.trim().to_string()),
+        continuity: None,
     }))
 }
 

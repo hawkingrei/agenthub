@@ -17,6 +17,19 @@ fn normalize_member_role(role: Option<&str>) -> Option<&str> {
     role.map(str::trim).filter(|value| !value.is_empty())
 }
 
+pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillContext>) -> bool {
+    matches!(
+        context.and_then(|item| normalize_member_role(item.member_role.as_deref())),
+        Some("leader" | "worker")
+    )
+}
+
+pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
+    name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_WORKER_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_DELIBERATION_SKILL_NAME)
+}
+
 pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
     let role = normalize_member_role(context.member_role.as_deref());
     let mut out = Vec::new();
@@ -52,7 +65,9 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
 
 #[cfg(test)]
 mod tests {
-    use super::build_team_role_skills;
+    use super::{
+        build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
+    };
     use crate::AcpActorSkillContext;
 
     fn context_with_role(role: Option<&str>) -> AcpActorSkillContext {
@@ -62,6 +77,7 @@ mod tests {
             default_channel: "default".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: role.map(str::to_string),
+            continuity: None,
         }
     }
 
@@ -95,5 +111,31 @@ mod tests {
     fn build_team_role_skills_skips_unknown_role() {
         assert!(build_team_role_skills(&context_with_role(Some("observer"))).is_empty());
         assert!(build_team_role_skills(&context_with_role(None)).is_empty());
+    }
+
+    #[test]
+    fn should_attach_team_role_skills_checks_supported_roles() {
+        assert!(should_attach_team_role_skills(Some(&context_with_role(
+            Some("leader")
+        ))));
+        assert!(should_attach_team_role_skills(Some(&context_with_role(
+            Some("worker")
+        ))));
+        assert!(!should_attach_team_role_skills(Some(&context_with_role(
+            Some("observer")
+        ))));
+        assert!(!should_attach_team_role_skills(Some(&context_with_role(
+            None
+        ))));
+        assert!(!should_attach_team_role_skills(None));
+    }
+
+    #[test]
+    fn is_reserved_team_role_skill_matches_expected_names() {
+        assert!(is_reserved_team_role_skill("team-leader-orchestrator"));
+        assert!(is_reserved_team_role_skill("team-worker-executor"));
+        assert!(is_reserved_team_role_skill("team-deliberation-rules"));
+        assert!(is_reserved_team_role_skill("TEAM-WORKER-EXECUTOR"));
+        assert!(!is_reserved_team_role_skill("custom-skill"));
     }
 }

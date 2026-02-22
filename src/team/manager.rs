@@ -17,19 +17,25 @@ pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
     parse_team_conversation_row, parse_team_definition_row, parse_team_main_task_row,
-    parse_team_run_row, parse_team_step_row, team_main_task_status_to_str, team_run_status_to_str,
-    team_step_status_to_str,
+    parse_team_member_continuity_state_row, parse_team_run_row, parse_team_step_row,
+    team_main_task_status_to_str, team_run_status_to_str, team_step_status_to_str,
 };
 use super::{
-    TeamActorMessageRecord, TeamConversationMessageRecord, TeamConversationRecord,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamMainTaskRecord, TeamMainTaskStatus,
-    TeamRunEventRecord, TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
+    TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
+    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamMainTaskRecord,
+    TeamMainTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
+    TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
 
 #[derive(Clone)]
 pub struct TeamManager {
     db: SqlitePool,
 }
+
+const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
+const CONTINUITY_MODE_RESET: &str = "reset";
+const CONTINUITY_MAX_SUMMARY_CHARS: usize = 2048;
+const CONTINUITY_MAX_HISTORY_CHARS: usize = 4096;
 
 impl TeamManager {
     pub fn new(db: SqlitePool) -> Self {
@@ -190,6 +196,11 @@ impl TeamManager {
         .bind(team_id)
         .execute(&mut *tx)
         .await?;
+
+        sqlx::query("DELETE FROM team_member_continuity_state WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
 
         sqlx::query("DELETE FROM team_runs WHERE team_id = ?1")
             .bind(team_id)
@@ -448,7 +459,9 @@ impl TeamManager {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = Utc::now().timestamp();
         let status = TeamRunStatus::Submitted;
+        let input = normalize_run_input_continuity(input);
         let input_json = serde_json::to_string(&input)?;
+        let continuity_mode = extract_continuity_mode_from_input(&input);
 
         let mut tx = self.db.begin().await?;
         sqlx::query(
@@ -470,6 +483,7 @@ impl TeamManager {
             "team_id": team_id,
             "context_id": &resolved_context_id,
             "status": team_run_status_to_str(&status),
+            "continuity_mode": continuity_mode,
         });
         sqlx::query(
             r#"
@@ -713,6 +727,72 @@ impl TeamManager {
         .await?;
 
         Ok(row.map(|row| row.get("status")))
+    }
+
+    pub async fn get_member_continuity_state(
+        &self,
+        team_id: &str,
+        member_id: &str,
+    ) -> anyhow::Result<Option<TeamMemberContinuityStateRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                team_id,
+                member_id,
+                source_run_id,
+                source_session_id,
+                summary_text,
+                history_window_json,
+                updated_at
+            FROM team_member_continuity_state
+            WHERE team_id = ?1 AND member_id = ?2
+            "#,
+        )
+        .bind(team_id)
+        .bind(member_id)
+        .fetch_optional(&self.db)
+        .await?;
+        row.as_ref()
+            .map(parse_team_member_continuity_state_row)
+            .transpose()
+    }
+
+    async fn upsert_member_continuity_state_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        continuity_state: &TeamMemberContinuityStateRecord,
+    ) -> anyhow::Result<()> {
+        let history_window_json = serde_json::to_string(&continuity_state.history_window)?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_member_continuity_state (
+                team_id,
+                member_id,
+                source_run_id,
+                source_session_id,
+                summary_text,
+                history_window_json,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(team_id, member_id)
+            DO UPDATE SET
+                source_run_id = excluded.source_run_id,
+                source_session_id = excluded.source_session_id,
+                summary_text = excluded.summary_text,
+                history_window_json = excluded.history_window_json,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(&continuity_state.team_id)
+        .bind(&continuity_state.member_id)
+        .bind(&continuity_state.source_run_id)
+        .bind(continuity_state.source_session_id.as_deref())
+        .bind(&continuity_state.summary_text)
+        .bind(history_window_json)
+        .bind(continuity_state.updated_at)
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -1103,6 +1183,57 @@ impl TeamManager {
             .bind("step_completed")
             .bind(now)
             .bind(payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+            let run_meta_row = sqlx::query(
+                r#"
+                SELECT team_id, input_json
+                FROM team_runs
+                WHERE id = ?1
+                "#,
+            )
+            .bind(&step.run_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            let team_id: String = run_meta_row.get("team_id");
+            let run_input_json: String = run_meta_row.get("input_json");
+            let run_input: Value =
+                serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
+            let continuity_mode = extract_continuity_mode_from_input(&run_input);
+            let (summary_text, history_window) = build_continuity_snapshot(step.output.as_ref());
+            let continuity_state = TeamMemberContinuityStateRecord {
+                team_id: team_id.clone(),
+                member_id: step.member_id.clone(),
+                source_run_id: step.run_id.clone(),
+                source_session_id: step.remote_task_id.clone(),
+                summary_text,
+                history_window,
+                updated_at: now,
+            };
+            Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
+
+            let continuity_payload = serde_json::json!({
+                "team_id": continuity_state.team_id,
+                "member_id": continuity_state.member_id,
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "mode": continuity_mode,
+                "source_run_id": continuity_state.source_run_id,
+                "source_session_id": continuity_state.source_session_id,
+                "summary_chars": continuity_state.summary_text.chars().count(),
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("continuity_state_updated")
+            .bind(now)
+            .bind(continuity_payload.to_string())
             .execute(&mut *tx)
             .await?;
 
@@ -1573,6 +1704,112 @@ impl TeamManager {
         }
         Ok(counts)
     }
+}
+
+fn normalize_run_input_continuity(mut input: Value) -> Value {
+    let Some(input_obj) = input.as_object_mut() else {
+        return input;
+    };
+    let continuity_value = input_obj
+        .entry("continuity".to_string())
+        .or_insert_with(|| serde_json::json!({ "mode": CONTINUITY_MODE_DEFAULT }));
+    if !continuity_value.is_object() {
+        *continuity_value = serde_json::json!({ "mode": CONTINUITY_MODE_DEFAULT });
+        return input;
+    }
+    let continuity_obj = continuity_value
+        .as_object_mut()
+        .expect("continuity object must be object");
+    let mode = continuity_obj
+        .get("mode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(CONTINUITY_MODE_DEFAULT);
+    let normalized_mode = if TEAM_RUN_CONTINUITY_MODE_VALUES.contains(&mode) {
+        mode
+    } else {
+        CONTINUITY_MODE_DEFAULT
+    };
+    continuity_obj.insert(
+        "mode".to_string(),
+        Value::String(normalized_mode.to_string()),
+    );
+
+    if let Some(raw) = continuity_obj
+        .get("max_history_items")
+        .and_then(Value::as_i64)
+    {
+        if !(1..=200).contains(&raw) {
+            continuity_obj.remove("max_history_items");
+        }
+    } else {
+        continuity_obj.remove("max_history_items");
+    }
+
+    if let Some(raw) = continuity_obj.get("max_chars").and_then(Value::as_i64) {
+        if !(256..=20000).contains(&raw) {
+            continuity_obj.remove("max_chars");
+        }
+    } else {
+        continuity_obj.remove("max_chars");
+    }
+
+    input
+}
+
+fn extract_continuity_mode_from_input(input: &Value) -> String {
+    let Some(input_obj) = input.as_object() else {
+        return CONTINUITY_MODE_DEFAULT.to_string();
+    };
+    let mode = input_obj
+        .get("continuity")
+        .and_then(Value::as_object)
+        .and_then(|continuity| continuity.get("mode"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(CONTINUITY_MODE_DEFAULT);
+    if mode == CONTINUITY_MODE_RESET {
+        CONTINUITY_MODE_RESET.to_string()
+    } else if TEAM_RUN_CONTINUITY_MODE_VALUES.contains(&mode) {
+        mode.to_string()
+    } else {
+        CONTINUITY_MODE_DEFAULT.to_string()
+    }
+}
+
+fn build_continuity_snapshot(output: Option<&Value>) -> (String, Value) {
+    let redacted_output = output
+        .map(redact_sensitive_json)
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let summary_seed = redacted_output
+        .as_object()
+        .and_then(|obj| obj.get("summary"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| redacted_output.as_str().map(str::to_string))
+        .unwrap_or_else(|| redacted_output.to_string());
+    let summary_text =
+        truncate_continuity_text(summary_seed.as_str(), CONTINUITY_MAX_SUMMARY_CHARS);
+
+    let output_excerpt_seed = redacted_output.to_string();
+    let history_window = serde_json::json!({
+        "schema_version": 1,
+        "output_excerpt": truncate_continuity_text(
+            output_excerpt_seed.as_str(),
+            CONTINUITY_MAX_HISTORY_CHARS
+        ),
+    });
+    (summary_text, history_window)
+}
+
+fn truncate_continuity_text(raw: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    raw.chars().take(max_chars).collect::<String>()
 }
 
 fn redact_sensitive_json(value: &Value) -> Value {

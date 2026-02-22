@@ -350,6 +350,25 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_member_continuity_state (
+            team_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            source_run_id TEXT NOT NULL,
+            source_session_id TEXT,
+            summary_text TEXT NOT NULL,
+            history_window_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (team_id, member_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(source_run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -548,6 +567,20 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_actor_messages_remote_pending: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_member_continuity_state_team_updated
+        ON team_member_continuity_state(team_id, updated_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_member_continuity_state_team_updated: {}",
             err
         );
     }
@@ -811,14 +844,15 @@ mod tests {
                 'team_main_tasks',
                 'team_conversations',
                 'team_conversation_messages',
-                'team_actor_messages'
+                'team_actor_messages',
+                'team_member_continuity_state'
               )
             "#,
         )
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 8);
+        assert_eq!(table_count, 9);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)

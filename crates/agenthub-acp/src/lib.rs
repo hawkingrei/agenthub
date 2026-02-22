@@ -32,7 +32,9 @@ use agenthub_acp_core::{
     AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
     filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
-use team_role_skills::build_team_role_skills;
+use team_role_skills::{
+    build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
+};
 
 const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
@@ -44,12 +46,22 @@ const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 #[derive(Debug, Clone)]
+pub struct AcpActorContinuityEnvelope {
+    pub mode: String,
+    pub source_run_id: String,
+    pub source_session_id: Option<String>,
+    pub summary_text: String,
+    pub history_window: Value,
+}
+
+#[derive(Debug, Clone)]
 pub struct AcpActorSkillContext {
     pub run_id: String,
     pub actor_id: String,
     pub default_channel: String,
     pub actor_cli_path: String,
     pub member_role: Option<String>,
+    pub continuity: Option<AcpActorContinuityEnvelope>,
 }
 
 pub struct SpawnAcpSessionRequest {
@@ -678,8 +690,11 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     std::thread::spawn(move || {
         let mcp_servers = load_mcp_servers(actor_context.as_ref());
         let mut skills = load_skills(&safe_paths);
+        skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
         if let Some(ctx) = actor_context.as_ref() {
-            skills.extend(build_team_role_skills(ctx));
+            if should_attach_team_role_skills(Some(ctx)) {
+                skills.extend(build_team_role_skills(ctx));
+            }
             skills.push(build_actor_runtime_skill(ctx));
         }
         let skills = dedupe_skills(skills);
@@ -1286,6 +1301,7 @@ mod tests {
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
+            continuity: None,
         }
     }
 

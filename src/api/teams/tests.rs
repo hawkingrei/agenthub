@@ -427,6 +427,26 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_actor_messages idempotency index");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_member_continuity_state (
+            team_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            source_run_id TEXT NOT NULL,
+            source_session_id TEXT,
+            summary_text TEXT NOT NULL,
+            history_window_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (team_id, member_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(source_run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_member_continuity_state");
 }
 
 async fn auth_headers(state: &AppState) -> HeaderMap {
@@ -529,6 +549,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         default_channel: "coordination".to_string(),
         actor_cli_path: actor_cli_path.clone(),
         member_role: Some("leader".to_string()),
+        continuity: None,
     };
 
     let session_id = state
