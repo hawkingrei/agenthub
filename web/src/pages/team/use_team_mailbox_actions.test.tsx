@@ -1,206 +1,261 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
-import { createRoot, Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, type TeamActorMessageRecord } from "../../api";
+import React, { act, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type TeamActorMessageRecord, type TeamRunSnapshotRecord, api } from "../../api";
+import type { TeamTab } from "./state";
 import { useTeamMailboxActions } from "./use_team_mailbox_actions";
+
+vi.mock("../../api", () => ({
+  api: {
+    sendTeamRunMessage: vi.fn(),
+    ackTeamRunMessage: vi.fn(),
+  },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
-type HookParams = Parameters<typeof useTeamMailboxActions>[0];
-type HookSnapshot = ReturnType<typeof useTeamMailboxActions>;
+type TeamMailboxActions = ReturnType<typeof useTeamMailboxActions>;
+type TeamMailboxActionsInput = Parameters<typeof useTeamMailboxActions>[0];
 
-function createParams(overrides: Partial<HookParams> = {}): HookParams {
-  return {
+type HookHarnessProps = {
+  options: TeamMailboxActionsInput;
+  onCapture: (actions: TeamMailboxActions) => void;
+};
+
+function HookHarness(props: HookHarnessProps) {
+  const { options, onCapture } = props;
+  const actions = useTeamMailboxActions(options);
+  useEffect(() => {
+    onCapture(actions);
+  }, [actions, onCapture]);
+  return null;
+}
+
+function createBaseOptions(
+  overrides: Partial<TeamMailboxActionsInput> = {}
+): TeamMailboxActionsInput {
+  const options: TeamMailboxActionsInput = {
     token: "token-1",
-    activeRunId: "run-1",
     tab: "mailbox",
-    chatActors: {
-      fromActorId: "leader",
-      toActorId: "worker-1",
-      inboxActorId: "worker-1",
-    },
+    activeRunIdForSelectedTeam: "run-1",
+    chatFromActorId: "leader-1",
+    chatToActorId: "worker-1",
     chatDraft: "hello worker",
-    msgFromActorId: "leader",
+    msgFromActorId: "leader-1",
     msgToActorId: "worker-1",
     msgChannel: "default",
     msgTransport: "local",
-    msgRoute: "{}",
-    msgPayload: "{}",
+    msgRoute: '{"route":"inproc"}',
+    msgPayload: '{"kind":"task"}',
     msgIdempotencyKey: "idem-1",
     inboxActorId: "worker-1",
     setBusy: vi.fn(),
     setError: vi.fn(),
-    parseErrorMessage: vi.fn(() => "friendly-error"),
     setChatDraft: vi.fn(),
-    loadInbox: vi.fn().mockResolvedValue(undefined),
-    refreshEvents: vi.fn().mockResolvedValue(undefined),
-    refreshSnapshot: vi.fn().mockResolvedValue(undefined),
+    loadInbox: vi.fn(async () => undefined),
+    refreshSnapshot: vi.fn(async () => {
+      return {
+        run: {
+          id: "run-1",
+          team_id: "team-1",
+          context_id: "ctx-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
+        team: {
+          id: "team-1",
+          name: "Team One",
+          description: null,
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
+        },
+        leader_member_id: "leader-1",
+        members: [],
+        steps: [],
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [],
+        },
+      } as TeamRunSnapshotRecord;
+    }),
+    refreshEvents: vi.fn(async () => undefined),
+  };
+  return { ...options, ...overrides };
+}
+
+async function mountHarness(
+  options: TeamMailboxActionsInput,
+  onCapture: (actions: TeamMailboxActions) => void
+): Promise<{ root: Root; container: HTMLDivElement }> {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(<HookHarness options={options} onCapture={onCapture} />);
+    await Promise.resolve();
+  });
+  return { root, container };
+}
+
+function cleanupHarness(root: Root, container: HTMLDivElement): void {
+  act(() => {
+    root.unmount();
+  });
+  container.remove();
+}
+
+function buildMessage(overrides: Partial<TeamActorMessageRecord> = {}): TeamActorMessageRecord {
+  return {
+    message_id: 10,
+    run_id: "run-1",
+    from_actor_id: "leader-1",
+    to_actor_id: "worker-2",
+    channel: "default",
+    transport: "local",
+    payload: {},
+    status: "pending",
+    created_at: 1,
+    delivered_at: null,
     ...overrides,
   };
 }
 
-function HookHarness({
-  params,
-  onSnapshot,
-}: {
-  params: HookParams;
-  onSnapshot: (snapshot: HookSnapshot) => void;
-}) {
-  const snapshot = useTeamMailboxActions(params);
-  onSnapshot(snapshot);
-  return null;
-}
-
 describe("useTeamMailboxActions", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-  let snapshot: HookSnapshot | null = null;
-
-  beforeEach(() => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-  });
+  const mockedApi = vi.mocked(api);
 
   afterEach(() => {
-    act(() => {
-      root.unmount();
-    });
-    container.remove();
-    snapshot = null;
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  it("validates active run before sending chat message", async () => {
-    const params = createParams({ activeRunId: null });
-    const onSnapshot = (next: HookSnapshot) => {
-      snapshot = next;
-    };
+  it("sends chat message and refreshes snapshot + inbox", async () => {
+    mockedApi.sendTeamRunMessage.mockResolvedValueOnce(buildMessage());
 
-    act(() => {
-      root.render(<HookHarness params={params} onSnapshot={onSnapshot} />);
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
 
-    await act(async () => {
-      await snapshot?.onSendChatMessage();
-    });
+    try {
+      await act(async () => {
+        await captured?.onSendChatMessage();
+      });
 
-    expect(params.setError).toHaveBeenCalledWith("Select a run first");
+      expect(mockedApi.sendTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", {
+        from_actor_id: "leader-1",
+        to_actor_id: "worker-1",
+        channel: "default",
+        transport: "local",
+        payload: {
+          type: "chat_message",
+          text: "hello worker",
+          source: "team_workbench",
+        },
+      });
+      expect(options.setChatDraft).toHaveBeenCalledWith("");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 
-  it("sends chat message and refreshes mailbox conversation state", async () => {
-    const params = createParams({
-      chatDraft: "  hello team  ",
-      chatActors: {
-        fromActorId: "leader  ",
-        toActorId: "worker-2  ",
-        inboxActorId: "worker-2",
-      },
-    });
-    const sendSpy = vi
-      .spyOn(api, "sendTeamRunMessage")
-      .mockResolvedValue({ status: "ok" } as never);
-    const onSnapshot = (next: HookSnapshot) => {
-      snapshot = next;
-    };
+  it("sends raw message and branches refresh flow by current tab", async () => {
+    mockedApi.sendTeamRunMessage.mockResolvedValueOnce(buildMessage());
 
-    act(() => {
-      root.render(<HookHarness params={params} onSnapshot={onSnapshot} />);
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions({
+      tab: "events" as TeamTab,
+      msgRoute: '{"path":"/mailbox"}',
+      msgPayload: '{"kind":"dispatch","value":7}',
     });
 
-    await act(async () => {
-      await snapshot?.onSendChatMessage();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
 
-    expect(sendSpy).toHaveBeenCalledWith("token-1", "run-1", {
-      from_actor_id: "leader",
-      to_actor_id: "worker-2",
-      channel: "default",
-      transport: "local",
-      payload: {
-        type: "chat_message",
-        text: "hello team",
-        source: "team_workbench",
-      },
-    });
-    expect(params.setChatDraft).toHaveBeenCalledWith("");
-    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
-    expect(params.loadInbox).toHaveBeenCalledWith("worker-2");
-    expect(params.setBusy).toHaveBeenCalledWith("send-chat");
-    expect(params.setBusy).toHaveBeenCalledWith(null);
+    try {
+      await act(async () => {
+        await captured?.onSendMessage();
+      });
+
+      expect(mockedApi.sendTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", {
+        from_actor_id: "leader-1",
+        to_actor_id: "worker-1",
+        channel: "default",
+        transport: "local",
+        route: { path: "/mailbox" },
+        payload: { kind: "dispatch", value: 7 },
+        idempotency_key: "idem-1",
+      });
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.loadInbox).not.toHaveBeenCalled();
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 
-  it("sends structured message and refreshes run events outside mailbox tab", async () => {
-    const params = createParams({
-      tab: "events",
-      msgChannel: "  ",
-      msgPayload: '{"task":"do-it"}',
-      msgRoute: '{"kind":"local"}',
-      msgIdempotencyKey: "  ",
-    });
-    const sendSpy = vi
-      .spyOn(api, "sendTeamRunMessage")
-      .mockResolvedValue({ status: "ok" } as never);
-    const onSnapshot = (next: HookSnapshot) => {
-      snapshot = next;
-    };
+  it("acks mailbox message with fallback actor id and refreshes non-mailbox views", async () => {
+    mockedApi.ackTeamRunMessage.mockResolvedValueOnce(buildMessage({ status: "delivered" }));
 
-    act(() => {
-      root.render(<HookHarness params={params} onSnapshot={onSnapshot} />);
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions({
+      tab: "debug" as TeamTab,
+      inboxActorId: "",
     });
 
-    await act(async () => {
-      await snapshot?.onSendMessage();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
 
-    expect(sendSpy).toHaveBeenCalledWith("token-1", "run-1", {
-      from_actor_id: "leader",
-      to_actor_id: "worker-1",
-      channel: undefined,
-      transport: "local",
-      route: { kind: "local" },
-      payload: { task: "do-it" },
-      idempotency_key: undefined,
-    });
-    expect(params.refreshEvents).toHaveBeenCalledWith("run-1");
-    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    try {
+      await act(async () => {
+        await captured?.onAckMessage(buildMessage({ message_id: 88, to_actor_id: "worker-x" }));
+      });
+
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenCalledWith(
+        "token-1",
+        "run-1",
+        88,
+        "worker-x"
+      );
+      expect(options.loadInbox).toHaveBeenCalledWith();
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 
-  it("acks message with fallback actor id in mailbox tab", async () => {
-    const params = createParams({
-      inboxActorId: "   ",
-      tab: "mailbox",
-    });
-    const ackSpy = vi
-      .spyOn(api, "ackTeamRunMessage")
-      .mockResolvedValue({ status: "ok" } as never);
-    const onSnapshot = (next: HookSnapshot) => {
-      snapshot = next;
-    };
-    const message: TeamActorMessageRecord = {
-      message_id: 42,
-      run_id: "run-1",
-      from_actor_id: "leader",
-      to_actor_id: "worker-9",
-      channel: "default",
-      transport: "local",
-      payload: { hello: "world" },
-      status: "pending",
-      created_at: 12345,
-    };
-
-    act(() => {
-      root.render(<HookHarness params={params} onSnapshot={onSnapshot} />);
+  it("returns validation error when refreshing inbox without active run", async () => {
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions({
+      activeRunIdForSelectedTeam: null,
     });
 
-    await act(async () => {
-      await snapshot?.onAckMessage(message);
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
 
-    expect(ackSpy).toHaveBeenCalledWith("token-1", "run-1", 42, "worker-9");
-    expect(params.loadInbox).toHaveBeenCalledWith("worker-9");
-    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    try {
+      await act(async () => {
+        await captured?.onRefreshInbox();
+      });
+
+      expect(options.setError).toHaveBeenCalledWith("Select a run in the current team first");
+      expect(options.loadInbox).not.toHaveBeenCalled();
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 });

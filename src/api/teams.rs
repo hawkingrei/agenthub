@@ -1,9 +1,16 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+mod errors;
+
+use self::errors::{
+    map_actor_service_api_error, map_create_team_error, map_not_found_error, map_resume_run_error,
+    map_submit_step_error, map_team_internal_error,
+};
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
-    ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
+    parse_actor_transport,
 };
+use agenthub_team_prompts::default_team_prompt_for_role;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -12,14 +19,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::Error as SqlxError;
 
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
+    TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
+    TeamDefinitionRecord, TeamMainTaskRecord, TeamRunEventRecord, TeamRunRecord, TeamStepRecord,
     TeamStepStatus,
 };
 
@@ -28,39 +35,6 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_PROMPT: &str = "You are the Team Leader in AgentHub.\n\
-Role policy:\n\
-- You are an architect/reviewer/efficiency owner. Do not implement feature code directly.\n\
-- You own technical research and option comparison before delegation, including assumptions, trade-offs, and risks.\n\
-- Your direct edits are limited to coordination artifacts (for example `AGENTS.md`) and review notes.\n\
-- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.\n\
-- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.\n\
-Workflow:\n\
-1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.\n\
-2. Delegate concrete, testable tasks to workers via actor mailbox.\n\
-3. Run periodic sync checkpoints with workers and align assumptions/conflicts.\n\
-4. Pull inbox regularly and acknowledge consumed messages.\n\
-5. Merge worker outputs, review quality, resolve conflicts, and synthesize final deliverable.\n\
-6. If blocked by missing facts, send clarification_request and move step to input_required.\n\
-Structured payload contracts:\n\
-- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}\n\
-- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}\n\
-- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"skills_add\":[\"...\"]}";
-const DEFAULT_TEAM_WORKER_PROMPT: &str = "You are a Worker in an AgentHub team.\n\
-Your job is to execute assignments from the team leader and report results.\n\
-Workspace policy:\n\
-- Work in your own git worktree only. Never share the same worktree with other workers.\n\
-- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n\
-- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n\
-- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n\
-Workflow:\n\
-1. Pull inbox and find the latest task from leader.\n\
-2. Acknowledge messages after reading.\n\
-3. Execute the task with minimal and auditable changes.\n\
-4. Send result with evidence back to leader via actor mailbox.\n\
-5. If blocked, send blocker details and a concrete next action.\n\
-Use worker_status payload contract:\n\
-{\"type\":\"worker_status\",\"status\":\"done|blocked\",\"result\":\"...\",\"evidence\":[\"...\"],\"next_action\":\"...\"}";
 const DEFAULT_TEAM_LEADER_SKILLS: [&str; 3] = [
     "agenthub-actor-runtime",
     "team-leader-orchestrator",
@@ -74,6 +48,8 @@ const DEFAULT_TEAM_WORKER_SKILLS: [&str; 3] = [
 const REQUIRED_TEAM_LEADER_SKILLS: [&str; 2] =
     ["agenthub-actor-runtime", "team-leader-orchestrator"];
 const REQUIRED_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
+const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
+const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -86,6 +62,34 @@ pub struct CreateTeamRequest {
 pub struct CreateTeamRunRequest {
     pub context_id: Option<String>,
     pub input: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTeamMainTaskRequest {
+    pub title: String,
+    pub created_by_actor_id: Option<String>,
+    pub context: Option<Value>,
+    pub conversation_mode: Option<String>,
+    pub topic: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListTeamMainTasksQuery {
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendTeamMainTaskMessageRequest {
+    pub from_actor_id: String,
+    pub to_actor_id: Option<String>,
+    pub route: Option<String>,
+    pub payload: Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListTeamMainTaskMessagesQuery {
+    pub limit: Option<i64>,
+    pub before_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,10 +201,25 @@ pub struct TeamMailboxSnapshot {
     pub recent_messages: Vec<TeamActorMessageRecord>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TeamMainTaskDetailResponse {
+    pub task: TeamMainTaskRecord,
+    pub conversation: TeamConversationRecord,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team).delete(delete_team))
+        .route(
+            "/:id/main_tasks",
+            post(create_team_main_task).get(list_team_main_tasks),
+        )
+        .route("/:id/main_tasks/:main_task_id", get(get_team_main_task))
+        .route(
+            "/:id/main_tasks/:main_task_id/messages",
+            post(send_team_main_task_message).get(list_team_main_task_messages),
+        )
         .route("/:id/runs", post(create_team_run).get(list_team_runs))
         .route("/runs/:run_id", get(get_team_run))
         .route("/runs/:run_id/cancel", post(cancel_team_run))
@@ -329,6 +348,171 @@ async fn delete_team(
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
     Ok(Json(team))
+}
+
+async fn create_team_main_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<CreateTeamMainTaskRequest>,
+) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let title = payload.title.trim().to_string();
+    if title.is_empty() {
+        return Err(ApiError::bad_request("title is required"));
+    }
+    let created_by_actor_id = payload
+        .created_by_actor_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("user")
+        .to_string();
+    let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
+    let (task, conversation) = state
+        .teams
+        .create_main_task(
+            &team_id,
+            &title,
+            &created_by_actor_id,
+            payload.context.unwrap_or_else(|| serde_json::json!({})),
+            &conversation_mode,
+            payload.topic.as_deref(),
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(TeamMainTaskDetailResponse { task, conversation }))
+}
+
+async fn list_team_main_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Query(query): Query<ListTeamMainTasksQuery>,
+) -> Result<Json<Vec<TeamMainTaskRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let tasks = state
+        .teams
+        .list_main_tasks(&team_id, query.limit.unwrap_or(100).clamp(1, 500))
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(tasks))
+}
+
+async fn get_team_main_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, main_task_id)): Path<(String, String)>,
+) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let task = state
+        .teams
+        .get_main_task(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "main task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("main task not found"));
+    }
+    let conversation = state
+        .teams
+        .get_main_task_conversation(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "conversation not found"))?;
+    Ok(Json(TeamMainTaskDetailResponse { task, conversation }))
+}
+
+async fn send_team_main_task_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, main_task_id)): Path<(String, String)>,
+    Json(payload): Json<SendTeamMainTaskMessageRequest>,
+) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let task = state
+        .teams
+        .get_main_task(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "main task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("main task not found"));
+    }
+    let from_actor_id = normalize_required_field(payload.from_actor_id, "from_actor_id")?;
+    let to_actor_id = payload
+        .to_actor_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let route = normalize_conversation_route(payload.route.as_deref())?;
+    if route == "to_member" && to_actor_id.is_none() {
+        return Err(ApiError::bad_request(
+            "to_actor_id is required when route=to_member",
+        ));
+    }
+    let message = state
+        .teams
+        .append_main_task_conversation_message(
+            &main_task_id,
+            &from_actor_id,
+            to_actor_id.as_deref(),
+            &route,
+            payload.payload,
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(message))
+}
+
+async fn list_team_main_task_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, main_task_id)): Path<(String, String)>,
+    Query(query): Query<ListTeamMainTaskMessagesQuery>,
+) -> Result<Json<Vec<TeamConversationMessageRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let task = state
+        .teams
+        .get_main_task(&main_task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "main task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("main task not found"));
+    }
+    let messages = state
+        .teams
+        .list_main_task_conversation_messages(
+            &main_task_id,
+            query.limit.unwrap_or(200).clamp(1, 500),
+            query.before_id,
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(messages))
 }
 
 async fn create_team_run(
@@ -1311,85 +1495,6 @@ async fn ensure_step_in_run(state: &AppState, run_id: &str, step_id: &str) -> Re
     Ok(())
 }
 
-fn map_create_team_error(err: anyhow::Error) -> ApiError {
-    if is_unique_team_name_violation(&err) {
-        return ApiError::conflict("team name already exists");
-    }
-    map_team_internal_error(err)
-}
-
-fn map_submit_step_error(err: anyhow::Error) -> ApiError {
-    if is_unique_step_attempt_violation(&err) {
-        return ApiError::conflict("step already exists for run");
-    }
-    map_team_internal_error(err)
-}
-
-fn map_actor_service_api_error(err: ActorServiceError) -> ApiError {
-    match err.code {
-        ActorServiceErrorCode::BadRequest | ActorServiceErrorCode::UnprocessableEntity => {
-            ApiError::bad_request(&err.message)
-        }
-        ActorServiceErrorCode::Unauthorized | ActorServiceErrorCode::Forbidden => {
-            ApiError::unauthorized(&err.message)
-        }
-        ActorServiceErrorCode::NotFound | ActorServiceErrorCode::Gone => {
-            ApiError::not_found(&err.message)
-        }
-        ActorServiceErrorCode::Conflict => ApiError::conflict(&err.message),
-        ActorServiceErrorCode::TooManyRequests | ActorServiceErrorCode::Internal => {
-            map_team_internal_error(anyhow::anyhow!("{}", err.message))
-        }
-    }
-}
-
-fn map_not_found_error(err: anyhow::Error, msg: &str) -> ApiError {
-    if is_row_not_found(&err) {
-        return ApiError::not_found(msg);
-    }
-    map_team_internal_error(err)
-}
-
-fn map_resume_run_error(err: anyhow::Error) -> ApiError {
-    if err.to_string().contains("completed run cannot be resumed") {
-        return ApiError::conflict("completed run cannot be resumed; use restart");
-    }
-    map_not_found_error(err, "run not found")
-}
-
-fn map_team_internal_error(err: anyhow::Error) -> ApiError {
-    tracing::error!("team api internal error: {}", err);
-    ApiError::from(anyhow::anyhow!("internal server error"))
-}
-
-fn is_row_not_found(err: &anyhow::Error) -> bool {
-    matches!(
-        err.downcast_ref::<SqlxError>(),
-        Some(SqlxError::RowNotFound)
-    )
-}
-
-fn is_unique_team_name_violation(err: &anyhow::Error) -> bool {
-    is_unique_violation_for(err, "team_definitions.name")
-}
-
-fn is_unique_step_attempt_violation(err: &anyhow::Error) -> bool {
-    is_unique_violation_for(
-        err,
-        "team_steps.run_id, team_steps.step_key, team_steps.attempt",
-    )
-}
-
-fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
-    match err.downcast_ref::<SqlxError>() {
-        Some(SqlxError::Database(db_err)) => {
-            db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE_CODE)
-                && db_err.message().contains(constraint)
-        }
-        _ => false,
-    }
-}
-
 fn parse_depends_on_keys(depends_on: Option<Vec<String>>) -> Result<Vec<String>, ApiError> {
     let depends_on = depends_on.unwrap_or_default();
     let mut seen = HashSet::with_capacity(depends_on.len());
@@ -1464,6 +1569,43 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
     Err(ApiError::bad_request(&format!(
         "status must be one of: {}",
         TEAM_RUN_STATUS_VALUES.join(", ")
+    )))
+}
+
+fn normalize_conversation_mode(value: Option<&str>) -> Result<String, ApiError> {
+    normalize_enum_value(
+        value,
+        "conversation_mode",
+        &TEAM_CONVERSATION_MODE_VALUES,
+        "group_chat",
+    )
+}
+
+fn normalize_conversation_route(value: Option<&str>) -> Result<String, ApiError> {
+    normalize_enum_value(
+        value,
+        "route",
+        &TEAM_CONVERSATION_ROUTE_VALUES,
+        "group_chat",
+    )
+}
+
+fn normalize_enum_value(
+    value: Option<&str>,
+    field_name: &str,
+    allowed_values: &[&str],
+    default_value: &str,
+) -> Result<String, ApiError> {
+    let value = value
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .unwrap_or(default_value);
+    if allowed_values.contains(&value) {
+        return Ok(value.to_string());
+    }
+    Err(ApiError::bad_request(&format!(
+        "{field_name} must be one of: {}",
+        allowed_values.join(", ")
     )))
 }
 
@@ -1620,15 +1762,10 @@ fn inject_team_spec_defaults(
                 continue;
             };
 
-            let is_leader = member_spec.role == "leader";
             if is_missing_or_null(member_obj.get("prompt")) {
                 member_obj.insert(
                     "prompt".to_string(),
-                    Value::String(if is_leader {
-                        DEFAULT_TEAM_LEADER_PROMPT.to_string()
-                    } else {
-                        DEFAULT_TEAM_WORKER_PROMPT.to_string()
-                    }),
+                    Value::String(default_team_prompt_for_role(&member_spec.role).to_string()),
                 );
             }
             let defaults = default_team_skills_for_role(&member_spec.role);

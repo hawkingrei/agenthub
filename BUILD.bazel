@@ -29,6 +29,8 @@ rust_library(
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-acp:agenthub_acp",
         "//crates/agenthub-team-actor:agenthub_team_actor",
+        "//crates/agenthub-team-domain:agenthub_team_domain",
+        "//crates/agenthub-team-prompts:agenthub_team_prompts",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )

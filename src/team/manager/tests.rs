@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::TeamManager;
 use super::codec::team_run_status_from_str;
+use super::{TeamManager, TeamRunResumeError};
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamRunStatus, TeamStepStatus,
+    TeamMainTaskStatus, TeamRunStatus, TeamStepStatus,
 };
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
@@ -108,6 +108,64 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_run_events");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_main_tasks (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_main_tasks");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_conversations (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            main_task_id TEXT NOT NULL UNIQUE,
+            mode TEXT NOT NULL,
+            topic TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_conversations");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_conversation_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            main_task_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            to_actor_id TEXT,
+            route TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
+            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_conversation_messages");
 
     sqlx::query(
         r#"
@@ -253,6 +311,75 @@ async fn create_team_and_run_records_submission_event() {
     let run_id: String = row.get("run_id");
     assert_eq!(event_type, "run_submitted");
     assert_eq!(run_id, run.id);
+}
+
+#[tokio::test]
+async fn main_task_and_conversation_messages_are_persisted_with_redaction() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "main-task-team".to_string(),
+            description: Some("team for main task persistence".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, conversation) = manager
+        .create_main_task(
+            &team.id,
+            "Investigate rollout plan",
+            "user",
+            json!({
+                "source":"ui",
+                "token":"should_not_persist",
+                "nested":{"api_key":"xyz"}
+            }),
+            "group_chat",
+            Some("kickoff"),
+        )
+        .await
+        .expect("create main task");
+    assert_eq!(task.team_id, team.id);
+    assert_eq!(task.status, TeamMainTaskStatus::Open);
+    assert_eq!(conversation.main_task_id, task.id);
+    assert_eq!(task.context["token"], json!("[redacted]"));
+    assert_eq!(task.context["nested"]["api_key"], json!("[redacted]"));
+
+    let message = manager
+        .append_main_task_conversation_message(
+            &task.id,
+            "leader",
+            Some("worker-1"),
+            "to_member",
+            json!({
+                "text":"draft changes",
+                "authorization":"Bearer abc",
+                "nested":{"secret":"top-secret"}
+            }),
+        )
+        .await
+        .expect("append message");
+    assert_eq!(message.main_task_id, task.id);
+    assert_eq!(message.payload["authorization"], json!("[redacted]"));
+    assert_eq!(message.payload["nested"]["secret"], json!("[redacted]"));
+
+    let listed = manager
+        .list_main_tasks(&team.id, 20)
+        .await
+        .expect("list main tasks");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, task.id);
+
+    let messages = manager
+        .list_main_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list conversation messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_id, message.message_id);
+    assert_eq!(messages[0].route, "to_member");
 }
 
 #[tokio::test]
@@ -1682,8 +1809,9 @@ async fn resume_run_handles_active_terminal_and_completed_statuses() {
         .resume_run(&completed_run.id)
         .await
         .expect_err("completed run should reject resume");
-    assert!(
-        err.to_string().contains("completed run cannot be resumed"),
+    assert_eq!(
+        err.downcast_ref::<TeamRunResumeError>(),
+        Some(&TeamRunResumeError::CompletedRun),
         "unexpected error: {err}"
     );
 }

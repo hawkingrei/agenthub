@@ -180,8 +180,9 @@ export function parseOptionalJson(raw: string, field: string): unknown | undefin
   }
   try {
     return JSON.parse(trimmed) as unknown;
-  } catch {
-    throw new Error(`${field} must be valid JSON`);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown parse error";
+    throw new Error(`${field} must be valid JSON (${detail})`);
   }
 }
 

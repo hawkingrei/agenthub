@@ -24,8 +24,8 @@ const AGENTS_PANEL_EXPANDED_CLASS =
   "workspace-left rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
 const AGENTS_PANEL_COLLAPSED_CLASS =
   "workspace-left collapsed rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const AGENTS_TOOLBAR_CLASS = "toolbar mb-3 flex items-center justify-between gap-2";
-const AGENTS_TOOLBAR_ACTIONS_CLASS = "toolbar-actions flex items-center gap-2";
+const AGENTS_TOOLBAR_CLASS = "mb-3 flex items-center justify-between gap-2";
+const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-2";
 const AGENTS_CREATE_BUTTON_CLASS =
   "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800";
 const AGENTS_ROW_CLASS =

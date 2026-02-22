@@ -6,6 +6,7 @@ mod tests;
 
 use std::collections::HashMap;
 
+pub use agenthub_team_domain::TeamRunResumeError;
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Row, SqlitePool};
@@ -14,12 +15,15 @@ use uuid::Uuid;
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
 use self::codec::{
-    parse_run_event_row, parse_team_actor_message_row, parse_team_definition_row,
-    parse_team_run_row, parse_team_step_row, team_run_status_to_str, team_step_status_to_str,
+    parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
+    parse_team_conversation_row, parse_team_definition_row, parse_team_main_task_row,
+    parse_team_run_row, parse_team_step_row, team_main_task_status_to_str, team_run_status_to_str,
+    team_step_status_to_str,
 };
 use super::{
-    TeamActorMessageRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamRunEventRecord,
-    TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
+    TeamActorMessageRecord, TeamConversationMessageRecord, TeamConversationRecord,
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamMainTaskRecord, TeamMainTaskStatus,
+    TeamRunEventRecord, TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
 
 #[derive(Clone)]
@@ -124,6 +128,28 @@ impl TeamManager {
 
         sqlx::query(
             r#"
+            DELETE FROM team_conversation_messages
+            WHERE conversation_id IN (
+                SELECT id FROM team_conversations WHERE team_id = ?1
+            )
+            "#,
+        )
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM team_conversations WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("DELETE FROM team_main_tasks WHERE team_id = ?1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query(
+            r#"
             DELETE FROM team_run_events
             WHERE run_id IN (
                 SELECT id FROM team_runs WHERE team_id = ?1
@@ -158,6 +184,235 @@ impl TeamManager {
 
         tx.commit().await?;
         Ok(team)
+    }
+
+    pub async fn create_main_task(
+        &self,
+        team_id: &str,
+        title: &str,
+        created_by_actor_id: &str,
+        context: Value,
+        conversation_mode: &str,
+        topic: Option<&str>,
+    ) -> anyhow::Result<(TeamMainTaskRecord, TeamConversationRecord)> {
+        let now = Utc::now().timestamp();
+        let task_id = Uuid::new_v4().to_string();
+        let conversation_id = Uuid::new_v4().to_string();
+        let status = TeamMainTaskStatus::Open;
+        let context_json = redact_sensitive_json(&context).to_string();
+        let topic = topic.map(str::trim).filter(|value| !value.is_empty());
+
+        let mut tx = self.db.begin().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_main_tasks (
+                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind(&task_id)
+        .bind(team_id)
+        .bind(title)
+        .bind(team_main_task_status_to_str(&status))
+        .bind(created_by_actor_id)
+        .bind(context_json)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id, team_id, main_task_id, mode, topic, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(&conversation_id)
+        .bind(team_id)
+        .bind(&task_id)
+        .bind(conversation_mode)
+        .bind(topic)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        let task = self.get_main_task(&task_id).await?;
+        let conversation = self.get_main_task_conversation(&task_id).await?;
+        Ok((task, conversation))
+    }
+
+    pub async fn list_main_tasks(
+        &self,
+        team_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<TeamMainTaskRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                title,
+                status,
+                created_by_actor_id,
+                context_json,
+                created_at,
+                updated_at
+            FROM team_main_tasks
+            WHERE team_id = ?1
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(team_id)
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+        let mut tasks = Vec::with_capacity(rows.len());
+        for row in rows {
+            tasks.push(parse_team_main_task_row(&row)?);
+        }
+        Ok(tasks)
+    }
+
+    pub async fn get_main_task(&self, main_task_id: &str) -> anyhow::Result<TeamMainTaskRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                title,
+                status,
+                created_by_actor_id,
+                context_json,
+                created_at,
+                updated_at
+            FROM team_main_tasks
+            WHERE id = ?1
+            "#,
+        )
+        .bind(main_task_id)
+        .fetch_one(&self.db)
+        .await?;
+        parse_team_main_task_row(&row)
+    }
+
+    pub async fn get_main_task_conversation(
+        &self,
+        main_task_id: &str,
+    ) -> anyhow::Result<TeamConversationRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                main_task_id,
+                mode,
+                topic,
+                created_at,
+                updated_at
+            FROM team_conversations
+            WHERE main_task_id = ?1
+            "#,
+        )
+        .bind(main_task_id)
+        .fetch_one(&self.db)
+        .await?;
+        parse_team_conversation_row(&row)
+    }
+
+    pub async fn append_main_task_conversation_message(
+        &self,
+        main_task_id: &str,
+        from_actor_id: &str,
+        to_actor_id: Option<&str>,
+        route: &str,
+        payload: Value,
+    ) -> anyhow::Result<TeamConversationMessageRecord> {
+        let now = Utc::now().timestamp();
+        let conversation = self.get_main_task_conversation(main_task_id).await?;
+        let redacted_payload = redact_sensitive_json(&payload);
+        let payload_json = redacted_payload.to_string();
+        let to_actor_id = to_actor_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let result = sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                conversation_id,
+                main_task_id,
+                from_actor_id,
+                to_actor_id,
+                route,
+                payload_json,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(&conversation.id)
+        .bind(main_task_id)
+        .bind(from_actor_id)
+        .bind(to_actor_id.as_deref())
+        .bind(route)
+        .bind(payload_json)
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+
+        Ok(TeamConversationMessageRecord {
+            message_id: result.last_insert_rowid(),
+            conversation_id: conversation.id,
+            main_task_id: main_task_id.to_string(),
+            from_actor_id: from_actor_id.to_string(),
+            to_actor_id,
+            route: route.to_string(),
+            payload: redacted_payload,
+            created_at: now,
+        })
+    }
+
+    pub async fn list_main_task_conversation_messages(
+        &self,
+        main_task_id: &str,
+        limit: i64,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<Vec<TeamConversationMessageRecord>> {
+        let conversation = self.get_main_task_conversation(main_task_id).await?;
+        let mut builder = QueryBuilder::<sqlx::Sqlite>::new(
+            r#"
+            SELECT
+                id,
+                conversation_id,
+                main_task_id,
+                from_actor_id,
+                to_actor_id,
+                route,
+                payload_json,
+                created_at
+            FROM team_conversation_messages
+            WHERE conversation_id = "#,
+        );
+        builder.push_bind(&conversation.id);
+        if let Some(before_id) = before_id {
+            builder.push(" AND id < ");
+            builder.push_bind(before_id);
+        }
+        builder.push(" ORDER BY id DESC LIMIT ");
+        builder.push_bind(limit.max(1));
+
+        let rows = builder.build().fetch_all(&self.db).await?;
+        let mut messages = Vec::with_capacity(rows.len());
+        for row in rows {
+            messages.push(parse_team_conversation_message_row(&row)?);
+        }
+        messages.reverse();
+        Ok(messages)
     }
 
     pub async fn create_run(
@@ -244,7 +499,7 @@ impl TeamManager {
                 Ok(run)
             }
             TeamRunStatus::Failed | TeamRunStatus::Canceled => self.fork_run_submission(&run).await,
-            TeamRunStatus::Completed => Err(anyhow::anyhow!("completed run cannot be resumed")),
+            TeamRunStatus::Completed => Err(TeamRunResumeError::CompletedRun.into()),
         }
     }
 
@@ -1299,4 +1554,33 @@ impl TeamManager {
         }
         Ok(counts)
     }
+}
+
+fn redact_sensitive_json(value: &Value) -> Value {
+    const REDACTED: &str = "[redacted]";
+    match value {
+        Value::Object(map) => {
+            let mut redacted = serde_json::Map::with_capacity(map.len());
+            for (key, child) in map {
+                if is_sensitive_key(key) {
+                    redacted.insert(key.clone(), Value::String(REDACTED.to_string()));
+                } else {
+                    redacted.insert(key.clone(), redact_sensitive_json(child));
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(redact_sensitive_json).collect()),
+        _ => value.clone(),
+    }
+}
+
+fn is_sensitive_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
+    normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("authorization")
+        || normalized.contains("api_key")
+        || normalized.contains("apikey")
 }

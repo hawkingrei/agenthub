@@ -60,3 +60,20 @@ export function selectTeamPreviewEvents(
   }
   return events.slice(events.length - limit);
 }
+
+export function resolveActiveRunIdForSelectedTeam(
+  runs: TeamRunRecord[],
+  selectedTeamId: string | null,
+  currentActiveRunId: string | null
+): string | null {
+  if (!selectedTeamId) {
+    return null;
+  }
+  if (
+    currentActiveRunId &&
+    runs.some((run) => run.id === currentActiveRunId && run.team_id === selectedTeamId)
+  ) {
+    return currentActiveRunId;
+  }
+  return runs.find((run) => run.team_id === selectedTeamId)?.id ?? null;
+}

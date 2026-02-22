@@ -3,6 +3,7 @@ import { TeamRunEventRecord } from "../api";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRE_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TITLE_CLASS,
@@ -65,9 +66,12 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
               void onRefreshEvents();
             }}
             disabled={eventsLoading}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            title="Refresh events"
+            aria-label="Refresh events"
           >
-            Refresh
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Refresh</span>
           </button>
           <button
             onClick={() => {

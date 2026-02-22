@@ -67,6 +67,8 @@ dependencies = [
  "agent-client-protocol",
  "agenthub-acp",
  "agenthub-team-actor",
+ "agenthub-team-domain",
+ "agenthub-team-prompts",
  "anyhow",
  "argon2",
  "async-trait",
@@ -174,6 +176,19 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
 ]
+
+[[package]]
+name = "agenthub-team-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "agenthub-team-prompts"
+version = "0.1.0"
 
 [[package]]
 name = "ahash"

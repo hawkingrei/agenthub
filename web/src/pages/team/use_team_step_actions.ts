@@ -1,67 +1,122 @@
-import { useCallback } from "react";
-import { api } from "../../api";
-import { parseOptionalJson } from "./create_helpers";
+import { useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
+import { api, type TeamRunSnapshotRecord, type TeamRunRecord, type TeamStepRecord } from "../../api";
+import { parseErrorMessage, parseOptionalJson } from "./create_helpers";
 import type { StepAction } from "./state";
 
-function parseCsvList(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-type UseTeamStepActionsParams = {
+type UseTeamStepActionsOptions = {
   token: string;
-  activeRunId: string | null;
+  activeRunIdForSelectedTeam: string | null;
+  selectedStepId: string;
+  stepAction: StepAction;
   stepKey: string;
   stepMemberId: string;
   stepDependsOn: string;
   stepInput: string;
-  selectedStepId: string;
-  stepAction: StepAction;
   stepRemoteTaskId: string;
   stepOutput: string;
   stepFailText: string;
   stepInputReason: string;
   stepInputRequiredPayload: string;
   stepResumePayload: string;
-  setBusy: (value: string | null) => void;
-  setError: (value: string | null) => void;
-  parseErrorMessage: (error: unknown) => string;
-  refreshRun: (runId: string) => Promise<unknown>;
+  setBusy: Dispatch<SetStateAction<string | null>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+  setSelectedStepId: (next: string) => void;
+  refreshRun: (runId: string) => Promise<TeamRunRecord>;
   refreshSteps: (runId: string) => Promise<unknown>;
-  refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<unknown>;
-  refreshSnapshot: (runId: string) => Promise<unknown>;
-  setSelectedStepId: (value: string) => void;
+  refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<void>;
+  refreshSnapshot: (runId: string) => Promise<TeamRunSnapshotRecord>;
 };
 
-export function useTeamStepActions({
-  token,
-  activeRunId,
-  stepKey,
-  stepMemberId,
-  stepDependsOn,
-  stepInput,
-  selectedStepId,
-  stepAction,
-  stepRemoteTaskId,
-  stepOutput,
-  stepFailText,
-  stepInputReason,
-  stepInputRequiredPayload,
-  stepResumePayload,
-  setBusy,
-  setError,
-  parseErrorMessage,
-  refreshRun,
-  refreshSteps,
-  refreshEvents,
-  refreshSnapshot,
-  setSelectedStepId,
-}: UseTeamStepActionsParams) {
+type TeamStepApiClient = {
+  submitTeamRunStep: (
+    runId: string,
+    payload: {
+      step_key: string;
+      member_id: string;
+      depends_on?: string[];
+      input?: unknown;
+    }
+  ) => Promise<TeamStepRecord>;
+  startTeamRunStep: (
+    runId: string,
+    stepId: string,
+    payload: { remote_task_id?: string }
+  ) => Promise<TeamStepRecord>;
+  completeTeamRunStep: (
+    runId: string,
+    stepId: string,
+    payload: { output?: unknown }
+  ) => Promise<TeamStepRecord>;
+  failTeamRunStep: (
+    runId: string,
+    stepId: string,
+    payload: { error_text: string }
+  ) => Promise<TeamStepRecord>;
+  setTeamRunStepInputRequired: (
+    runId: string,
+    stepId: string,
+    payload: { reason?: string; input?: unknown }
+  ) => Promise<TeamStepRecord>;
+  resumeTeamRunStep: (
+    runId: string,
+    stepId: string,
+    payload: { input?: unknown }
+  ) => Promise<TeamStepRecord>;
+};
+
+function parseCsvList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function buildTeamStepApiClient(token: string): TeamStepApiClient {
+  return {
+    submitTeamRunStep: (runId, payload) => api.submitTeamRunStep(token, runId, payload),
+    startTeamRunStep: (runId, stepId, payload) =>
+      api.startTeamRunStep(token, runId, stepId, payload),
+    completeTeamRunStep: (runId, stepId, payload) =>
+      api.completeTeamRunStep(token, runId, stepId, payload),
+    failTeamRunStep: (runId, stepId, payload) =>
+      api.failTeamRunStep(token, runId, stepId, payload),
+    setTeamRunStepInputRequired: (runId, stepId, payload) =>
+      api.setTeamRunStepInputRequired(token, runId, stepId, payload),
+    resumeTeamRunStep: (runId, stepId, payload) =>
+      api.resumeTeamRunStep(token, runId, stepId, payload),
+  };
+}
+
+export function useTeamStepActions(options: UseTeamStepActionsOptions) {
+  const {
+    token,
+    activeRunIdForSelectedTeam,
+    selectedStepId,
+    stepAction,
+    stepKey,
+    stepMemberId,
+    stepDependsOn,
+    stepInput,
+    stepRemoteTaskId,
+    stepOutput,
+    stepFailText,
+    stepInputReason,
+    stepInputRequiredPayload,
+    stepResumePayload,
+    setBusy,
+    setError,
+    setSelectedStepId,
+    refreshRun,
+    refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+  } = options;
+
+  const teamStepApi = useMemo(() => buildTeamStepApiClient(token), [token]);
+
   const onSubmitStep = useCallback(async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     if (!stepKey.trim()) {
@@ -75,17 +130,17 @@ export function useTeamStepActions({
     setBusy("submit-step");
     setError(null);
     try {
-      const created = await api.submitTeamRunStep(token, activeRunId, {
+      const created = await teamStepApi.submitTeamRunStep(activeRunIdForSelectedTeam, {
         step_key: stepKey.trim(),
         member_id: stepMemberId.trim(),
         depends_on: parseCsvList(stepDependsOn),
         input: parseOptionalJson(stepInput, "Step input"),
       });
       await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
+        refreshRun(activeRunIdForSelectedTeam),
+        refreshSteps(activeRunIdForSelectedTeam),
+        refreshEvents(activeRunIdForSelectedTeam),
+        refreshSnapshot(activeRunIdForSelectedTeam),
       ]);
       setSelectedStepId(created.id);
     } catch (err) {
@@ -94,8 +149,7 @@ export function useTeamStepActions({
       setBusy(null);
     }
   }, [
-    activeRunId,
-    parseErrorMessage,
+    activeRunIdForSelectedTeam,
     refreshEvents,
     refreshRun,
     refreshSnapshot,
@@ -107,12 +161,12 @@ export function useTeamStepActions({
     stepInput,
     stepKey,
     stepMemberId,
-    token,
+    teamStepApi,
   ]);
 
   const onApplyStepAction = useCallback(async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
+    if (!activeRunIdForSelectedTeam) {
+      setError("Select a run in the current team first");
       return;
     }
     if (!selectedStepId) {
@@ -123,11 +177,11 @@ export function useTeamStepActions({
     setError(null);
     try {
       if (stepAction === "start") {
-        await api.startTeamRunStep(token, activeRunId, selectedStepId, {
+        await teamStepApi.startTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {
           remote_task_id: stepRemoteTaskId.trim() || undefined,
         });
       } else if (stepAction === "complete") {
-        await api.completeTeamRunStep(token, activeRunId, selectedStepId, {
+        await teamStepApi.completeTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {
           output: parseOptionalJson(stepOutput, "Step output"),
         });
       } else if (stepAction === "fail") {
@@ -135,24 +189,25 @@ export function useTeamStepActions({
         if (!errorText) {
           throw new Error("Fail reason is required");
         }
-        await api.failTeamRunStep(token, activeRunId, selectedStepId, {
+        await teamStepApi.failTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {
           error_text: errorText,
         });
       } else if (stepAction === "input_required") {
-        await api.setTeamRunStepInputRequired(token, activeRunId, selectedStepId, {
+        await teamStepApi.setTeamRunStepInputRequired(activeRunIdForSelectedTeam, selectedStepId, {
           reason: stepInputReason.trim() || undefined,
           input: parseOptionalJson(stepInputRequiredPayload, "Input required payload"),
         });
       } else {
-        await api.resumeTeamRunStep(token, activeRunId, selectedStepId, {
+        await teamStepApi.resumeTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {
           input: parseOptionalJson(stepResumePayload, "Resume payload"),
         });
       }
+
       await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
+        refreshRun(activeRunIdForSelectedTeam),
+        refreshSteps(activeRunIdForSelectedTeam),
+        refreshEvents(activeRunIdForSelectedTeam),
+        refreshSnapshot(activeRunIdForSelectedTeam),
       ]);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -160,8 +215,7 @@ export function useTeamStepActions({
       setBusy(null);
     }
   }, [
-    activeRunId,
-    parseErrorMessage,
+    activeRunIdForSelectedTeam,
     refreshEvents,
     refreshRun,
     refreshSnapshot,
@@ -176,7 +230,7 @@ export function useTeamStepActions({
     stepOutput,
     stepRemoteTaskId,
     stepResumePayload,
-    token,
+    teamStepApi,
   ]);
 
   return {

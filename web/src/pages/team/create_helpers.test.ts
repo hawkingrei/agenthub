@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WorkerDraft } from "./member_helpers";
 import {
   buildTeamSpecFromForm,
@@ -152,6 +152,14 @@ describe("team create helpers", () => {
     expect(parseOptionalJson("   ", "payload")).toBeUndefined();
     expect(parseOptionalJson("{\"ok\":true}", "payload")).toEqual({ ok: true });
     expect(() => parseOptionalJson("{bad", "payload")).toThrow("payload must be valid JSON");
+
+    const parseSpy = vi.spyOn(JSON, "parse").mockImplementationOnce(() => {
+      throw "broken parser";
+    });
+    expect(() => parseOptionalJson("{\"ok\":true}", "payload")).toThrow(
+      "payload must be valid JSON (unknown parse error)"
+    );
+    parseSpy.mockRestore();
   });
 
   it("validates optional non-negative integer parsing", () => {

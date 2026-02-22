@@ -2411,3 +2411,164 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(worker.status, "idle");
     assert!(worker.latest_step.is_none());
 }
+
+#[tokio::test]
+async fn team_main_task_api_creates_lists_and_redacts_context() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "main-task-api-team".to_string(),
+            description: Some("main task api coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_main_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Kickoff migration".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "source":"ui",
+                "token":"do-not-store",
+                "nested":{"secret":"x"}
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("kickoff".to_string()),
+        }),
+    )
+    .await
+    .expect("create main task");
+    assert_eq!(created.task.team_id, team.id);
+    assert_eq!(created.task.title, "Kickoff migration");
+    assert_eq!(created.task.context["token"], json!("[redacted]"));
+    assert_eq!(created.task.context["nested"]["secret"], json!("[redacted]"));
+    assert_eq!(created.conversation.mode, "group_chat");
+    assert_eq!(created.conversation.main_task_id, created.task.id);
+
+    let Json(listed) = list_team_main_tasks(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamMainTasksQuery { limit: Some(20) }),
+    )
+    .await
+    .expect("list main tasks");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, created.task.id);
+
+    let Json(found) = get_team_main_task(
+        State(state),
+        headers,
+        Path((team.id, created.task.id.clone())),
+    )
+    .await
+    .expect("get main task");
+    assert_eq!(found.task.id, created.task.id);
+    assert_eq!(found.conversation.id, created.conversation.id);
+}
+
+#[tokio::test]
+async fn team_main_task_messages_api_supports_route_and_redaction() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "main-task-msg-team".to_string(),
+            description: Some("main task message api coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_main_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Discuss rollout".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create main task");
+
+    let missing_to_member_err = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "leader".to_string(),
+            to_actor_id: None,
+            route: Some("to_member".to_string()),
+            payload: json!({"text":"assign"}),
+        }),
+    )
+    .await
+    .expect_err("route=to_member should require to_actor_id");
+    assert_eq!(missing_to_member_err.into_response().status(), StatusCode::BAD_REQUEST);
+
+    let Json(message) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "leader".to_string(),
+            to_actor_id: Some("worker-1".to_string()),
+            route: Some("to_member".to_string()),
+            payload: json!({
+                "text":"assign",
+                "authorization":"Bearer abc",
+                "nested":{"api_key":"123"}
+            }),
+        }),
+    )
+    .await
+    .expect("send main task message");
+    assert_eq!(message.route, "to_member");
+    assert_eq!(message.to_actor_id.as_deref(), Some("worker-1"));
+    assert_eq!(message.payload["authorization"], json!("[redacted]"));
+    assert_eq!(message.payload["nested"]["api_key"], json!("[redacted]"));
+
+    let Json(messages) = list_team_main_task_messages(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Query(ListTeamMainTaskMessagesQuery {
+            limit: Some(50),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_id, message.message_id);
+
+    let Json(empty_page) = list_team_main_task_messages(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Query(ListTeamMainTaskMessagesQuery {
+            limit: Some(50),
+            before_id: Some(message.message_id),
+        }),
+    )
+    .await
+    .expect("list messages with before_id");
+    assert!(empty_page.is_empty());
+}

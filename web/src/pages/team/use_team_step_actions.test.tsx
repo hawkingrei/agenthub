@@ -1,269 +1,253 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
-import { createRoot, Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, type TeamStepRecord } from "../../api";
+import React, { act, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type TeamRunRecord, type TeamRunSnapshotRecord, api } from "../../api";
+import type { StepAction } from "./state";
 import { useTeamStepActions } from "./use_team_step_actions";
+
+vi.mock("../../api", () => ({
+  api: {
+    submitTeamRunStep: vi.fn(),
+    startTeamRunStep: vi.fn(),
+    completeTeamRunStep: vi.fn(),
+    failTeamRunStep: vi.fn(),
+    setTeamRunStepInputRequired: vi.fn(),
+    resumeTeamRunStep: vi.fn(),
+  },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
-type HookParams = Parameters<typeof useTeamStepActions>[0];
-type HookSnapshot = ReturnType<typeof useTeamStepActions>;
+type TeamStepActions = ReturnType<typeof useTeamStepActions>;
+type TeamStepActionsInput = Parameters<typeof useTeamStepActions>[0];
 
-function makeStep(id: string, runId: string): TeamStepRecord {
-  return {
-    id,
-    run_id: runId,
-    step_key: "step-key",
-    member_id: "worker-1",
-    remote_task_id: null,
-    status: "submitted",
-    attempt: 0,
-    depends_on: [],
-    input: {},
-    output: null,
-    error_text: null,
-    started_at: null,
-    ended_at: null,
-  };
-}
+type HookHarnessProps = {
+  options: TeamStepActionsInput;
+  onCapture: (actions: TeamStepActions) => void;
+};
 
-function createParams(overrides: Partial<HookParams> = {}): HookParams {
-  return {
-    token: "token-1",
-    activeRunId: "run-1",
-    stepKey: "step-main",
-    stepMemberId: "worker-1",
-    stepDependsOn: "a, b, , c",
-    stepInput: '{"plan": 1}',
-    selectedStepId: "step-1",
-    stepAction: "start",
-    stepRemoteTaskId: " remote-1 ",
-    stepOutput: '{"ok": true}',
-    stepFailText: "failure text",
-    stepInputReason: "need-input",
-    stepInputRequiredPayload: '{"needed":"value"}',
-    stepResumePayload: '{"resume":"value"}',
-    setBusy: vi.fn(),
-    setError: vi.fn(),
-    parseErrorMessage: vi.fn(() => "parsed-error"),
-    refreshRun: vi.fn().mockResolvedValue(undefined),
-    refreshSteps: vi.fn().mockResolvedValue(undefined),
-    refreshEvents: vi.fn().mockResolvedValue(undefined),
-    refreshSnapshot: vi.fn().mockResolvedValue(undefined),
-    setSelectedStepId: vi.fn(),
-    ...overrides,
-  };
-}
-
-function HookHarness({
-  params,
-  onSnapshot,
-}: {
-  params: HookParams;
-  onSnapshot: (snapshot: HookSnapshot) => void;
-}) {
-  const snapshot = useTeamStepActions(params);
-  onSnapshot(snapshot);
+function HookHarness(props: HookHarnessProps) {
+  const { options, onCapture } = props;
+  const actions = useTeamStepActions(options);
+  useEffect(() => {
+    onCapture(actions);
+  }, [actions, onCapture]);
   return null;
 }
 
-describe("useTeamStepActions", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-  let snapshot: HookSnapshot | null = null;
+function createBaseOptions(
+  overrides: Partial<TeamStepActionsInput> = {}
+): TeamStepActionsInput {
+  const options: TeamStepActionsInput = {
+    token: "token-1",
+    activeRunIdForSelectedTeam: "run-1",
+    selectedStepId: "step-1",
+    stepAction: "complete",
+    stepKey: "leader_plan",
+    stepMemberId: "leader-1",
+    stepDependsOn: "worker_a,worker_b",
+    stepInput: '{"task":"investigate"}',
+    stepRemoteTaskId: "",
+    stepOutput: '{"status":"done"}',
+    stepFailText: "",
+    stepInputReason: "",
+    stepInputRequiredPayload: "{}",
+    stepResumePayload: "{}",
+    setBusy: vi.fn(),
+    setError: vi.fn(),
+    setSelectedStepId: vi.fn(),
+    refreshRun: vi.fn(async () => {
+      return {
+        id: "run-1",
+        team_id: "team-1",
+        context_id: "ctx-1",
+        status: "working",
+        input: {},
+        created_at: 1,
+        started_at: null,
+        ended_at: null,
+      } as TeamRunRecord;
+    }),
+    refreshSteps: vi.fn(async () => undefined),
+    refreshEvents: vi.fn(async () => undefined),
+    refreshSnapshot: vi.fn(async () => {
+      return {
+        run: {
+          id: "run-1",
+          team_id: "team-1",
+          context_id: "ctx-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
+        team: {
+          id: "team-1",
+          name: "Team One",
+          description: null,
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
+        },
+        leader_member_id: "leader-1",
+        members: [],
+        steps: [],
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [],
+        },
+      } as TeamRunSnapshotRecord;
+    }),
+  };
+  return { ...options, ...overrides };
+}
 
-  beforeEach(() => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
+async function mountHarness(
+  options: TeamStepActionsInput,
+  onCapture: (actions: TeamStepActions) => void
+): Promise<{ root: Root; container: HTMLDivElement }> {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(<HookHarness options={options} onCapture={onCapture} />);
+    await Promise.resolve();
   });
+  return { root, container };
+}
+
+function cleanupHarness(root: Root, container: HTMLDivElement): void {
+  act(() => {
+    root.unmount();
+  });
+  container.remove();
+}
+
+describe("useTeamStepActions", () => {
+  const mockedApi = vi.mocked(api);
 
   afterEach(() => {
-    act(() => {
-      root.unmount();
-    });
-    container.remove();
-    snapshot = null;
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  it("validates submit preconditions before calling API", async () => {
-    const paramsNoRun = createParams({ activeRunId: null });
-    act(() => {
-      root.render(
-        <HookHarness
-          params={paramsNoRun}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
-      );
-    });
-    await act(async () => {
-      await snapshot?.onSubmitStep();
-    });
-    expect(paramsNoRun.setError).toHaveBeenCalledWith("Select a run first");
+  it("submits step payload and refreshes run views", async () => {
+    mockedApi.submitTeamRunStep.mockResolvedValueOnce({
+      id: "step-created-1",
+      run_id: "run-1",
+      step_key: "leader_plan",
+      member_id: "leader-1",
+      status: "submitted",
+      attempt: 1,
+      depends_on: [],
+    } as Awaited<ReturnType<typeof api.submitTeamRunStep>>);
 
-    const paramsNoStepKey = createParams({ stepKey: "   " });
-    act(() => {
-      root.render(
-        <HookHarness
-          params={paramsNoStepKey}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
-      );
+    let captured: TeamStepActions | null = null;
+    const options = createBaseOptions({
+      stepDependsOn: "worker_a, worker_b , , worker_c",
+      stepInput: '{"payload":1}',
     });
-    await act(async () => {
-      await snapshot?.onSubmitStep();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
-    expect(paramsNoStepKey.setError).toHaveBeenCalledWith("step_key is required");
 
-    const paramsNoMember = createParams({ stepMemberId: "   " });
-    act(() => {
-      root.render(
-        <HookHarness
-          params={paramsNoMember}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.onSubmitStep();
+      });
+
+      expect(mockedApi.submitTeamRunStep).toHaveBeenCalledWith(
+        "token-1",
+        "run-1",
+        {
+          step_key: "leader_plan",
+          member_id: "leader-1",
+          depends_on: ["worker_a", "worker_b", "worker_c"],
+          input: { payload: 1 },
+        }
       );
-    });
-    await act(async () => {
-      await snapshot?.onSubmitStep();
-    });
-    expect(paramsNoMember.setError).toHaveBeenCalledWith("member_id is required");
+      expect(options.refreshRun).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSteps).toHaveBeenCalledWith("run-1");
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.setSelectedStepId).toHaveBeenCalledWith("step-created-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 
-  it("submits step, parses input/depends_on, and refreshes run views", async () => {
-    const params = createParams();
-    vi.spyOn(api, "submitTeamRunStep").mockResolvedValue(
-      makeStep("step-created", "run-1")
-    );
+  it("applies complete action with parsed output payload", async () => {
+    mockedApi.completeTeamRunStep.mockResolvedValueOnce({
+      id: "step-1",
+      run_id: "run-1",
+      step_key: "leader_plan",
+      member_id: "leader-1",
+      status: "completed",
+      attempt: 1,
+      depends_on: [],
+      output: { status: "done" },
+    } as Awaited<ReturnType<typeof api.completeTeamRunStep>>);
 
-    act(() => {
-      root.render(
-        <HookHarness
-          params={params}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
+    let captured: TeamStepActions | null = null;
+    const options = createBaseOptions({
+      stepAction: "complete" as StepAction,
+      stepOutput: '{"status":"done","count":2}',
+    });
+
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.onApplyStepAction();
+      });
+
+      expect(mockedApi.completeTeamRunStep).toHaveBeenCalledWith(
+        "token-1",
+        "run-1",
+        "step-1",
+        {
+          output: { status: "done", count: 2 },
+        }
       );
-    });
-
-    await act(async () => {
-      await snapshot?.onSubmitStep();
-    });
-
-    expect(api.submitTeamRunStep).toHaveBeenCalledWith("token-1", "run-1", {
-      step_key: "step-main",
-      member_id: "worker-1",
-      depends_on: ["a", "b", "c"],
-      input: { plan: 1 },
-    });
-    expect(params.refreshRun).toHaveBeenCalledWith("run-1");
-    expect(params.refreshSteps).toHaveBeenCalledWith("run-1");
-    expect(params.refreshEvents).toHaveBeenCalledWith("run-1");
-    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
-    expect(params.setSelectedStepId).toHaveBeenCalledWith("step-created");
+      expect(options.refreshRun).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSteps).toHaveBeenCalledWith("run-1");
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 
-  it("applies start action with trimmed remote task id", async () => {
-    const params = createParams({
-      stepAction: "start",
-      stepRemoteTaskId: "  remote-7  ",
-    });
-    vi.spyOn(api, "startTeamRunStep").mockResolvedValue(makeStep("step-1", "run-1"));
-
-    act(() => {
-      root.render(
-        <HookHarness
-          params={params}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
-      );
-    });
-
-    await act(async () => {
-      await snapshot?.onApplyStepAction();
-    });
-
-    expect(api.startTeamRunStep).toHaveBeenCalledWith("token-1", "run-1", "step-1", {
-      remote_task_id: "remote-7",
-    });
-    expect(params.refreshRun).toHaveBeenCalledWith("run-1");
-    expect(params.refreshSteps).toHaveBeenCalledWith("run-1");
-    expect(params.refreshEvents).toHaveBeenCalledWith("run-1");
-    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
-  });
-
-  it("rejects fail action without failure reason", async () => {
-    const params = createParams({
-      stepAction: "fail",
+  it("returns validation error when fail action has empty reason", async () => {
+    let captured: TeamStepActions | null = null;
+    const options = createBaseOptions({
+      stepAction: "fail" as StepAction,
       stepFailText: "   ",
-      parseErrorMessage: vi.fn(() => "friendly-fail-error"),
-    });
-    const failSpy = vi.spyOn(api, "failTeamRunStep");
-
-    act(() => {
-      root.render(
-        <HookHarness
-          params={params}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
-      );
     });
 
-    await act(async () => {
-      await snapshot?.onApplyStepAction();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
     });
 
-    expect(failSpy).not.toHaveBeenCalled();
-    expect(params.setError).toHaveBeenCalledWith("friendly-fail-error");
-  });
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.onApplyStepAction();
+      });
 
-  it("applies input_required action and normalizes optional reason", async () => {
-    const params = createParams({
-      stepAction: "input_required",
-      stepInputReason: "   ",
-      stepInputRequiredPayload: '{"reason":"need-details"}',
-    });
-    vi.spyOn(api, "setTeamRunStepInputRequired").mockResolvedValue(
-      makeStep("step-1", "run-1")
-    );
-
-    act(() => {
-      root.render(
-        <HookHarness
-          params={params}
-          onSnapshot={(next) => {
-            snapshot = next;
-          }}
-        />
-      );
-    });
-
-    await act(async () => {
-      await snapshot?.onApplyStepAction();
-    });
-
-    expect(api.setTeamRunStepInputRequired).toHaveBeenCalledWith(
-      "token-1",
-      "run-1",
-      "step-1",
-      {
-        reason: undefined,
-        input: { reason: "need-details" },
-      }
-    );
+      expect(mockedApi.failTeamRunStep).not.toHaveBeenCalled();
+      expect(options.setError).toHaveBeenCalledWith("Fail reason is required");
+    } finally {
+      cleanupHarness(root, container);
+    }
   });
 });

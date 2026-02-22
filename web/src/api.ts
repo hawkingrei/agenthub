@@ -276,6 +276,10 @@ async function apiFetch<T>(
   return (await res.json()) as T;
 }
 
+function encodePathSegment(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
 export const api = {
   registerStart: (
     username: string,
@@ -337,9 +341,11 @@ export const api = {
   listDevices: (token: string) =>
     apiFetch<DeviceRecord[]>("/api/admin/devices", token),
   revokeDevice: (token: string, id: string) =>
-    apiFetch<{ status: string }>(`/api/admin/devices/${id}/revoke`, token, {
-      method: "POST",
-    }),
+    apiFetch<{ status: string }>(
+      `/api/admin/devices/${encodePathSegment(id)}/revoke`,
+      token,
+      { method: "POST" }
+    ),
   listAudits: (token: string, limit = 100) =>
     apiFetch<AuditRecord[]>(`/api/admin/audits?limit=${limit}`, token),
   joinStartAdmin: (token: string) =>
@@ -359,9 +365,9 @@ export const api = {
   listTeams: (token: string) =>
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
-    apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token),
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token),
   deleteTeam: (token: string, id: string) =>
-    apiFetch<TeamDefinitionRecord>(`/api/teams/${id}`, token, {
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
   listTeamRuns: (
@@ -380,19 +386,22 @@ export const api = {
       params.set("before_created_at", String(payload.before_created_at));
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    return apiFetch<TeamRunRecord[]>(`/api/teams/${teamId}/runs${suffix}`, token);
+    return apiFetch<TeamRunRecord[]>(
+      `/api/teams/${encodePathSegment(teamId)}/runs${suffix}`,
+      token
+    );
   },
   createTeamRun: (
     token: string,
     teamId: string,
     payload: { context_id?: string; input?: unknown }
   ) =>
-    apiFetch<TeamRunRecord>(`/api/teams/${teamId}/runs`, token, {
+    apiFetch<TeamRunRecord>(`/api/teams/${encodePathSegment(teamId)}/runs`, token, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   getTeamRun: (token: string, runId: string) =>
-    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}`, token),
+    apiFetch<TeamRunRecord>(`/api/teams/runs/${encodePathSegment(runId)}`, token),
   getTeamRunSnapshot: (
     token: string,
     runId: string,
@@ -407,22 +416,28 @@ export const api = {
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     return apiFetch<TeamRunSnapshotRecord>(
-      `/api/teams/runs/${runId}/snapshot${suffix}`,
+      `/api/teams/runs/${encodePathSegment(runId)}/snapshot${suffix}`,
       token
     );
   },
   cancelTeamRun: (token: string, runId: string) =>
-    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/cancel`, token, {
-      method: "POST",
-    }),
+    apiFetch<TeamRunRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/cancel`,
+      token,
+      { method: "POST" }
+    ),
   resumeTeamRun: (token: string, runId: string) =>
-    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/resume`, token, {
-      method: "POST",
-    }),
+    apiFetch<TeamRunRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/resume`,
+      token,
+      { method: "POST" }
+    ),
   restartTeamRun: (token: string, runId: string) =>
-    apiFetch<TeamRunRecord>(`/api/teams/runs/${runId}/restart`, token, {
-      method: "POST",
-    }),
+    apiFetch<TeamRunRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/restart`,
+      token,
+      { method: "POST" }
+    ),
   listTeamRunEvents: (
     token: string,
     runId: string,
@@ -432,12 +447,15 @@ export const api = {
     const params = new URLSearchParams({ limit: String(limit) });
     if (beforeId != null) params.set("before_id", String(beforeId));
     return apiFetch<TeamRunEventRecord[]>(
-      `/api/teams/runs/${runId}/events?${params.toString()}`,
+      `/api/teams/runs/${encodePathSegment(runId)}/events?${params.toString()}`,
       token
     );
   },
   listTeamRunSteps: (token: string, runId: string) =>
-    apiFetch<TeamStepRecord[]>(`/api/teams/runs/${runId}/steps`, token),
+    apiFetch<TeamStepRecord[]>(
+      `/api/teams/runs/${encodePathSegment(runId)}/steps`,
+      token
+    ),
   submitTeamRunStep: (
     token: string,
     runId: string,
@@ -448,10 +466,11 @@ export const api = {
       input?: unknown;
     }
   ) =>
-    apiFetch<TeamStepRecord>(`/api/teams/runs/${runId}/steps`, token, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    apiFetch<TeamStepRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/steps`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
   startTeamRunStep: (
     token: string,
     runId: string,
@@ -459,7 +478,7 @@ export const api = {
     payload: { remote_task_id?: string }
   ) =>
     apiFetch<TeamStepRecord>(
-      `/api/teams/runs/${runId}/steps/${stepId}/start`,
+      `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/start`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -470,7 +489,7 @@ export const api = {
     payload: { output?: unknown }
   ) =>
     apiFetch<TeamStepRecord>(
-      `/api/teams/runs/${runId}/steps/${stepId}/complete`,
+      `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/complete`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -481,7 +500,7 @@ export const api = {
     payload: { error_text: string }
   ) =>
     apiFetch<TeamStepRecord>(
-      `/api/teams/runs/${runId}/steps/${stepId}/fail`,
+      `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/fail`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -492,7 +511,7 @@ export const api = {
     payload: { reason?: string; input?: unknown }
   ) =>
     apiFetch<TeamStepRecord>(
-      `/api/teams/runs/${runId}/steps/${stepId}/input_required`,
+      `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/input_required`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -503,7 +522,7 @@ export const api = {
     payload: { input?: unknown }
   ) =>
     apiFetch<TeamStepRecord>(
-      `/api/teams/runs/${runId}/steps/${stepId}/resume`,
+      `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/resume`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -521,7 +540,7 @@ export const api = {
     }
   ) =>
     apiFetch<TeamActorMessageRecord>(
-      `/api/teams/runs/${runId}/messages/send`,
+      `/api/teams/runs/${encodePathSegment(runId)}/messages/send`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
@@ -545,7 +564,7 @@ export const api = {
       );
     }
     return apiFetch<TeamActorMessageRecord[]>(
-      `/api/teams/runs/${runId}/messages/inbox?${params.toString()}`,
+      `/api/teams/runs/${encodePathSegment(runId)}/messages/inbox?${params.toString()}`,
       token
     );
   },
@@ -556,13 +575,13 @@ export const api = {
     actorId: string
   ) =>
     apiFetch<TeamActorMessageRecord>(
-      `/api/teams/runs/${runId}/messages/${messageId}/ack`,
+      `/api/teams/runs/${encodePathSegment(runId)}/messages/${encodePathSegment(messageId)}/ack`,
       token,
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   getAgent: (token: string, id: string) =>
-    apiFetch<AgentRecord>(`/api/agents/${encodeURIComponent(id)}`, token),
+    apiFetch<AgentRecord>(`/api/agents/${encodePathSegment(id)}`, token),
   sendInput: (
     token: string,
     id: string,
@@ -570,7 +589,7 @@ export const api = {
     message_id?: string,
     session_id?: string
   ) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/input`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/input`, token, {
       method: "POST",
       body: JSON.stringify({ input, message_id, session_id }),
     }),
@@ -590,27 +609,28 @@ export const api = {
     if (sessionId) params.set("session_id", sessionId);
     if (beforeId != null) params.set("before_id", String(beforeId));
     return apiFetch<AgentEvent[]>(
-      `/api/agents/${id}/events?${params.toString()}`,
+      `/api/agents/${encodePathSegment(id)}/events?${params.toString()}`,
       token
     );
   },
   setAgentCodeMode: (token: string, id: string, code_mode: boolean) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/code_mode`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/code_mode`, token, {
       method: "POST",
       body: JSON.stringify({ code_mode }),
     }),
   clearAcpSession: (token: string, id: string, provider?: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/acp/session/clear`, token, {
-      method: "POST",
-      body: JSON.stringify(provider ? { provider } : {}),
-    }),
+    apiFetch<{ status: string }>(
+      `/api/agents/${encodePathSegment(id)}/acp/session/clear`,
+      token,
+      { method: "POST", body: JSON.stringify(provider ? { provider } : {}) }
+    ),
   setAcpMode: (token: string, id: string, mode_id: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/acp/mode`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/acp/mode`, token, {
       method: "POST",
       body: JSON.stringify({ mode_id }),
     }),
   setAcpModel: (token: string, id: string, model_id: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/acp/model`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/acp/model`, token, {
       method: "POST",
       body: JSON.stringify({ model_id }),
     }),
@@ -620,30 +640,30 @@ export const api = {
     config_id: string,
     value: string
   ) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/acp/config`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/acp/config`, token, {
       method: "POST",
       body: JSON.stringify({ config_id, value }),
     }),
   cancelAcp: (token: string, id: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/acp/cancel`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/acp/cancel`, token, {
       method: "POST",
     }),
   startAgent: (token: string, id: string) =>
-    apiFetch<{ session_id: string }>(`/api/agents/${id}/start`, token, {
+    apiFetch<{ session_id: string }>(`/api/agents/${encodePathSegment(id)}/start`, token, {
       method: "POST",
     }),
   stopAgent: (token: string, id: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}/stop`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/stop`, token, {
       method: "POST",
     }),
   deleteAgent: (token: string, id: string) =>
-    apiFetch<{ status: string }>(`/api/agents/${id}`, token, {
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
   listAcpPermissions: (token: string, id: string, status?: string) => {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return apiFetch<AcpPermissionRecord[]>(
-      `/api/agents/${id}/permissions${query}`,
+      `/api/agents/${encodePathSegment(id)}/permissions${query}`,
       token
     );
   },
@@ -654,7 +674,7 @@ export const api = {
     payload: { option_id?: string | null; outcome?: string }
   ) =>
     apiFetch<{ status: string }>(
-      `/api/agents/${agentId}/permissions/${permissionId}/respond`,
+      `/api/agents/${encodePathSegment(agentId)}/permissions/${encodePathSegment(permissionId)}/respond`,
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),

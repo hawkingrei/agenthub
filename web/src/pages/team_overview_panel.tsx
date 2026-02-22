@@ -2,11 +2,11 @@ import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
-  TEAM_ITEM_ACTIVE_CLASS,
-  TEAM_ITEM_BASE_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_SURFACE_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_LIST_ITEM_BASE_CLASS,
+  TEAM_LIST_ITEM_META_CLASS,
+  TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -21,8 +21,14 @@ type TeamOverviewPanelProps = {
 };
 
 const OVERVIEW_META_CLASS =
-  `teams-run-meta mb-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3 ${TEAM_PANEL_SURFACE_CLASS}`;
+  "teams-overview-meta mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
+const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
+  `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
+const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
+const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} hover:border-slate-300`;
 
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
@@ -43,9 +49,12 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
               void onRefreshSnapshot();
             }}
             disabled={snapshotLoading}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            title="Refresh snapshot"
+            aria-label="Refresh snapshot"
           >
-            Refresh Snapshot
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -81,12 +90,12 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 key={member.member_id}
                 className={
                   selectedMemberId === member.member_id
-                    ? TEAM_ITEM_ACTIVE_CLASS
-                    : TEAM_ITEM_BASE_CLASS
+                    ? OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS
+                    : OVERVIEW_MEMBER_BUTTON_IDLE_CLASS
                 }
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
-                <span className="team-name">
+                <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
                   {member.member_id} ({member.role})
                 </span>
                 <StatusBadge
@@ -95,7 +104,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                   className="team-status"
                   title={`member status: ${member.status}`}
                 />
-                <span className="team-id mono">
+                <span className={TEAM_LIST_ITEM_META_CLASS}>
                   {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                 </span>
               </button>

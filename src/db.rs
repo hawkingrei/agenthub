@@ -270,6 +270,61 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS team_main_tasks (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_conversations (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            main_task_id TEXT NOT NULL UNIQUE,
+            mode TEXT NOT NULL,
+            topic TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_conversation_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            main_task_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            to_actor_id TEXT,
+            route TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
+            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS team_actor_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -403,6 +458,51 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_steps_run_status: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_main_tasks_team_updated
+        ON team_main_tasks(team_id, updated_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_main_tasks_team_updated: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_conversations_team_task
+        ON team_conversations(team_id, main_task_id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversations_team_task: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_conv_id
+        ON team_conversation_messages(conversation_id, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_conv_id: {}",
             err
         );
     }
@@ -701,6 +801,9 @@ mod tests {
                 'team_runs',
                 'team_steps',
                 'team_run_events',
+                'team_main_tasks',
+                'team_conversations',
+                'team_conversation_messages',
                 'team_actor_messages'
               )
             "#,
@@ -708,7 +811,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 5);
+        assert_eq!(table_count, 8);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
