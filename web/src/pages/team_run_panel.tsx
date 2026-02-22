@@ -6,10 +6,13 @@ import {
   resolveTeamRunStatusTone,
 } from "../components/status_badge";
 import {
+  TEAM_ITEM_ACTIVE_CLASS,
+  TEAM_ITEM_BASE_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -44,12 +47,12 @@ type TeamMemberLiveState = {
 const RUN_PANEL_DELETE_BUTTON_CLASS =
   "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_MEMBER_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/60 p-4";
+  `teams-run-create ${TEAM_PANEL_SURFACE_CLASS}`;
 const RUN_PANEL_GRID_CLASS = "grid gap-3 xl:grid-cols-2";
 const RUN_PANEL_SECTION_CLASS =
-  "teams-run-create rounded-xl border border-slate-200 bg-slate-50/70 p-4";
+  `teams-run-create ${TEAM_PANEL_SURFACE_CLASS}`;
 const RUN_PANEL_LIST_CLASS =
-  "teams-run-list rounded-xl border border-slate-200 bg-slate-50/50 p-4";
+  `teams-run-list ${TEAM_PANEL_SURFACE_CLASS}`;
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
@@ -258,7 +261,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             {visibleRuns.map((run) => (
               <button
                 key={run.id}
-                className={run.id === activeRunId ? "team-item active" : "team-item"}
+                className={run.id === activeRunId ? TEAM_ITEM_ACTIVE_CLASS : TEAM_ITEM_BASE_CLASS}
                 onClick={() => onActiveRunChange(run.id)}
               >
                 <span className="team-name mono">{run.id}</span>

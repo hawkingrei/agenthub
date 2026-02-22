@@ -3009,10 +3009,8 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .teams-create-launch {
-  border: 1px solid #d3dfeb;
-  background:
-    radial-gradient(circle at 85% 10%, rgba(255, 222, 128, 0.26), transparent 50%),
-    linear-gradient(145deg, #f4f9ff, #eef6ff);
+  border: 1px solid #e2e8f0;
+  background: #fff;
   border-radius: 12px;
   padding: 12px;
 }
@@ -3039,6 +3037,8 @@ select:not([class*="mantine-"]):focus-visible {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 16px;
 }
 
 .teams-list {
@@ -3055,18 +3055,23 @@ select:not([class*="mantine-"]):focus-visible {
   align-items: flex-start;
   gap: 4px;
   width: 100%;
-  border: 1px solid #d8d8d8;
-  background: #f7f7f7;
+  border: 1px solid #e0e0e0;
+  background: #fff;
   color: #1c1c1c;
   border-radius: 10px;
   padding: 8px 10px;
   cursor: pointer;
 }
 
+.team-item:hover {
+  border-color: #bdbdbd;
+}
+
 .team-item.active {
-  border-color: #161616;
-  background: #161616;
-  color: #fff;
+  border-color: #222;
+  background: #fff;
+  color: #1c1c1c;
+  box-shadow: 0 0 0 1px #222 inset;
 }
 
 .team-item .team-name {
@@ -3235,10 +3240,8 @@ select:not([class*="mantine-"]):focus-visible {
 
 .team-create-modal {
   width: min(940px, 96vw);
-  border: 1px solid #cfdbeb;
-  background:
-    radial-gradient(circle at 84% 0, rgba(255, 223, 141, 0.2), transparent 52%),
-    linear-gradient(160deg, #f4f9ff, #fbfdff 48%, #f2f7ff);
+  border: 1px solid #e0e0e0;
+  background: #fff;
 }
 
 .team-create-progress {
@@ -3253,14 +3256,14 @@ select:not([class*="mantine-"]):focus-visible {
   text-align: left;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid #cad8ea;
+  border: 1px solid #e0e0e0;
   background: #fff;
-  color: #2b3d52;
+  color: #1f2937;
 }
 
 .team-create-stage.active {
-  border-color: #1d4f80;
-  background: #1d4f80;
+  border-color: #222;
+  background: #222;
   color: #fff;
 }
 
@@ -3295,8 +3298,8 @@ select:not([class*="mantine-"]):focus-visible {
 .team-create-agent-entry {
   display: grid;
   gap: 8px;
-  border: 1px solid #d9e1ec;
-  background: #f7fbff;
+  border: 1px solid #e0e0e0;
+  background: #fff;
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 8px;
@@ -3326,10 +3329,10 @@ select:not([class*="mantine-"]):focus-visible {
   gap: 8px;
   padding: 8px 10px;
   border-radius: 9px;
-  border: 1px solid #d8e0ea;
-  background: #f8fbff;
+  border: 1px solid #e0e0e0;
+  background: #fff;
   font-size: 12px;
-  color: #415368;
+  color: #334155;
 }
 
 .team-create-check-item.ready {
@@ -3355,8 +3358,8 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .team-create-mission-intro {
-  border: 1px solid #dbe4ef;
-  background: #f8fbff;
+  border: 1px solid #e0e0e0;
+  background: #fff;
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -3366,7 +3369,7 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .team-create-mode-toggle {
-  border: 1px solid #dbe4ef;
+  border: 1px solid #e0e0e0;
   background: #ffffff;
   border-radius: 10px;
   padding: 10px 12px;
@@ -3414,8 +3417,8 @@ select:not([class*="mantine-"]):focus-visible {
 .team-create-forge-agent {
   display: grid;
   gap: 8px;
-  border: 1px solid #d7e0ee;
-  background: #f8fbff;
+  border: 1px solid #e0e0e0;
+  background: #fff;
   border-radius: 10px;
   padding: 10px;
 }
@@ -3458,7 +3461,7 @@ select:not([class*="mantine-"]):focus-visible {
 .teams-worker-card {
   display: grid;
   gap: 8px;
-  border: 1px solid #d7e0ee;
+  border: 1px solid #e0e0e0;
   background: #fff;
   border-radius: 10px;
   padding: 10px;
@@ -3549,7 +3552,7 @@ select:not([class*="mantine-"]):focus-visible {
   border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 8px;
-  background: #fafafa;
+  background: #fff;
 }
 
 .teams-event-head,
@@ -3575,10 +3578,10 @@ select:not([class*="mantine-"]):focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid #ececec;
+  border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 10px;
-  background: #fcfcfc;
+  background: #fff;
 }
 
 .teams-step-panel select,
@@ -3603,10 +3606,10 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .teams-chat-members {
-  border: 1px solid #ececec;
+  border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 10px;
-  background: #fcfcfc;
+  background: #fff;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3631,10 +3634,10 @@ select:not([class*="mantine-"]):focus-visible {
 }
 
 .teams-chat-panel {
-  border: 1px solid #ececec;
+  border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 10px;
-  background: #fcfcfc;
+  background: #fff;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3721,7 +3724,7 @@ select:not([class*="mantine-"]):focus-visible {
   color: #6f6f6f;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 860px) {
   .teams-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3729,6 +3732,11 @@ select:not([class*="mantine-"]):focus-visible {
   .teams-sidebar,
   .teams-main {
     min-width: 0;
+  }
+
+  .teams-main {
+    border-left: none;
+    padding-left: 0;
   }
 
   .teams-run-list-head .actions {

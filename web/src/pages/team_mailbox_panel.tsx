@@ -2,11 +2,14 @@ import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  TEAM_ITEM_ACTIVE_CLASS,
+  TEAM_ITEM_BASE_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -72,19 +75,12 @@ type TeamMailboxPanelProps = {
 };
 
 const MAILBOX_META_CLASS =
-  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
-const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3";
-const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3";
-const MAILBOX_MEMBER_BUTTON_BASE_CLASS =
-  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
-const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
-const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
+  `teams-run-meta mb-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4 ${TEAM_PANEL_SURFACE_CLASS}`;
+const MAILBOX_MEMBER_LIST_CLASS = `teams-chat-members ${TEAM_PANEL_SURFACE_CLASS}`;
+const MAILBOX_PANEL_CLASS = `teams-chat-panel ${TEAM_PANEL_SURFACE_CLASS}`;
 const MAILBOX_UNREAD_ACTIVE_CLASS = "teams-member-unread mono text-amber-700";
 const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono muted text-slate-500";
-const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "ghost teams-chat-jump-bottom rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
+const MAILBOX_CHAT_JUMP_BUTTON_CLASS = "ghost teams-chat-jump-bottom";
 const MAILBOX_CONVERSATION_EMPTY_CLASS = "teams-chat-empty muted text-sm text-slate-600";
 
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
@@ -169,8 +165,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 key={member.member_id}
                 className={
                   selectedMemberId === member.member_id
-                    ? MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS
-                    : MAILBOX_MEMBER_BUTTON_IDLE_CLASS
+                    ? TEAM_ITEM_ACTIVE_CLASS
+                    : TEAM_ITEM_BASE_CLASS
                 }
                 onClick={() => onSelectMember(member.member_id)}
               >

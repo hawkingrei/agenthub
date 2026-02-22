@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import {
   AgentRecord,
   AgentEvent,
@@ -23,7 +23,10 @@ import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import {
-  normalizeRuntimeWorktreeRoot,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+} from "../ui/tailwind_classes";
+import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
@@ -47,7 +50,6 @@ import {
 } from "./team/create_helpers";
 import {
   MailboxTemplateKey,
-  buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
@@ -89,6 +91,16 @@ import {
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
+import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
+import { useTeamMailboxEffects } from "./team/use_team_mailbox_effects";
+import { useTeamCreateModalEffects } from "./team/use_team_create_modal_effects";
+import { useTeamMemberBackfillEffect } from "./team/use_team_member_backfill_effect";
+import { useTeamRefsEffects } from "./team/use_team_refs_effects";
+import { useTeamRunEffects } from "./team/use_team_run_effects";
+import { useTeamRunLifecycleActions } from "./team/use_team_run_lifecycle_actions";
+import { useTeamPanelActions } from "./team/use_team_panel_actions";
+import { useTeamRunListActions } from "./team/use_team_run_list_actions";
+import { useTeamStepActions } from "./team/use_team_step_actions";
 import {
   CREATE_TEAM_STAGE_TITLES,
   DEFAULT_TEAM_CONTROL_STATE,
@@ -552,45 +564,13 @@ export function TeamPage(props: TeamPageProps) {
     }
     return [...ids];
   }, [teams]);
-  useEffect(() => {
-    const listedAgentIds = new Set(agents.map((agent) => agent.id));
-    const unresolvedMemberIds = teamSpecMemberIds.filter(
-      (memberId) =>
-        !listedAgentIds.has(memberId) && !(memberId in teamMemberAgentsById)
-    );
-    if (unresolvedMemberIds.length === 0) {
-      return;
-    }
-
-    let canceled = false;
-    const loadMissingMemberAgents = async () => {
-      const resolved = await Promise.all(
-        unresolvedMemberIds.map(async (memberId) => {
-          try {
-            const agent = await api.getAgent(props.token, memberId);
-            return [memberId, agent] as const;
-          } catch {
-            return [memberId, null] as const;
-          }
-        })
-      );
-      if (canceled) {
-        return;
-      }
-      setTeamMemberAgentsById((prev) => {
-        const next = { ...prev };
-        for (const [memberId, agent] of resolved) {
-          next[memberId] = agent;
-        }
-        return next;
-      });
-    };
-
-    void loadMissingMemberAgents();
-    return () => {
-      canceled = true;
-    };
-  }, [agents, props.token, teamMemberAgentsById, teamSpecMemberIds]);
+  useTeamMemberBackfillEffect({
+    token: props.token,
+    agents,
+    teamSpecMemberIds,
+    teamMemberAgentsById,
+    setTeamMemberAgentsById,
+  });
   const teamMemberStatusByTeamId = useMemo(() => {
     const next = new Map<string, TeamMemberAgentStatus[]>();
     for (const team of teams) {
@@ -1104,17 +1084,14 @@ export function TeamPage(props: TeamPageProps) {
     [props.token]
   );
 
-  useEffect(() => {
-    eventsRef.current = events;
-  }, [events]);
-
-  useEffect(() => {
-    activeRunIdRef.current = activeRunId;
-  }, [activeRunId]);
-
-  useEffect(() => {
-    memberEventsRef.current = memberEvents;
-  }, [memberEvents]);
+  useTeamRefsEffects({
+    events,
+    activeRunId,
+    memberEvents,
+    eventsRef,
+    activeRunIdRef,
+    memberEventsRef,
+  });
 
   const loadInbox = useCallback(async (actorIdOverride?: string) => {
     if (!activeRunId) return;
@@ -1230,234 +1207,72 @@ export function TeamPage(props: TeamPageProps) {
     [props.token, selectedMemberSnapshot]
   );
 
-  useEffect(() => {
-    void refreshTeams();
-    void refreshAgents().catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [refreshAgents, refreshTeams]);
-
-  useEffect(() => {
-    if (!selectedTeamId) {
-      setActiveRunId(null);
-      setRuns([]);
-      setEvents([]);
-      setSteps([]);
-      setInbox([]);
-      setSnapshot(null);
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      return;
-    }
-    let canceled = false;
-    const loadTeamRuns = async () => {
-      try {
-        setError(null);
-        await refreshTeamRuns(selectedTeamId, "replace", {
-          statusFilter: runStatusFilter,
-        });
-        if (canceled) return;
-      } catch (err) {
-        if (!canceled) {
-          setError(parseErrorMessage(err));
-        }
-      }
-    };
-    void loadTeamRuns();
-    return () => {
-      canceled = true;
-    };
-  }, [refreshTeamRuns, runStatusFilter, selectedTeamId, setInbox, setSelectedMemberId]);
-
-  useEffect(() => {
-    if (!selectedTeamId) return;
-    setActiveRunId((prev) => {
-      if (prev && runs.some((run) => run.id === prev && run.team_id === selectedTeamId)) {
-        return prev;
-      }
-      return runs.find((run) => run.team_id === selectedTeamId)?.id ?? null;
-    });
-  }, [runs, selectedTeamId]);
-
-  useEffect(() => {
-    if (!activeRunId) {
-      setEvents([]);
-      setSteps([]);
-      setInbox([]);
-      setSnapshot(null);
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      setChatSeenByConversation({});
-      setChatStickToBottom(true);
-      return;
-    }
-    let canceled = false;
-    const loadAll = async () => {
-      try {
-        setError(null);
-        const run = await refreshRun(activeRunId);
-        if (canceled) return;
-        if (run.team_id !== selectedTeamId) {
-          setSelectedTeamId(run.team_id);
-        }
-        await Promise.all([
-          refreshSteps(activeRunId),
-          refreshEvents(activeRunId),
-          refreshSnapshot(activeRunId),
-        ]);
-      } catch (err) {
-        if (!canceled) {
-          setError(parseErrorMessage(err));
-        }
-      }
-    };
-    void loadAll();
-    return () => {
-      canceled = true;
-    };
-  }, [
+  useTeamRunEffects({
+    selectedTeamId,
+    runs,
     activeRunId,
-    refreshEvents,
+    runStatusFilter,
+    eventsAutoRefresh,
+    tab,
+    chatInboxActorId: chatActors.inboxActorId,
+    refreshTeams,
+    refreshAgents,
+    refreshTeamRuns,
     refreshRun,
-    refreshSnapshot,
     refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+    loadInbox,
+    parseErrorMessage,
+    setError,
+    setSelectedTeamId,
+    setActiveRunId,
+    setRuns,
+    setEvents,
+    setSteps,
+    setInbox,
+    setSnapshot,
+    setSelectedMemberId,
+    setMemberEvents,
     setChatSeenByConversation,
     setChatStickToBottom,
-    setInbox,
-    setSelectedMemberId,
-    selectedTeamId,
-  ]);
+  });
 
-  useEffect(() => {
-    if (!activeRunId || !eventsAutoRefresh) return;
-    const timer = window.setInterval(() => {
-      if (tab === "mailbox") {
-        void refreshSnapshot(activeRunId).catch(() => undefined);
-        const actorId = chatActors.inboxActorId.trim();
-        if (actorId) {
-          void loadInbox(actorId).catch(() => undefined);
-        }
-        return;
-      }
-      void refreshRun(activeRunId).catch(() => undefined);
-      void refreshEvents(activeRunId).catch(() => undefined);
-      void refreshSnapshot(activeRunId).catch(() => undefined);
-    }, 4000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
+  useTeamMailboxEffects({
+    snapshot,
+    selectedMemberId,
     activeRunId,
-    chatActors.inboxActorId,
-    eventsAutoRefresh,
-    loadInbox,
-    refreshEvents,
-    refreshRun,
-    refreshSnapshot,
+    chatInboxActorId: chatActors.inboxActorId,
     tab,
-  ]);
-
-  useEffect(() => {
-    if (!snapshot) {
-      setSelectedMemberId("");
-      setMemberEvents([]);
-      return;
-    }
-    if (
-      selectedMemberId &&
-      snapshot.members.some((member) => member.member_id === selectedMemberId)
-    ) {
-      return;
-    }
-    setSelectedMemberId(snapshot.members[0]?.member_id ?? "");
-  }, [selectedMemberId, setSelectedMemberId, snapshot]);
-
-  useEffect(() => {
-    const actorId = chatActors.inboxActorId.trim();
-    if (!activeRunId || !actorId) {
-      setInbox([]);
-      return;
-    }
-    setInboxActorId(actorId);
-    void loadInbox(actorId).catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [activeRunId, chatActors.inboxActorId, loadInbox, setInbox, setInboxActorId]);
-
-  useEffect(() => {
-    if (tab !== "mailbox") {
-      return;
-    }
-    setChatStickToBottom(true);
-    window.requestAnimationFrame(() => {
-      scrollConversationToBottom();
-    });
-  }, [conversationKey, scrollConversationToBottom, setChatStickToBottom, tab]);
-
-  useEffect(() => {
-    if (tab !== "mailbox" || !chatStickToBottom) {
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      scrollConversationToBottom();
-      markConversationSeen(conversationKey, conversationLatestMessageId);
-    });
-  }, [
     chatStickToBottom,
     conversationKey,
     conversationLatestMessageId,
-    conversationMessages.length,
+    conversationMessageCount: conversationMessages.length,
+    loadInbox,
+    loadMemberEvents,
     markConversationSeen,
     scrollConversationToBottom,
-    tab,
-  ]);
+    parseErrorMessage,
+    setError,
+    setSelectedMemberId,
+    setMemberEvents,
+    setInbox,
+    setInboxActorId,
+    setChatStickToBottom,
+  });
 
-  useEffect(() => {
-    void loadMemberEvents("replace").catch((err) => {
-      setError(parseErrorMessage(err));
-    });
-  }, [loadMemberEvents]);
-
-  useEffect(() => {
-    if (!props.token) {
-      setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
-      return;
-    }
-    api
-      .getRuntimeDefaults(props.token)
-      .then((defaults) => {
-        const root = normalizeRuntimeWorktreeRoot(
-          defaults.default_worktree_root,
-          DEFAULT_WORKTREE_ROOT
-        );
-        setForgeDefaultWorktreeRoot(root);
-      })
-      .catch(() => undefined);
-  }, [props.token]);
-
-  useEffect(() => {
-    if (!showCreateTeamModal) return;
-    if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
-      return;
-    }
-    const fallbackLeaderId = teamForgeAgents[0]?.id ?? "";
-    setLeaderMemberId(fallbackLeaderId);
-  }, [leaderMemberId, setLeaderMemberId, showCreateTeamModal, teamForgeAgents]);
-
-  useEffect(() => {
-    if (!showCreateTeamModal) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (busy === "create-team") return;
-      event.preventDefault();
-      setShowCreateTeamModal(false);
-      setCreateTeamStage(0);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [busy, setCreateTeamStage, setShowCreateTeamModal, showCreateTeamModal]);
+  useTeamCreateModalEffects({
+    token: props.token,
+    defaultWorktreeRoot: DEFAULT_WORKTREE_ROOT,
+    showCreateTeamModal,
+    leaderMemberId,
+    teamForgeAgents,
+    busy,
+    setForgeDefaultWorktreeRoot,
+    setLeaderMemberId,
+    setShowCreateTeamModal,
+    setCreateTeamStage,
+  });
 
   const openCreateTeamModal = useCallback(
     (mode: TeamCreateEntryMode) => {
@@ -1735,376 +1550,115 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
-  const onLoadRunById = async () => {
-    const runId = runLookupId.trim();
-    if (!runId) {
-      setError("Run ID is required");
-      return;
-    }
-    setBusy("load-run");
-    setError(null);
-    try {
-      const run = await refreshRun(runId);
-      setSelectedTeamId(run.team_id);
-      setActiveRunId(run.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRunStatusFilterChange = useCallback(
-    (nextFilter: TeamRunStatusFilter) => {
-      if (!selectedTeamId) return;
-      setTeamRunBrowserByTeam((prev) => ({
-        ...prev,
-        [selectedTeamId]: {
-          statusFilter: nextFilter,
-          beforeCreatedAt: undefined,
-          hasMore: false,
-        },
-      }));
-    },
-    [selectedTeamId]
-  );
-
-  const onRefreshRuns = useCallback(async () => {
-    if (!selectedTeamId) return;
-    setError(null);
-    try {
-      await refreshTeamRuns(selectedTeamId, "replace", {
-        statusFilter: runStatusFilter,
-      });
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [refreshTeamRuns, runStatusFilter, selectedTeamId]);
-
-  const onLoadMoreRuns = useCallback(async () => {
-    if (!selectedTeamId || runsLoading || !runsHasMore) {
-      return;
-    }
-    setError(null);
-    try {
-      await refreshTeamRuns(selectedTeamId, "append", {
-        statusFilter: runStatusFilter,
-        beforeCreatedAt: runsBeforeCreatedAt,
-      });
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [
-    refreshTeamRuns,
-    runStatusFilter,
-    runsBeforeCreatedAt,
-    runsHasMore,
-    runsLoading,
+  const {
+    onRunStatusFilterChange,
+    onRefreshRuns,
+    onLoadMoreRuns,
+  } = useTeamRunListActions({
     selectedTeamId,
-  ]);
+    runStatusFilter,
+    runsLoading,
+    runsHasMore,
+    runsBeforeCreatedAt,
+    setError,
+    parseErrorMessage,
+    setTeamRunBrowserByTeam,
+    refreshTeamRuns,
+  });
 
-  const onCancelRun = async () => {
-    if (!activeRunId) return;
-    setBusy("cancel-run");
-    setError(null);
-    try {
-      const canceled = await api.cancelTeamRun(props.token, activeRunId);
-      setRuns((prev) => upsertRun(prev, canceled));
-      await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const {
+    onLoadRunById,
+    onCancelRun,
+    onResumeRun,
+    onRestartRun,
+  } = useTeamRunLifecycleActions({
+    token: props.token,
+    activeRunId,
+    runLookupId,
+    setBusy,
+    setError,
+    parseErrorMessage,
+    refreshRun,
+    refreshEvents,
+    refreshSnapshot,
+    setRuns,
+    setSelectedTeamId,
+    setActiveRunId,
+    setRunLookupId,
+  });
 
-  const onResumeRun = async () => {
-    if (!activeRunId) return;
-    setBusy("resume-run");
-    setError(null);
-    try {
-      const resumed = await api.resumeTeamRun(props.token, activeRunId);
-      setRuns((prev) => upsertRun(prev, resumed));
-      setActiveRunId(resumed.id);
-      setRunLookupId(resumed.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRestartRun = async () => {
-    if (!activeRunId) return;
-    setBusy("restart-run");
-    setError(null);
-    try {
-      const restarted = await api.restartTeamRun(props.token, activeRunId);
-      setRuns((prev) => upsertRun(prev, restarted));
-      setActiveRunId(restarted.id);
-      setRunLookupId(restarted.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onSubmitStep = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
-      return;
-    }
-    if (!stepKey.trim()) {
-      setError("step_key is required");
-      return;
-    }
-    if (!stepMemberId.trim()) {
-      setError("member_id is required");
-      return;
-    }
-    setBusy("submit-step");
-    setError(null);
-    try {
-      const created = await api.submitTeamRunStep(props.token, activeRunId, {
-        step_key: stepKey.trim(),
-        member_id: stepMemberId.trim(),
-        depends_on: parseCsvList(stepDependsOn),
-        input: parseOptionalJson(stepInput, "Step input"),
-      });
-      await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
-      ]);
-      setSelectedStepId(created.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onApplyStepAction = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
-      return;
-    }
-    if (!selectedStepId) {
-      setError("Select a step first");
-      return;
-    }
-    setBusy(`step-${stepAction}`);
-    setError(null);
-    try {
-      if (stepAction === "start") {
-        await api.startTeamRunStep(props.token, activeRunId, selectedStepId, {
-          remote_task_id: stepRemoteTaskId.trim() || undefined,
-        });
-      } else if (stepAction === "complete") {
-        await api.completeTeamRunStep(props.token, activeRunId, selectedStepId, {
-          output: parseOptionalJson(stepOutput, "Step output"),
-        });
-      } else if (stepAction === "fail") {
-        const errorText = stepFailText.trim();
-        if (!errorText) {
-          throw new Error("Fail reason is required");
-        }
-        await api.failTeamRunStep(props.token, activeRunId, selectedStepId, {
-          error_text: errorText,
-        });
-      } else if (stepAction === "input_required") {
-        await api.setTeamRunStepInputRequired(props.token, activeRunId, selectedStepId, {
-          reason: stepInputReason.trim() || undefined,
-          input: parseOptionalJson(stepInputRequiredPayload, "Input required payload"),
-        });
-      } else {
-        await api.resumeTeamRunStep(props.token, activeRunId, selectedStepId, {
-          input: parseOptionalJson(stepResumePayload, "Resume payload"),
-        });
-      }
-      await Promise.all([
-        refreshRun(activeRunId),
-        refreshSteps(activeRunId),
-        refreshEvents(activeRunId),
-        refreshSnapshot(activeRunId),
-      ]);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
+    token: props.token,
+    activeRunId,
+    stepKey,
+    stepMemberId,
+    stepDependsOn,
+    stepInput,
+    selectedStepId,
+    stepAction,
+    stepRemoteTaskId,
+    stepOutput,
+    stepFailText,
+    stepInputReason,
+    stepInputRequiredPayload,
+    stepResumePayload,
+    setBusy,
+    setError,
+    parseErrorMessage,
+    refreshRun,
+    refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+    setSelectedStepId,
+  });
 
   const onApplyMessageTemplate = () => {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
-  const onSendChatMessage = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
-      return;
-    }
-    const fromActorId = chatActors.fromActorId.trim();
-    const toActorId = chatActors.toActorId.trim();
-    const text = chatDraft.trim();
-    if (!fromActorId || !toActorId) {
-      setError("Select a valid member conversation first");
-      return;
-    }
-    if (!text) {
-      setError("Chat message is required");
-      return;
-    }
-    setBusy("send-chat");
-    setError(null);
-    try {
-      await api.sendTeamRunMessage(props.token, activeRunId, {
-        from_actor_id: fromActorId,
-        to_actor_id: toActorId,
-        channel: "default",
-        transport: "local",
-        payload: buildMailboxChatPayload(text),
-      });
-      setChatDraft("");
-      await refreshSnapshot(activeRunId);
-      await loadInbox(toActorId);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const { onSendChatMessage, onSendMessage, onRefreshInbox, onAckMessage } =
+    useTeamMailboxActions({
+      token: props.token,
+      activeRunId,
+      tab,
+      chatActors,
+      chatDraft,
+      msgFromActorId,
+      msgToActorId,
+      msgChannel,
+      msgTransport,
+      msgRoute,
+      msgPayload,
+      msgIdempotencyKey,
+      inboxActorId,
+      setBusy,
+      setError,
+      parseErrorMessage,
+      setChatDraft,
+      loadInbox,
+      refreshEvents,
+      refreshSnapshot,
+    });
 
-  const onSendMessage = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
-      return;
-    }
-    const fromActorId = msgFromActorId.trim();
-    const toActorId = msgToActorId.trim();
-    if (!fromActorId || !toActorId) {
-      setError("from_actor_id and to_actor_id are required");
-      return;
-    }
-    setBusy("send-message");
-    setError(null);
-    try {
-      await api.sendTeamRunMessage(props.token, activeRunId, {
-        from_actor_id: fromActorId,
-        to_actor_id: toActorId,
-        channel: msgChannel.trim() || undefined,
-        transport: msgTransport,
-        route: parseOptionalJson(msgRoute, "Message route"),
-        payload: parseRequiredJson(msgPayload, "Message payload"),
-        idempotency_key: msgIdempotencyKey.trim() || undefined,
-      });
-      if (tab === "mailbox") {
-        await refreshSnapshot(activeRunId);
-        if (inboxActorId.trim()) {
-          await loadInbox();
-        }
-      } else {
-        await Promise.all([refreshEvents(activeRunId), refreshSnapshot(activeRunId)]);
-      }
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRefreshInbox = async () => {
-    if (!activeRunId) {
-      setError("Select a run first");
-      return;
-    }
-    setBusy("refresh-inbox");
-    setError(null);
-    try {
-      await loadInbox();
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onAckMessage = async (message: TeamActorMessageRecord) => {
-    if (!activeRunId) return;
-    const actorId = inboxActorId.trim() || message.to_actor_id;
-    setBusy(`ack-${message.message_id}`);
-    setError(null);
-    try {
-      await api.ackTeamRunMessage(props.token, activeRunId, message.message_id, actorId);
-      if (tab === "mailbox") {
-        await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunId)]);
-      } else {
-        await Promise.all([
-          loadInbox(),
-          refreshEvents(activeRunId),
-          refreshSnapshot(activeRunId),
-        ]);
-      }
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRefreshMemberConsole = useCallback(async () => {
-    if (selectedMemberSnapshot) {
-      await loadMemberEvents("replace");
-      return;
-    }
-    if (activeRunId) {
-      await refreshEvents(activeRunId);
-    }
-  }, [activeRunId, loadMemberEvents, refreshEvents, selectedMemberSnapshot]);
-
-  const onLoadOlderMemberConsole = useCallback(async () => {
-    if (!selectedMemberSnapshot) {
-      return;
-    }
-    await loadMemberEvents("prepend");
-  }, [loadMemberEvents, selectedMemberSnapshot]);
-
-  const onRefreshOverviewSnapshot = useCallback(async () => {
-    if (!activeRunId) return;
-    setError(null);
-    try {
-      await refreshSnapshot(activeRunId);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [activeRunId, refreshSnapshot]);
-
-  const onOpenMailboxForMember = useCallback((memberId: string) => {
-    setSelectedMemberId(memberId);
-    setTab("mailbox");
-  }, [setSelectedMemberId, setTab]);
-
-  const onRefreshEventsPanel = useCallback(async () => {
-    if (!activeRun) return;
-    setError(null);
-    try {
-      await refreshEvents(activeRun.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [activeRun, refreshEvents]);
-
-  const onLoadOlderEventsPanel = useCallback(async () => {
-    if (!activeRun) return;
-    setError(null);
-    try {
-      await refreshEvents(activeRun.id, "prepend");
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    }
-  }, [activeRun, refreshEvents]);
+  const {
+    onRefreshMemberConsole,
+    onLoadOlderMemberConsole,
+    onRefreshOverviewSnapshot,
+    onOpenMailboxForMember,
+    onRefreshEventsPanel,
+    onLoadOlderEventsPanel,
+  } = useTeamPanelActions({
+    activeRunId,
+    activeRun,
+    selectedMemberSnapshot,
+    setError,
+    parseErrorMessage,
+    loadMemberEvents,
+    refreshEvents,
+    refreshSnapshot,
+    setSelectedMemberId,
+    setTab,
+  });
 
   const onUpdateWorker = (
     index: number,
@@ -2198,12 +1752,9 @@ export function TeamPage(props: TeamPageProps) {
     setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
   };
 
-  const panelPrimaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
-  const panelSecondaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
-  const panelGhostButtonClassName =
-    "ghost inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+  const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
+  const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
+  const panelGhostButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
   const modalFieldClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
@@ -2655,7 +2206,7 @@ export function TeamPage(props: TeamPageProps) {
               </div>
 
               {createTeamStage !== 0 && (
-                <div className="team-create-agent-entry rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="team-create-agent-entry rounded-xl border border-slate-200 bg-white p-4">
                   <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-base font-semibold text-slate-900">Agent Forge</h4>
                     <button
@@ -2689,7 +2240,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 0 && (
-                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-white p-4">
                   <h4 className="text-base font-semibold text-slate-900">Mission Brief</h4>
                   <div className="team-create-mission-intro mt-2">
                     <p className="muted text-sm text-slate-600">
@@ -2723,7 +2274,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 1 && (
-                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-white p-4">
                   <h4 className="text-base font-semibold text-slate-900">Leader Forge</h4>
                   <p className="muted mt-2 text-sm text-slate-600">
                     Choose the leader from agents created in this Team Forge session only.
@@ -2816,7 +2367,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 2 && (
-                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-white p-4">
                   <div className="toolbar flex flex-wrap items-center justify-between gap-3">
                     <h4 className="text-base font-semibold text-slate-900">Recruit Workers</h4>
                     <div className="toolbar-actions flex flex-wrap gap-2">
@@ -2993,7 +2544,7 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {createTeamStage === 3 && (
-                <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="team-create-panel rounded-xl border border-slate-200 bg-white p-4">
                   <h4 className="text-base font-semibold text-slate-900">Launch Team</h4>
                   <p className="muted mt-2 text-sm text-slate-600">
                     Final review before deployment.

@@ -1,5 +1,12 @@
 import React from "react";
 import { TeamDefinitionRecord } from "../api";
+import {
+  TEAM_ITEM_ACTIVE_CLASS,
+  TEAM_ITEM_BASE_CLASS,
+  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_SURFACE_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamMemberSummary = {
   active: number;
@@ -54,24 +61,24 @@ export function TeamSidebar(props: TeamSidebarProps) {
             void onRefreshTeams();
           }}
           disabled={busy === "refresh-teams"}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
         >
           Refresh
         </button>
       </div>
 
-      <div className="teams-form teams-create-launch rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <div className={`teams-form teams-create-launch ${TEAM_PANEL_SURFACE_CLASS}`}>
         <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
         <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
         <div className="teams-create-entry-actions mt-3 flex flex-wrap gap-2">
           <button
             onClick={onOpenCreateTeamWizard}
-            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
           >
             Guided Wizard
           </button>
           <button
-            className="ghost rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-400"
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
             onClick={onOpenCreateTeamManual}
           >
             Manual Spec
@@ -91,7 +98,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
           return (
             <button
               key={team.id}
-              className={team.id === selectedTeamId ? "team-item active" : "team-item"}
+              className={team.id === selectedTeamId ? TEAM_ITEM_ACTIVE_CLASS : TEAM_ITEM_BASE_CLASS}
               onClick={() => onSelectTeam(team.id)}
             >
               <span className="team-name">{team.name}</span>

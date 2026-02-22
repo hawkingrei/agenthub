@@ -10,6 +10,7 @@ import {
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -34,8 +35,8 @@ type TeamMemberConsolePanelProps = {
 };
 
 const MEMBER_CONSOLE_DETAIL_CLASS =
-  "teams-step-body mono rounded-xl border border-slate-200 bg-slate-50/70 p-3";
-const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+  `teams-step-body mono ${TEAM_PANEL_SURFACE_CLASS}`;
+const MEMBER_CONSOLE_LIST_CLASS = `teams-event-list ${TEAM_PANEL_SURFACE_CLASS}`;
 const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
 const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
   "teams-event-head mb-1 flex items-center gap-2 text-xs text-slate-600";

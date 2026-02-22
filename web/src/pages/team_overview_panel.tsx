@@ -2,7 +2,10 @@ import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  TEAM_ITEM_ACTIVE_CLASS,
+  TEAM_ITEM_BASE_CLASS,
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -18,14 +21,8 @@ type TeamOverviewPanelProps = {
 };
 
 const OVERVIEW_META_CLASS =
-  "teams-run-meta mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
+  `teams-run-meta mb-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3 ${TEAM_PANEL_SURFACE_CLASS}`;
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
-const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
-  "team-item rounded-lg border bg-white px-3 py-2 text-left transition";
-const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} active border-slate-300 ring-1 ring-slate-200`;
-const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-200 hover:border-slate-300`;
 
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
@@ -84,8 +81,8 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 key={member.member_id}
                 className={
                   selectedMemberId === member.member_id
-                    ? OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS
-                    : OVERVIEW_MEMBER_BUTTON_IDLE_CLASS
+                    ? TEAM_ITEM_ACTIVE_CLASS
+                    : TEAM_ITEM_BASE_CLASS
                 }
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
