@@ -18,6 +18,8 @@ To reduce manual dependency drift and keep security/maintenance updates continuo
   - `cargo` at `/`
   - `npm` at `/web`
   - `npm` at `/userdocs`
+- Added update grouping (`groups`) per ecosystem to reduce PR noise.
+- Reduced duplicated config blocks with YAML anchors (`weekly_schedule`, `commit_message`).
 - Added a TODO verification item in `docs/todo.md` to track first post-merge Dependabot evidence.
 
 ## Key Decisions
@@ -36,6 +38,16 @@ To reduce manual dependency drift and keep security/maintenance updates continuo
 
 - Weekly cadence limits PR churn while preserving regular patch/minor intake.
 - Staggered windows reduce simultaneous update spikes.
+
+4. Group updates by ecosystem.
+
+- Each configured ecosystem uses `groups` with a catch-all pattern.
+- This keeps Dependabot output manageable (fewer, broader update PRs).
+
+5. Use YAML anchors for shared config fields.
+
+- Shared `schedule` and `commit-message` structure is defined once and reused.
+- This keeps the config compact and lowers maintenance cost for future tuning.
 
 ## Validation
 
