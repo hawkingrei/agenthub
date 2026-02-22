@@ -6,7 +6,6 @@ import {
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -47,8 +46,8 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS = `teams-step-panel ${TEAM_PANEL_SURFACE_CLASS}`;
-const STEPS_LIST_CLASS = `teams-step-list ${TEAM_PANEL_SURFACE_CLASS}`;
+const STEPS_PANEL_CLASS = "teams-step-panel rounded-xl border border-slate-200 bg-slate-50/70 p-3";
+const STEPS_LIST_CLASS = "teams-step-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-base font-semibold text-slate-900";
 const STEPS_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
