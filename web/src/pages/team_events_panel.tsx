@@ -5,7 +5,6 @@ import {
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_SURFACE_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -26,7 +25,7 @@ type TeamEventsPanelProps = {
   toPrettyJson: (value: unknown) => string;
 };
 
-const EVENTS_LIST_CLASS = `teams-event-list ${TEAM_PANEL_SURFACE_CLASS}`;
+const EVENTS_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
 const EVENTS_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-sm text-slate-700";
 const EVENTS_EMPTY_TEXT_CLASS = "muted text-sm text-slate-600";
 const EVENTS_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
