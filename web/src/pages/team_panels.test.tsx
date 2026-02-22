@@ -295,11 +295,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No teams yet.");
   });
 
-  it("TeamRunPanel supports create/load/filter/list interactions and empty-state messages", () => {
+  it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
     const onDeleteTeam = vi.fn();
-    const onRunContextIdChange = vi.fn();
-    const onCreateRun = vi.fn();
-    const onRunInputChange = vi.fn();
     const onRunStatusFilterChange = vi.fn();
     const onRefreshRuns = vi.fn();
     const onActiveRunChange = vi.fn();
@@ -313,11 +310,6 @@ describe("team panels interactions", () => {
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={onDeleteTeam}
-          runContextId="ctx-1"
-          onRunContextIdChange={onRunContextIdChange}
-          onCreateRun={onCreateRun}
-          runInput='{"hello":"world"}'
-          onRunInputChange={onRunInputChange}
           runStatusFilter="all"
           runStatusFilterOptions={[
             { value: "all", label: "All" },
@@ -340,19 +332,6 @@ describe("team panels interactions", () => {
       );
     });
 
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="context_id (optional, auto-generated when empty)"]') as
-          | HTMLInputElement
-          | null,
-        "run context input missing"
-      ),
-      "ctx-2"
-    );
-    changeInputValue(
-      required(container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null, "run input missing"),
-      "new input"
-    );
     changeSelectValue(
       required(
         container.querySelector('select[aria-label="Run status filter"]') as HTMLSelectElement | null,
@@ -362,26 +341,11 @@ describe("team panels interactions", () => {
     );
 
     clickElement(findButtonByText(container, "Delete Team"));
-    clickElement(findButtonByText(container, "Create Run"));
-    clickElement(findButtonByText(container, "Use Example JSON"));
-    clickElement(findButtonByText(container, "Set Empty Object"));
-    clickElement(findButtonByText(container, "Format JSON"));
-    clickElement(findButtonByText(container, "Clear"));
     clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
     expect(onDeleteTeam).toHaveBeenCalledTimes(1);
-    expect(onRunContextIdChange).toHaveBeenCalledWith("ctx-2");
-    expect(onCreateRun).toHaveBeenCalledTimes(1);
-    expect(onRunInputChange).toHaveBeenCalledWith("new input");
-    expect(
-      onRunInputChange.mock.calls.some(
-        ([value]) => typeof value === "string" && value.includes('"task": "investigate"')
-      )
-    ).toBe(true);
-    expect(onRunInputChange).toHaveBeenCalledWith("{}");
-    expect(onRunInputChange).toHaveBeenCalledWith("");
     expect(onRunStatusFilterChange).toHaveBeenCalledWith("working");
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
@@ -393,11 +357,6 @@ describe("team panels interactions", () => {
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={() => {}}
-          runContextId=""
-          onRunContextIdChange={() => {}}
-          onCreateRun={() => {}}
-          runInput=""
-          onRunInputChange={() => {}}
           runStatusFilter="completed"
           runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
           onRunStatusFilterChange={() => {}}
@@ -418,19 +377,18 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Active run `run-hidden` is hidden by filter `completed`.");
-    expect(container.textContent).toContain("No runs loaded yet. Create one or use Debug → Run Ops.");
+    expect(container.textContent).toContain(
+      "No runs loaded yet. Use Debug → Run Ops to create or load runs."
+    );
+  });
 
+  it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
     act(() => {
       root.render(
         <TeamRunPanel
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={() => {}}
-          runContextId=""
-          onRunContextIdChange={() => {}}
-          onCreateRun={onCreateRun}
-          runInput='{"broken": }'
-          onRunInputChange={() => {}}
           runStatusFilter="all"
           runStatusFilterOptions={[{ value: "all", label: "All" }]}
           onRunStatusFilterChange={() => {}}
@@ -450,93 +408,9 @@ describe("team panels interactions", () => {
       );
     });
 
-    const createRunButton = findButtonByText(container, "Create Run");
-    expect(createRunButton.getAttribute("disabled")).not.toBeNull();
-    expect(container.textContent).toContain("Run input must be valid JSON");
-  });
-
-  it("TeamRunPanel handles keyboard submit and format-json edge cases", () => {
-    const onCreateRun = vi.fn();
-    const onRunInputChange = vi.fn();
-
-    const commonProps = {
-      selectedTeam: buildTeam(),
-      busy: null as string | null,
-      onDeleteTeam: () => {},
-      runContextId: "",
-      onRunContextIdChange: () => {},
-      onCreateRun,
-      onRunInputChange,
-      runStatusFilter: "all" as const,
-      runStatusFilterOptions: [{ value: "all" as const, label: "All" }],
-      onRunStatusFilterChange: () => {},
-      onRefreshRuns: () => {},
-      runsLoading: false,
-      visibleRuns: [],
-      activeRunId: null as string | null,
-      onActiveRunChange: () => {},
-      isActiveRunHiddenByFilter: false,
-      activeRun: null as TeamRunRecord | null,
-      totalLoadedRunsForTeam: 0,
-      pageLimit: 20,
-      runsHasMore: false,
-      selectedTeamId: "team-1",
-      onLoadMoreRuns: () => {},
-    };
-
-    act(() => {
-      root.render(<TeamRunPanel {...commonProps} runInput='{"hello":"world"}' />);
-    });
-
-    const runInputTextarea = required(
-      container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null,
-      "run input textarea missing"
-    );
-    act(() => {
-      runInputTextarea.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          bubbles: true,
-          cancelable: true,
-          ctrlKey: true,
-        })
-      );
-    });
-    expect(onCreateRun).toHaveBeenCalledTimes(1);
-
-    clickElement(findButtonByText(container, "Format JSON"));
-    expect(
-      onRunInputChange.mock.calls.some(
-        ([value]) => value === '{\n  "hello": "world"\n}'
-      )
-    ).toBe(true);
-
-    act(() => {
-      root.render(<TeamRunPanel {...commonProps} runInput="" />);
-    });
-    clickElement(findButtonByText(container, "Format JSON"));
-    expect(onRunInputChange).toHaveBeenCalledWith("{}");
-
-    act(() => {
-      root.render(<TeamRunPanel {...commonProps} runInput='{"broken": }' />);
-    });
-    const callsBeforeInvalidSubmit = onCreateRun.mock.calls.length;
-    const invalidTextarea = required(
-      container.querySelector(".teams-run-create textarea") as HTMLTextAreaElement | null,
-      "invalid run input textarea missing"
-    );
-    act(() => {
-      invalidTextarea.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          bubbles: true,
-          cancelable: true,
-          metaKey: true,
-        })
-      );
-    });
-    expect(onCreateRun.mock.calls.length).toBe(callsBeforeInvalidSubmit);
-    expect(findButtonByText(container, "Format JSON").disabled).toBe(true);
+    expect(container.textContent).toContain("Debug → Run Ops");
+    expect(container.textContent).not.toContain("Create Run");
+    expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
   });
 
   it("TeamStepsPanel covers submit and all step action payload editors", () => {

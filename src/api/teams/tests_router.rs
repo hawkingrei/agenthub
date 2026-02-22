@@ -85,6 +85,95 @@ async fn teams_router_http_contract() {
         .expect("get team via router");
     assert_eq!(get_team_resp.status(), StatusCode::OK);
 
+    let create_main_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks"),
+            Some(&token),
+            Some(json!({
+                "title": "router main task",
+                "created_by_actor_id": "user",
+                "context": {"token":"should-redact"},
+                "conversation_mode": "group_chat",
+                "topic": "kickoff"
+            })),
+        ))
+        .await
+        .expect("create main task via router");
+    assert_eq!(create_main_task_resp.status(), StatusCode::OK);
+    let created_main_task = decode_json_body(create_main_task_resp).await;
+    let main_task_id = created_main_task["task"]["id"]
+        .as_str()
+        .expect("main task id")
+        .to_string();
+    assert_eq!(
+        created_main_task["task"]["context"]["token"],
+        Value::from("[redacted]")
+    );
+
+    let list_main_tasks_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/main_tasks?limit=20"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list main tasks via router");
+    assert_eq!(list_main_tasks_resp.status(), StatusCode::OK);
+    let listed_main_tasks = decode_json_body(list_main_tasks_resp).await;
+    assert_eq!(listed_main_tasks.as_array().map(Vec::len), Some(1));
+
+    let get_main_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/main_tasks/{main_task_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get main task via router");
+    assert_eq!(get_main_task_resp.status(), StatusCode::OK);
+
+    let send_main_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks/{main_task_id}/messages"),
+            Some(&token),
+            Some(json!({
+                "from_actor_id": "leader",
+                "to_actor_id": "worker-1",
+                "route": "to_member",
+                "payload": {"authorization":"Bearer x","text":"assign"}
+            })),
+        ))
+        .await
+        .expect("send main task message via router");
+    assert_eq!(send_main_task_message_resp.status(), StatusCode::OK);
+    let main_task_message = decode_json_body(send_main_task_message_resp).await;
+    assert_eq!(
+        main_task_message["payload"]["authorization"],
+        Value::from("[redacted]")
+    );
+
+    let list_main_task_messages_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/main_tasks/{main_task_id}/messages?limit=20"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list main task messages via router");
+    assert_eq!(list_main_task_messages_resp.status(), StatusCode::OK);
+    let listed_main_task_messages = decode_json_body(list_main_task_messages_resp).await;
+    assert_eq!(listed_main_task_messages.as_array().map(Vec::len), Some(1));
+
     let create_run_resp = app
         .clone()
         .oneshot(build_json_request(

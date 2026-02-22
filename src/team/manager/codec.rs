@@ -3,8 +3,9 @@ use sqlx::Row;
 
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
-    TeamDefinitionRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus, TeamStepRecord,
-    TeamStepStatus,
+    TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
+    TeamMainTaskRecord, TeamMainTaskStatus, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamStepRecord, TeamStepStatus,
 };
 
 pub(super) fn parse_team_definition_row(
@@ -35,6 +36,55 @@ pub(super) fn parse_team_run_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resul
         created_at: row.get("created_at"),
         started_at: row.get("started_at"),
         ended_at: row.get("ended_at"),
+    })
+}
+
+pub(super) fn parse_team_main_task_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamMainTaskRecord> {
+    let context_json: String = row.get("context_json");
+    let context: Value = serde_json::from_str(&context_json)?;
+    let status_raw: String = row.get("status");
+    Ok(TeamMainTaskRecord {
+        id: row.get("id"),
+        team_id: row.get("team_id"),
+        title: row.get("title"),
+        status: team_main_task_status_from_str(&status_raw),
+        created_by_actor_id: row.get("created_by_actor_id"),
+        context,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+pub(super) fn parse_team_conversation_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamConversationRecord> {
+    Ok(TeamConversationRecord {
+        id: row.get("id"),
+        team_id: row.get("team_id"),
+        main_task_id: row.get("main_task_id"),
+        mode: row.get("mode"),
+        topic: row.try_get("topic")?,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+pub(super) fn parse_team_conversation_message_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamConversationMessageRecord> {
+    let payload_json: String = row.get("payload_json");
+    let payload: Value = serde_json::from_str(&payload_json)?;
+    Ok(TeamConversationMessageRecord {
+        message_id: row.get("id"),
+        conversation_id: row.get("conversation_id"),
+        main_task_id: row.get("main_task_id"),
+        from_actor_id: row.get("from_actor_id"),
+        to_actor_id: row.try_get("to_actor_id")?,
+        route: row.get("route"),
+        payload,
+        created_at: row.get("created_at"),
     })
 }
 
@@ -117,6 +167,24 @@ pub(super) fn team_run_status_to_str(status: &TeamRunStatus) -> &'static str {
         TeamRunStatus::Completed => "completed",
         TeamRunStatus::Failed => "failed",
         TeamRunStatus::Canceled => "canceled",
+    }
+}
+
+pub(super) fn team_main_task_status_to_str(status: &TeamMainTaskStatus) -> &'static str {
+    match status {
+        TeamMainTaskStatus::Open => "open",
+        TeamMainTaskStatus::InProgress => "in_progress",
+        TeamMainTaskStatus::Completed => "completed",
+        TeamMainTaskStatus::Canceled => "canceled",
+    }
+}
+
+pub(super) fn team_main_task_status_from_str(raw: &str) -> TeamMainTaskStatus {
+    match raw {
+        "in_progress" => TeamMainTaskStatus::InProgress,
+        "completed" => TeamMainTaskStatus::Completed,
+        "canceled" => TeamMainTaskStatus::Canceled,
+        _ => TeamMainTaskStatus::Open,
     }
 }
 
