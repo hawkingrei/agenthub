@@ -57,6 +57,33 @@ const TEAM_MAIN_TASK_COMPILE_VERSION: i64 = 1;
 const TEAM_MAIN_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
 const DEFAULT_MAIN_TASK_ACCEPTANCE_CRITERION: &str =
     "All assigned steps complete and leader synthesis is delivered.";
+const TEAM_MAIN_TASK_COMPILE_MAX_LIST_ITEMS: usize = 32;
+const TEAM_MAIN_TASK_COMPILE_MAX_TEXT_LEN: usize = 280;
+const TEAM_MAIN_TASK_COMPILE_MAX_DEADLINE_LEN: usize = 40;
+
+fn team_owner_matches_user(team: &TeamDefinitionRecord, user: &UserRecord) -> bool {
+    match team.owner_user_id.as_deref() {
+        Some(owner_user_id) => owner_user_id == user.id,
+        // Backward compatibility for legacy rows created before owner_user_id was introduced.
+        None => true,
+    }
+}
+
+async fn load_team_for_user(
+    state: &AppState,
+    team_id: &str,
+    user: &UserRecord,
+) -> Result<TeamDefinitionRecord, ApiError> {
+    let team = state
+        .teams
+        .get_team(team_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    if !team_owner_matches_user(&team, user) {
+        return Err(ApiError::not_found("team not found"));
+    }
+    Ok(team)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
@@ -320,7 +347,7 @@ async fn create_team(
     headers: HeaderMap,
     Json(payload): Json<CreateTeamRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::bad_request("team name is required"));
@@ -330,11 +357,14 @@ async fn create_team(
     validate_team_spec(&spec)?;
     let team = state
         .teams
-        .create_team(TeamDefinitionConfig {
-            name,
-            description: payload.description,
-            spec,
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name,
+                description: payload.description,
+                spec,
+            },
+            Some(user.id.as_str()),
+        )
         .await
         .map_err(map_create_team_error)?;
     Ok(Json(team))
@@ -344,8 +374,14 @@ async fn list_teams(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TeamDefinitionRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let teams = state.teams.list_teams().await?;
+    let user = require_user(&headers, &state).await?;
+    let teams = state
+        .teams
+        .list_teams()
+        .await?
+        .into_iter()
+        .filter(|team| team_owner_matches_user(team, &user))
+        .collect::<Vec<_>>();
     Ok(Json(teams))
 }
 
@@ -354,12 +390,8 @@ async fn get_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     Ok(Json(team))
 }
 
@@ -368,12 +400,8 @@ async fn delete_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let member_ids = match parse_member_ids(team.spec.get("members")) {
         Ok(ids) => ids,
         Err(err) => {
@@ -412,11 +440,7 @@ async fn create_team_main_task(
     Json(payload): Json<CreateTeamMainTaskRequest>,
 ) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(ApiError::bad_request("title is required"));
@@ -445,12 +469,8 @@ async fn list_team_main_tasks(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamMainTasksQuery>,
 ) -> Result<Json<Vec<TeamMainTaskRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let tasks = state
         .teams
         .list_main_tasks(&team_id, query.limit.unwrap_or(100).clamp(1, 500))
@@ -464,12 +484,8 @@ async fn get_team_main_task(
     headers: HeaderMap,
     Path((team_id, main_task_id)): Path<(String, String)>,
 ) -> Result<Json<TeamMainTaskDetailResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -493,11 +509,7 @@ async fn send_team_main_task_message(
     Json(payload): Json<SendTeamMainTaskMessageRequest>,
 ) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -542,12 +554,8 @@ async fn list_team_main_task_messages(
     Path((team_id, main_task_id)): Path<(String, String)>,
     Query(query): Query<ListTeamMainTaskMessagesQuery>,
 ) -> Result<Json<Vec<TeamConversationMessageRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_main_task(&main_task_id)
@@ -574,12 +582,8 @@ async fn compile_team_main_task_run_preview(
     Path((team_id, main_task_id)): Path<(String, String)>,
     Json(payload): Json<CompileTeamMainTaskRunPreviewRequest>,
 ) -> Result<Json<TeamMainTaskRunCompilePreviewResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     validate_team_spec(&team.spec)?;
     let task = state
         .teams
@@ -1906,15 +1910,8 @@ fn compile_main_task_step_template(
     member_specs: &[TeamMemberSpec],
     leader_member_id: Option<&str>,
 ) -> Result<Vec<TeamCompiledStepTemplate>, ApiError> {
-    let leader_member_id = leader_member_id
+    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs)
         .map(str::to_string)
-        .or_else(|| {
-            member_specs
-                .iter()
-                .find(|member| member.role == "leader")
-                .map(|member| member.member_id.clone())
-        })
-        .or_else(|| member_specs.first().map(|member| member.member_id.clone()))
         .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
 
     let member_role_by_id = member_specs
@@ -1986,6 +1983,20 @@ fn resolve_compiled_member_role(
     } else {
         base_role.to_string()
     }
+}
+
+fn resolve_effective_leader_member_id<'a>(
+    leader_member_id: Option<&'a str>,
+    member_specs: &'a [TeamMemberSpec],
+) -> Option<&'a str> {
+    leader_member_id
+        .or_else(|| {
+            member_specs
+                .iter()
+                .find(|member| member.role == "leader")
+                .map(|member| member.member_id.as_str())
+        })
+        .or_else(|| member_specs.first().map(|member| member.member_id.as_str()))
 }
 
 fn parse_compile_step_depends_on(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
@@ -2077,13 +2088,15 @@ fn parse_compile_string_list_patch(
     for item in items {
         let Some(item) = item
             .as_str()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            .and_then(|value| sanitize_compile_text(value, TEAM_MAIN_TASK_COMPILE_MAX_TEXT_LEN))
         else {
             continue;
         };
+        if out.len() >= TEAM_MAIN_TASK_COMPILE_MAX_LIST_ITEMS {
+            break;
+        }
         if seen.insert(item.to_string()) {
-            out.push(item.to_string());
+            out.push(item);
         }
     }
     Some(out)
@@ -2097,11 +2110,12 @@ fn parse_compile_optional_text_patch(
     if value.is_null() {
         return Some(None);
     }
-    let text = value.as_str()?.trim();
-    if text.is_empty() {
+    let text = value.as_str()?;
+    let deadline = sanitize_compile_text(text, TEAM_MAIN_TASK_COMPILE_MAX_DEADLINE_LEN)?;
+    if !is_valid_compile_deadline(deadline.as_str()) {
         return Some(None);
     }
-    Some(Some(text.to_string()))
+    Some(Some(deadline))
 }
 
 fn build_main_task_role_assignments(
@@ -2109,14 +2123,7 @@ fn build_main_task_role_assignments(
     member_specs: &[TeamMemberSpec],
     leader_member_id: Option<&str>,
 ) -> Vec<TeamCompiledRoleAssignment> {
-    let leader_member_id = leader_member_id
-        .or_else(|| {
-            member_specs
-                .iter()
-                .find(|member| member.role == "leader")
-                .map(|member| member.member_id.as_str())
-        })
-        .or_else(|| member_specs.first().map(|member| member.member_id.as_str()));
+    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs);
     let mut step_keys_by_member: HashMap<&str, Vec<String>> = HashMap::new();
     for step in step_template {
         step_keys_by_member
@@ -2144,6 +2151,82 @@ fn build_main_task_role_assignments(
             .then_with(|| left.member_id.cmp(&right.member_id))
     });
     assignments
+}
+
+fn sanitize_compile_text(value: &str, max_len: usize) -> Option<String> {
+    let text = value.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let mut cleaned = String::with_capacity(text.len().min(max_len));
+    for ch in text.chars() {
+        if ch.is_control() {
+            if ch == '\n' || ch == '\r' || ch == '\t' {
+                cleaned.push(' ');
+            }
+            continue;
+        }
+        if !is_allowed_compile_char(ch) {
+            continue;
+        }
+        cleaned.push(ch);
+        if cleaned.len() >= max_len {
+            break;
+        }
+    }
+    let normalized = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized)
+}
+
+fn is_allowed_compile_char(ch: char) -> bool {
+    ch.is_alphanumeric()
+        || ch.is_whitespace()
+        || matches!(
+            ch,
+            '.' | ','
+                | ':'
+                | ';'
+                | '!'
+                | '?'
+                | '-'
+                | '_'
+                | '/'
+                | '+'
+                | '#'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '\''
+                | '"'
+                | '&'
+                | '@'
+        )
+}
+
+fn is_valid_compile_deadline(value: &str) -> bool {
+    let mut parts = value.split('-');
+    let (Some(year), Some(month), Some(day), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    if year.len() != 4 || month.len() != 2 || day.len() != 2 {
+        return false;
+    }
+    let Ok(year) = year.parse::<i32>() else {
+        return false;
+    };
+    let Ok(month) = month.parse::<u32>() else {
+        return false;
+    };
+    let Ok(day) = day.parse::<u32>() else {
+        return false;
+    };
+    chrono::NaiveDate::from_ymd_opt(year, month, day).is_some()
 }
 
 fn role_sort_order(role: &str) -> i32 {

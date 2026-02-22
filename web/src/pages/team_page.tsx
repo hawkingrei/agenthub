@@ -990,6 +990,25 @@ export function TeamPage(props: TeamPageProps) {
     memberEventsRef.current = memberEvents;
   }, [memberEvents]);
 
+  const applyCreatedRunState = useCallback(
+    (created: TeamRunRecord, syncRunEditor: boolean) => {
+      setRuns((prev) => upsertRun(prev, created));
+      setActiveRunId(created.id);
+      setRunLookupId(created.id);
+      if (syncRunEditor) {
+        setRunContextId(created.context_id);
+        setRunInput(toPrettyJson(created.input));
+      }
+    },
+    [setActiveRunId, setRunContextId, setRunInput, setRunLookupId, setRuns]
+  );
+  const onRunCreated = useCallback(
+    (created: TeamRunRecord) => {
+      applyCreatedRunState(created, false);
+    },
+    [applyCreatedRunState]
+  );
+
   const {
     refreshAgents,
     refreshTeams,
@@ -1049,6 +1068,7 @@ export function TeamPage(props: TeamPageProps) {
     setMemberEventsHasMore,
     setActiveRunId,
     setRunLookupId,
+    onRunCreated,
   });
 
   const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
@@ -1706,25 +1726,19 @@ export function TeamPage(props: TeamPageProps) {
         context_id: compiledRunPreview.run_payload.context_id,
         input: compiledRunPreview.run_payload.input,
       });
-      setRuns((prev) => upsertRun(prev, created));
-      setActiveRunId(created.id);
-      setRunLookupId(created.id);
-      setRunContextId(created.context_id);
-      setRunInput(toPrettyJson(created.input));
+      applyCreatedRunState(created, true);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
   }, [
+    applyCreatedRunState,
     compiledRunPreview,
     props.token,
     selectedTeamId,
     setBusy,
     setError,
-    setRunContextId,
-    setRunInput,
-    setRunLookupId,
   ]);
   const runOpsPanel = (
     <div className="space-y-3">

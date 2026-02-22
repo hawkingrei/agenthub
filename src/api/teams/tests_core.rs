@@ -2478,6 +2478,84 @@ async fn team_main_task_api_creates_lists_and_redacts_context() {
 }
 
 #[tokio::test]
+async fn team_main_task_api_enforces_team_owner_access() {
+    let state = build_test_state().await;
+    let owner_headers = auth_headers(&state).await;
+    let outsider_headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        owner_headers.clone(),
+        Json(CreateTeamRequest {
+            name: "main-task-owner-enforcement-team".to_string(),
+            description: Some("owner enforcement".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_main_task(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Owner only planning".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create main task");
+
+    let create_err = create_team_main_task(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Outsider task".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect_err("outsider should not create main task");
+    assert_eq!(create_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let send_err = send_team_main_task_message(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "user".to_string(),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({"text":"malicious broadcast"}),
+        }),
+    )
+    .await
+    .expect_err("outsider should not send main task message");
+    assert_eq!(send_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let compile_err = compile_team_main_task_run_preview(
+        State(state),
+        outsider_headers,
+        Path((team.id, created.task.id)),
+        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect_err("outsider should not compile preview");
+    assert_eq!(compile_err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn team_main_task_messages_api_supports_route_and_redaction() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -2833,4 +2911,92 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
         .expect("find qa-review assignment");
     assert_eq!(qa_assignment.role, "worker");
     assert_eq!(qa_assignment.step_keys, vec!["worker_2_qa_review".to_string()]);
+}
+
+#[tokio::test]
+async fn team_main_task_compile_preview_sanitizes_plan_updates() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "main-task-compile-sanitize-team".to_string(),
+            description: Some("main task compile sanitize coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_main_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamMainTaskRequest {
+            title: "Sanitize compile updates".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create main task");
+
+    let long_text = "x".repeat(500);
+    let Json(_) = send_team_main_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamMainTaskMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "plan_update": {
+                    "task_list": [
+                        "  normalize   spaces  ",
+                        "`rm -rf /` {inject}",
+                        long_text
+                    ],
+                    "acceptance_criteria": [
+                        "keep-safe ✅",
+                        "keep-safe ✅",
+                        "check {unsafe} symbols"
+                    ],
+                    "deadline": "2026-99-77"
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send sanitize patch");
+
+    let Json(preview) = compile_team_main_task_run_preview(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect("compile sanitized preview");
+
+    assert_eq!(preview.plan.deadline, None);
+    assert_eq!(preview.plan.task_list.first().map(String::as_str), Some("normalize spaces"));
+    assert!(preview
+        .plan
+        .task_list
+        .iter()
+        .all(|item| item.len() <= 280 && !item.contains('`') && !item.contains('{')));
+    assert_eq!(preview.plan.acceptance_criteria.len(), 2);
+    assert!(preview
+        .plan
+        .acceptance_criteria
+        .iter()
+        .all(|item| !item.contains('{') && !item.contains('`')));
 }

@@ -35,6 +35,8 @@ pub struct TeamDefinitionRecord {
     pub name: String,
     pub description: Option<String>,
     pub spec: Value,
+    #[serde(skip_serializing, skip_deserializing, default)]
+    pub owner_user_id: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

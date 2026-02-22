@@ -201,6 +201,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             name TEXT NOT NULL UNIQUE,
             description TEXT,
             spec_json TEXT NOT NULL,
+            owner_user_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -587,6 +588,12 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_definitions ADD COLUMN owner_user_id TEXT",
+        "team_definitions.owner_user_id",
+    )
+    .await;
     add_column_if_missing(
         &pool,
         "ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER",

@@ -2,6 +2,7 @@
 async fn teams_router_http_contract() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
+    let outsider_token = create_auth_token(&state).await;
     let app = super::router(state);
 
     let unauthorized = app
@@ -130,6 +131,23 @@ async fn teams_router_http_contract() {
             .unwrap_or(false)
     );
 
+    let outsider_create_main_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks"),
+            Some(&outsider_token),
+            Some(json!({
+                "title": "outsider main task",
+                "created_by_actor_id": "user",
+                "context": {},
+                "conversation_mode": "group_chat"
+            })),
+        ))
+        .await
+        .expect("outsider create main task via router");
+    assert_eq!(outsider_create_main_task_resp.status(), StatusCode::NOT_FOUND);
+
     let list_main_tasks_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -235,6 +253,18 @@ async fn teams_router_http_contract() {
         compile_preview["plan"]["role_assignments"][0]["member_id"],
         Value::from("planner")
     );
+
+    let outsider_compile_preview_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/main_tasks/{main_task_id}/compile_run_preview"),
+            Some(&outsider_token),
+            Some(json!({})),
+        ))
+        .await
+        .expect("outsider compile preview via router");
+    assert_eq!(outsider_compile_preview_resp.status(), StatusCode::NOT_FOUND);
 
     let create_run_resp = app
         .clone()

@@ -40,19 +40,36 @@ impl TeamManager {
         &self,
         config: TeamDefinitionConfig,
     ) -> anyhow::Result<TeamDefinitionRecord> {
+        self.create_team_with_owner(config, None).await
+    }
+
+    pub async fn create_team_with_owner(
+        &self,
+        config: TeamDefinitionConfig,
+        owner_user_id: Option<&str>,
+    ) -> anyhow::Result<TeamDefinitionRecord> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         let spec_json = serde_json::to_string(&config.spec)?;
         sqlx::query(
             r#"
-            INSERT INTO team_definitions (id, name, description, spec_json, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO team_definitions (
+                id,
+                name,
+                description,
+                spec_json,
+                owner_user_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
         )
         .bind(&id)
         .bind(&config.name)
         .bind(&config.description)
         .bind(spec_json)
+        .bind(owner_user_id)
         .bind(now)
         .bind(now)
         .execute(&self.db)
@@ -63,6 +80,7 @@ impl TeamManager {
             name: config.name,
             description: config.description,
             spec: config.spec,
+            owner_user_id: owner_user_id.map(str::to_string),
             created_at: now,
             updated_at: now,
         })
@@ -71,7 +89,7 @@ impl TeamManager {
     pub async fn list_teams(&self) -> anyhow::Result<Vec<TeamDefinitionRecord>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, name, description, spec_json, created_at, updated_at
+            SELECT id, name, description, spec_json, owner_user_id, created_at, updated_at
             FROM team_definitions
             ORDER BY created_at DESC
             "#,
@@ -89,7 +107,7 @@ impl TeamManager {
     pub async fn get_team(&self, team_id: &str) -> anyhow::Result<TeamDefinitionRecord> {
         let row = sqlx::query(
             r#"
-            SELECT id, name, description, spec_json, created_at, updated_at
+            SELECT id, name, description, spec_json, owner_user_id, created_at, updated_at
             FROM team_definitions
             WHERE id = ?1
             "#,
@@ -104,7 +122,7 @@ impl TeamManager {
         let mut tx = self.db.begin().await?;
         let team_row = sqlx::query(
             r#"
-            SELECT id, name, description, spec_json, created_at, updated_at
+            SELECT id, name, description, spec_json, owner_user_id, created_at, updated_at
             FROM team_definitions
             WHERE id = ?1
             "#,

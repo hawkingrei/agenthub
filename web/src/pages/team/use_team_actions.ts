@@ -79,6 +79,7 @@ type UseTeamActionsOptions = {
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
   setActiveRunId: Dispatch<SetStateAction<string | null>>;
   setRunLookupId: (next: string) => void;
+  onRunCreated?: (created: TeamRunRecord) => void;
 };
 
 type TeamApiClient = {
@@ -205,6 +206,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     setMemberEventsHasMore,
     setActiveRunId,
     setRunLookupId,
+    onRunCreated,
   } = options;
 
   const teamApi = useMemo(() => buildTeamApiClient(token), [token]);
@@ -451,9 +453,13 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         context_id: runContextId.trim() || undefined,
         input: parseOptionalJson(runInput, "Run input") ?? {},
       });
-      setRuns((prev) => upsertRun(prev, created));
-      setActiveRunId(created.id);
-      setRunLookupId(created.id);
+      if (onRunCreated) {
+        onRunCreated(created);
+      } else {
+        setRuns((prev) => upsertRun(prev, created));
+        setActiveRunId(created.id);
+        setRunLookupId(created.id);
+      }
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -469,6 +475,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     setRunLookupId,
     setRuns,
     teamApi,
+    onRunCreated,
   ]);
 
   const onLoadRunById = useCallback(async () => {
