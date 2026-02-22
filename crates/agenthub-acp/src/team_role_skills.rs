@@ -62,6 +62,7 @@ mod tests {
             default_channel: "default".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: role.map(str::to_string),
+            continuity: None,
         }
     }
 

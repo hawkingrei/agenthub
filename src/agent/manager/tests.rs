@@ -177,6 +177,7 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
+        continuity: None,
     };
 
     let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
@@ -199,6 +200,7 @@ fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
+        continuity: None,
     };
 
     let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
@@ -226,6 +228,7 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
+        continuity: None,
     };
 
     let policy = build_runtime_start_policy(&agent, Some(&ctx), &workdir_str, Some(&repo_str))

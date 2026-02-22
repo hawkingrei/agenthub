@@ -116,6 +116,18 @@ agenthub/
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
   - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
   - Workers may coordinate with peers when dependencies overlap, but status/evidence must still flow back to leader
+  - Each agent (leader/worker) owns and updates its context state only in its own workspace-local `.cache/context` tree
+  - Leader should use an empty workspace dedicated to context management and coordination artifacts (avoid feature-code edits in leader workspace)
+- Context management policy (OpenClaw-inspired, AgentHub-adapted):
+  - Team prompt assembly must separate a stable prefix from a dynamic tail.
+  - Stable prefix should include role charter, tool schemas, and safety guardrails, and must avoid non-deterministic fields (timestamps, random IDs, unstable key ordering).
+  - Dynamic tail should include current goal, next action, allowed-action gate, compact state summary, evidence pointers, and recent error notes.
+  - Context memory is workspace-scoped: each agent writes under `<agent_workspace>/.cache/context/...` and must not write into another agent workspace.
+  - Large observations must be offloaded to filesystem memory under `<agent_workspace>/.cache/context/run/<run_id>/...`; prompt context should keep short summaries plus file pointers.
+  - Context artifacts (`decisions`, `errors`, `log`) should be append-only to preserve recovery trails.
+  - Before context compaction, runtime should trigger a pre-compaction memory flush attempt and persist explicit flush outcome (`persisted` or `noop`) for auditability.
+  - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
+  - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership
@@ -165,6 +177,10 @@ agenthub/
 - `User Docs`: Docusaurus docs install/build checks.
 
 ## 13. Change Log
+
+### 2026-02-22
+
+- Added Team context-management policy based on stable-prefix/dynamic-tail prompt assembly, filesystem-backed context memory, append-only error/decision trails, pre-compaction memory flush, and allowed-action gating.
 
 ### 2026-02-21
 

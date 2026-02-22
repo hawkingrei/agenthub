@@ -197,6 +197,26 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_member_continuity_state (
+            team_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            source_run_id TEXT NOT NULL,
+            source_session_id TEXT,
+            summary_text TEXT NOT NULL,
+            history_window_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (team_id, member_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(source_run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_member_continuity_state");
+
+    sqlx::query(
+        r#"
         CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
         ON team_actor_messages(run_id, from_actor_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
@@ -300,9 +320,10 @@ async fn create_team_and_run_records_submission_event() {
         .await
         .expect("create run");
     assert_eq!(run.status, crate::team::TeamRunStatus::Submitted);
+    assert_eq!(run.input["continuity"]["mode"], json!("inherit_recent"));
 
     let row = sqlx::query(
-        "SELECT event_type, run_id FROM team_run_events WHERE run_id = ?1 ORDER BY id ASC LIMIT 1",
+        "SELECT event_type, run_id, payload_json FROM team_run_events WHERE run_id = ?1 ORDER BY id ASC LIMIT 1",
     )
     .bind(&run.id)
     .fetch_one(&db)
@@ -310,8 +331,12 @@ async fn create_team_and_run_records_submission_event() {
     .expect("read run event");
     let event_type: String = row.get("event_type");
     let run_id: String = row.get("run_id");
+    let payload_json: String = row.get("payload_json");
+    let payload: serde_json::Value =
+        serde_json::from_str(&payload_json).expect("decode run_submitted payload");
     assert_eq!(event_type, "run_submitted");
     assert_eq!(run_id, run.id);
+    assert_eq!(payload["continuity_mode"], json!("inherit_recent"));
 }
 
 #[tokio::test]
@@ -599,6 +624,21 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
     assert_eq!(completed.output, Some(json!({"result":"ok"})));
     assert!(completed.ended_at.is_some());
 
+    let continuity = manager
+        .get_member_continuity_state(&team.id, "planner")
+        .await
+        .expect("get continuity state")
+        .expect("continuity state should exist");
+    assert_eq!(continuity.team_id, team.id);
+    assert_eq!(continuity.member_id, "planner");
+    assert_eq!(continuity.source_run_id, run.id);
+    assert_eq!(
+        continuity.source_session_id.as_deref(),
+        Some("remote-task-1")
+    );
+    assert!(continuity.summary_text.contains("ok"));
+    assert_eq!(continuity.history_window["schema_version"], json!(1));
+
     let run_after_complete = manager.get_run(&run.id).await.expect("get run");
     assert_eq!(run_after_complete.status, TeamRunStatus::Completed);
     assert!(run_after_complete.ended_at.is_some());
@@ -619,6 +659,7 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
             "run_working",
             "step_working",
             "step_completed",
+            "continuity_state_updated",
             "run_completed"
         ]
     );
@@ -715,6 +756,7 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
             "run_working",
             "step_resumed",
             "step_completed",
+            "continuity_state_updated",
             "run_completed"
         ]
     );

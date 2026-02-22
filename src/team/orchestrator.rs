@@ -6,7 +6,9 @@ use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
+use crate::acp::{
+    AcpActorContinuityEnvelope, AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
+};
 use crate::agent::AgentManager;
 
 use super::{TeamManager, TeamRunRecord, TeamStepRecord, TeamStepStatus};
@@ -318,6 +320,9 @@ impl TeamOrchestratorWorker {
     }
 
     async fn dispatch_step(&self, run_id: &str, step: &TeamStepRecord) -> anyhow::Result<()> {
+        let run = self.teams.get_run(run_id).await?;
+        let continuity_mode = parse_run_continuity_mode(&run.input);
+        let continuity_max_chars = parse_run_continuity_max_chars(&run.input);
         let member_role = self
             .resolve_member_role_for_step(run_id, &step.member_id)
             .await
@@ -330,12 +335,96 @@ impl TeamOrchestratorWorker {
                 );
                 None
             });
+        let continuity = if continuity_mode == "reset" {
+            self.emit_continuity_event(
+                run_id,
+                "continuity_reset",
+                serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "member_id": step.member_id,
+                    "mode": continuity_mode,
+                }),
+            )
+            .await;
+            None
+        } else {
+            match self
+                .teams
+                .get_member_continuity_state(&run.team_id, &step.member_id)
+                .await
+            {
+                Ok(Some(state)) => {
+                    self.emit_continuity_event(
+                        run_id,
+                        "continuity_attached",
+                        serde_json::json!({
+                            "step_id": step.id,
+                            "step_key": step.step_key,
+                            "member_id": step.member_id,
+                            "mode": continuity_mode,
+                            "source_run_id": state.source_run_id,
+                            "source_session_id": state.source_session_id,
+                        }),
+                    )
+                    .await;
+                    Some(AcpActorContinuityEnvelope {
+                        mode: continuity_mode.to_string(),
+                        source_run_id: state.source_run_id,
+                        source_session_id: state.source_session_id,
+                        summary_text: truncate_text(
+                            state.summary_text.as_str(),
+                            continuity_max_chars,
+                        ),
+                        history_window: state.history_window,
+                    })
+                }
+                Ok(None) => {
+                    self.emit_continuity_event(
+                        run_id,
+                        "continuity_fallback",
+                        serde_json::json!({
+                            "step_id": step.id,
+                            "step_key": step.step_key,
+                            "member_id": step.member_id,
+                            "mode": continuity_mode,
+                            "reason": "missing_state",
+                        }),
+                    )
+                    .await;
+                    None
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        step_id = %step.id,
+                        member_id = %step.member_id,
+                        "team orchestrator continuity lookup failed: {}",
+                        err
+                    );
+                    self.emit_continuity_event(
+                        run_id,
+                        "continuity_fallback",
+                        serde_json::json!({
+                            "step_id": step.id,
+                            "step_key": step.step_key,
+                            "member_id": step.member_id,
+                            "mode": continuity_mode,
+                            "reason": "state_lookup_failed",
+                        }),
+                    )
+                    .await;
+                    None
+                }
+            }
+        };
         let actor_context = AcpActorSkillContext {
             run_id: run_id.to_string(),
             actor_id: step.member_id.clone(),
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
             actor_cli_path: default_actor_cli_path()?,
             member_role,
+            continuity,
         };
         let start_result = self
             .agent_starter
@@ -402,6 +491,21 @@ impl TeamOrchestratorWorker {
         Ok(())
     }
 
+    async fn emit_continuity_event(&self, run_id: &str, event_type: &str, payload: Value) {
+        if let Err(err) = self
+            .teams
+            .append_run_event(run_id, event_type, payload)
+            .await
+        {
+            tracing::warn!(
+                run_id = %run_id,
+                event_type = %event_type,
+                "team orchestrator failed to append continuity event: {}",
+                err
+            );
+        }
+    }
+
     async fn resolve_member_role_for_step(
         &self,
         run_id: &str,
@@ -423,6 +527,46 @@ fn is_step_ready(step: &TeamStepRecord, status_by_key: &HashMap<String, TeamStep
 
 fn is_terminal_failure_session_status(status: &str) -> bool {
     matches!(status, "failed" | "cancelled" | "exited")
+}
+
+fn parse_run_continuity_mode(run_input: &Value) -> &'static str {
+    let Some(run_obj) = run_input.as_object() else {
+        return "inherit_recent";
+    };
+    let mode = run_obj
+        .get("continuity")
+        .and_then(Value::as_object)
+        .and_then(|continuity| continuity.get("mode"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("inherit_recent");
+    match mode {
+        "reset" => "reset",
+        _ => "inherit_recent",
+    }
+}
+
+fn parse_run_continuity_max_chars(run_input: &Value) -> usize {
+    let Some(run_obj) = run_input.as_object() else {
+        return 1200;
+    };
+    let Some(raw) = run_obj
+        .get("continuity")
+        .and_then(Value::as_object)
+        .and_then(|continuity| continuity.get("max_chars"))
+        .and_then(Value::as_i64)
+    else {
+        return 1200;
+    };
+    raw.clamp(256, 20000) as usize
+}
+
+fn truncate_text(raw: &str, max_chars: usize) -> String {
+    if raw.is_empty() || max_chars == 0 {
+        return String::new();
+    }
+    raw.chars().take(max_chars).collect::<String>()
 }
 
 fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
@@ -946,6 +1090,26 @@ mod tests {
 
         sqlx::query(
             r#"
+            CREATE TABLE team_member_continuity_state (
+                team_id TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                source_run_id TEXT NOT NULL,
+                source_session_id TEXT,
+                summary_text TEXT NOT NULL,
+                history_window_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (team_id, member_id),
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+                FOREIGN KEY(source_run_id) REFERENCES team_runs(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create team_member_continuity_state");
+
+        sqlx::query(
+            r#"
             CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
             ON team_actor_messages(run_id, from_actor_id, idempotency_key)
             WHERE idempotency_key IS NOT NULL
@@ -1024,6 +1188,7 @@ mod tests {
             calls[0].actor_context.member_role.as_deref(),
             Some("leader")
         );
+        assert!(calls[0].actor_context.continuity.is_none());
 
         let started_step = teams.get_step(&step.id).await.expect("get started step");
         assert_eq!(started_step.status, TeamStepStatus::Working);
@@ -1059,6 +1224,191 @@ mod tests {
             .await
             .expect("ack message");
         assert_eq!(acked.status, TeamActorMessageStatus::Delivered);
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_attaches_continuity_when_available() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-continuity-team".to_string(),
+                description: Some("team for continuity attach test".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+
+        let previous_run = teams
+            .create_run(&team.id, Some("ctx-prev"), json!({"prompt":"prev"}))
+            .await
+            .expect("create previous run");
+        let previous_step = teams
+            .submit_step(
+                &previous_run.id,
+                "plan_prev",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"seed continuity"})),
+            )
+            .await
+            .expect("submit previous step");
+        let _ = teams
+            .start_step(&previous_step.id, Some("session-prev-planner"))
+            .await
+            .expect("start previous step");
+        let _ = teams
+            .complete_step(
+                &previous_step.id,
+                Some(json!({"summary":"previous synthesis for continuity"})),
+            )
+            .await
+            .expect("complete previous step");
+
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-next"),
+                json!({"prompt":"next", "continuity": {"mode":"inherit_recent"}}),
+            )
+            .await
+            .expect("create next run");
+        let step = teams
+            .submit_step(
+                &run.id,
+                "plan_next",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"use continuity"})),
+            )
+            .await
+            .expect("submit next step");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+        assert_eq!(summary.dispatched, 1);
+
+        let calls = starter.calls();
+        assert_eq!(calls.len(), 1);
+        let continuity = calls[0]
+            .actor_context
+            .continuity
+            .as_ref()
+            .expect("continuity should be attached");
+        assert_eq!(continuity.mode, "inherit_recent");
+        assert_eq!(continuity.source_run_id, previous_run.id);
+        assert_eq!(
+            continuity.source_session_id.as_deref(),
+            Some("session-prev-planner")
+        );
+        assert!(continuity.summary_text.contains("previous synthesis"));
+
+        let events = teams
+            .list_run_events(&run.id, 100, None)
+            .await
+            .expect("list run events");
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == "continuity_attached"),
+            "continuity_attached event should exist"
+        );
+
+        let started_step = teams.get_step(&step.id).await.expect("get started step");
+        assert_eq!(started_step.status, TeamStepStatus::Working);
+    }
+
+    #[tokio::test]
+    async fn dispatch_once_respects_continuity_reset_mode() {
+        let db = setup_test_db().await;
+        let teams = Arc::new(TeamManager::new(db));
+        let team = teams
+            .create_team(TeamDefinitionConfig {
+                name: "orchestrator-continuity-reset-team".to_string(),
+                description: Some("team for continuity reset test".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+
+        let previous_run = teams
+            .create_run(&team.id, Some("ctx-prev-reset"), json!({"prompt":"prev"}))
+            .await
+            .expect("create previous run");
+        let previous_step = teams
+            .submit_step(
+                &previous_run.id,
+                "plan_prev_reset",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"seed continuity reset"})),
+            )
+            .await
+            .expect("submit previous step");
+        let _ = teams
+            .start_step(&previous_step.id, Some("session-prev-reset"))
+            .await
+            .expect("start previous step");
+        let _ = teams
+            .complete_step(
+                &previous_step.id,
+                Some(json!({"summary":"should be ignored by reset mode"})),
+            )
+            .await
+            .expect("complete previous step");
+
+        let run = teams
+            .create_run(
+                &team.id,
+                Some("ctx-next-reset"),
+                json!({"prompt":"next", "continuity": {"mode":"reset"}}),
+            )
+            .await
+            .expect("create next run");
+        let _step = teams
+            .submit_step(
+                &run.id,
+                "plan_next_reset",
+                "planner",
+                Vec::new(),
+                Some(json!({"goal":"ignore continuity"})),
+            )
+            .await
+            .expect("submit next step");
+
+        let starter = Arc::new(FakeAgentStarter::default());
+        let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
+        let summary = worker.dispatch_once(10).await.expect("dispatch once");
+        assert_eq!(summary.dispatched, 1);
+
+        let calls = starter.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0].actor_context.continuity.is_none(),
+            "reset mode should not attach continuity"
+        );
+
+        let events = teams
+            .list_run_events(&run.id, 100, None)
+            .await
+            .expect("list run events");
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == "continuity_reset"),
+            "continuity_reset event should exist"
+        );
     }
 
     #[tokio::test]

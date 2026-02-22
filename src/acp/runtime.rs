@@ -78,6 +78,7 @@ pub(crate) fn normalize_actor_context(
         default_channel,
         actor_cli_path,
         member_role,
+        continuity: context.continuity,
     })
 }
 

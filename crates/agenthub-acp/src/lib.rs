@@ -44,12 +44,22 @@ const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 #[derive(Debug, Clone)]
+pub struct AcpActorContinuityEnvelope {
+    pub mode: String,
+    pub source_run_id: String,
+    pub source_session_id: Option<String>,
+    pub summary_text: String,
+    pub history_window: Value,
+}
+
+#[derive(Debug, Clone)]
 pub struct AcpActorSkillContext {
     pub run_id: String,
     pub actor_id: String,
     pub default_channel: String,
     pub actor_cli_path: String,
     pub member_role: Option<String>,
+    pub continuity: Option<AcpActorContinuityEnvelope>,
 }
 
 pub struct SpawnAcpSessionRequest {
@@ -1286,6 +1296,7 @@ mod tests {
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
+            continuity: None,
         }
     }
 

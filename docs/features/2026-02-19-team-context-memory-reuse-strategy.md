@@ -1,5 +1,7 @@
 # Team Context/Memory Reuse Strategy
 
+> Superseded by `docs/features/2026-02-22-team-context-memory-architecture.md` for active implementation sequencing.
+
 ## Background
 
 Team execution should not reuse existing agent process instances from the general Agents inventory.  
@@ -23,4 +25,3 @@ However, Team workflows should preserve and reuse agent-level context and memory
   - context/memory continuity behaves as designed;
   - no direct reuse of old agent process instances occurs.
 - Add automated coverage once implementation details are finalized.
-
