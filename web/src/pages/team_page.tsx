@@ -85,6 +85,7 @@ import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
+import { useTeamStepActions } from "./team/use_team_step_actions";
 import {
   CREATE_TEAM_STAGE_TITLES,
   DEFAULT_TEAM_CONTROL_STATE,
@@ -1040,6 +1041,30 @@ export function TeamPage(props: TeamPageProps) {
     setRunLookupId,
   });
 
+  const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
+    token: props.token,
+    activeRunIdForSelectedTeam,
+    selectedStepId,
+    stepAction,
+    stepKey,
+    stepMemberId,
+    stepDependsOn,
+    stepInput,
+    stepRemoteTaskId,
+    stepOutput,
+    stepFailText,
+    stepInputReason,
+    stepInputRequiredPayload,
+    stepResumePayload,
+    setBusy,
+    setError,
+    setSelectedStepId,
+    refreshRun,
+    refreshSteps,
+    refreshEvents,
+    refreshSnapshot,
+  });
+
   const markConversationSeen = useCallback(
     (key: string, messageId: number | null) => {
       if (!key || messageId == null) {
@@ -1427,93 +1452,6 @@ export function TeamPage(props: TeamPageProps) {
     },
     [selectedTeamId]
   );
-
-  const onSubmitStep = async () => {
-    if (!activeRunIdForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    if (!stepKey.trim()) {
-      setError("step_key is required");
-      return;
-    }
-    if (!stepMemberId.trim()) {
-      setError("member_id is required");
-      return;
-    }
-    setBusy("submit-step");
-    setError(null);
-    try {
-      const created = await api.submitTeamRunStep(props.token, activeRunIdForSelectedTeam, {
-        step_key: stepKey.trim(),
-        member_id: stepMemberId.trim(),
-        depends_on: parseCsvList(stepDependsOn),
-        input: parseOptionalJson(stepInput, "Step input"),
-      });
-      await Promise.all([
-        refreshRun(activeRunIdForSelectedTeam),
-        refreshSteps(activeRunIdForSelectedTeam),
-        refreshEvents(activeRunIdForSelectedTeam),
-        refreshSnapshot(activeRunIdForSelectedTeam),
-      ]);
-      setSelectedStepId(created.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onApplyStepAction = async () => {
-    if (!activeRunIdForSelectedTeam) {
-      setError("Select a run in the current team first");
-      return;
-    }
-    if (!selectedStepId) {
-      setError("Select a step first");
-      return;
-    }
-    setBusy(`step-${stepAction}`);
-    setError(null);
-    try {
-      if (stepAction === "start") {
-        await api.startTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
-          remote_task_id: stepRemoteTaskId.trim() || undefined,
-        });
-      } else if (stepAction === "complete") {
-        await api.completeTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
-          output: parseOptionalJson(stepOutput, "Step output"),
-        });
-      } else if (stepAction === "fail") {
-        const errorText = stepFailText.trim();
-        if (!errorText) {
-          throw new Error("Fail reason is required");
-        }
-        await api.failTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
-          error_text: errorText,
-        });
-      } else if (stepAction === "input_required") {
-        await api.setTeamRunStepInputRequired(props.token, activeRunIdForSelectedTeam, selectedStepId, {
-          reason: stepInputReason.trim() || undefined,
-          input: parseOptionalJson(stepInputRequiredPayload, "Input required payload"),
-        });
-      } else {
-        await api.resumeTeamRunStep(props.token, activeRunIdForSelectedTeam, selectedStepId, {
-          input: parseOptionalJson(stepResumePayload, "Resume payload"),
-        });
-      }
-      await Promise.all([
-        refreshRun(activeRunIdForSelectedTeam),
-        refreshSteps(activeRunIdForSelectedTeam),
-        refreshEvents(activeRunIdForSelectedTeam),
-        refreshSnapshot(activeRunIdForSelectedTeam),
-      ]);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const onApplyMessageTemplate = () => {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
