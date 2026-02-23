@@ -405,43 +405,27 @@ section {
   height: 100%;
 }
 
-body:not(.teams-page) input:not([class*="mantine-"]) {
+body:not(.teams-page) :is(input, textarea, select):not([class*="mantine-"]) {
   width: 100%;
-  padding: 10px;
   border-radius: var(--radius-sm);
   border: 1px solid #d0d0d0;
-  margin-bottom: 12px;
   font-family: inherit;
   background: #fff;
   color: var(--ink);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body:not(.teams-page) :is(input, select):not([class*="mantine-"]) {
+  padding: 10px;
+  margin-bottom: 12px;
 }
 
 body:not(.teams-page) textarea:not([class*="mantine-"]) {
-  width: 100%;
   padding: 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid #d0d0d0;
   margin-bottom: 0;
   min-height: 110px;
   line-height: 1.5;
-  font-family: inherit;
   resize: vertical;
-  background: #fff;
-  color: var(--ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-body:not(.teams-page) select:not([class*="mantine-"]) {
-  width: 100%;
-  padding: 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid #d0d0d0;
-  margin-bottom: 12px;
-  font-family: inherit;
-  background: #fff;
-  color: var(--ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 body:not(.teams-page) button:not([class*="mantine-"]) {
@@ -465,10 +449,7 @@ body:not(.teams-page) button:not([class*="mantine-"]):disabled {
   cursor: not-allowed;
 }
 
-body:not(.teams-page) button:not([class*="mantine-"]):focus-visible,
-body:not(.teams-page) input:not([class*="mantine-"]):focus-visible,
-body:not(.teams-page) textarea:not([class*="mantine-"]):focus-visible,
-body:not(.teams-page) select:not([class*="mantine-"]):focus-visible {
+body:not(.teams-page) :is(button, input, textarea, select):not([class*="mantine-"]):focus-visible {
   outline: none;
   border-color: var(--focus-border);
   box-shadow: var(--focus-ring);
@@ -2926,14 +2907,19 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   min-width: 0;
 }
 
-.team-role-chip {
+.team-role-chip,
+.team-status-chip,
+.team-status.status-badge {
   border-radius: 999px;
-  border: 1px solid transparent;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.01em;
   padding: 1px 7px;
   text-transform: lowercase;
+}
+
+.team-role-chip {
+  border: 1px solid transparent;
 }
 
 .team-role-chip.leader {
@@ -2950,13 +2936,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .team-status-chip,
 .team-status.status-badge {
-  border-radius: 999px;
   border: 1px solid var(--status-neutral-border);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  padding: 1px 7px;
-  text-transform: lowercase;
   background: var(--status-neutral-bg);
   color: var(--status-neutral-ink);
   display: inline-flex;
@@ -3070,7 +3050,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   gap: 8px;
 }
 
-.team-create-agent-entry-head h4 {
+.team-create-agent-entry-head h4,
+.team-create-panel h4 {
   margin: 0;
 }
 
@@ -3103,10 +3084,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   font-family: "Source Code Pro", monospace;
   font-size: 12px;
   line-height: 1;
-}
-
-.team-create-panel h4 {
-  margin: 0;
 }
 
 .team-create-head-meta {
@@ -3181,7 +3158,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   padding: 10px;
 }
 
-.team-create-forge-agent-head {
+.team-create-forge-agent-head,
+.team-create-worker-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3223,13 +3201,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   background: #fff;
   border-radius: 10px;
   padding: 10px;
-}
-
-.team-create-worker-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .team-create-worker-head button {
@@ -3288,7 +3259,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .teams-event-list,
 .teams-step-list,
-.teams-message-list {
+.teams-message-list,
+.teams-chat-messages {
   max-height: 420px;
   overflow: auto;
   padding: 0;
@@ -3349,11 +3321,15 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   margin-bottom: 12px;
 }
 
-.teams-chat-members {
+.teams-chat-members,
+.teams-chat-panel {
   border: 1px solid #ececec;
   border-radius: 10px;
   padding: 10px;
   background: #fcfcfc;
+}
+
+.teams-chat-members {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3378,10 +3354,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .teams-chat-panel {
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fcfcfc;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3407,17 +3379,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   margin-left: auto;
   white-space: nowrap;
   min-width: 120px;
-}
-
-.teams-chat-messages {
-  max-height: 420px;
-  overflow: auto;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .teams-chat-bubble {
@@ -3619,15 +3580,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
   .team-create-checklist {
     grid-template-columns: 1fr;
-  }
-
-  .team-member-row-main {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    row-gap: 4px;
-  }
-
-  .team-member-row-meta {
-    grid-column: 1 / -1;
   }
 
   .team-member-workline {
