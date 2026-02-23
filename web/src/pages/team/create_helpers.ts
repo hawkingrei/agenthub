@@ -283,3 +283,54 @@ export function resolveUnusedTeamForgeAgentIds(
   }
   return stale;
 }
+
+export type TeamForgeCleanupResult = {
+  deletedForgeAgentIds: string[];
+  cleanupErrors: string[];
+};
+
+type DeleteAgentFn = (token: string, agentId: string) => Promise<void>;
+
+export async function cleanupUnusedTeamForgeAgents(
+  token: string,
+  staleForgeAgentIds: string[],
+  deleteAgent: DeleteAgentFn
+): Promise<TeamForgeCleanupResult> {
+  const normalizedIds = Array.from(
+    new Set(
+      staleForgeAgentIds
+        .map((rawId) => rawId.trim())
+        .filter((agentId) => agentId.length > 0)
+    )
+  );
+  if (normalizedIds.length === 0) {
+    return { deletedForgeAgentIds: [], cleanupErrors: [] };
+  }
+  const cleanupResults = await Promise.all(
+    normalizedIds.map(async (agentId) => {
+      try {
+        await deleteAgent(token, agentId);
+        return { agentId, error: null as string | null };
+      } catch (err) {
+        return { agentId, error: `${agentId}: ${parseErrorMessage(err)}` };
+      }
+    })
+  );
+  const deletedForgeAgentIds: string[] = [];
+  const cleanupErrors: string[] = [];
+  for (const result of cleanupResults) {
+    if (result.error) {
+      cleanupErrors.push(result.error);
+      continue;
+    }
+    deletedForgeAgentIds.push(result.agentId);
+  }
+  return { deletedForgeAgentIds, cleanupErrors };
+}
+
+export function buildTeamForgeCleanupWarning(cleanupErrors: string[]): string | null {
+  if (cleanupErrors.length === 0) {
+    return null;
+  }
+  return `Team created, but failed to clean up ${cleanupErrors.length} unused forged agent(s): ${cleanupErrors.join("; ")}`;
+}

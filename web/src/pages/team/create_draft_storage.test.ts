@@ -108,4 +108,115 @@ describe("team create draft storage", () => {
     expect(restored.error).toBe("Team create draft is corrupted and has been reset.");
     expect(localStorage.getItem("agenthub_team_create_draft_v1")).toBeNull();
   });
+
+  it("skips persistence when modal is not open", () => {
+    const result = persistTeamCreateDraft(buildState({ showCreateTeamModal: false }));
+    expect(result).toBeNull();
+    expect(localStorage.getItem("agenthub_team_create_draft_v1")).toBeNull();
+  });
+
+  it("returns save error when local storage write fails", () => {
+    const originalSetItem = localStorage.setItem;
+    localStorage.setItem = () => {
+      throw new Error("quota exceeded");
+    };
+    try {
+      const result = persistTeamCreateDraft(buildState());
+      expect(result).toBe("Failed to save Team create draft locally.");
+    } finally {
+      localStorage.setItem = originalSetItem;
+    }
+  });
+
+  it("returns error and clears draft when payload status is unknown", () => {
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 1,
+        status: "done",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+        draft: {},
+      })
+    );
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.draft).toBeNull();
+    expect(restored.error).toBe("Team create draft has unknown status and has been ignored.");
+    expect(localStorage.getItem("agenthub_team_create_draft_v1")).toBeNull();
+  });
+
+  it("returns error and clears draft when payload draft is missing", () => {
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 1,
+        status: "creating",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+      })
+    );
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.draft).toBeNull();
+    expect(restored.error).toBe("Team create draft is incomplete and has been ignored.");
+    expect(localStorage.getItem("agenthub_team_create_draft_v1")).toBeNull();
+  });
+
+  it("ignores unknown schema versions without reporting an error", () => {
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 99,
+        status: "creating",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+        draft: { newTeamName: "alpha" },
+      })
+    );
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.error).toBeNull();
+    expect(restored.draft).toBeNull();
+  });
+
+  it("normalizes malformed draft fields and falls back to defaults", () => {
+    const initial = createInitialTeamCreateState();
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 1,
+        status: "creating",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+        draft: {
+          newTeamName: "beta",
+          newTeamDescription: "desc",
+          newTeamSpec: "",
+          createTeamStage: 2.9,
+          leaderMemberId: "leader-2",
+          leaderModel: "",
+          leaderPrompt: "",
+          leaderSkills: "invalid",
+          leaderCustomSkills: "custom",
+          workers: [{ member_id: "worker-2", skills: ["team-worker-executor", ""] }, null],
+          teamForgeAgentIds: ["leader-2", " ", "worker-2"],
+        },
+      })
+    );
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.error).toBeNull();
+    expect(restored.draft?.newTeamName).toBe("beta");
+    expect(restored.draft?.createTeamStage).toBe(2);
+    expect(restored.draft?.leaderPrompt).toBe(initial.leaderPrompt);
+    expect(restored.draft?.leaderSkills).toEqual(initial.leaderSkills);
+    expect(restored.draft?.newTeamSpec).toBe(initial.newTeamSpec);
+    expect(restored.draft?.workers).toEqual([
+      {
+        member_id: "worker-2",
+        model: "",
+        prompt: "",
+        skills: ["team-worker-executor"],
+        custom_skills: "",
+      },
+    ]);
+    expect(restored.draft?.teamForgeAgentIds).toEqual(["leader-2", "worker-2"]);
+  });
 });

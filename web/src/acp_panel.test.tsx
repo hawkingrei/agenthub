@@ -184,4 +184,22 @@ describe("AcpPanel layout", () => {
     );
     expect(html).not.toContain("acp-jump-bottom");
   });
+
+  it("invokes jump callback when ACP jump button is clicked", () => {
+    const onJumpToConversationBottom = vi.fn();
+    const tree = AcpPanelView({
+      ...baseProps,
+      showConversationJump: true,
+      onJumpToConversationBottom,
+    });
+    const buttons = collectButtons(tree);
+    const jumpButton = buttons.find(
+      (button) =>
+        typeof button.props.className === "string" &&
+        button.props.className.includes("acp-jump-bottom")
+    );
+    expect(jumpButton).toBeDefined();
+    jumpButton?.props.onClick?.();
+    expect(onJumpToConversationBottom).toHaveBeenCalledTimes(1);
+  });
 });

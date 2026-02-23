@@ -37,9 +37,11 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import {
+  buildTeamForgeCleanupWarning,
   buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
+  cleanupUnusedTeamForgeAgents,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   parseRequiredJson,
@@ -208,6 +210,7 @@ function validateRunInputJson(raw: string): RunInputValidation {
 
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
@@ -1319,6 +1322,7 @@ export function TeamPage(props: TeamPageProps) {
       const isManualSpec = mode === "manual_spec";
       const { draft: restoredDraft, error: restoreError } = loadTeamCreateDraft(mode);
       setError(null);
+      setWarning(null);
       if (restoreError) {
         setError(restoreError);
       }
@@ -1346,6 +1350,7 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamCreate,
       refreshAgents,
       resetTeamDraft,
+      setWarning,
       setCreateTeamStage,
       setShowCreateTeamModal,
       setShowForgeAgentForm,
@@ -1539,6 +1544,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     setBusy("create-team");
     setError(null);
+    setWarning(null);
     try {
       const specPayload = useSpecOverride
         ? parseRequiredJson(newTeamSpec, "Team spec")
@@ -1552,16 +1558,11 @@ export function TeamPage(props: TeamPageProps) {
         teamForgeAgentIds,
         created.spec
       );
-      const deletedForgeAgentIds: string[] = [];
-      const cleanupErrors: string[] = [];
-      for (const agentId of staleForgeAgentIds) {
-        try {
-          await api.deleteAgent(props.token, agentId);
-          deletedForgeAgentIds.push(agentId);
-        } catch (err) {
-          cleanupErrors.push(`${agentId}: ${parseErrorMessage(err)}`);
-        }
-      }
+      const { deletedForgeAgentIds, cleanupErrors } = await cleanupUnusedTeamForgeAgents(
+        props.token,
+        staleForgeAgentIds,
+        api.deleteAgent
+      );
       if (deletedForgeAgentIds.length > 0) {
         const deletedSet = new Set(deletedForgeAgentIds);
         setAgents((prev) => prev.filter((agent) => !deletedSet.has(agent.id)));
@@ -1571,10 +1572,9 @@ export function TeamPage(props: TeamPageProps) {
       clearTeamCreateDraft();
       resetTeamDraft();
       closeCreateTeamModal();
-      if (cleanupErrors.length > 0) {
-        setError(
-          `Team created, but failed to clean up ${cleanupErrors.length} unused forged agent(s): ${cleanupErrors.join("; ")}`
-        );
+      const cleanupWarning = buildTeamForgeCleanupWarning(cleanupErrors);
+      if (cleanupWarning) {
+        setWarning(cleanupWarning);
       }
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -2103,6 +2103,19 @@ export function TeamPage(props: TeamPageProps) {
       </header>
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+      {warning && (
+        <div className="team-create-warning rounded-xl" role="status">
+          <p className="text-sm text-amber-900">{warning}</p>
+          <button
+            type="button"
+            className={panelSecondaryButtonClassName}
+            onClick={() => setWarning(null)}
+            aria-label="Dismiss warning"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div
         className={
