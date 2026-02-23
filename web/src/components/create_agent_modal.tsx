@@ -39,6 +39,7 @@ type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  showWorktreeAdvancedOptions?: boolean;
   createBusy: boolean;
   workdirPlaceholder?: string;
   withinPortal?: boolean;
@@ -51,6 +52,37 @@ const worktreeOptions = [
   { value: "create_worktree", label: "Create git worktree" },
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
+
+export function resolveCreateAgentPresetId(value: string | null): AgentPresetId {
+  if (value && isAgentPresetId(value)) {
+    return value;
+  }
+  return DEFAULT_AGENT_PRESET_ID;
+}
+
+export function resolveCreateAgentWorktreeMode(
+  value: string | null
+): "use_existing" | "create_worktree" | "reuse_worktree" | null {
+  if (
+    value === "use_existing" ||
+    value === "create_worktree" ||
+    value === "reuse_worktree"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+export function shouldAutoExpandCreateAgentAdvancedOptions(
+  showWorktreeAdvancedOptions: boolean,
+  worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree",
+  worktreeError: string | null
+): boolean {
+  return (
+    showWorktreeAdvancedOptions &&
+    (worktreeMode !== "use_existing" || Boolean(worktreeError))
+  );
+}
 
 export function CreateAgentModal({
   agentName,
@@ -68,12 +100,18 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  showWorktreeAdvancedOptions = true,
   createBusy,
   workdirPlaceholder = "Workdir",
   withinPortal = true,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
+  const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(
+    () =>
+      showWorktreeAdvancedOptions &&
+      (worktreeMode !== "use_existing" || Boolean(worktreeError))
+  );
   const [customizeCreateWorkdir, setCustomizeCreateWorkdir] = React.useState(false);
   const presets = listAgentPresets();
   const preset = getAgentPreset(agentPresetId);
@@ -86,6 +124,12 @@ export function CreateAgentModal({
     normalizedCurrentWorkdir !== normalizedDefaultRoot;
   const showWorkdirInput =
     !isCreateWorktreeMode || customizeCreateWorkdir || hasCustomCreateWorkdir;
+  const shouldAutoExpandAdvancedOptions = shouldAutoExpandCreateAgentAdvancedOptions(
+    showWorktreeAdvancedOptions,
+    worktreeMode,
+    worktreeError
+  );
+  const previousAutoExpandConditionRef = React.useRef(shouldAutoExpandAdvancedOptions);
   const presetOptions = presets.map((entry) => ({
     value: entry.id,
     label: entry.label,
@@ -96,6 +140,17 @@ export function CreateAgentModal({
       setCustomizeCreateWorkdir(false);
     }
   }, [isCreateWorktreeMode]);
+
+  React.useEffect(() => {
+    if (!showWorktreeAdvancedOptions) {
+      previousAutoExpandConditionRef.current = false;
+      return;
+    }
+    if (shouldAutoExpandAdvancedOptions && !previousAutoExpandConditionRef.current) {
+      setShowAdvancedOptions(true);
+    }
+    previousAutoExpandConditionRef.current = shouldAutoExpandAdvancedOptions;
+  }, [showWorktreeAdvancedOptions, shouldAutoExpandAdvancedOptions]);
 
   return (
     <Modal
@@ -117,6 +172,16 @@ export function CreateAgentModal({
             placeholder="Agent name"
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
+          />
+          <Select
+            label="Agent preset"
+            placeholder="Select preset"
+            value={agentPresetId}
+            data={presetOptions}
+            allowDeselect={false}
+            onChange={(value) => {
+              setAgentPresetId(resolveCreateAgentPresetId(value));
+            }}
           />
           {showWorkdirInput ? (
             <TextInput
@@ -144,54 +209,60 @@ export function CreateAgentModal({
               </Button>
             </Stack>
           )}
-          <Select
-            label="Worktree mode"
-            placeholder="Select worktree mode"
-            value={worktreeMode}
-            data={worktreeOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              if (
-                value === "use_existing" ||
-                value === "create_worktree" ||
-                value === "reuse_worktree"
-              ) {
-                setWorktreeMode(value);
-              }
-            }}
-          />
-          {worktreeMode === "create_worktree" ||
-          worktreeMode === "reuse_worktree" ? (
-            <TextInput
-              label="Worktree repo path"
-              placeholder="Worktree repo path"
-              value={worktreeRepo}
-              onChange={(event) => setWorktreeRepo(event.currentTarget.value)}
-            />
-          ) : null}
-          {worktreeMode === "create_worktree" ? (
-            <TextInput
-              label="Worktree ref"
-              placeholder="Worktree ref (branch or commit)"
-              value={worktreeRef}
-              onChange={(event) => setWorktreeRef(event.currentTarget.value)}
-            />
-          ) : null}
-          <Select
-            label="Agent preset"
-            placeholder="Select preset"
-            value={agentPresetId}
-            data={presetOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              if (value && isAgentPresetId(value)) {
-                setAgentPresetId(value);
-                return;
-              }
-              setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
-            }}
-          />
         </SimpleGrid>
+
+        {showWorktreeAdvancedOptions ? (
+          <Stack gap={4}>
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              px={0}
+              w="fit-content"
+              onClick={() => setShowAdvancedOptions((prev) => !prev)}
+              aria-expanded={showAdvancedOptions}
+            >
+              {showAdvancedOptions ? "Hide Advanced Options" : "Show Advanced Options"}
+            </Button>
+            <Text size="xs" c="dimmed">
+              Worktree mode and git worktree parameters.
+            </Text>
+          </Stack>
+        ) : null}
+
+        {showWorktreeAdvancedOptions && showAdvancedOptions ? (
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+            <Select
+              label="Worktree mode"
+              placeholder="Select worktree mode"
+              value={worktreeMode}
+              data={worktreeOptions}
+              allowDeselect={false}
+              onChange={(value) => {
+                const nextMode = resolveCreateAgentWorktreeMode(value);
+                if (nextMode) {
+                  setWorktreeMode(nextMode);
+                }
+              }}
+            />
+            {worktreeMode === "create_worktree" ||
+            worktreeMode === "reuse_worktree" ? (
+              <TextInput
+                label="Worktree repo path"
+                placeholder="Worktree repo path"
+                value={worktreeRepo}
+                onChange={(event) => setWorktreeRepo(event.currentTarget.value)}
+              />
+            ) : null}
+            {worktreeMode === "create_worktree" ? (
+              <TextInput
+                label="Worktree ref"
+                placeholder="Worktree ref (branch or commit)"
+                value={worktreeRef}
+                onChange={(event) => setWorktreeRef(event.currentTarget.value)}
+              />
+            ) : null}
+          </SimpleGrid>
+        ) : null}
 
         {commandSummary ? (
           <Text size="sm" c="dimmed">

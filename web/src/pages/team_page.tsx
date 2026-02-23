@@ -37,6 +37,7 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import {
+  buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
   formatTeamForgeWorktreeError,
@@ -1347,14 +1348,20 @@ export function TeamPage(props: TeamPageProps) {
           : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
     setForgeAgentName(defaultName);
     setForgeAgentWorktreeMode("use_existing");
-    setForgeAgentWorkdir((prev) =>
-      resolveWorkdirForModalOpen(
-        prev,
-        "use_existing",
-        forgeDefaultWorktreeRoot,
-        DEFAULT_WORKTREE_ROOT
-      )
-    );
+    if (forgeRoleTag === "leader") {
+      const normalizedRoot =
+        normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+      setForgeAgentWorkdir(buildLeaderForgeDefaultWorkdir(normalizedRoot, defaultName));
+    } else {
+      setForgeAgentWorkdir((prev) =>
+        resolveWorkdirForModalOpen(
+          prev,
+          "use_existing",
+          forgeDefaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    }
     setForgeAgentWorktreeRepo("");
     setForgeAgentWorktreeRef("");
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
@@ -1373,20 +1380,31 @@ export function TeamPage(props: TeamPageProps) {
       setError("Role tag is unavailable in this stage. Switch to Leader or Worker stage.");
       return;
     }
+    const isLeaderForge = forgeRoleTag === "leader";
+    const effectiveWorktreeMode = isLeaderForge
+      ? "use_existing"
+      : forgeAgentWorktreeMode;
+    const effectiveWorktreeRepo = isLeaderForge ? "" : forgeAgentWorktreeRepo.trim();
+    const effectiveWorktreeRef = isLeaderForge ? "" : forgeAgentWorktreeRef.trim();
     const name = forgeAgentName.trim() || "agent";
-    const workdir = normalizeWorkdirInput(forgeAgentWorkdir);
-    const normalizedRoot = normalizeWorkdirInput(forgeDefaultWorktreeRoot);
+    const normalizedRoot =
+      normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+    const workdirInput = normalizeWorkdirInput(forgeAgentWorkdir);
+    const workdir =
+      isLeaderForge && !workdirInput
+        ? buildLeaderForgeDefaultWorkdir(normalizedRoot, name)
+        : workdirInput;
     const workdirPayload =
-      forgeAgentWorktreeMode === "create_worktree" &&
+      effectiveWorktreeMode === "create_worktree" &&
       normalizedRoot &&
       workdir === normalizedRoot
         ? ""
         : workdir;
-    if (!workdirPayload && forgeAgentWorktreeMode !== "create_worktree") {
+    if (!workdirPayload && effectiveWorktreeMode !== "create_worktree") {
       setError("Forge agent workdir is required");
       return;
     }
-    if (forgeAgentWorktreeMode !== "use_existing" && !forgeAgentWorktreeRepo.trim()) {
+    if (effectiveWorktreeMode !== "use_existing" && !effectiveWorktreeRepo) {
       setError("Worktree repo is required");
       return;
     }
@@ -1401,9 +1419,9 @@ export function TeamPage(props: TeamPageProps) {
         command: preset.command,
         args: preset.args.slice(),
         source: "team_forge",
-        worktree_mode: forgeAgentWorktreeMode,
-        worktree_repo: forgeAgentWorktreeRepo.trim() || null,
-        worktree_ref: forgeAgentWorktreeRef.trim() || null,
+        worktree_mode: effectiveWorktreeMode,
+        worktree_repo: effectiveWorktreeRepo || null,
+        worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
       });
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
@@ -3039,6 +3057,7 @@ export function TeamPage(props: TeamPageProps) {
               codeMode={forgeAgentCodeMode}
               setCodeMode={setForgeAgentCodeMode}
               worktreeError={forgeAgentWorktreeError}
+              showWorktreeAdvancedOptions={forgeRoleTag !== "leader"}
               createBusy={forgeAgentBusy}
               workdirPlaceholder={forgeDefaultWorktreeRoot}
               withinPortal

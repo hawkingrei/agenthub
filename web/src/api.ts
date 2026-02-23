@@ -303,6 +303,28 @@ function parseApiErrorText(raw: string): string | null {
   return raw;
 }
 
+export function parseApiErrorMessage(err: unknown): string | null {
+  if (!err) return null;
+  if (typeof err === "string") {
+    return parseApiErrorText(err);
+  }
+  if (err instanceof Error) {
+    const raw = err.message ?? "";
+    if (!raw) return null;
+    return parseApiErrorText(raw) ?? raw;
+  }
+  if (typeof err === "object") {
+    const value = err as { error?: unknown; message?: unknown };
+    if (typeof value.error === "string" && value.error.trim().length > 0) {
+      return value.error;
+    }
+    if (typeof value.message === "string" && value.message.trim().length > 0) {
+      return parseApiErrorText(value.message) ?? value.message;
+    }
+  }
+  return null;
+}
+
 function authHeaders(token: string | null): HeadersInit {
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
@@ -327,7 +349,7 @@ async function apiFetch<T>(
     if (shouldRedirectOnAuthError(res.status, token, msg)) {
       clearAuthAndRedirect();
     }
-    throw new Error(raw || res.statusText);
+    throw new Error(msg || raw || res.statusText);
   }
   return (await res.json()) as T;
 }

@@ -2,7 +2,12 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
-import { CreateAgentModal } from "./components/create_agent_modal";
+import {
+  CreateAgentModal,
+  resolveCreateAgentPresetId,
+  resolveCreateAgentWorktreeMode,
+  shouldAutoExpandCreateAgentAdvancedOptions,
+} from "./components/create_agent_modal";
 
 const baseProps = {
   agentName: "",
@@ -37,6 +42,8 @@ const renderModal = (overrides?: Partial<typeof baseProps>) =>
 describe("CreateAgentModal", () => {
   it("renders repo and ref inputs for create_worktree", () => {
     const html = renderModal({ worktreeMode: "create_worktree" });
+    expect(html).toContain("Hide Advanced Options");
+    expect(html).toContain("Worktree mode");
     expect(html).toContain("Worktree repo path");
     expect(html).toContain("Worktree ref");
     expect(html).toContain("Auto-create under:");
@@ -52,6 +59,20 @@ describe("CreateAgentModal", () => {
 
   it("hides worktree inputs for use_existing", () => {
     const html = renderModal({ worktreeMode: "use_existing" });
+    expect(html).toContain("Show Advanced Options");
+    expect(html).not.toContain("Select worktree mode");
+    expect(html).not.toContain("Worktree repo path");
+    expect(html).not.toContain("Worktree ref");
+  });
+
+  it("can hide worktree advanced controls entirely", () => {
+    const html = renderModal({
+      worktreeMode: "create_worktree",
+      showWorktreeAdvancedOptions: false,
+    });
+    expect(html).not.toContain("Show Advanced Options");
+    expect(html).not.toContain("Hide Advanced Options");
+    expect(html).not.toContain("Select worktree mode");
     expect(html).not.toContain("Worktree repo path");
     expect(html).not.toContain("Worktree ref");
   });
@@ -80,5 +101,34 @@ describe("CreateAgentModal", () => {
     });
     expect(html).toContain("Workdir (optional override)");
     expect(html).toContain('value="/tmp/custom-agent-worktree"');
+  });
+
+  it("resolves preset id with fallback to default", () => {
+    expect(resolveCreateAgentPresetId("gemini")).toBe("gemini");
+    expect(resolveCreateAgentPresetId("invalid-preset")).toBe("codex");
+    expect(resolveCreateAgentPresetId(null)).toBe("codex");
+  });
+
+  it("resolves worktree mode only for allowed values", () => {
+    expect(resolveCreateAgentWorktreeMode("use_existing")).toBe("use_existing");
+    expect(resolveCreateAgentWorktreeMode("create_worktree")).toBe("create_worktree");
+    expect(resolveCreateAgentWorktreeMode("reuse_worktree")).toBe("reuse_worktree");
+    expect(resolveCreateAgentWorktreeMode("invalid-mode")).toBeNull();
+    expect(resolveCreateAgentWorktreeMode(null)).toBeNull();
+  });
+
+  it("auto-expands advanced options only when enabled and needed", () => {
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "use_existing", null)).toBe(
+      false
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "create_worktree", null)).toBe(
+      true
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "use_existing", "err")).toBe(
+      true
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(false, "create_worktree", "err")).toBe(
+      false
+    );
   });
 });

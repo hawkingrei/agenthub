@@ -2,8 +2,8 @@ use super::codec::is_acp_message;
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
     OutputStream, WorktreeMode, acp_provider_for_agent_with_binary, build_runtime_start_policy,
-    expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
-    stream_to_str,
+    ensure_team_leader_workdir_exists, expand_tilde, is_path_allowed, normalize_path,
+    status_from_str, status_to_str, stream_from_str, stream_to_str,
 };
 use crate::acp::AcpActorSkillContext;
 use crate::acp::default_actor_cli_path;
@@ -245,5 +245,72 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
     assert!(
         branch.starts_with("worker-worker-alpha-"),
         "branch={branch}"
+    );
+}
+
+#[test]
+fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
+    let path = std::env::temp_dir().join(format!("agenthub-leader-workdir-{}", Uuid::new_v4()));
+    let workdir = path.to_string_lossy().to_string();
+    let ctx = AcpActorSkillContext {
+        run_id: "run-leader".to_string(),
+        actor_id: "leader-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("leader".to_string()),
+        continuity: None,
+    };
+
+    assert!(!path.exists(), "temp path should not exist before test");
+    ensure_team_leader_workdir_exists(Some(&ctx), &workdir).expect("create leader workdir");
+    assert!(path.exists(), "leader workdir should be created");
+    assert!(path.is_dir(), "leader workdir should be a directory");
+}
+
+#[test]
+fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
+    let path =
+        std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
+    let workdir = path.to_string_lossy().to_string();
+    let ctx = AcpActorSkillContext {
+        run_id: "run-worker".to_string(),
+        actor_id: "worker-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("worker".to_string()),
+        continuity: None,
+    };
+
+    assert!(!path.exists(), "temp path should not exist before test");
+    ensure_team_leader_workdir_exists(Some(&ctx), &workdir)
+        .expect("non-leader should not require directory creation");
+    assert!(
+        !path.exists(),
+        "non-leader helper path should not be created automatically"
+    );
+}
+
+#[test]
+fn ensure_team_leader_workdir_exists_reports_creation_error() {
+    let root = std::env::temp_dir().join(format!("agenthub-leader-file-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let file_path = root.join("not-a-dir");
+    std::fs::write(&file_path, "marker").expect("create temp file");
+    let impossible_dir = file_path.join("child");
+    let workdir = impossible_dir.to_string_lossy().to_string();
+    let ctx = AcpActorSkillContext {
+        run_id: "run-leader".to_string(),
+        actor_id: "leader-2".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("leader".to_string()),
+        continuity: None,
+    };
+
+    let err = ensure_team_leader_workdir_exists(Some(&ctx), &workdir)
+        .expect_err("invalid leader path should fail directory creation");
+    assert!(
+        err.to_string().contains("failed to create leader workdir"),
+        "err={err}"
     );
 }

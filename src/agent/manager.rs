@@ -201,6 +201,27 @@ fn build_runtime_start_policy(
     Ok(policy)
 }
 
+fn ensure_team_leader_workdir_exists(
+    actor_context: Option<&AcpActorSkillContext>,
+    workdir: &str,
+) -> anyhow::Result<()> {
+    let is_team_leader = matches!(
+        actor_context.and_then(|context| context.member_role.as_deref()),
+        Some(TEAM_MEMBER_ROLE_LEADER)
+    );
+    if is_team_leader
+        && !Path::new(workdir).exists()
+        && let Err(err) = std::fs::create_dir_all(workdir)
+    {
+        return Err(anyhow::anyhow!(
+            "failed to create leader workdir: workdir={} error={}",
+            workdir,
+            err
+        ));
+    }
+    Ok(())
+}
+
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
     output_tx: broadcast::Sender<AgentOutput>,
@@ -861,6 +882,18 @@ impl AgentManager {
                 );
             }
             return Err(err);
+        }
+        if let Err(err) =
+            ensure_team_leader_workdir_exists(actor_context.as_ref(), &start_policy.workdir)
+        {
+            let message = err.to_string();
+            let _ = self
+                .record_failed_session(&agent.id, &session_id, &message)
+                .await;
+            let _ = self
+                .update_agent_status(&agent.id, AgentStatus::Failed)
+                .await;
+            return Err(anyhow::anyhow!(message));
         }
         if let Some(worker_branch) = start_policy.worker_branch.as_deref()
             && let Err(err) = self
