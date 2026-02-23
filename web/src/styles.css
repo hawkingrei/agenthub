@@ -614,11 +614,15 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   height: 44px;
 }
 
+.input-jump-row {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
 .jump-bottom {
-  position: fixed;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
+  margin: 0 0 2px auto;
   width: 32px;
   height: 32px;
   border-radius: 999px;
@@ -629,7 +633,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   align-items: center;
   justify-content: center;
   padding: 0;
-  z-index: 40;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  z-index: 1;
 }
 
 .jump-bottom .bi {
@@ -2716,7 +2721,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .jump-bottom {
     width: 30px;
     height: 30px;
-    right: 12px;
   }
 
   .acp-bubble {

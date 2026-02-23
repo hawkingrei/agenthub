@@ -373,14 +373,16 @@ export function InputDock({
         )}
       </div>
       {showConversationJump && (
-        <button
-          className="jump-bottom"
-          onClick={onJumpToBottom}
-          title="Jump to bottom"
-          aria-label="Jump to bottom"
-        >
-          <i className="bi bi-chevron-down" aria-hidden="true" />
-        </button>
+        <div className="input-jump-row" role="group" aria-label="Conversation jump actions">
+          <button
+            className="jump-bottom"
+            onClick={onJumpToBottom}
+            title="Jump to bottom"
+            aria-label="Jump to bottom"
+          >
+            <i className="bi bi-chevron-down" aria-hidden="true" />
+          </button>
+        </div>
       )}
       <div className="input-editor-row">
         <textarea
