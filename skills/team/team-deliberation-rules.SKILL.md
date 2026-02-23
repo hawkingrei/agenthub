@@ -20,6 +20,7 @@ Apply these rules whenever you collaborate in a Team run.
 2. Separate facts, inferences, and proposals.
 3. Include concrete evidence for claims (file path, test name, command).
 4. Report blockers with a specific unblock request and next action.
+5. Leader communicates planning decisions to human actor directly; workers report to leader unless explicitly routed.
 
 ## Conflict Resolution
 

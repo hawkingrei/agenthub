@@ -300,6 +300,10 @@ describe("team panels interactions", () => {
     expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-1");
     expect(container.textContent).toContain("active=1 inactive=1 missing=0 total=2");
+    expect(container.textContent).toContain("Operating Model");
+    expect(container.textContent).toContain(
+      "Leader plans and talks to human actor. Workers execute delegated tasks and report evidence back to leader."
+    );
 
     act(() => {
       root.render(
@@ -784,6 +788,9 @@ describe("team panels interactions", () => {
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
     expect(onOpenMailboxForMember).toHaveBeenCalledWith("worker-agent");
+    expect(container.textContent).toContain("Cold Start Playbook");
+    expect(container.textContent).toContain("Leader startup");
+    expect(container.textContent).toContain("Worker startup");
 
     act(() => {
       root.render(
