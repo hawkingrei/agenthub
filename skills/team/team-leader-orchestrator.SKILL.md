@@ -20,6 +20,12 @@ You are the coordinator for a multi-agent team run.
 - Do not duplicate large procedural detail in `AGENTS.md`; keep details in `SKILL.md`.
 - On startup and on phase changes, refresh `AGENTS.md` pointers to the active skills and artifacts.
 
+## Routing Key Contract
+
+- Use `spec.members[].member_id` as the canonical teammate identity for mailbox routing.
+- Prefer stable member names/ids from team spec; do not rely on opaque runtime UUID/process identifiers in planning artifacts.
+- In coordination notes and payload examples, always reference workers by `member_id`.
+
 ## Team TODO Lifecycle (Leader)
 
 Use workspace TODO files as the canonical execution tracker for non-trivial work.
@@ -153,6 +159,25 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
    `PAYLOAD_JSON="$(jq -cn --arg task "..." --arg acceptance "..." --arg deadline "..." '{task:$task,acceptance:$acceptance,deadline:$deadline}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$WORKER_ID" --payload-json "$PAYLOAD_JSON"`
 4. If a worker is blocked, ask for missing facts or re-scope the task.
 5. Keep a running decision log and conflict resolution summary.
+
+## Task Status Discipline
+
+- Before each coordination round, reconcile leader TODO status with actual team progress:
+  - move active task to `in_progress`
+  - mark task `completed` only with acceptance evidence
+  - mark blocked tasks as `blocked` with concrete unblock action
+- If TODO list contains stale/resolved duplicates, compact it to keep one authoritative task entry per outcome.
+- Treat mailbox evidence as source-of-truth for status transitions; do not advance status based on assumptions.
+
+## Run Finalization Policy
+
+- Persistent team mode (default AgentHub Team runtime):
+  - do not shut down team members at the end of a normal response
+  - publish run state summary and keep team available for next round
+- One-shot/non-interactive mode (if explicitly configured):
+  - request graceful worker shutdown before final response
+  - verify acknowledgements and cleanup completion
+  - then send final human-facing response
 
 ## Output Format
 

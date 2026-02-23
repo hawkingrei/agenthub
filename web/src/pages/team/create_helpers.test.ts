@@ -123,6 +123,8 @@ describe("team create helpers", () => {
     expect(spec.members[0]?.prompt).toContain("Decision Complete");
     expect(spec.members[0]?.prompt).toContain("Explore Before Asking");
     expect(spec.members[0]?.prompt).toContain("Clearance checklist before delegation");
+    expect(spec.members[0]?.prompt).toContain("spec.members[].member_id");
+    expect(spec.members[0]?.prompt).toContain("Finalization by mode");
   });
 
   it("parses error message from plain and JSON-formatted errors", () => {

@@ -12,6 +12,11 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Keep detailed worker procedures in this skill (and related skill files), not in `AGENTS.md`.
 - On each new task, confirm current phase and referenced skills from `AGENTS.md` before execution.
 
+## Routing Key Contract
+
+- Use `spec.members[].member_id` as routing identity when communicating with teammates.
+- Prefer stable teammate names/ids from team spec; avoid opaque runtime UUID/process identifiers in worker messages.
+
 ## Team TODO Lifecycle (Worker)
 
 Use worker-local TODO files as the execution ledger for non-trivial assignments.
@@ -86,6 +91,20 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --payload-json "$PAYLOAD_JSON"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
+
+## Task Status Discipline
+
+- Keep worker TODO state aligned with execution evidence; never skip status transitions.
+- If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
+- Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.
+
+## Shutdown Handling
+
+- Persistent team mode (default): stay available after reporting results.
+- One-shot/non-interactive mode (if leader requests shutdown):
+  - acknowledge shutdown request
+  - stop active execution safely
+  - report shutdown completion back to leader
 
 ## Response Contract
 

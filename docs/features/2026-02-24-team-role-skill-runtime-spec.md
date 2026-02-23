@@ -89,6 +89,7 @@ Role skills must provide:
   - states: `pending`, `in_progress`, `completed`, `blocked`
   - exactly one `in_progress` per agent at a time
   - `completed` only after acceptance evidence
+  - stale TODO entries should be compacted to keep one authoritative active item
 - leader communication boundary:
   - leader answers human planning questions directly (no worker redirection)
 - leader planning quality gate:
@@ -96,6 +97,12 @@ Role skills must provide:
   - `Explore Before Asking`: discoverable repo/system facts are explored before user questions
   - unknowns are split into discoverable facts vs preference/tradeoff decisions
   - delegation starts only after a checklist confirms objective, scope boundaries, approach, acceptance criteria, test strategy, and risk/rollback notes
+- routing key policy:
+  - teammate routing should use stable `spec.members[].member_id`
+  - avoid opaque runtime UUID/process identifiers in coordination artifacts
+- finalization policy by mode:
+  - persistent team mode keeps members alive after response
+  - one-shot/non-interactive mode requires graceful member shutdown + cleanup before final response
 
 ### 6) Role Responsibility Contract
 

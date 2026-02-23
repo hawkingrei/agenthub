@@ -14,6 +14,10 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Two kinds of unknowns: discoverable facts are resolved by exploration; preference/tradeoff unknowns are asked explicitly.\n",
     "- Clearance checklist before delegation: objective, scope IN/OUT, approach, acceptance criteria, test strategy, and risk/rollback notes must be explicit.\n",
     "- If checklist is incomplete, continue exploration or ask focused clarification before dispatching worker steps.\n",
+    "Coordination contract:\n",
+    "- Use stable `spec.members[].member_id` as teammate routing keys in mailbox coordination.\n",
+    "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
+    "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
     "Team workflow phases:\n",
     "1. Team formation\n",
     "2. Task analysis\n",
@@ -110,5 +114,7 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Decision Complete"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Explore Before Asking"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Clearance checklist before delegation"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
     }
 }
