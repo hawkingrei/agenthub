@@ -6,6 +6,7 @@ import {
   AuditRecord,
   AcpPermissionRecord,
   DeviceRecord,
+  parseApiErrorMessage,
   SafePath,
   VapidInfo,
 } from "./api";
@@ -935,7 +936,7 @@ export function App() {
       const items = await api.listAgents(token);
       setAgents(items);
     } catch (err) {
-      setError(formatWorktreeError(err) ?? String(err));
+      setError(formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err));
     }
   }, [token]);
 
@@ -1753,7 +1754,7 @@ export function App() {
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
-      setError(formatWorktreeError(err) ?? String(err));
+      setError(formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -1776,7 +1777,7 @@ export function App() {
       setAuth(next);
       await ensurePushSubscription(finish.token);
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -1896,7 +1897,7 @@ export function App() {
       setActiveSessionId(null);
       await refreshAgents();
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   }, [token, refreshAgents]);
 
@@ -1918,7 +1919,7 @@ export function App() {
         setAcpOutputs([]);
       }
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   }, [token, activeAgent]);
 
@@ -1933,7 +1934,7 @@ export function App() {
         )
       );
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   }, [token]);
 
@@ -2156,7 +2157,7 @@ export function App() {
         prev.filter((item) => item.id !== permissionId)
       );
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     } finally {
       setPermissionBusy(null);
     }
@@ -2174,7 +2175,7 @@ export function App() {
       const qr = await toDataURL(url);
       setJoinQr(qr);
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2188,7 +2189,7 @@ export function App() {
       setSafePaths(list);
       setSafePathInput("");
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2200,7 +2201,7 @@ export function App() {
       const list = await api.listSafePaths(token);
       setSafePaths(list);
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2235,7 +2236,7 @@ export function App() {
       setSafePaths(list);
       setSelectedSafePaths(new Set());
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2249,7 +2250,7 @@ export function App() {
       const items = await api.listAudits(token);
       setAudits(items);
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2261,7 +2262,7 @@ export function App() {
       const info = await api.getVapidInfo(token);
       setVapidInfo(info);
     } catch (err) {
-      setError(String(err));
+      setError(parseApiErrorMessage(err) ?? String(err));
     }
   };
 
@@ -2714,27 +2715,6 @@ function formatWorktreeError(err: unknown): string | null {
     return `Git worktree add failed. ${msg}`;
   }
   return msg;
-}
-
-function parseApiErrorMessage(err: unknown): string | null {
-  if (!err) return null;
-  if (typeof err === "string") return err;
-  if (err instanceof Error) {
-    const raw = err.message ?? "";
-    if (!raw) return null;
-    if (raw.trim().startsWith("{")) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.error === "string") {
-          return parsed.error;
-        }
-      } catch {
-        return raw;
-      }
-    }
-    return raw;
-  }
-  return null;
 }
 
 export function parseSendInputSessionMismatch(
