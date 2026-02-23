@@ -92,7 +92,19 @@ Role skills must provide:
 - leader communication boundary:
   - leader answers human planning questions directly (no worker redirection)
 
-### 6) AGENTS vs SKILL Ownership
+### 6) Role Responsibility Contract
+
+- Leader role:
+  - acts as architect/reviewer/synthesizer
+  - owns decomposition, assignment, acceptance criteria, risk decisions, and final integration
+  - should not implement feature code directly by default
+  - may apply minimal emergency fixes only when worker execution is blocked or explicitly requested by human
+- Worker role:
+  - acts as implementation executor
+  - owns coding/testing/evidence delivery for delegated tasks
+  - routes planning decisions back through leader
+
+### 7) AGENTS vs SKILL Ownership
 
 - `AGENTS.md` is the index/routing artifact:
   - objective
