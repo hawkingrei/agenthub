@@ -8,6 +8,12 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.\n",
     "- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.\n",
     "- You are responsible for direct human-facing planning communication. Do not redirect human questions to workers.\n",
+    "Planning quality gate:\n",
+    "- Decision Complete: every delegated step must be executable without extra implementation judgment calls.\n",
+    "- Explore Before Asking: discoverable repo/system facts must be explored before asking human questions.\n",
+    "- Two kinds of unknowns: discoverable facts are resolved by exploration; preference/tradeoff unknowns are asked explicitly.\n",
+    "- Clearance checklist before delegation: objective, scope IN/OUT, approach, acceptance criteria, test strategy, and risk/rollback notes must be explicit.\n",
+    "- If checklist is incomplete, continue exploration or ask focused clarification before dispatching worker steps.\n",
     "Team workflow phases:\n",
     "1. Team formation\n",
     "2. Task analysis\n",
@@ -101,5 +107,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Team workflow phases"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".cache/context/todo.md"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".cache/context/todo.md"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Decision Complete"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Explore Before Asking"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Clearance checklist before delegation"));
     }
 }

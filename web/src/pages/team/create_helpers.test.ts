@@ -108,6 +108,7 @@ describe("team create helpers", () => {
   it("falls back to single planning step when no workers are provided", () => {
     const spec = buildTeamSpecFromForm("leader-only", "", "", [], "", []) as {
       entrypoint: string;
+      members: Array<{ member_id: string; prompt: string }>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
     expect(spec.entrypoint).toBe("leader_plan");
@@ -118,6 +119,10 @@ describe("team create helpers", () => {
         depends_on: [],
       },
     ]);
+    expect(spec.members[0]?.member_id).toBe("leader-only");
+    expect(spec.members[0]?.prompt).toContain("Decision Complete");
+    expect(spec.members[0]?.prompt).toContain("Explore Before Asking");
+    expect(spec.members[0]?.prompt).toContain("Clearance checklist before delegation");
   });
 
   it("parses error message from plain and JSON-formatted errors", () => {

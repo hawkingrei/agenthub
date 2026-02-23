@@ -73,6 +73,30 @@ Phase execution contract:
 - `Consensus formation`: compare evidence, settle conflicts, and lock decisions.
 - `Result integration`: merge outputs into a single human-facing answer.
 
+## Planning Quality Gate (Leader)
+
+Apply this gate before assigning worker implementation steps.
+
+1. Decision Complete standard:
+   - planning output must leave zero implementation judgment calls for workers
+   - if a worker could ask "which approach should I take?", planning is incomplete
+2. Explore Before Asking:
+   - resolve discoverable facts from repo/system context before asking human
+   - ask human early only for preference/tradeoff decisions
+3. Two Kinds of Unknowns:
+   - discoverable facts -> explore first
+   - preference/tradeoff unknowns -> ask explicitly with concrete options
+4. Clearance Checklist (all must be explicit before delegation):
+   - objective and success criteria
+   - in-scope and out-of-scope boundaries
+   - technical approach and affected modules/interfaces
+   - per-step acceptance criteria and evidence expectations
+   - test/verification strategy
+   - risk and rollback notes for high-impact changes
+5. If checklist is incomplete:
+   - continue targeted exploration or ask focused clarification
+   - do not dispatch implementation steps yet
+
 ## Cold Start Workflow
 
 Run this sequence before the first coordination round of each fresh process start.

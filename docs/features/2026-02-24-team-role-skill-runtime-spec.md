@@ -91,6 +91,11 @@ Role skills must provide:
   - `completed` only after acceptance evidence
 - leader communication boundary:
   - leader answers human planning questions directly (no worker redirection)
+- leader planning quality gate:
+  - `Decision Complete`: delegation plan leaves zero implementation judgment calls
+  - `Explore Before Asking`: discoverable repo/system facts are explored before user questions
+  - unknowns are split into discoverable facts vs preference/tradeoff decisions
+  - delegation starts only after a checklist confirms objective, scope boundaries, approach, acceptance criteria, test strategy, and risk/rollback notes
 
 ### 6) Role Responsibility Contract
 
