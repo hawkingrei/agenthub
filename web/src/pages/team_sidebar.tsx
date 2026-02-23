@@ -4,6 +4,7 @@ import {
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
+  TEAM_PANEL_INPUT_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
@@ -45,6 +46,19 @@ export function TeamSidebar(props: TeamSidebarProps) {
     teamMemberSummaryByTeamId,
     onSelectTeam,
   } = props;
+  const [teamFilter, setTeamFilter] = React.useState("");
+  const normalizedTeamFilter = teamFilter.trim().toLowerCase();
+  const filteredTeams = React.useMemo(() => {
+    if (!normalizedTeamFilter) {
+      return teams;
+    }
+    return teams.filter((team) => {
+      const name = team.name.toLowerCase();
+      const id = team.id.toLowerCase();
+      return name.includes(normalizedTeamFilter) || id.includes(normalizedTeamFilter);
+    });
+  }, [normalizedTeamFilter, teams]);
+  const hasTeamFilter = normalizedTeamFilter.length > 0;
 
   return (
     <aside className="teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -96,9 +110,36 @@ export function TeamSidebar(props: TeamSidebarProps) {
         </div>
       </div>
 
+      <div className="teams-filter flex items-center gap-2">
+        <input
+          className={TEAM_PANEL_INPUT_CLASS}
+          placeholder="Filter teams by name or id"
+          aria-label="Filter teams"
+          value={teamFilter}
+          onChange={(event) => setTeamFilter(event.target.value)}
+        />
+        {hasTeamFilter && (
+          <button
+            type="button"
+            className={TEAM_PANEL_GHOST_BUTTON_CLASS}
+            onClick={() => setTeamFilter("")}
+            aria-label="Clear team filter"
+            title="Clear team filter"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="teams-list flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
         {teams.length === 0 && <p className="muted">No teams yet.</p>}
-        {teams.map((team) => {
+        {teams.length > 0 && filteredTeams.length === 0 && (
+          <p className="muted">No teams match current filter.</p>
+        )}
+        {hasTeamFilter && filteredTeams.length > 0 && (
+          <p className="muted mono">{`filtered=${filteredTeams.length} total=${teams.length}`}</p>
+        )}
+        {filteredTeams.map((team) => {
           const summary = teamMemberSummaryByTeamId.get(team.id);
           return (
             <button
@@ -109,6 +150,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   : TEAM_LIST_ITEM_IDLE_CLASS
               }
               onClick={() => onSelectTeam(team.id)}
+              aria-current={team.id === selectedTeamId ? "true" : undefined}
+              title={team.id}
             >
               <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
               <span className={TEAM_LIST_ITEM_META_CLASS}>{team.id}</span>
