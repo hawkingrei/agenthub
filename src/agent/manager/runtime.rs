@@ -1069,6 +1069,61 @@ branch refs/heads/agent-a
     }
 
     #[tokio::test]
+    async fn list_agents_reconciles_stale_running_status_without_runtime_handle() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "list-agents-reconcile").await;
+
+        let agents = state.agents.list_agents().await.expect("list agents");
+        let agent = agents
+            .into_iter()
+            .find(|item| item.id == agent_id)
+            .expect("stale agent should exist");
+        assert_eq!(agent.status, crate::agent::AgentStatus::Exited);
+
+        let session_row = sqlx::query(
+            r#"
+            SELECT status, ended_at
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&session_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load reconciled session row");
+        assert_eq!(session_row.get::<String, _>("status"), "exited");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
+    }
+
+    #[tokio::test]
+    async fn get_agent_reconciles_stale_running_status_without_runtime_handle() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, _session_id) =
+            insert_agent_and_session(&state.db, "get-agent-reconcile").await;
+
+        let agent = state
+            .agents
+            .get_agent(&agent_id)
+            .await
+            .expect("get agent should reconcile stale running status");
+        assert_eq!(agent.status, crate::agent::AgentStatus::Exited);
+
+        let agent_row = sqlx::query(
+            r#"
+            SELECT status
+            FROM agents
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load reconciled agent row");
+        assert_eq!(agent_row.get::<String, _>("status"), "exited");
+    }
+
+    #[tokio::test]
     async fn prepare_worktree_use_existing_mode_succeeds() {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, _session_id) = insert_agent_and_session(&state.db, "prepare-existing").await;
