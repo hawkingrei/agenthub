@@ -37,6 +37,8 @@ const renderModal = (overrides?: Partial<typeof baseProps>) =>
 describe("CreateAgentModal", () => {
   it("renders repo and ref inputs for create_worktree", () => {
     const html = renderModal({ worktreeMode: "create_worktree" });
+    expect(html).toContain("Hide Advanced Options");
+    expect(html).toContain("Worktree mode");
     expect(html).toContain("Worktree repo path");
     expect(html).toContain("Worktree ref");
     expect(html).toContain("Auto-create under:");
@@ -52,6 +54,8 @@ describe("CreateAgentModal", () => {
 
   it("hides worktree inputs for use_existing", () => {
     const html = renderModal({ worktreeMode: "use_existing" });
+    expect(html).toContain("Show Advanced Options");
+    expect(html).not.toContain("Select worktree mode");
     expect(html).not.toContain("Worktree repo path");
     expect(html).not.toContain("Worktree ref");
   });

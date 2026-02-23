@@ -74,6 +74,9 @@ export function CreateAgentModal({
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
+  const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(
+    () => worktreeMode !== "use_existing" || Boolean(worktreeError)
+  );
   const [customizeCreateWorkdir, setCustomizeCreateWorkdir] = React.useState(false);
   const presets = listAgentPresets();
   const preset = getAgentPreset(agentPresetId);
@@ -97,6 +100,12 @@ export function CreateAgentModal({
     }
   }, [isCreateWorktreeMode]);
 
+  React.useEffect(() => {
+    if (worktreeMode !== "use_existing" || worktreeError) {
+      setShowAdvancedOptions(true);
+    }
+  }, [worktreeError, worktreeMode]);
+
   return (
     <Modal
       opened
@@ -117,6 +126,20 @@ export function CreateAgentModal({
             placeholder="Agent name"
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
+          />
+          <Select
+            label="Agent preset"
+            placeholder="Select preset"
+            value={agentPresetId}
+            data={presetOptions}
+            allowDeselect={false}
+            onChange={(value) => {
+              if (value && isAgentPresetId(value)) {
+                setAgentPresetId(value);
+                return;
+              }
+              setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+            }}
           />
           {showWorkdirInput ? (
             <TextInput
@@ -144,6 +167,26 @@ export function CreateAgentModal({
               </Button>
             </Stack>
           )}
+        </SimpleGrid>
+
+        <Stack gap={4}>
+          <Button
+            variant="subtle"
+            size="compact-sm"
+            px={0}
+            w="fit-content"
+            onClick={() => setShowAdvancedOptions((prev) => !prev)}
+            aria-expanded={showAdvancedOptions}
+          >
+            {showAdvancedOptions ? "Hide Advanced Options" : "Show Advanced Options"}
+          </Button>
+          <Text size="xs" c="dimmed">
+            Worktree mode and git worktree parameters.
+          </Text>
+        </Stack>
+
+        {showAdvancedOptions ? (
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
           <Select
             label="Worktree mode"
             placeholder="Select worktree mode"
@@ -177,21 +220,8 @@ export function CreateAgentModal({
               onChange={(event) => setWorktreeRef(event.currentTarget.value)}
             />
           ) : null}
-          <Select
-            label="Agent preset"
-            placeholder="Select preset"
-            value={agentPresetId}
-            data={presetOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              if (value && isAgentPresetId(value)) {
-                setAgentPresetId(value);
-                return;
-              }
-              setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
-            }}
-          />
-        </SimpleGrid>
+          </SimpleGrid>
+        ) : null}
 
         {commandSummary ? (
           <Text size="sm" c="dimmed">
