@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify web Tailwind design-token rollout wave-1 remains stable across Team/ACP/Agents shared components (`tailwind.config.cjs` semantic tokens + `tailwind_classes.ts` preset migration) and record push + PR CI run IDs after merge (see `docs/features/2026-02-23-web-tailwind-design-token-rollout-wave1.md`).
 - [ ] Continue `docs/features` compact wave-2: merge remaining Team UI extraction/reducer phase notes into domain-level canonical specs and replace merged notes with `Superseded by ...` pointers (follow `docs/features/README.md`).
 - [ ] Verify Team role responsibility contract is enforced in skills/prompts: leader behaves as architect/reviewer (no default feature-code implementation path), worker remains implementation executor, and leader-only emergency coding exceptions are explicitly documented when used (see `docs/features/2026-02-24-team-role-skill-runtime-spec.md`).
 - [ ] Verify Team leader planning quality gate is enforced in skills/prompts: `Decision Complete`, `Explore Before Asking`, and delegation clearance checklist are present and applied before worker dispatch (see `docs/features/2026-02-24-team-role-skill-runtime-spec.md`).

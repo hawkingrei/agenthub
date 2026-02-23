@@ -3,6 +3,15 @@ import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
 import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
+import {
+  AGENTS_CREATE_BUTTON_CLASS,
+  AGENTS_PANEL_COLLAPSED_CLASS,
+  AGENTS_PANEL_EXPANDED_CLASS,
+  AGENTS_ROW_ACTIVE_CLASS,
+  AGENTS_ROW_CLASS,
+  AGENTS_TOOLBAR_ACTIONS_CLASS,
+  AGENTS_TOOLBAR_CLASS,
+} from "../ui/tailwind_classes";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];
@@ -19,19 +28,6 @@ type AgentsPanelProps = {
   onStopAgent: (id: string) => void;
   onDeleteAgent: (id: string) => void;
 };
-
-const AGENTS_PANEL_EXPANDED_CLASS =
-  "workspace-left rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const AGENTS_PANEL_COLLAPSED_CLASS =
-  "workspace-left collapsed rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
-const AGENTS_TOOLBAR_CLASS = "mb-3 flex items-center justify-between gap-2";
-const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-2";
-const AGENTS_CREATE_BUTTON_CLASS =
-  "rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800";
-const AGENTS_ROW_CLASS =
-  "agent-row rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-slate-300";
-const AGENTS_ROW_ACTIVE_CLASS =
-  "agent-row active rounded-xl border border-slate-300 bg-slate-50 px-3 py-3";
 
 export const AgentsPanel = React.memo(function AgentsPanel({
   agents,
