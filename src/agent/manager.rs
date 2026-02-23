@@ -771,10 +771,9 @@ impl AgentManager {
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = expand_tilde(&agent.workdir);
         let persisted_worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
-        if persisted_workdir != agent.workdir
-            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref()
-        {
-            if let Err(err) = sqlx::query(
+        if (persisted_workdir != agent.workdir
+            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref())
+            && let Err(err) = sqlx::query(
                 r#"
                 UPDATE agents
                 SET workdir = ?1, worktree_repo = ?2, updated_at = ?3
@@ -787,15 +786,14 @@ impl AgentManager {
             .bind(&agent.id)
             .execute(&self.db)
             .await
-            {
-                tracing::warn!(
-                    agent_id = %agent.id,
-                    workdir = %persisted_workdir,
-                    worktree_repo = ?persisted_worktree_repo,
-                    error = %err,
-                    "failed to persist normalized workdir/worktree_repo"
-                );
-            }
+        {
+            tracing::warn!(
+                agent_id = %agent.id,
+                workdir = %persisted_workdir,
+                worktree_repo = ?persisted_worktree_repo,
+                error = %err,
+                "failed to persist normalized workdir/worktree_repo"
+            );
         }
         let start_policy = build_runtime_start_policy(
             &agent,
@@ -1306,14 +1304,14 @@ impl AgentManager {
             )
             .await;
             let mut child_guard = handle.child.lock().await;
-            if let Some(child) = child_guard.as_mut() {
-                if let Err(err) = child.kill().await {
-                    tracing::warn!(
-                        agent_id = %agent_id,
-                        error = %err,
-                        "failed to kill agent child process during stop"
-                    );
-                }
+            if let Some(child) = child_guard.as_mut()
+                && let Err(err) = child.kill().await
+            {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    error = %err,
+                    "failed to kill agent child process during stop"
+                );
             }
         }
         Ok(())
