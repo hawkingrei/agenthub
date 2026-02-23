@@ -405,6 +405,13 @@ section {
   height: 100%;
 }
 
+.output-input-stack {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  flex: 0 0 auto;
+}
+
 body:not(.teams-page) input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
@@ -502,7 +509,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   border-radius: 12px;
   padding: 10px;
   box-shadow: var(--shadow);
-  margin-top: auto;
   position: relative;
   display: grid;
   gap: 8px;
@@ -614,7 +620,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   height: 44px;
 }
 
-.input-jump-row {
+.output-jump-row {
   display: flex;
   justify-content: flex-end;
   min-height: 0;

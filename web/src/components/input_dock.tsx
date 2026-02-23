@@ -10,8 +10,6 @@ type InputDockProps = {
   onInterrupt: () => void;
   onNavigateHistory: (direction: "up" | "down") => void;
   onSelectHistoryCommand: (value: string) => void;
-  onJumpToBottom: () => void;
-  showConversationJump: boolean;
   isComposingRef: React.MutableRefObject<boolean>;
 };
 
@@ -240,8 +238,6 @@ export function InputDock({
   onInterrupt,
   onNavigateHistory,
   onSelectHistoryCommand,
-  onJumpToBottom,
-  showConversationJump,
   isComposingRef,
 }: InputDockProps) {
   const [showHistory, setShowHistory] = React.useState(false);
@@ -372,18 +368,6 @@ export function InputDock({
           </div>
         )}
       </div>
-      {showConversationJump && (
-        <div className="input-jump-row" role="group" aria-label="Conversation jump actions">
-          <button
-            className="jump-bottom"
-            onClick={onJumpToBottom}
-            title="Jump to bottom"
-            aria-label="Jump to bottom"
-          >
-            <i className="bi bi-chevron-down" aria-hidden="true" />
-          </button>
-        </div>
-      )}
       <div className="input-editor-row">
         <textarea
           className={INPUT_DOCK_TEXTAREA_CLASS}

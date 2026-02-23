@@ -2642,20 +2642,36 @@ export function App() {
               </OutputErrorBoundary>
             ) : null}
             {showInputDock && (
-              <InputDock
-                input={input}
-                historyCommands={inputHistory}
-                showInterrupt={acpView.hasAcp}
-                canInterrupt={canInterruptAcpRun}
-                onInputChange={onInputChange}
-                onSendInput={onSendInput}
-                onInterrupt={onAcpCancel}
-                onNavigateHistory={onNavigateInputHistory}
-                onSelectHistoryCommand={onSelectInputHistory}
-                onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                showConversationJump={inputDockJumpMode.showConversationJump}
-                isComposingRef={isComposingRef}
-              />
+              <div className="output-input-stack">
+                {inputDockJumpMode.showConversationJump && (
+                  <div
+                    className="output-jump-row"
+                    role="group"
+                    aria-label="Conversation jump actions"
+                  >
+                    <button
+                      className="jump-bottom"
+                      onClick={inputDockJumpMode.onJumpToBottom}
+                      title="Jump to bottom"
+                      aria-label="Jump to bottom"
+                    >
+                      <i className="bi bi-chevron-down" aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+                <InputDock
+                  input={input}
+                  historyCommands={inputHistory}
+                  showInterrupt={acpView.hasAcp}
+                  canInterrupt={canInterruptAcpRun}
+                  onInputChange={onInputChange}
+                  onSendInput={onSendInput}
+                  onInterrupt={onAcpCancel}
+                  onNavigateHistory={onNavigateInputHistory}
+                  onSelectHistoryCommand={onSelectInputHistory}
+                  isComposingRef={isComposingRef}
+                />
+              </div>
             )}
           </div>
         </section>
