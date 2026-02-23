@@ -12,10 +12,9 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 1. Check workspace TODO sources for unfinished local work (`- [ ]`):
    - `TODO.md`
-   - `.cache/context/TODO.md`
    - `.cache/context/todo.md`
    Example:
-   `rg -n "^- \\[ \\]" TODO.md .cache/context/TODO.md .cache/context/todo.md 2>/dev/null || true`
+   `rg -n "^- \\[ \\]" TODO.md .cache/context/todo.md 2>/dev/null || true`
 2. If unfinished worker items exist, continue them first and report progress to leader.
 3. If no unfinished worker items exist, proceed to mailbox assignment loop.
 4. If no assignment exists, send an `idle` status summary and request next task from leader.

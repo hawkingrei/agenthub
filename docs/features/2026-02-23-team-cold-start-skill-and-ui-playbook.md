@@ -26,7 +26,6 @@ Out of scope:
 1. Keep existing Team role skill IDs (`team-leader-orchestrator`, `team-worker-executor`, `team-deliberation-rules`) and extend their content.
 2. Define cold-start TODO scan paths consistently:
    - `TODO.md`
-   - `.cache/context/TODO.md`
    - `.cache/context/todo.md`
 3. Make leader-human communication boundary explicit in both skill and default prompt text:
    - leader answers planning questions directly

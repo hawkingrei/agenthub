@@ -19,10 +19,9 @@ Run this sequence before the first coordination round of each fresh process star
 
 1. Check workspace TODO sources for unfinished items (`- [ ]`):
    - `TODO.md`
-   - `.cache/context/TODO.md`
    - `.cache/context/todo.md`
    Example:
-   `rg -n "^- \\[ \\]" TODO.md .cache/context/TODO.md .cache/context/todo.md 2>/dev/null || true`
+   `rg -n "^- \\[ \\]" TODO.md .cache/context/todo.md 2>/dev/null || true`
 2. Detect planning continuity:
    - If unfinished planning items exist, resume from existing plan and publish a short resume note.
    - If no planning items exist, treat run as zero-start and build a new plan from user goal.
