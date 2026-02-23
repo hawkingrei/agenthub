@@ -45,6 +45,7 @@ Executed during development:
 
 - `npm --prefix web run test -- src/pages/team/create_helpers.test.ts`
 - `npm --prefix web run lint`
+- `cargo test ensure_team_leader_workdir_exists -- --nocapture`
 - `cargo test runtime_start_policy -- --nocapture`
 
 Expected behavior after merge:

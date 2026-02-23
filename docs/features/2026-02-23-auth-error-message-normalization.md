@@ -37,6 +37,7 @@ This is noisy for users and obscures the actionable message.
 Run:
 
 - `npm --prefix web run test -- src/api_error_message.test.ts src/create_agent_modal.test.tsx src/pages/team_panels.test.tsx`
+- `npm --prefix web run test -- src/pages/join_page.test.tsx`
 - `npm --prefix web run lint`
 - `npm --prefix web run build`
 
