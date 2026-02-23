@@ -438,6 +438,16 @@ impl AgentManager {
         guard.remove(agent_id);
     }
 
+    #[tracing::instrument(
+        skip(self, agent),
+        fields(
+            agent_id = %agent.id,
+            worktree_mode = ?agent.worktree_mode,
+            workdir = %workdir,
+            worktree_repo = ?worktree_repo
+        ),
+        err
+    )]
     pub(super) async fn prepare_worktree_with_paths(
         &self,
         agent: &AgentRecord,
@@ -723,6 +733,7 @@ impl AgentManager {
         Ok(row.is_some())
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, code_mode = code_mode), err)]
     pub async fn set_code_mode(&self, agent_id: &str, code_mode: bool) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         sqlx::query(
@@ -740,6 +751,7 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub async fn mark_exited_on_startup(&self) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         sqlx::query(
@@ -781,6 +793,7 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
         let mut guard = self.inner.write().await;
         guard.remove(agent_id);

@@ -241,6 +241,15 @@ impl AgentManager {
             .await
     }
 
+    #[tracing::instrument(
+        skip(self, config),
+        fields(
+            source = %source,
+            agent_name = %config.name,
+            workdir = %config.workdir
+        ),
+        err
+    )]
     pub async fn create_agent_with_source(
         &self,
         config: AgentConfig,
@@ -717,10 +726,16 @@ impl AgentManager {
         starting.remove(agent_id);
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
         self.start_agent_with_actor_context(agent_id, None).await
     }
 
+    #[tracing::instrument(
+        skip(self, actor_context),
+        fields(agent_id = %agent_id),
+        err
+    )]
     pub async fn start_agent_with_actor_context(
         &self,
         agent_id: &str,
@@ -741,6 +756,11 @@ impl AgentManager {
         result
     }
 
+    #[tracing::instrument(
+        skip(self, actor_context),
+        fields(agent_id = %agent_id),
+        err
+    )]
     async fn start_agent_inner(
         &self,
         agent_id: &str,
@@ -1239,6 +1259,7 @@ impl AgentManager {
         anyhow::bail!("workdir not allowed")
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
         let handle = {
             let mut guard = self.inner.write().await;
@@ -1364,6 +1385,11 @@ impl AgentManager {
         Ok(handle.output_tx.subscribe())
     }
 
+    #[tracing::instrument(
+        skip(self, input, message_id),
+        fields(agent_id = %agent_id, expected_session_id = ?expected_session_id),
+        err
+    )]
     pub async fn send_input(
         &self,
         agent_id: &str,
@@ -1524,16 +1550,23 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = %mode_id), err)]
     pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_mode(mode_id.to_string()).await
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, model_id = %model_id), err)]
     pub async fn set_acp_model(&self, agent_id: &str, model_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_model(model_id.to_string()).await
     }
 
+    #[tracing::instrument(
+        skip(self, value),
+        fields(agent_id = %agent_id, config_id = %config_id),
+        err
+    )]
     pub async fn set_acp_config(
         &self,
         agent_id: &str,
@@ -1545,6 +1578,7 @@ impl AgentManager {
             .await
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.cancel().await
