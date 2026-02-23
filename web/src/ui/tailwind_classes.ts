@@ -75,3 +75,39 @@ export const TEAM_LIST_ITEM_TITLE_CLASS =
 
 export const TEAM_LIST_ITEM_META_CLASS =
   "team-id mono w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs opacity-90";
+
+export const TEAM_CREATE_MODAL_BACKDROP_CLASS =
+  "modal-backdrop team-create-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-3 py-6 sm:py-10";
+
+export const TEAM_CREATE_MODAL_CARD_CLASS =
+  "modal team-create-modal w-full max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5";
+
+export const TEAM_CREATE_STAGE_BADGE_CLASS =
+  "badge rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700";
+
+export const TEAM_CREATE_PANEL_CARD_CLASS =
+  "team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4";
+
+export const TEAM_CREATE_NOTE_INFO_CLASS =
+  "team-create-stage-note mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700";
+
+export const TEAM_CREATE_NOTE_WARNING_CLASS =
+  "team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700";
+
+export const TEAM_CREATE_STEP_PREVIEW_CLASS =
+  "teams-step-body mono mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600";
+
+export const TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS =
+  "teams-step-body mono mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600";
+
+export const TEAM_CREATE_SKILL_TAG_SELECTED_CLASS =
+  "team-skill-tag selected rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white transition";
+
+export const TEAM_CREATE_SKILL_TAG_IDLE_CLASS =
+  "team-skill-tag rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50";
+
+export const TEAM_CREATE_WORKER_CARD_CLASS =
+  "teams-worker-card rounded-xl border border-slate-200 bg-white p-3 shadow-sm";
+
+export const TEAM_CREATE_ACTIONS_BAR_CLASS =
+  "modal-actions team-create-actions mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3";
