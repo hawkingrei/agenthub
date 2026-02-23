@@ -39,6 +39,7 @@ type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  showWorktreeAdvancedOptions?: boolean;
   createBusy: boolean;
   workdirPlaceholder?: string;
   withinPortal?: boolean;
@@ -68,6 +69,7 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  showWorktreeAdvancedOptions = true,
   createBusy,
   workdirPlaceholder = "Workdir",
   withinPortal = true,
@@ -75,7 +77,9 @@ export function CreateAgentModal({
   onClose,
 }: CreateAgentModalProps) {
   const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(
-    () => worktreeMode !== "use_existing" || Boolean(worktreeError)
+    () =>
+      showWorktreeAdvancedOptions &&
+      (worktreeMode !== "use_existing" || Boolean(worktreeError))
   );
   const [customizeCreateWorkdir, setCustomizeCreateWorkdir] = React.useState(false);
   const presets = listAgentPresets();
@@ -101,10 +105,13 @@ export function CreateAgentModal({
   }, [isCreateWorktreeMode]);
 
   React.useEffect(() => {
+    if (!showWorktreeAdvancedOptions) {
+      return;
+    }
     if (worktreeMode !== "use_existing" || worktreeError) {
       setShowAdvancedOptions(true);
     }
-  }, [worktreeError, worktreeMode]);
+  }, [showWorktreeAdvancedOptions, worktreeError, worktreeMode]);
 
   return (
     <Modal
@@ -169,57 +176,59 @@ export function CreateAgentModal({
           )}
         </SimpleGrid>
 
-        <Stack gap={4}>
-          <Button
-            variant="subtle"
-            size="compact-sm"
-            px={0}
-            w="fit-content"
-            onClick={() => setShowAdvancedOptions((prev) => !prev)}
-            aria-expanded={showAdvancedOptions}
-          >
-            {showAdvancedOptions ? "Hide Advanced Options" : "Show Advanced Options"}
-          </Button>
-          <Text size="xs" c="dimmed">
-            Worktree mode and git worktree parameters.
-          </Text>
-        </Stack>
+        {showWorktreeAdvancedOptions ? (
+          <Stack gap={4}>
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              px={0}
+              w="fit-content"
+              onClick={() => setShowAdvancedOptions((prev) => !prev)}
+              aria-expanded={showAdvancedOptions}
+            >
+              {showAdvancedOptions ? "Hide Advanced Options" : "Show Advanced Options"}
+            </Button>
+            <Text size="xs" c="dimmed">
+              Worktree mode and git worktree parameters.
+            </Text>
+          </Stack>
+        ) : null}
 
-        {showAdvancedOptions ? (
+        {showWorktreeAdvancedOptions && showAdvancedOptions ? (
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-          <Select
-            label="Worktree mode"
-            placeholder="Select worktree mode"
-            value={worktreeMode}
-            data={worktreeOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              if (
-                value === "use_existing" ||
-                value === "create_worktree" ||
-                value === "reuse_worktree"
-              ) {
-                setWorktreeMode(value);
-              }
-            }}
-          />
-          {worktreeMode === "create_worktree" ||
-          worktreeMode === "reuse_worktree" ? (
-            <TextInput
-              label="Worktree repo path"
-              placeholder="Worktree repo path"
-              value={worktreeRepo}
-              onChange={(event) => setWorktreeRepo(event.currentTarget.value)}
+            <Select
+              label="Worktree mode"
+              placeholder="Select worktree mode"
+              value={worktreeMode}
+              data={worktreeOptions}
+              allowDeselect={false}
+              onChange={(value) => {
+                if (
+                  value === "use_existing" ||
+                  value === "create_worktree" ||
+                  value === "reuse_worktree"
+                ) {
+                  setWorktreeMode(value);
+                }
+              }}
             />
-          ) : null}
-          {worktreeMode === "create_worktree" ? (
-            <TextInput
-              label="Worktree ref"
-              placeholder="Worktree ref (branch or commit)"
-              value={worktreeRef}
-              onChange={(event) => setWorktreeRef(event.currentTarget.value)}
-            />
-          ) : null}
+            {worktreeMode === "create_worktree" ||
+            worktreeMode === "reuse_worktree" ? (
+              <TextInput
+                label="Worktree repo path"
+                placeholder="Worktree repo path"
+                value={worktreeRepo}
+                onChange={(event) => setWorktreeRepo(event.currentTarget.value)}
+              />
+            ) : null}
+            {worktreeMode === "create_worktree" ? (
+              <TextInput
+                label="Worktree ref"
+                placeholder="Worktree ref (branch or commit)"
+                value={worktreeRef}
+                onChange={(event) => setWorktreeRef(event.currentTarget.value)}
+              />
+            ) : null}
           </SimpleGrid>
         ) : null}
 

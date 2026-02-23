@@ -60,6 +60,18 @@ describe("CreateAgentModal", () => {
     expect(html).not.toContain("Worktree ref");
   });
 
+  it("can hide worktree advanced controls entirely", () => {
+    const html = renderModal({
+      worktreeMode: "create_worktree",
+      showWorktreeAdvancedOptions: false,
+    });
+    expect(html).not.toContain("Show Advanced Options");
+    expect(html).not.toContain("Hide Advanced Options");
+    expect(html).not.toContain("Select worktree mode");
+    expect(html).not.toContain("Worktree repo path");
+    expect(html).not.toContain("Worktree ref");
+  });
+
   it("renders error alert and guidance list when worktreeError is set", () => {
     const html = renderModal({ worktreeError: "Worktree missing" });
     expect(html).toContain("Worktree Setup Failed");

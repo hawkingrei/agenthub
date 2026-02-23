@@ -1373,20 +1373,26 @@ export function TeamPage(props: TeamPageProps) {
       setError("Role tag is unavailable in this stage. Switch to Leader or Worker stage.");
       return;
     }
+    const isLeaderForge = forgeRoleTag === "leader";
+    const effectiveWorktreeMode = isLeaderForge
+      ? "use_existing"
+      : forgeAgentWorktreeMode;
+    const effectiveWorktreeRepo = isLeaderForge ? "" : forgeAgentWorktreeRepo.trim();
+    const effectiveWorktreeRef = isLeaderForge ? "" : forgeAgentWorktreeRef.trim();
     const name = forgeAgentName.trim() || "agent";
     const workdir = normalizeWorkdirInput(forgeAgentWorkdir);
     const normalizedRoot = normalizeWorkdirInput(forgeDefaultWorktreeRoot);
     const workdirPayload =
-      forgeAgentWorktreeMode === "create_worktree" &&
+      effectiveWorktreeMode === "create_worktree" &&
       normalizedRoot &&
       workdir === normalizedRoot
         ? ""
         : workdir;
-    if (!workdirPayload && forgeAgentWorktreeMode !== "create_worktree") {
+    if (!workdirPayload && effectiveWorktreeMode !== "create_worktree") {
       setError("Forge agent workdir is required");
       return;
     }
-    if (forgeAgentWorktreeMode !== "use_existing" && !forgeAgentWorktreeRepo.trim()) {
+    if (effectiveWorktreeMode !== "use_existing" && !effectiveWorktreeRepo) {
       setError("Worktree repo is required");
       return;
     }
@@ -1401,9 +1407,9 @@ export function TeamPage(props: TeamPageProps) {
         command: preset.command,
         args: preset.args.slice(),
         source: "team_forge",
-        worktree_mode: forgeAgentWorktreeMode,
-        worktree_repo: forgeAgentWorktreeRepo.trim() || null,
-        worktree_ref: forgeAgentWorktreeRef.trim() || null,
+        worktree_mode: effectiveWorktreeMode,
+        worktree_repo: effectiveWorktreeRepo || null,
+        worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
       });
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
@@ -3039,6 +3045,7 @@ export function TeamPage(props: TeamPageProps) {
               codeMode={forgeAgentCodeMode}
               setCodeMode={setForgeAgentCodeMode}
               worktreeError={forgeAgentWorktreeError}
+              showWorktreeAdvancedOptions={forgeRoleTag !== "leader"}
               createBusy={forgeAgentBusy}
               workdirPlaceholder={forgeDefaultWorktreeRoot}
               withinPortal
