@@ -22,6 +22,8 @@ const baseProps: AcpPanelProps = {
   acpTab: "conversation",
   onSelectTab: () => {},
   showConversationBadge: false,
+  showConversationJump: false,
+  onJumpToConversationBottom: () => {},
   conversation: {
     items: [],
     windowOffset: 0,
@@ -152,5 +154,34 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("Session");
     expect(html).toContain("Permissions");
     expect(html).toContain("Raw");
+  });
+
+  it("renders conversation jump button on ACP panel container layer", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        showConversationJump={true}
+      />
+    );
+    const panelPos = html.indexOf('class="acp relative');
+    const conversationPos = html.indexOf('class="acp-conversation');
+    const jumpPos = html.indexOf('class="acp-jump-bottom');
+    expect(panelPos).toBeGreaterThanOrEqual(0);
+    expect(conversationPos).toBeGreaterThanOrEqual(0);
+    expect(jumpPos).toBeGreaterThanOrEqual(0);
+    expect(jumpPos).toBeGreaterThan(conversationPos);
+    expect(html).not.toContain("acp-conversation-jump-bottom");
+    expect(html).toContain('aria-label="Jump to bottom"');
+  });
+
+  it("hides conversation jump button when debug tab is active", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        acpTab="debug"
+        showConversationJump={true}
+      />
+    );
+    expect(html).not.toContain("acp-jump-bottom");
   });
 });

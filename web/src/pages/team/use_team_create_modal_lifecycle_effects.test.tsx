@@ -21,6 +21,8 @@ type HookProps = {
   showCreateTeamModal: boolean;
   leaderMemberId: string;
   teamForgeAgents: AgentRecord[];
+  parseError: (err: unknown) => string;
+  setError: (next: string | null) => void;
   setForgeDefaultWorktreeRoot: (next: string) => void;
   setLeaderMemberId: (next: string) => void;
   setShowCreateTeamModal: (next: boolean) => void;
@@ -78,6 +80,8 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       showCreateTeamModal: false,
       leaderMemberId: "",
       teamForgeAgents: [],
+      parseError: vi.fn(() => "runtime defaults failed"),
+      setError: vi.fn(),
       setForgeDefaultWorktreeRoot,
       setLeaderMemberId: vi.fn(),
       setShowCreateTeamModal: vi.fn(),
@@ -105,6 +109,8 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       showCreateTeamModal: false,
       leaderMemberId: "",
       teamForgeAgents: [],
+      parseError: vi.fn(() => "runtime defaults failed"),
+      setError: vi.fn(),
       setForgeDefaultWorktreeRoot,
       setLeaderMemberId: vi.fn(),
       setShowCreateTeamModal: vi.fn(),
@@ -121,6 +127,36 @@ describe("useTeamCreateModalLifecycleEffects", () => {
     }
   });
 
+  it("reports runtime default load error when modal is open", async () => {
+    mockedApi.getRuntimeDefaults.mockRejectedValueOnce(new Error("network down"));
+    const parseError = vi.fn(() => "network down");
+    const setError = vi.fn();
+    const props: HookProps = {
+      token: "token-123",
+      busy: null,
+      showCreateTeamModal: true,
+      leaderMemberId: "",
+      teamForgeAgents: [],
+      parseError,
+      setError,
+      setForgeDefaultWorktreeRoot: vi.fn(),
+      setLeaderMemberId: vi.fn(),
+      setShowCreateTeamModal: vi.fn(),
+      setCreateTeamStage: vi.fn(),
+    };
+
+    const { root, container } = await mountHarness(props);
+    try {
+      await flushEffects();
+      expect(parseError).toHaveBeenCalled();
+      expect(setError).toHaveBeenCalledWith(
+        "Failed to load Team Forge defaults: network down"
+      );
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("falls back leader member id to the first forge agent when modal is open", async () => {
     const setLeaderMemberId = vi.fn();
     const props: HookProps = {
@@ -129,6 +165,8 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       showCreateTeamModal: true,
       leaderMemberId: "",
       teamForgeAgents: [makeAgent("leader-a"), makeAgent("worker-b")],
+      parseError: vi.fn(() => "runtime defaults failed"),
+      setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
       setLeaderMemberId,
       setShowCreateTeamModal: vi.fn(),
@@ -152,6 +190,8 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       showCreateTeamModal: true,
       leaderMemberId: "",
       teamForgeAgents: [],
+      parseError: vi.fn(() => "runtime defaults failed"),
+      setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
       setLeaderMemberId: vi.fn(),
       setShowCreateTeamModal,
@@ -180,6 +220,8 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       showCreateTeamModal: true,
       leaderMemberId: "",
       teamForgeAgents: [],
+      parseError: vi.fn(() => "runtime defaults failed"),
+      setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
       setLeaderMemberId: vi.fn(),
       setShowCreateTeamModal,

@@ -25,6 +25,13 @@ type TeamStepDraft = {
   depends_on: string[];
 };
 
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 export function buildTeamSpecFromForm(
   leaderMemberId: string,
   leaderModel: string,
@@ -231,4 +238,48 @@ export function resolveTeamModelOptions(currentModel: string): Array<{
     options.push({ value: normalized, label: `Custom (${normalized})` });
   }
   return options;
+}
+
+export function collectTeamSpecMemberIds(spec: unknown): string[] {
+  const specObj = asObjectRecord(spec);
+  if (!specObj) {
+    return [];
+  }
+  const members = Array.isArray(specObj.members) ? specObj.members : [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const member of members) {
+    const memberObj = asObjectRecord(member);
+    if (!memberObj) {
+      continue;
+    }
+    const memberId =
+      typeof memberObj.member_id === "string" ? memberObj.member_id.trim() : "";
+    if (!memberId || seen.has(memberId)) {
+      continue;
+    }
+    seen.add(memberId);
+    result.push(memberId);
+  }
+  return result;
+}
+
+export function resolveUnusedTeamForgeAgentIds(
+  teamForgeAgentIds: string[],
+  spec: unknown
+): string[] {
+  const selectedMemberIds = new Set(collectTeamSpecMemberIds(spec));
+  const seen = new Set<string>();
+  const stale: string[] = [];
+  for (const rawId of teamForgeAgentIds) {
+    const agentId = rawId.trim();
+    if (!agentId || seen.has(agentId)) {
+      continue;
+    }
+    seen.add(agentId);
+    if (!selectedMemberIds.has(agentId)) {
+      stale.push(agentId);
+    }
+  }
+  return stale;
 }

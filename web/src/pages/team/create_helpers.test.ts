@@ -4,11 +4,13 @@ import {
   buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
+  collectTeamSpecMemberIds,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   parseOptionalInteger,
   parseOptionalJson,
   parseRequiredJson,
+  resolveUnusedTeamForgeAgentIds,
   resolveTeamModelOptions,
 } from "./create_helpers";
 
@@ -193,6 +195,37 @@ describe("team create helpers", () => {
       value: "my-custom-model",
       label: "Custom (my-custom-model)",
     });
+  });
+
+  it("collects unique member ids from team spec members", () => {
+    expect(
+      collectTeamSpecMemberIds({
+        members: [
+          { member_id: "leader-gemini" },
+          { member_id: "worker-1" },
+          { member_id: "worker-1" },
+          { member_id: "  " },
+          { role: "worker" },
+          null,
+        ],
+      })
+    ).toEqual(["leader-gemini", "worker-1"]);
+    expect(collectTeamSpecMemberIds({ members: "invalid" })).toEqual([]);
+    expect(collectTeamSpecMemberIds(null)).toEqual([]);
+  });
+
+  it("resolves unused forged agents by subtracting selected member ids", () => {
+    const stale = resolveUnusedTeamForgeAgentIds(
+      ["leader-codex", "leader-gemini", "worker-1", "worker-1", "", "  "],
+      {
+        members: [{ member_id: "leader-gemini" }, { member_id: "worker-1" }],
+      }
+    );
+    expect(stale).toEqual(["leader-codex"]);
+    expect(resolveUnusedTeamForgeAgentIds(["a", "a", "b"], { invalid: true })).toEqual([
+      "a",
+      "b",
+    ]);
   });
 
   it("builds leader forge default workdir under .agenthub root", () => {

@@ -43,8 +43,15 @@ import {
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   parseRequiredJson,
+  resolveUnusedTeamForgeAgentIds,
   resolveTeamModelOptions,
 } from "./team/create_helpers";
+import {
+  clearTeamCreateDraft,
+  loadTeamCreateDraft,
+  persistTeamCreateDraft,
+  type TeamCreateEntryMode,
+} from "./team/create_draft_storage";
 import {
   MailboxTemplateKey,
   buildMailboxConversationKey,
@@ -177,7 +184,6 @@ type TeamPageProps = {
   token: string;
   onLogout: () => void;
 };
-type TeamCreateEntryMode = "wizard" | "manual_spec";
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
@@ -318,6 +324,7 @@ export function TeamPage(props: TeamPageProps) {
     undefined,
     createInitialTeamCreateState
   );
+  const createDraftPersistErrorRef = useRef<string | null>(null);
   const newTeamName = teamCreateState.newTeamName;
   const newTeamDescription = teamCreateState.newTeamDescription;
   const useSpecOverride = teamCreateState.useSpecOverride;
@@ -1031,6 +1038,21 @@ export function TeamPage(props: TeamPageProps) {
   }, [patchTeamCreate]);
 
   useEffect(() => {
+    if (!showCreateTeamModal || busy === "create-team") {
+      return;
+    }
+    const persistErr = persistTeamCreateDraft(teamCreateState);
+    if (persistErr) {
+      if (persistErr !== createDraftPersistErrorRef.current) {
+        createDraftPersistErrorRef.current = persistErr;
+        setError(persistErr);
+      }
+      return;
+    }
+    createDraftPersistErrorRef.current = null;
+  }, [busy, showCreateTeamModal, teamCreateState, setError]);
+
+  useEffect(() => {
     eventsRef.current = events;
   }, [events]);
 
@@ -1284,6 +1306,8 @@ export function TeamPage(props: TeamPageProps) {
     showCreateTeamModal,
     leaderMemberId,
     teamForgeAgents,
+    parseError: parseErrorMessage,
+    setError,
     setForgeDefaultWorktreeRoot,
     setLeaderMemberId,
     setShowCreateTeamModal,
@@ -1293,18 +1317,33 @@ export function TeamPage(props: TeamPageProps) {
   const openCreateTeamModal = useCallback(
     (mode: TeamCreateEntryMode) => {
       const isManualSpec = mode === "manual_spec";
+      const { draft: restoredDraft, error: restoreError } = loadTeamCreateDraft(mode);
       setError(null);
-      setCreateTeamStage(0);
+      if (restoreError) {
+        setError(restoreError);
+      }
       resetTeamDraft();
-      setUseSpecOverride(isManualSpec);
-      setShowCreateTeamModal(true);
-      setShowForgeAgentForm(false);
-      setForgeAgentWorktreeError(null);
+      if (restoredDraft) {
+        patchTeamCreate({
+          ...restoredDraft,
+          showCreateTeamModal: true,
+          showForgeAgentForm: false,
+          forgeAgentWorktreeError: null,
+          forgeAgentBusy: false,
+        });
+      } else {
+        setCreateTeamStage(0);
+        setUseSpecOverride(isManualSpec);
+        setShowCreateTeamModal(true);
+        setShowForgeAgentForm(false);
+        setForgeAgentWorktreeError(null);
+      }
       void refreshAgents().catch((err) => {
         setError(parseErrorMessage(err));
       });
     },
     [
+      patchTeamCreate,
       refreshAgents,
       resetTeamDraft,
       setCreateTeamStage,
@@ -1484,7 +1523,7 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     if (!useSpecOverride && !leaderMemberId.trim()) {
-      setError("Leader agent is required");
+      setError("Leader member is required");
       return;
     }
     if (
@@ -1495,7 +1534,7 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     if (!useSpecOverride && hasDuplicateMembers) {
-      setError("Leader and worker agents must be unique");
+      setError("Leader/member assignments must be unique");
       return;
     }
     setBusy("create-team");
@@ -1509,10 +1548,34 @@ export function TeamPage(props: TeamPageProps) {
         description: newTeamDescription.trim() || undefined,
         spec: specPayload,
       });
+      const staleForgeAgentIds = resolveUnusedTeamForgeAgentIds(
+        teamForgeAgentIds,
+        created.spec
+      );
+      const deletedForgeAgentIds: string[] = [];
+      const cleanupErrors: string[] = [];
+      for (const agentId of staleForgeAgentIds) {
+        try {
+          await api.deleteAgent(props.token, agentId);
+          deletedForgeAgentIds.push(agentId);
+        } catch (err) {
+          cleanupErrors.push(`${agentId}: ${parseErrorMessage(err)}`);
+        }
+      }
+      if (deletedForgeAgentIds.length > 0) {
+        const deletedSet = new Set(deletedForgeAgentIds);
+        setAgents((prev) => prev.filter((agent) => !deletedSet.has(agent.id)));
+      }
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedTeamId(created.id);
+      clearTeamCreateDraft();
       resetTeamDraft();
       closeCreateTeamModal();
+      if (cleanupErrors.length > 0) {
+        setError(
+          `Team created, but failed to clean up ${cleanupErrors.length} unused forged agent(s): ${cleanupErrors.join("; ")}`
+        );
+      }
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -2630,8 +2693,8 @@ export function TeamPage(props: TeamPageProps) {
                     </button>
                   </div>
                   <p className="muted mt-2 text-sm text-slate-600">
-                    Role tag follows the current stage. Leader stage creates leader agents, worker
-                    stage creates worker agents.
+                    Role tag follows the current stage. In Team, worker is a role assigned to a
+                    forged agent.
                   </p>
                   <div className="team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                     <span>role_tag</span>
@@ -2688,7 +2751,7 @@ export function TeamPage(props: TeamPageProps) {
                 <div className="team-create-panel rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                   <h4 className="text-base font-semibold text-slate-900">Leader Forge</h4>
                   <p className="muted mt-2 text-sm text-slate-600">
-                    Choose the leader from agents created in this Team Forge session only.
+                    Choose the leader from member agents created in this Team Forge session only.
                   </p>
                   {!isLeaderForgeReady && hasForgeAgents && (
                     <p className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -2802,8 +2865,9 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
                   <p className="muted mt-2 text-sm text-slate-600">
-                    Build your party from Team Forge agents only. Worker model/prompt/skills can
-                    still be customized at team level.
+                    Build your party from Team Forge member agents only. Worker is a role
+                    assignment for those agents, and model/prompt/skills can still be customized at
+                    team level.
                   </p>
                   {unassignedWorkerSlots > 0 && (
                     <p className="team-create-stage-note mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -2940,7 +3004,7 @@ export function TeamPage(props: TeamPageProps) {
                     <div className="team-create-warning mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
                       <p className="muted text-sm text-rose-700">
                         Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
-                        and workers must reference different agents.
+                        and member assignments must reference different agents.
                       </p>
                       <button
                         className={`${panelSecondaryButtonClassName} mt-2`}

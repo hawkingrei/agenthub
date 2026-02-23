@@ -121,6 +121,10 @@ fn styles_keep_acp_conversation_scoped() {
         "send button should keep larger tap target size"
     );
     assert!(
+        css.contains(".jump-bottom {\n  position: static;\n  justify-self: end;\n  margin-left: auto;\n  width: 32px;\n  height: 32px;"),
+        "jump-bottom should stay inside input dock flow and avoid fixed overlay on send button"
+    );
+    assert!(
         css.contains(".input.docked .input-editor-row .input-send-button {\n    height: 44px;\n    min-height: 44px;\n    min-width: 88px;\n    padding: 0 14px;\n    font-size: 13px;\n  }"),
         "mobile send button should keep touch-friendly tap target size"
     );

@@ -2435,6 +2435,8 @@ export function App() {
       acpTab,
       onSelectTab: handleAcpTabSelect,
       showConversationBadge: acpConversation.showConversationBadge,
+      showConversationJump: acpConversation.showConversationJump,
+      onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
       conversation: acpConversationProps,
       debug: acpDebugProps,
     }),
@@ -2444,6 +2446,8 @@ export function App() {
       acpTab,
       handleAcpTabSelect,
       acpConversation.showConversationBadge,
+      acpConversation.showConversationJump,
+      acpConversation.jumpToConversationBottom,
       acpConversationProps,
       acpDebugProps,
     ]
@@ -2651,7 +2655,9 @@ export function App() {
                 onNavigateHistory={onNavigateInputHistory}
                 onSelectHistoryCommand={onSelectInputHistory}
                 onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                showConversationJump={inputDockJumpMode.showConversationJump}
+                showConversationJump={
+                  !acpView.hasAcp && inputDockJumpMode.showConversationJump
+                }
                 isComposingRef={isComposingRef}
               />
             )}
