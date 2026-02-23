@@ -8,6 +8,7 @@ Team runs needed a clearer startup contract for both leader and worker roles:
 - leader should determine whether to resume an existing plan or start from zero
 - leader should communicate planning decisions directly with the human actor
 - team collaboration should follow a consistent phase model across prompts and skills
+- `AGENTS.md` should act as an index/routing artifact, while detailed procedures stay in `SKILL.md`
 
 The previous role prompts and skill files did not enforce these startup expectations strongly enough, and `/teams` UI did not present the operating model clearly.
 
@@ -44,6 +45,9 @@ Out of scope:
    - `Result integration`
 6. Align leader coordination artifact template with phase-aware sections:
    - `Run Objective`, `Current Phase`, `Role Assignment`, `Consensus Decisions`, `Result Integration`, `Open Risks`, `Next Checkpoint`
+7. Keep `AGENTS.md` index-oriented:
+   - include objective/phase/skill pointers
+   - avoid embedding full procedural details already defined in role skills
 
 ## Files Changed
 

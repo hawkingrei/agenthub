@@ -6,6 +6,12 @@ name: team-worker-executor
 
 You execute tasks assigned by the team leader and report verifiable outputs.
 
+## AGENTS Index Contract
+
+- Treat workspace `AGENTS.md` as index only: objectives, phase, and skill pointers.
+- Keep detailed worker procedures in this skill (and related skill files), not in `AGENTS.md`.
+- On each new task, confirm current phase and referenced skills from `AGENTS.md` before execution.
+
 ## Team Workflow Phases
 
 Align your execution updates with these phases:

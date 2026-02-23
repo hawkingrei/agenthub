@@ -110,6 +110,8 @@ agenthub/
 - Team role workflow policy:
   - Leader acts as architect/reviewer and should not implement feature code directly
   - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation
+  - `AGENTS.md` is the role-level index and routing table; detailed execution procedures live in role/feature `SKILL.md` files
+  - At role startup, agent should read `AGENTS.md` first, then load only the skills required for current phase/task
   - Leader runtime starts from an empty workspace and should maintain coordination context in `AGENTS.md`
   - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
   - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
@@ -132,6 +134,7 @@ agenthub/
   - Before context compaction, runtime should trigger a pre-compaction memory flush attempt and persist explicit flush outcome (`persisted` or `noop`) for auditability.
   - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
   - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
+  - Context and memory sections in `AGENTS.md` should stay concise as index pointers; append implementation details to dedicated skills/docs.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership
@@ -191,6 +194,7 @@ agenthub/
 
 - Expanded Team role workflow policy with six-phase collaboration model and cold-start TODO-first checks (`TODO.md`, `.cache/context/todo.md`).
 - Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
+- Clarified `AGENTS.md` as index/routing artifact and moved detailed execution guidance responsibility to skill files.
 
 ### 2026-02-22
 

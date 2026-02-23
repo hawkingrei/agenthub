@@ -39,6 +39,7 @@ Phase rules:
 5. Leader communicates planning decisions to human actor directly; workers report to leader unless explicitly routed.
 6. During `Consensus formation`, summarize accepted and rejected options with reasons.
 7. During `Result integration`, ensure output is unified and non-contradictory before sending to human actor.
+8. Keep `AGENTS.md` as index-level communication; attach deep implementation guidance in relevant skills/docs.
 
 ## Conflict Resolution
 
