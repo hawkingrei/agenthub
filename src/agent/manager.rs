@@ -241,6 +241,15 @@ impl AgentManager {
             .await
     }
 
+    #[tracing::instrument(
+        skip(self, config),
+        fields(
+            source = %source,
+            agent_name = %config.name,
+            workdir = %config.workdir
+        ),
+        err
+    )]
     pub async fn create_agent_with_source(
         &self,
         config: AgentConfig,
@@ -717,10 +726,16 @@ impl AgentManager {
         starting.remove(agent_id);
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
         self.start_agent_with_actor_context(agent_id, None).await
     }
 
+    #[tracing::instrument(
+        skip(self, actor_context),
+        fields(agent_id = %agent_id),
+        err
+    )]
     pub async fn start_agent_with_actor_context(
         &self,
         agent_id: &str,
@@ -741,6 +756,11 @@ impl AgentManager {
         result
     }
 
+    #[tracing::instrument(
+        skip(self, actor_context),
+        fields(agent_id = %agent_id),
+        err
+    )]
     async fn start_agent_inner(
         &self,
         agent_id: &str,
@@ -751,10 +771,9 @@ impl AgentManager {
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = expand_tilde(&agent.workdir);
         let persisted_worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
-        if persisted_workdir != agent.workdir
-            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref()
-        {
-            let _ = sqlx::query(
+        if (persisted_workdir != agent.workdir
+            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref())
+            && let Err(err) = sqlx::query(
                 r#"
                 UPDATE agents
                 SET workdir = ?1, worktree_repo = ?2, updated_at = ?3
@@ -766,7 +785,15 @@ impl AgentManager {
             .bind(Utc::now().timestamp())
             .bind(&agent.id)
             .execute(&self.db)
-            .await;
+            .await
+        {
+            tracing::warn!(
+                agent_id = %agent.id,
+                workdir = %persisted_workdir,
+                worktree_repo = ?persisted_worktree_repo,
+                error = %err,
+                "failed to persist normalized workdir/worktree_repo"
+            );
         }
         let start_policy = build_runtime_start_policy(
             &agent,
@@ -786,21 +813,53 @@ impl AgentManager {
             )
             .await
         {
-            let _ = self
+            if let Err(record_err) = self
                 .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await;
-            let _ = self
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %record_err,
+                    "failed to record startup failure session"
+                );
+            }
+            if let Err(status_err) = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %status_err,
+                    "failed to update agent status after startup failure"
+                );
+            }
             return Err(err);
         }
         if let Err(err) = self.ensure_safe_path(&start_policy.workdir).await {
-            let _ = self
+            if let Err(record_err) = self
                 .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await;
-            let _ = self
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %record_err,
+                    "failed to record safe-path startup failure"
+                );
+            }
+            if let Err(status_err) = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %status_err,
+                    "failed to update agent status after safe-path failure"
+                );
+            }
             return Err(err);
         }
         if let Some(worker_branch) = start_policy.worker_branch.as_deref()
@@ -808,12 +867,28 @@ impl AgentManager {
                 .checkout_team_worker_branch(&start_policy.workdir, worker_branch)
                 .await
         {
-            let _ = self
+            if let Err(record_err) = self
                 .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await;
-            let _ = self
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %record_err,
+                    "failed to record worker-branch startup failure"
+                );
+            }
+            if let Err(status_err) = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %status_err,
+                    "failed to update agent status after worker-branch failure"
+                );
+            }
             return Err(err);
         }
 
@@ -840,12 +915,28 @@ impl AgentManager {
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
-                let _ = self
+                if let Err(record_err) = self
                     .record_failed_session(&agent.id, &session_id, &err.to_string())
-                    .await;
-                let _ = self
+                    .await
+                {
+                    tracing::error!(
+                        agent_id = %agent.id,
+                        session_id = %session_id,
+                        error = %record_err,
+                        "failed to record spawn failure session"
+                    );
+                }
+                if let Err(status_err) = self
                     .update_agent_status(&agent.id, AgentStatus::Failed)
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        agent_id = %agent.id,
+                        session_id = %session_id,
+                        error = %status_err,
+                        "failed to update agent status after spawn failure"
+                    );
+                }
                 tracing::error!(
                     "spawn failed: command={} workdir={} args={:?} error={}",
                     command_path,
@@ -884,12 +975,34 @@ impl AgentManager {
         .execute(&self.db)
         .await
         {
-            let _ = self
+            tracing::error!(
+                agent_id = %agent.id,
+                session_id = %session_id,
+                error = %err,
+                "failed to insert running agent session"
+            );
+            if let Err(record_err) = self
                 .record_failed_session(&agent.id, &session_id, "session insert failed")
-                .await;
-            let _ = self
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %record_err,
+                    "failed to record session-insert startup failure"
+                );
+            }
+            if let Err(status_err) = self
                 .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %status_err,
+                    "failed to update agent status after session-insert failure"
+                );
+            }
             return Err(err.into());
         }
 
@@ -901,24 +1014,56 @@ impl AgentManager {
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
-                    let _ = self
+                    if let Err(record_err) = self
                         .record_failed_session(&agent.id, &session_id, "acp stdout missing")
-                        .await;
-                    let _ = self
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %record_err,
+                            "failed to record missing acp stdout failure"
+                        );
+                    }
+                    if let Err(status_err) = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %status_err,
+                            "failed to update agent status after missing acp stdout"
+                        );
+                    }
                     return Err(anyhow::anyhow!("acp stdout missing"));
                 }
             };
             let stdin = match stdin.lock().await.take() {
                 Some(stdin) => stdin,
                 None => {
-                    let _ = self
+                    if let Err(record_err) = self
                         .record_failed_session(&agent.id, &session_id, "acp stdin missing")
-                        .await;
-                    let _ = self
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %record_err,
+                            "failed to record missing acp stdin failure"
+                        );
+                    }
+                    if let Err(status_err) = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %status_err,
+                            "failed to update agent status after missing acp stdin"
+                        );
+                    }
                     return Err(anyhow::anyhow!("acp stdin missing"));
                 }
             };
@@ -953,12 +1098,28 @@ impl AgentManager {
             {
                 Ok(handle) => handle,
                 Err(err) => {
-                    let _ = self
+                    if let Err(record_err) = self
                         .record_failed_session(&agent.id, &session_id, &err.to_string())
-                        .await;
-                    let _ = self
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %record_err,
+                            "failed to record acp session spawn failure"
+                        );
+                    }
+                    if let Err(status_err) = self
                         .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            agent_id = %agent.id,
+                            session_id = %session_id,
+                            error = %status_err,
+                            "failed to update agent status after acp session spawn failure"
+                        );
+                    }
                     return Err(err);
                 }
             };
@@ -1096,6 +1257,7 @@ impl AgentManager {
         anyhow::bail!("workdir not allowed")
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
         let handle = {
             let mut guard = self.inner.write().await;
@@ -1104,7 +1266,7 @@ impl AgentManager {
         if let Some(handle) = handle {
             let session_id = handle.session_id.clone();
             let now = Utc::now().timestamp();
-            let _ = sqlx::query(
+            if let Err(err) = sqlx::query(
                 r#"
                 UPDATE agent_sessions
                 SET status = 'cancelled', ended_at = ?1
@@ -1114,10 +1276,26 @@ impl AgentManager {
             .bind(now)
             .bind(&session_id)
             .execute(&self.db)
-            .await;
-            let _ = self
+            .await
+            {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    session_id = %session_id,
+                    error = %err,
+                    "failed to mark agent session as cancelled during stop"
+                );
+            }
+            if let Err(err) = self
                 .update_agent_status(agent_id, AgentStatus::Stopped)
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    session_id = %session_id,
+                    error = %err,
+                    "failed to update agent status during stop"
+                );
+            }
             self.emit_run_status(
                 handle.output_tx.clone(),
                 agent_id.to_string(),
@@ -1126,8 +1304,14 @@ impl AgentManager {
             )
             .await;
             let mut child_guard = handle.child.lock().await;
-            if let Some(child) = child_guard.as_mut() {
-                let _ = child.kill().await;
+            if let Some(child) = child_guard.as_mut()
+                && let Err(err) = child.kill().await
+            {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    error = %err,
+                    "failed to kill agent child process during stop"
+                );
             }
         }
         Ok(())
@@ -1141,7 +1325,7 @@ impl AgentManager {
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         let seq = Uuid::now_v7().to_string();
-        let _ = sqlx::query(
+        if let Err(err) = sqlx::query(
             r#"
             INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
             VALUES (?1, ?2, 'failed', ?3, ?4)
@@ -1152,9 +1336,17 @@ impl AgentManager {
         .bind(now)
         .bind(now)
         .execute(&self.db)
-        .await;
+        .await
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                error = %err,
+                "failed to persist failed agent session row"
+            );
+        }
 
-        let _ = sqlx::query(
+        if let Err(err) = sqlx::query(
             r#"
             INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -1167,7 +1359,15 @@ impl AgentManager {
         .bind(stream_to_str(&OutputStream::System))
         .bind(format!("start failed: {}", message))
         .execute(&self.db)
-        .await;
+        .await
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                error = %err,
+                "failed to persist startup failure event"
+            );
+        }
 
         Ok(())
     }
@@ -1183,6 +1383,11 @@ impl AgentManager {
         Ok(handle.output_tx.subscribe())
     }
 
+    #[tracing::instrument(
+        skip(self, input, message_id),
+        fields(agent_id = %agent_id, expected_session_id = ?expected_session_id),
+        err
+    )]
     pub async fn send_input(
         &self,
         agent_id: &str,
@@ -1222,7 +1427,7 @@ impl AgentManager {
                     );
                     return Err(anyhow::anyhow!("agent not running"));
                 }
-                let _ = sqlx::query(
+                if let Err(err) = sqlx::query(
                     r#"
                     UPDATE agent_sessions
                     SET status = 'exited', ended_at = ?1
@@ -1232,8 +1437,15 @@ impl AgentManager {
                 .bind(now)
                 .bind(agent_id)
                 .execute(&self.db)
-                .await;
-                let _ = sqlx::query(
+                .await
+                {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %err,
+                        "send_input fallback failed to mark running sessions exited"
+                    );
+                }
+                if let Err(err) = sqlx::query(
                     r#"
                     UPDATE agents
                     SET status = 'exited', updated_at = ?1
@@ -1243,7 +1455,14 @@ impl AgentManager {
                 .bind(now)
                 .bind(agent_id)
                 .execute(&self.db)
-                .await;
+                .await
+                {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %err,
+                        "send_input fallback failed to update agent status to exited"
+                    );
+                }
                 return Err(anyhow::anyhow!("agent not running"));
             }
         };
@@ -1329,16 +1548,23 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = %mode_id), err)]
     pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_mode(mode_id.to_string()).await
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, model_id = %model_id), err)]
     pub async fn set_acp_model(&self, agent_id: &str, model_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_model(model_id.to_string()).await
     }
 
+    #[tracing::instrument(
+        skip(self, value),
+        fields(agent_id = %agent_id, config_id = %config_id),
+        err
+    )]
     pub async fn set_acp_config(
         &self,
         agent_id: &str,
@@ -1350,6 +1576,7 @@ impl AgentManager {
             .await
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
         acp.cancel().await

@@ -37,10 +37,14 @@ fn init_tracing(
             .with_env_filter(filter)
             .with_writer(non_blocking)
             .with_ansi(false)
+            .with_target(true)
             .try_init();
         return Ok(Some(guard));
     }
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .try_init();
     Ok(None)
 }
 
