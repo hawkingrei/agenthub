@@ -945,3 +945,318 @@ impl Agent for LinkerdogAgent {
 fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_client_protocol::{
+        EmbeddedResource, EmbeddedResourceResource, ResourceLink, TextResourceContents,
+    };
+    use std::path::PathBuf;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("linkerdog-core-{name}-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn sample_session(cwd: PathBuf, session_id: &str) -> SessionState {
+        SessionState {
+            session_id: SessionId::new(session_id.to_string()),
+            cwd,
+            provider: "openai".to_string(),
+            model: "gpt-5".to_string(),
+            mode: MODE_CODE.to_string(),
+            history: Vec::new(),
+            updated_at: now_rfc3339(),
+        }
+    }
+
+    #[test]
+    fn provider_and_default_helpers_work() {
+        assert!(LinkerdogAgent::provider_spec("openai").is_some());
+        assert!(LinkerdogAgent::provider_spec(" OpenAI ").is_some());
+        assert!(LinkerdogAgent::provider_spec("unknown").is_none());
+
+        assert_eq!(LinkerdogAgent::first_model_for_provider("openai"), "gpt-5");
+        assert_eq!(LinkerdogAgent::first_model_for_provider("missing"), "gpt-5");
+        assert!(LinkerdogAgent::model_exists("google", "gemini-2.5-pro"));
+        assert!(!LinkerdogAgent::model_exists("google", "not-exist"));
+
+        let defaults = LinkerdogRuntimeConfig {
+            default_provider: "not-provider".to_string(),
+            default_model: "not-model".to_string(),
+            default_mode: "not-mode".to_string(),
+        };
+        let (provider, model, mode) = LinkerdogAgent::sanitize_defaults(&defaults);
+        assert_eq!(provider, "openai");
+        assert_eq!(model, "gpt-5");
+        assert_eq!(mode, MODE_CODE);
+    }
+
+    #[test]
+    fn session_path_and_persistence_helpers_roundtrip() {
+        let cwd = temp_dir("persist");
+        let mut session = sample_session(cwd.clone(), "session-persist");
+        let session_id = session.session_id.clone();
+        let agent = LinkerdogAgent::new(LinkerdogRuntimeConfig::default());
+        agent.upsert_session(session.clone());
+
+        let updated = agent
+            .record_entry(&session_id, "user", "hello world".to_string())
+            .expect("record entry");
+        session = updated;
+
+        let state_file = LinkerdogAgent::state_file(&cwd, &session_id);
+        let history_file = LinkerdogAgent::history_file(&cwd, &session_id);
+        assert!(state_file.exists());
+        assert!(history_file.exists());
+
+        let loaded = LinkerdogAgent::load_session_from_disk(&session_id, &cwd)
+            .expect("load from disk")
+            .expect("session exists");
+        assert_eq!(loaded.provider, session.provider);
+        assert_eq!(loaded.model, session.model);
+        assert_eq!(loaded.mode, session.mode);
+        assert_eq!(loaded.history.len(), 1);
+        assert_eq!(loaded.history[0].role, "user");
+        assert_eq!(loaded.history[0].text, "hello world");
+        assert_eq!(
+            LinkerdogAgent::title_from_history(&loaded.history),
+            Some("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn title_context_and_reply_helpers_work() {
+        let cwd = temp_dir("reply");
+        let mut session = sample_session(cwd, "session-reply");
+        session.history = vec![
+            HistoryEntry {
+                role: "system".to_string(),
+                text: "boot".to_string(),
+                at: now_rfc3339(),
+            },
+            HistoryEntry {
+                role: "user".to_string(),
+                text: "line-1\nline-2".to_string(),
+                at: now_rfc3339(),
+            },
+            HistoryEntry {
+                role: "assistant".to_string(),
+                text: "ok".to_string(),
+                at: now_rfc3339(),
+            },
+        ];
+
+        let context = LinkerdogAgent::build_context_window(&session);
+        assert!(context.contains("user: line-1 line-2"));
+
+        let reply = LinkerdogAgent::build_reply(&session, "  ping  ");
+        assert!(reply.contains("mode=code provider=openai model=gpt-5"));
+        assert!(reply.contains("User: ping"));
+        assert!(reply.contains("Context Window:"));
+
+        let long_text = "x".repeat(100);
+        let long_history = vec![HistoryEntry {
+            role: "user".to_string(),
+            text: long_text,
+            at: now_rfc3339(),
+        }];
+        let title = LinkerdogAgent::title_from_history(&long_history).expect("title");
+        assert!(title.ends_with("..."));
+        assert_eq!(title.chars().count(), 83);
+    }
+
+    #[test]
+    fn prompt_text_collects_supported_blocks() {
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("  hello  ")),
+            ContentBlock::Resource(EmbeddedResource::new(
+                EmbeddedResourceResource::TextResourceContents(TextResourceContents::new(
+                    "  from resource  ",
+                    "file://resource.txt",
+                )),
+            )),
+            ContentBlock::ResourceLink(ResourceLink::new("spec", "file://spec.md")),
+        ];
+        let text = LinkerdogAgent::prompt_text(&blocks);
+        assert_eq!(text, "hello\nfrom resource\n[resource:file://spec.md]");
+    }
+
+    #[test]
+    fn set_provider_model_mode_validates_inputs() {
+        let cwd = temp_dir("provider-mode");
+        let mut session = sample_session(cwd, "session-provider-mode");
+
+        LinkerdogAgent::set_provider_model_mode(
+            &mut session,
+            Some("anthropic".to_string()),
+            None,
+            None,
+        )
+        .expect("set provider");
+        assert_eq!(session.provider, "anthropic");
+        assert_eq!(session.model, "claude-sonnet-4");
+
+        let invalid_provider = LinkerdogAgent::set_provider_model_mode(
+            &mut session,
+            Some("bad-provider".to_string()),
+            None,
+            None,
+        )
+        .expect_err("invalid provider");
+        assert!(invalid_provider.to_string().contains("unknown provider"));
+
+        let invalid_model = LinkerdogAgent::set_provider_model_mode(
+            &mut session,
+            None,
+            Some("bad-model".to_string()),
+            None,
+        )
+        .expect_err("invalid model");
+        assert!(
+            invalid_model
+                .to_string()
+                .contains("is not available for provider")
+        );
+
+        let invalid_mode =
+            LinkerdogAgent::set_provider_model_mode(&mut session, None, None, Some("bad".into()))
+                .expect_err("invalid mode");
+        assert!(invalid_mode.to_string().contains("unknown mode"));
+
+        LinkerdogAgent::set_provider_model_mode(
+            &mut session,
+            None,
+            Some("claude-opus-4.1".into()),
+            Some("review".into()),
+        )
+        .expect("set model and mode");
+        assert_eq!(session.model, "claude-opus-4.1");
+        assert_eq!(session.mode, MODE_REVIEW);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_local_command_reports_stdout_and_exit_code() {
+        let cwd = temp_dir("run-local-command");
+        let (exit_code, output) =
+            LinkerdogAgent::run_local_command(&cwd, "printf 'hello-linkerdog'")
+                .await
+                .expect("run command");
+        assert_eq!(exit_code, 0);
+        assert!(output.contains("exit_code=0"));
+        assert!(output.contains("hello-linkerdog"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lifecycle_paths_work_without_initialized_acp_client() {
+        let cwd = temp_dir("lifecycle");
+        let agent = LinkerdogAgent::new(LinkerdogRuntimeConfig {
+            default_provider: "invalid-provider".to_string(),
+            default_model: "invalid-model".to_string(),
+            default_mode: "invalid-mode".to_string(),
+        });
+
+        let new_session = Agent::new_session(&agent, NewSessionRequest::new(cwd.clone()))
+            .await
+            .expect("new session");
+        assert!(new_session.session_id.to_string().starts_with("linkerdog-"));
+        assert!(new_session.modes.is_some());
+        assert!(new_session.models.is_some());
+        assert!(new_session.config_options.is_some());
+
+        let list_all = Agent::list_sessions(&agent, ListSessionsRequest::new())
+            .await
+            .expect("list sessions");
+        assert_eq!(list_all.sessions.len(), 1);
+
+        let list_other_cwd = Agent::list_sessions(
+            &agent,
+            ListSessionsRequest::new().cwd(temp_dir("other-cwd")),
+        )
+        .await
+        .expect("list with cwd filter");
+        assert!(list_other_cwd.sessions.is_empty());
+
+        let loaded = Agent::load_session(
+            &agent,
+            LoadSessionRequest::new(new_session.session_id.clone(), cwd.clone()),
+        )
+        .await
+        .expect("load session");
+        assert!(loaded.config_options.is_some());
+
+        Agent::cancel(
+            &agent,
+            CancelNotification::new(new_session.session_id.clone()),
+        )
+        .await
+        .expect("cancel");
+        let cancelled_prompt = Agent::prompt(
+            &agent,
+            PromptRequest::new(
+                new_session.session_id.clone(),
+                vec![ContentBlock::Text(TextContent::new("hello"))],
+            ),
+        )
+        .await
+        .expect("cancelled prompt");
+        assert_eq!(cancelled_prompt.stop_reason, StopReason::Cancelled);
+
+        let missing = Agent::load_session(&agent, LoadSessionRequest::new("missing-session", cwd))
+            .await
+            .expect_err("missing session");
+        assert!(missing.to_string().contains("not found"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn session_control_methods_validate_and_require_client_for_notifications() {
+        let cwd = temp_dir("session-control");
+        let agent = LinkerdogAgent::new(LinkerdogRuntimeConfig::default());
+        let new_session = Agent::new_session(&agent, NewSessionRequest::new(cwd))
+            .await
+            .expect("new session");
+        let session_id = new_session.session_id.clone();
+
+        let mode_err = Agent::set_session_mode(
+            &agent,
+            SetSessionModeRequest::new(session_id.clone(), MODE_ASK),
+        )
+        .await
+        .expect_err("mode update requires ACP client");
+        assert!(mode_err.to_string().contains("ACP client not initialized"));
+
+        let model_err = Agent::set_session_model(
+            &agent,
+            SetSessionModelRequest::new(session_id.clone(), "o3"),
+        )
+        .await
+        .expect_err("model update requires ACP client");
+        assert!(model_err.to_string().contains("ACP client not initialized"));
+
+        let mode_config_err = Agent::set_session_config_option(
+            &agent,
+            SetSessionConfigOptionRequest::new(session_id.clone(), CONFIG_MODE, MODE_REVIEW),
+        )
+        .await
+        .expect_err("mode config requires ACP client");
+        assert!(
+            mode_config_err
+                .to_string()
+                .contains("ACP client not initialized")
+        );
+
+        let unknown_config = Agent::set_session_config_option(
+            &agent,
+            SetSessionConfigOptionRequest::new(session_id, "unknown", "value"),
+        )
+        .await
+        .expect_err("unknown config");
+        assert!(
+            unknown_config
+                .to_string()
+                .contains("unknown config option id")
+        );
+    }
+}
