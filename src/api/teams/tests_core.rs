@@ -2669,6 +2669,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
                     {
                         "member_id":"leader-agent",
                         "role":"leader",
+                        "description":"Team architect and integration owner",
                         "model":"gpt-5",
                         "prompt":"Lead the plan",
                         "skills":["planning","review"]
@@ -2676,6 +2677,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
                     {
                         "member_id":"worker-agent",
                         "role":"worker",
+                        "description":"Primary implementation specialist",
                         "model":"gpt-4.1",
                         "prompt":"Execute tasks",
                         "skills":["coding"]
@@ -2805,6 +2807,10 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         .find(|member| member.member_id == "leader-agent")
         .expect("find leader");
     assert_eq!(leader.role, "leader");
+    assert_eq!(
+        leader.description.as_deref(),
+        Some("Team architect and integration owner")
+    );
     assert_eq!(leader.model.as_deref(), Some("gpt-5"));
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
     assert_eq!(
@@ -2833,6 +2839,10 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         .find(|member| member.member_id == "worker-agent")
         .expect("find worker");
     assert_eq!(worker.role, "worker");
+    assert_eq!(
+        worker.description.as_deref(),
+        Some("Primary implementation specialist")
+    );
     assert_eq!(worker.model.as_deref(), Some("gpt-4.1"));
     assert_eq!(worker.pending_inbox_count, 1);
     assert_eq!(worker.status, "idle");

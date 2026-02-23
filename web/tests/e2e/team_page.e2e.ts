@@ -25,6 +25,7 @@ type E2eAgentRecord = {
 type TeamSpecMember = {
   member_id: string;
   role?: string;
+  description?: string;
   model?: string;
   skills?: string[];
 };
@@ -273,6 +274,7 @@ async function mockTeamPageApis(
       jsonResponse({
         card_id: `agenthub://agents/${agent.id}`,
         schema_version: "agenthub.a2a.discovery_card.v1",
+        description: `AgentHub team member ${agent.name} (provider: ${acpProvider}) supports ${capabilityTags.join(", ")}`,
         identity: {
           agent_id: agent.id,
           name: agent.name,

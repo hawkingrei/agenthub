@@ -869,6 +869,8 @@ describe("team panels interactions", () => {
           memberDiscoveryCard={{
             card_id: "agenthub://agents/worker-agent",
             schema_version: "agenthub.a2a.discovery_card.v1",
+            description:
+              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
             identity: {
               agent_id: "worker-agent",
               name: "worker-agent",
@@ -915,6 +917,8 @@ describe("team panels interactions", () => {
           memberDiscoveryCard={{
             card_id: "agenthub://agents/worker-agent",
             schema_version: "agenthub.a2a.discovery_card.v1",
+            description:
+              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
             identity: {
               agent_id: "worker-agent",
               name: "worker-agent",
@@ -970,6 +974,8 @@ describe("team panels interactions", () => {
           memberDiscoveryCard={{
             card_id: "agenthub://agents/worker-agent",
             schema_version: "agenthub.a2a.discovery_card.v1",
+            description:
+              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
             identity: {
               agent_id: "worker-agent",
               name: "worker-agent",
@@ -994,6 +1000,9 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("worker output");
     expect(container.textContent).toContain("acp_codex");
+    expect(container.textContent).toContain(
+      "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex"
+    );
     expect(onSelectedMemberIdChange).toHaveBeenCalledWith("worker-agent");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(1);

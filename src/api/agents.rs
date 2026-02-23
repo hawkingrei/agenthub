@@ -5,6 +5,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::Deserialize;
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::acp::{
@@ -41,6 +42,7 @@ pub struct StartAgentResponse {
 pub struct AgentDiscoveryCardResponse {
     pub card_id: String,
     pub schema_version: String,
+    pub description: String,
     pub identity: AgentDiscoveryIdentity,
     pub runtime: AgentDiscoveryRuntime,
     pub capability_tags: Vec<String>,
@@ -210,12 +212,18 @@ async fn get_agent_discovery_card(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<AgentDiscoveryCardResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     let provider = state
         .agents
         .acp_provider_for_agent(&agent.command, &agent.args);
-    Ok(Json(build_agent_discovery_card(&agent, provider)))
+    let member_description =
+        resolve_team_member_description(&state, user.id.as_str(), &agent.id).await;
+    Ok(Json(build_agent_discovery_card(
+        &agent,
+        provider,
+        member_description.as_deref(),
+    )))
 }
 
 async fn start_agent(
@@ -529,6 +537,7 @@ fn sanitize_worktree_segment(value: &str) -> String {
 fn build_agent_discovery_card(
     agent: &AgentRecord,
     acp_provider: Option<&str>,
+    member_description: Option<&str>,
 ) -> AgentDiscoveryCardResponse {
     let mut capability_tags = vec![
         "team_mailbox_v1".to_string(),
@@ -546,10 +555,23 @@ fn build_agent_discovery_card(
     if let Some(provider) = acp_provider {
         capability_tags.push(format!("acp_{provider}"));
     }
+    let provider_desc = acp_provider.unwrap_or("unknown");
+    let capability_desc = capability_tags.join(", ");
+    let description = member_description
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            format!(
+                "AgentHub team member {} (provider: {}) supports {}",
+                agent.name, provider_desc, capability_desc
+            )
+        });
 
     AgentDiscoveryCardResponse {
         card_id: format!("agenthub://agents/{}", agent.id),
         schema_version: "agenthub.a2a.discovery_card.v1".to_string(),
+        description,
         identity: AgentDiscoveryIdentity {
             agent_id: agent.id.clone(),
             name: agent.name.clone(),
@@ -564,6 +586,53 @@ fn build_agent_discovery_card(
         },
         capability_tags,
     }
+}
+
+async fn resolve_team_member_description(
+    state: &AppState,
+    user_id: &str,
+    member_id: &str,
+) -> Option<String> {
+    let teams = state.teams.list_teams().await.ok()?;
+    teams
+        .into_iter()
+        .filter(|team| match team.owner_user_id.as_deref() {
+            Some(owner_user_id) => owner_user_id == user_id,
+            None => true,
+        })
+        .filter_map(|team| {
+            resolve_member_description_from_spec(&team.spec, member_id)
+                .map(|description| (team.updated_at, description))
+        })
+        .max_by_key(|(updated_at, _)| *updated_at)
+        .map(|(_, description)| description)
+}
+
+fn resolve_member_description_from_spec(spec: &Value, member_id: &str) -> Option<String> {
+    let target = member_id.trim();
+    if target.is_empty() {
+        return None;
+    }
+    spec.get("members")
+        .and_then(Value::as_array)
+        .and_then(|members| {
+            members.iter().find_map(|member| {
+                let member_obj = member.as_object()?;
+                let candidate_member_id = member_obj
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)?;
+                if candidate_member_id != target {
+                    return None;
+                }
+                member_obj
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            })
+        })
 }
 
 fn parse_start_actor_runtime_context(
@@ -637,7 +706,8 @@ mod tests {
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
         parse_agent_source, parse_start_actor_runtime_context, parse_worktree_mode,
-        resolve_create_agent_workdir, router, sanitize_worktree_segment,
+        resolve_create_agent_workdir, resolve_member_description_from_spec, router,
+        sanitize_worktree_segment,
     };
 
     #[test]
@@ -691,9 +761,15 @@ mod tests {
             updated_at: 2,
         };
 
-        let card = build_agent_discovery_card(&agent, Some("codex"));
+        let card = build_agent_discovery_card(&agent, Some("codex"), None);
         assert_eq!(card.card_id, "agenthub://agents/agent-1");
         assert_eq!(card.schema_version, "agenthub.a2a.discovery_card.v1");
+        assert!(
+            card.description
+                .contains("AgentHub team member Worker One (provider: codex)"),
+            "unexpected description: {}",
+            card.description
+        );
         assert_eq!(card.identity.agent_id, "agent-1");
         assert_eq!(card.identity.name, "Worker One");
         assert_eq!(card.runtime.acp_provider.as_deref(), Some("codex"));
@@ -710,6 +786,48 @@ mod tests {
         assert!(card.capability_tags.iter().any(|tag| tag == "code_mode"));
         assert!(card.capability_tags.iter().any(|tag| tag == "git_worktree"));
         assert!(card.capability_tags.iter().any(|tag| tag == "acp_codex"));
+    }
+
+    #[test]
+    fn build_agent_discovery_card_prefers_member_description() {
+        let agent = crate::agent::AgentRecord {
+            id: "agent-2".to_string(),
+            name: "Worker Two".to_string(),
+            workdir: "/tmp/agent-2".to_string(),
+            command: "agenthub-codex-acp".to_string(),
+            args: vec![],
+            worktree_mode: WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: false,
+            status: crate::agent::AgentStatus::Created,
+            created_at: 1,
+            updated_at: 2,
+        };
+
+        let card = build_agent_discovery_card(&agent, Some("codex"), Some("Database schema owner"));
+        assert_eq!(card.description, "Database schema owner");
+    }
+
+    #[test]
+    fn resolve_member_description_from_spec_matches_member_entry() {
+        let spec = json!({
+            "spec_version": 1,
+            "members": [
+                {"member_id": "leader", "role": "leader", "description": "Lead architect"},
+                {"member_id": "worker-a", "role": "worker", "description": "Primary implementer"},
+                {"member_id": "worker-b", "role": "worker"}
+            ]
+        });
+        assert_eq!(
+            resolve_member_description_from_spec(&spec, "worker-a").as_deref(),
+            Some("Primary implementer")
+        );
+        assert_eq!(
+            resolve_member_description_from_spec(&spec, "worker-b"),
+            None
+        );
+        assert_eq!(resolve_member_description_from_spec(&spec, "missing"), None);
     }
 
     #[test]
@@ -1881,6 +1999,54 @@ mod tests {
         let created = decode_json_body(create_resp).await;
         let agent_id = created["id"].as_str().expect("agent id");
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create team_definitions table");
+
+        let team_spec = json!({
+            "spec_version": 1,
+            "entrypoint": "leader-main",
+            "members": [
+                {"member_id": "leader-main", "role": "leader"},
+                {
+                    "member_id": agent_id,
+                    "role": "worker",
+                    "description": "TiDB fuzz/bugfix specialist"
+                }
+            ],
+            "steps": [
+                {"step_key": "leader_plan", "member_id": "leader-main", "depends_on": []}
+            ]
+        });
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind("discovery card binding")
+        .bind("bind agent-card description to member profile")
+        .bind(team_spec.to_string())
+        .bind(now)
+        .bind(now + 1)
+        .execute(&state.db)
+        .await
+        .expect("insert team definition");
+
         let card_resp = app
             .oneshot(build_json_request(
                 Method::GET,
@@ -1897,6 +2063,11 @@ mod tests {
         assert_eq!(
             card["schema_version"].as_str(),
             Some("agenthub.a2a.discovery_card.v1")
+        );
+        assert_eq!(
+            card["description"].as_str(),
+            Some("TiDB fuzz/bugfix specialist"),
+            "missing/invalid discovery card description: {card}"
         );
         assert_eq!(card["identity"]["agent_id"].as_str(), Some(agent_id));
         assert_eq!(card["runtime"]["acp_provider"].as_str(), Some("codex"));

@@ -1704,7 +1704,7 @@ export function TeamPage(props: TeamPageProps) {
 
   const onUpdateWorker = (
     index: number,
-    field: "member_id" | "model" | "prompt" | "custom_skills",
+    field: "member_id" | "description" | "model" | "prompt" | "custom_skills",
     value: string
   ) => {
     setWorkers((prev) =>
@@ -2959,6 +2959,15 @@ export function TeamPage(props: TeamPageProps) {
                             <div>agent_id: {worker.member_id || "-"}</div>
                             <div>workdir: {workerAgent?.workdir ?? "-"}</div>
                           </div>
+                          <input
+                            className={`${modalFieldClassName} mt-3`}
+                            placeholder="worker description (identity card)"
+                            value={worker.description}
+                            onChange={(event) =>
+                              onUpdateWorker(index, "description", event.target.value)
+                            }
+                            disabled={useSpecOverride}
+                          />
                           <select
                             className={`${modalFieldClassName} mt-3`}
                             value={worker.model}

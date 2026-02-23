@@ -16,6 +16,9 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- If checklist is incomplete, continue exploration or ask focused clarification before dispatching worker steps.\n",
     "Coordination contract:\n",
     "- Use stable `spec.members[].member_id` as teammate routing keys in mailbox coordination.\n",
+    "- Treat `spec.members[].description` as A2A identity card source for each member.\n",
+    "- Keep `/api/agents/:id/.well-known/agent-card` description aligned with team member role identity.\n",
+    "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.\n",
     "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
     "Team workflow phases:\n",
@@ -50,6 +53,7 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Work in your own git worktree only. Never share the same worktree with other workers.\n",
     "- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n",
     "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n",
+    "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
     "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.\n",
     "- Do not replace leader in direct human-facing planning replies unless explicitly routed.\n",
@@ -115,6 +119,10 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Explore Before Asking"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Clearance checklist before delegation"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].description"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".well-known/agent-card"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
     }
 }

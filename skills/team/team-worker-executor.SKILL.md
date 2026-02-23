@@ -17,6 +17,13 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Use `spec.members[].member_id` as routing identity when communicating with teammates.
 - Prefer stable teammate names/ids from team spec; avoid opaque runtime UUID/process identifiers in worker messages.
 
+## Discovery Identity Card Contract
+
+- Keep worker identity in `spec.members[].description` up to date with current specialization/ownership.
+- Treat `/api/agents/:id/.well-known/agent-card` as the externally visible identity card; ensure status reports match that profile.
+- If description is stale/empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
+- Do not overwrite another member's identity description from worker context.
+
 ## Team TODO Lifecycle (Worker)
 
 Use worker-local TODO files as the execution ledger for non-trivial assignments.

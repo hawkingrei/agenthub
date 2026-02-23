@@ -125,6 +125,8 @@ agenthub/
   - Workers may coordinate with peers when dependencies overlap, but status/evidence must still flow back to leader
   - Each agent (leader/worker) owns and updates its context state only in its own workspace-local `.cache/context` tree
   - Leader should use an empty workspace dedicated to context management and coordination artifacts (avoid feature-code edits in leader workspace)
+  - `spec.members[].description` is the canonical member identity description and must map to `/api/agents/:id/.well-known/agent-card` response `description`
+  - `AGENTS.md` should include identity-card ownership/update pointers; detailed identity update workflow stays in team role skills
 - Context management policy (OpenClaw-inspired, AgentHub-adapted):
   - Team prompt assembly must separate a stable prefix from a dynamic tail.
   - Stable prefix should include role charter, tool schemas, and safety guardrails, and must avoid non-deterministic fields (timestamps, random IDs, unstable key ordering).

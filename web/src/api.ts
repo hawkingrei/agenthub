@@ -47,6 +47,7 @@ export type AgentDiscoveryRuntimeRecord = {
 export type AgentDiscoveryCardRecord = {
   card_id: string;
   schema_version: string;
+  description: string;
   identity: AgentDiscoveryIdentityRecord;
   runtime: AgentDiscoveryRuntimeRecord;
   capability_tags: string[];
@@ -230,6 +231,7 @@ export type TeamMemberSnapshot = {
   member_id: string;
   role: string;
   model?: string | null;
+  description?: string | null;
   prompt?: string | null;
   skills: string[];
   pending_inbox_count: number;

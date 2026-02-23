@@ -19,6 +19,7 @@ import {
 function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
   return {
     member_id: "worker-alpha",
+    description: "",
     model: "gpt-5",
     prompt: "Run optimization",
     skills: ["team-deliberation-rules"],
@@ -38,6 +39,7 @@ describe("team create helpers", () => {
       [
         buildWorker({
           member_id: "worker alpha",
+          description: "query optimizer specialist",
           model: "gpt-5-mini",
           prompt: "",
           custom_skills: "custom-worker-skill",
@@ -51,6 +53,7 @@ describe("team create helpers", () => {
       members: Array<{
         member_id: string;
         role: string;
+        description?: string;
         model?: string;
         prompt: string;
         skills: string[];
@@ -77,6 +80,7 @@ describe("team create helpers", () => {
       ])
     );
     expect(spec.members[1]?.prompt).toContain("You are a Worker in an AgentHub team");
+    expect(spec.members[1]?.description).toBe("query optimizer specialist");
     expect(spec.members[1]?.prompt).toContain("Work in your own git worktree only.");
     expect(spec.members[1]?.prompt).toContain("Create a random branch at start");
     expect(spec.members[1]?.skills).toEqual(

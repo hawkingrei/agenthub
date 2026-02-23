@@ -19,6 +19,9 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "- If checklist is incomplete, continue exploration or ask focused clarification before dispatching worker steps.",
   "Coordination contract:",
   "- Use stable `spec.members[].member_id` as teammate routing keys in mailbox coordination.",
+  "- Treat `spec.members[].description` as A2A identity card source for each member.",
+  "- Keep `/api/agents/:id/.well-known/agent-card` description aligned with team member role identity.",
+  "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.",
   "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.",
   "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.",
   "Team workflow phases:",
@@ -53,6 +56,7 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
   "- Work in your own git worktree only. Never share the same worktree with other workers.",
   "- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.",
   "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.",
+  "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.",
   "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.",
   "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.",
   "- Do not replace leader in direct human-facing planning replies unless explicitly routed.",
@@ -107,6 +111,7 @@ export const TEAM_SKILL_OPTIONS = [
 
 export type WorkerDraft = {
   member_id: string;
+  description: string;
   model: string;
   prompt: string;
   skills: string[];
@@ -428,6 +433,7 @@ export function buildTeamMemberLiveStates(
 export function buildDefaultWorkerDraft(memberId: string): WorkerDraft {
   return {
     member_id: memberId,
+    description: "",
     model: "",
     prompt: DEFAULT_TEAM_WORKER_PROMPT,
     skills: [...DEFAULT_TEAM_WORKER_SKILLS],

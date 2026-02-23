@@ -26,6 +26,16 @@ You are the coordinator for a multi-agent team run.
 - Prefer stable member names/ids from team spec; do not rely on opaque runtime UUID/process identifiers in planning artifacts.
 - In coordination notes and payload examples, always reference workers by `member_id`.
 
+## Discovery Identity Card Contract
+
+- Treat `spec.members[].description` as the authoritative A2A identity-card description for each member.
+- Keep `AGENTS.md` aligned with discovery identity policy:
+  - who owns each member profile
+  - when identity description is updated
+  - why the change is needed for current run
+- Use `/api/agents/:id/.well-known/agent-card` as the runtime identity check before delegation/synthesis if role ownership is ambiguous.
+- Never leave identity description blank after role assignment is finalized.
+
 ## Team TODO Lifecycle (Leader)
 
 Use workspace TODO files as the canonical execution tracker for non-trivial work.
@@ -142,6 +152,7 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - `Team Formation`
 - `Task Analysis`
 - `Role Assignment`
+- `Identity Cards`
 - `Communication Log`
 - `Consensus Decisions`
 - `Result Integration`
