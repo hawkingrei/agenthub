@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify `DELETE /api/teams/:id` no longer returns `500` when member agents have dependent `agent_events` / `acp_permission_requests` rows, and record push + PR CI run IDs after merge (see `docs/features/2026-02-23-team-delete-member-session-fk-hardening.md`).
 - [ ] Verify Team run ownership hardening covers run-scoped APIs (`get/cancel/resume/restart/snapshot/events/steps/messages/context flush`) and that new shared crate `agenthub-text` remains stable in both Cargo and Bazel CI (see `docs/features/2026-02-23-team-run-access-and-memory-flush-hardening.md`).
 - [ ] [LOW] Defer Team ACL hardening (explicit owner/member permission matrix across Team main-task/run/mailbox APIs and UI visibility) until the chat-first baseline workflow and core Team features are complete.
 - [ ] Verify single-mode ACP sessions no longer inject Team role skills from global `~/.agenthub/skills.json`, while Team actor sessions still inject `team-leader-orchestrator`/`team-worker-executor` + `team-deliberation-rules` by role context (see `docs/features/2026-02-22-team-role-skill-single-mode-isolation.md`).

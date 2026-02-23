@@ -255,6 +255,29 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE acp_permission_requests (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            acp_session_id TEXT,
+            tool_call_id TEXT,
+            options_json TEXT NOT NULL,
+            tool_call_json TEXT,
+            status TEXT NOT NULL,
+            selected_option_id TEXT,
+            created_at INTEGER NOT NULL,
+            responded_at INTEGER,
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create acp_permission_requests");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_definitions (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,

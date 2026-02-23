@@ -471,6 +471,16 @@ async fn delete_team(
         let _ = state.agents.stop_agent(member_id).await;
     }
     for member_id in &member_ids {
+        sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
+            .bind(member_id)
+            .execute(&state.db)
+            .await
+            .map_err(|err| map_team_internal_error(anyhow::Error::from(err)))?;
+        sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
+            .bind(member_id)
+            .execute(&state.db)
+            .await
+            .map_err(|err| map_team_internal_error(anyhow::Error::from(err)))?;
         sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
             .bind(member_id)
             .execute(&state.db)
