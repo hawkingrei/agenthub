@@ -2131,14 +2131,17 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     hasText: "Team B",
   });
 
-  await teamBItem.click();
+  await teamBItem.focus();
+  await teamBItem.press("Enter");
   await expect(runFilter).toHaveValue("all");
   await runFilter.selectOption("failed");
   await expect(runFilter).toHaveValue("failed");
 
-  await teamAItem.click();
+  await teamAItem.focus();
+  await teamAItem.press("Enter");
   await expect(runFilter).toHaveValue("working");
 
-  await teamBItem.click();
+  await teamBItem.focus();
+  await teamBItem.press("Enter");
   await expect(runFilter).toHaveValue("failed");
 });
