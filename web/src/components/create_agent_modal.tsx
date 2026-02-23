@@ -93,6 +93,10 @@ export function CreateAgentModal({
     normalizedCurrentWorkdir !== normalizedDefaultRoot;
   const showWorkdirInput =
     !isCreateWorktreeMode || customizeCreateWorkdir || hasCustomCreateWorkdir;
+  const shouldAutoExpandAdvancedOptions =
+    showWorktreeAdvancedOptions &&
+    (worktreeMode !== "use_existing" || Boolean(worktreeError));
+  const previousAutoExpandConditionRef = React.useRef(shouldAutoExpandAdvancedOptions);
   const presetOptions = presets.map((entry) => ({
     value: entry.id,
     label: entry.label,
@@ -106,12 +110,14 @@ export function CreateAgentModal({
 
   React.useEffect(() => {
     if (!showWorktreeAdvancedOptions) {
+      previousAutoExpandConditionRef.current = false;
       return;
     }
-    if (worktreeMode !== "use_existing" || worktreeError) {
+    if (shouldAutoExpandAdvancedOptions && !previousAutoExpandConditionRef.current) {
       setShowAdvancedOptions(true);
     }
-  }, [showWorktreeAdvancedOptions, worktreeError, worktreeMode]);
+    previousAutoExpandConditionRef.current = shouldAutoExpandAdvancedOptions;
+  }, [showWorktreeAdvancedOptions, shouldAutoExpandAdvancedOptions]);
 
   return (
     <Modal

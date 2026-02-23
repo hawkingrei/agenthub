@@ -26,18 +26,23 @@ For common flows, this made the modal feel heavy and required users to scan low-
 - Auto-expand advanced options when:
   - `worktreeMode !== use_existing`, or
   - `worktreeError` is present.
+- Review follow-up:
+  - only auto-expand when the condition transitions from `false` to `true`
+  - do not force re-open after the user manually collapses while the condition remains `true`
 - Preserve existing create-worktree helper behavior (`Auto-create under` + `Customize path`) without changing request payload rules.
 
 ## Files Changed
 
 - `web/src/components/create_agent_modal.tsx`
 - `web/src/create_agent_modal.test.tsx`
+- `web/src/create_agent_modal.interaction.test.tsx`
 
 ## Validation
 
 Executed local checks:
 
 - `npm --prefix web run test -- src/create_agent_modal.test.tsx`
+- `npm --prefix web run test -- src/create_agent_modal.interaction.test.tsx`
 - `npm --prefix web run test -- src/create_agent_modal.test.tsx src/pages/team_panels.test.tsx`
 - `npm --prefix web run lint`
 - `npm --prefix web run build`
