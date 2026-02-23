@@ -37,6 +37,7 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import {
+  buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
   formatTeamForgeWorktreeError,
@@ -1347,14 +1348,20 @@ export function TeamPage(props: TeamPageProps) {
           : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
     setForgeAgentName(defaultName);
     setForgeAgentWorktreeMode("use_existing");
-    setForgeAgentWorkdir((prev) =>
-      resolveWorkdirForModalOpen(
-        prev,
-        "use_existing",
-        forgeDefaultWorktreeRoot,
-        DEFAULT_WORKTREE_ROOT
-      )
-    );
+    if (forgeRoleTag === "leader") {
+      const normalizedRoot =
+        normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+      setForgeAgentWorkdir(buildLeaderForgeDefaultWorkdir(normalizedRoot, defaultName));
+    } else {
+      setForgeAgentWorkdir((prev) =>
+        resolveWorkdirForModalOpen(
+          prev,
+          "use_existing",
+          forgeDefaultWorktreeRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+    }
     setForgeAgentWorktreeRepo("");
     setForgeAgentWorktreeRef("");
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
@@ -1380,8 +1387,13 @@ export function TeamPage(props: TeamPageProps) {
     const effectiveWorktreeRepo = isLeaderForge ? "" : forgeAgentWorktreeRepo.trim();
     const effectiveWorktreeRef = isLeaderForge ? "" : forgeAgentWorktreeRef.trim();
     const name = forgeAgentName.trim() || "agent";
-    const workdir = normalizeWorkdirInput(forgeAgentWorkdir);
-    const normalizedRoot = normalizeWorkdirInput(forgeDefaultWorktreeRoot);
+    const normalizedRoot =
+      normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+    const workdirInput = normalizeWorkdirInput(forgeAgentWorkdir);
+    const workdir =
+      isLeaderForge && !workdirInput
+        ? buildLeaderForgeDefaultWorkdir(normalizedRoot, name)
+        : workdirInput;
     const workdirPayload =
       effectiveWorktreeMode === "create_worktree" &&
       normalizedRoot &&

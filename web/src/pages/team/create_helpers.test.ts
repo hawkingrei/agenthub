@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkerDraft } from "./member_helpers";
 import {
+  buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
   formatTeamForgeWorktreeError,
@@ -192,5 +193,19 @@ describe("team create helpers", () => {
       value: "my-custom-model",
       label: "Custom (my-custom-model)",
     });
+  });
+
+  it("builds leader forge default workdir under .agenthub root", () => {
+    expect(
+      buildLeaderForgeDefaultWorkdir(
+        "~/.agenthub/worktrees",
+        "My Leader Agent",
+        1_706_000_000_000
+      )
+    ).toBe("~/.agenthub/worktrees/my-leader-agent-lrq4coow");
+
+    expect(buildLeaderForgeDefaultWorkdir("", "###", 10)).toBe(
+      "~/.agenthub/worktrees/leader-a"
+    );
   });
 });

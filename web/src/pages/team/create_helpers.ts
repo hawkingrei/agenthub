@@ -9,7 +9,7 @@ import {
   normalizeSkillSelection,
   type WorkerDraft,
 } from "./member_helpers";
-import type { CreateTeamStage } from "./state";
+import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
 
 const TEAM_MODEL_PRESET_OPTIONS = listAgentPresets().map((preset) => ({
   value: preset.id,
@@ -137,6 +137,23 @@ export function parseErrorMessage(err: unknown): string {
     }
   }
   return String(err);
+}
+
+export function buildLeaderForgeDefaultWorkdir(
+  defaultRoot: string,
+  agentName: string,
+  seed: number = Date.now()
+): string {
+  const normalizedRoot = defaultRoot.trim() || DEFAULT_WORKTREE_ROOT;
+  const root = normalizedRoot.replace(/[\\/]+$/, "");
+  const normalizedName = agentName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const nameToken = normalizedName || "leader";
+  const seedToken = Math.max(0, Math.floor(seed)).toString(36);
+  return `${root}/${nameToken}-${seedToken}`;
 }
 
 export function formatTeamForgeWorktreeError(err: unknown): string | null {
