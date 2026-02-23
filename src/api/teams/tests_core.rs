@@ -1256,6 +1256,140 @@ async fn team_runs_api_supports_resume_and_restart_strategy() {
 }
 
 #[tokio::test]
+async fn team_runs_api_enforces_team_owner_access() {
+    let state = build_test_state().await;
+    let owner_headers = auth_headers(&state).await;
+    let outsider_headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        owner_headers.clone(),
+        Json(CreateTeamRequest {
+            name: "run-owner-enforcement-team".to_string(),
+            description: Some("owner enforcement for run endpoints".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-owner-run".to_string()),
+            input: Some(json!({"prompt":"owner run"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let create_err = create_team_run(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-outsider".to_string()),
+            input: Some(json!({"prompt":"outsider run"})),
+        }),
+    )
+    .await
+    .expect_err("outsider should not create run");
+    assert_eq!(create_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let list_err = list_team_runs(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamRunsQuery {
+            limit: Some(20),
+            status: None,
+            before_created_at: None,
+        }),
+    )
+    .await
+    .expect_err("outsider should not list team runs");
+    assert_eq!(list_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let get_err = get_team_run(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+    )
+    .await
+    .expect_err("outsider should not read run");
+    assert_eq!(get_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let cancel_err = cancel_team_run(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+    )
+    .await
+    .expect_err("outsider should not cancel run");
+    assert_eq!(cancel_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let events_err = list_team_run_events(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(20),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect_err("outsider should not list run events");
+    assert_eq!(events_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let flush_err = flush_team_run_context(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+        Json(FlushTeamRunContextRequest {
+            member_id: "planner".to_string(),
+            session_id: Some("session-1".to_string()),
+            trigger: Some("manual".to_string()),
+            max_events: None,
+        }),
+    )
+    .await
+    .expect_err("outsider should not flush run context");
+    assert_eq!(flush_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let steps_err = list_team_run_steps(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+    )
+    .await
+    .expect_err("outsider should not list run steps");
+    assert_eq!(steps_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let send_err = send_team_run_message(
+        State(state.clone()),
+        outsider_headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "planner".to_string(),
+            channel: None,
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"text":"unauthorized"}),
+            idempotency_key: Some("owner-access-denied".to_string()),
+        }),
+    )
+    .await
+    .expect_err("outsider should not send run message");
+    assert_eq!(send_err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_status_filter() {
     const TOTAL_RUNS: usize = 120;
     const PAGE_SIZE: i64 = 17;

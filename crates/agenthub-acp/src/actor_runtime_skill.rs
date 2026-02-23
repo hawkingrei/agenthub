@@ -1,4 +1,5 @@
 use agenthub_acp_core::{AcpSkill, build_skill};
+use agenthub_text::truncate_chars;
 
 use crate::AcpActorSkillContext;
 
@@ -55,8 +56,8 @@ fn build_continuity_section(context: &AcpActorSkillContext) -> String {
     let Some(continuity) = context.continuity.as_ref() else {
         return String::new();
     };
-    let summary = truncate_text(continuity.summary_text.as_str(), 400);
-    let history_window = truncate_text(continuity.history_window.to_string().as_str(), 800);
+    let summary = truncate_chars(continuity.summary_text.as_str(), 400);
+    let history_window = truncate_chars(continuity.history_window.to_string().as_str(), 800);
     let source_session = continuity
         .source_session_id
         .as_deref()
@@ -76,13 +77,6 @@ fn build_continuity_section(context: &AcpActorSkillContext) -> String {
         summary = summary,
         history_window = history_window,
     )
-}
-
-fn truncate_text(raw: &str, max_chars: usize) -> String {
-    if raw.is_empty() || max_chars == 0 {
-        return String::new();
-    }
-    raw.chars().take(max_chars).collect::<String>()
 }
 
 #[cfg(test)]

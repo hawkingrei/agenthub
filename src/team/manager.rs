@@ -7,6 +7,7 @@ mod tests;
 use std::{collections::HashMap, path::PathBuf};
 
 pub use agenthub_team_domain::TeamRunResumeError;
+use agenthub_text::truncate_chars;
 use chrono::Utc;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1924,32 +1925,16 @@ impl TeamManager {
         run_id: &str,
         request: TeamMemoryFlushRequest,
     ) -> anyhow::Result<TeamMemoryFlushResult> {
-        let member_id = request.member_id.trim().to_string();
-        if member_id.is_empty() {
-            return Err(anyhow::anyhow!("member_id is required"));
-        }
-        let trigger = normalize_memory_flush_trigger(request.trigger.as_str()).to_string();
-        let max_events = normalize_memory_flush_max_events(request.max_events);
+        let normalized = normalize_memory_flush_request(request)?;
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
-
-        let run_meta_row = sqlx::query(
-            r#"
-            SELECT team_id
-            FROM team_runs
-            WHERE id = ?1
-            "#,
-        )
-        .bind(run_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let team_id: String = run_meta_row.get("team_id");
+        let team_id = load_memory_flush_team_id_tx(&mut tx, run_id).await?;
 
         let session_id = resolve_memory_flush_session_id_tx(
             &mut tx,
             run_id,
-            member_id.as_str(),
-            request.session_id.as_deref(),
+            normalized.member_id.as_str(),
+            normalized.session_id.as_deref(),
         )
         .await?;
 
@@ -1960,116 +1945,66 @@ impl TeamManager {
             "memory_flush_started",
             now,
             &serde_json::json!({
-                "team_id": team_id,
+                "team_id": team_id.as_str(),
                 "run_id": run_id,
-                "member_id": member_id,
-                "session_id": session_id,
-                "trigger": trigger,
+                "member_id": normalized.member_id.as_str(),
+                "session_id": session_id.as_deref(),
+                "trigger": normalized.trigger.as_str(),
                 "ts": now,
             }),
         )
         .await?;
 
         let Some(session_id) = session_id else {
-            let reason = "session_mapping_missing";
-            Self::append_run_event_tx(
-                &mut tx,
+            let context = MemoryFlushFinalizeContext {
                 run_id,
-                None,
-                "memory_flush_failed",
+                team_id: team_id.as_str(),
+                member_id: normalized.member_id.as_str(),
+                session_id: None,
+                trigger: normalized.trigger.as_str(),
                 now,
-                &serde_json::json!({
-                    "team_id": team_id,
-                    "run_id": run_id,
-                    "member_id": member_id,
-                    "trigger": trigger,
-                    "reason_code": reason,
-                    "ts": now,
-                }),
+            };
+            let result = finalize_memory_flush_failed_tx(
+                &mut tx,
+                &context,
+                "session_mapping_missing",
+                None,
+                0,
+                None,
             )
             .await?;
             tx.commit().await?;
-            return Ok(TeamMemoryFlushResult {
-                status: "failed".to_string(),
-                run_id: run_id.to_string(),
-                team_id,
-                member_id,
-                session_id: None,
-                trigger,
-                reason: Some(reason.to_string()),
-                artifact_pointer: None,
-                event_id_from: None,
-                event_id_to: None,
-                flushed_events: 0,
-            });
+            return Ok(result);
         };
 
-        let checkpoint_event_id = sqlx::query_scalar::<_, i64>(
-            r#"
-            SELECT last_event_id
-            FROM team_context_flush_checkpoint
-            WHERE run_id = ?1
-              AND member_id = ?2
-              AND session_id = ?3
-            "#,
+        let checkpoint_event_id = load_memory_flush_checkpoint_event_id_tx(
+            &mut tx,
+            run_id,
+            normalized.member_id.as_str(),
+            session_id.as_str(),
         )
-        .bind(run_id)
-        .bind(member_id.as_str())
-        .bind(session_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?
-        .unwrap_or(0);
-
-        let event_rows = sqlx::query(
-            r#"
-            SELECT id, stream, message
-            FROM agent_events
-            WHERE agent_id = ?1
-              AND session_id = ?2
-              AND id > ?3
-            ORDER BY id ASC
-            LIMIT ?4
-            "#,
+        .await?;
+        let event_rows = load_memory_flush_event_rows_tx(
+            &mut tx,
+            normalized.member_id.as_str(),
+            session_id.as_str(),
+            checkpoint_event_id,
+            normalized.max_events,
         )
-        .bind(member_id.as_str())
-        .bind(session_id.as_str())
-        .bind(checkpoint_event_id)
-        .bind(max_events)
-        .fetch_all(&mut *tx)
         .await?;
 
         if event_rows.is_empty() {
-            Self::append_run_event_tx(
-                &mut tx,
+            let context = MemoryFlushFinalizeContext {
                 run_id,
-                None,
-                "memory_flush_noop",
+                team_id: team_id.as_str(),
+                member_id: normalized.member_id.as_str(),
+                session_id: Some(session_id.as_str()),
+                trigger: normalized.trigger.as_str(),
                 now,
-                &serde_json::json!({
-                    "team_id": team_id,
-                    "run_id": run_id,
-                    "member_id": member_id,
-                    "session_id": session_id,
-                    "trigger": trigger,
-                    "reason": "no_new_events",
-                    "ts": now,
-                }),
-            )
-            .await?;
+            };
+            let result = finalize_memory_flush_noop_tx(&mut tx, &context).await?;
             tx.commit().await?;
-            return Ok(TeamMemoryFlushResult {
-                status: "noop".to_string(),
-                run_id: run_id.to_string(),
-                team_id,
-                member_id,
-                session_id: Some(session_id),
-                trigger,
-                reason: Some("no_new_events".to_string()),
-                artifact_pointer: None,
-                event_id_from: None,
-                event_id_to: None,
-                flushed_events: 0,
-            });
+            return Ok(result);
         }
 
         let observations = event_rows
@@ -2084,14 +2019,15 @@ impl TeamManager {
             .last()
             .map(|row| row.get::<i64, _>("id"))
             .unwrap_or(0);
+        let flushed_events = safe_i64_len(event_rows.len());
         let summary_text = build_memory_flush_summary(observations.as_slice());
         let flush_payload = serde_json::json!({
             "schema_version": 1,
-            "team_id": team_id,
+            "team_id": team_id.as_str(),
             "run_id": run_id,
-            "member_id": member_id,
-            "session_id": session_id,
-            "trigger": trigger,
+            "member_id": normalized.member_id.as_str(),
+            "session_id": session_id.as_str(),
+            "trigger": normalized.trigger.as_str(),
             "source_event_range": {
                 "from_exclusive": checkpoint_event_id,
                 "to_inclusive": event_id_to,
@@ -2107,7 +2043,7 @@ impl TeamManager {
                 ContextArtifactOwner {
                     team_id: team_id.as_str(),
                     run_id,
-                    member_id: member_id.as_str(),
+                    member_id: normalized.member_id.as_str(),
                     session_id: Some(session_id.as_str()),
                 },
                 MEMORY_FLUSH_ARTIFACT_KIND,
@@ -2118,108 +2054,61 @@ impl TeamManager {
         {
             Ok(Some(pointer)) => pointer,
             Ok(None) => {
-                let reason = "agent_workdir_missing";
-                Self::append_run_event_tx(
-                    &mut tx,
+                let context = MemoryFlushFinalizeContext {
                     run_id,
-                    None,
-                    "memory_flush_failed",
+                    team_id: team_id.as_str(),
+                    member_id: normalized.member_id.as_str(),
+                    session_id: Some(session_id.as_str()),
+                    trigger: normalized.trigger.as_str(),
                     now,
-                    &serde_json::json!({
-                        "team_id": team_id,
-                        "run_id": run_id,
-                        "member_id": member_id,
-                        "session_id": session_id,
-                        "trigger": trigger,
-                        "reason_code": reason,
-                        "ts": now,
-                    }),
+                };
+                let result = finalize_memory_flush_failed_tx(
+                    &mut tx,
+                    &context,
+                    "agent_workdir_missing",
+                    Some((event_id_from, event_id_to)),
+                    flushed_events,
+                    None,
                 )
                 .await?;
                 tx.commit().await?;
-                return Ok(TeamMemoryFlushResult {
-                    status: "failed".to_string(),
-                    run_id: run_id.to_string(),
-                    team_id,
-                    member_id,
-                    session_id: Some(session_id),
-                    trigger,
-                    reason: Some(reason.to_string()),
-                    artifact_pointer: None,
-                    event_id_from: Some(event_id_from),
-                    event_id_to: Some(event_id_to),
-                    flushed_events: i64::try_from(event_rows.len()).unwrap_or(i64::MAX),
-                });
+                return Ok(result);
             }
             Err(err) => {
-                let reason = "artifact_write_failed";
-                Self::append_run_event_tx(
-                    &mut tx,
+                let context = MemoryFlushFinalizeContext {
                     run_id,
-                    None,
-                    "memory_flush_failed",
+                    team_id: team_id.as_str(),
+                    member_id: normalized.member_id.as_str(),
+                    session_id: Some(session_id.as_str()),
+                    trigger: normalized.trigger.as_str(),
                     now,
-                    &serde_json::json!({
-                        "team_id": team_id,
-                        "run_id": run_id,
-                        "member_id": member_id,
-                        "session_id": session_id,
-                        "trigger": trigger,
-                        "reason_code": reason,
-                        "error_excerpt": truncate_continuity_text(err.to_string().as_str(), 400),
-                        "ts": now,
-                    }),
+                };
+                let result = finalize_memory_flush_failed_tx(
+                    &mut tx,
+                    &context,
+                    "artifact_write_failed",
+                    Some((event_id_from, event_id_to)),
+                    flushed_events,
+                    Some(truncate_chars(err.to_string().as_str(), 400)),
                 )
                 .await?;
                 tx.commit().await?;
-                return Ok(TeamMemoryFlushResult {
-                    status: "failed".to_string(),
-                    run_id: run_id.to_string(),
-                    team_id,
-                    member_id,
-                    session_id: Some(session_id),
-                    trigger,
-                    reason: Some(reason.to_string()),
-                    artifact_pointer: None,
-                    event_id_from: Some(event_id_from),
-                    event_id_to: Some(event_id_to),
-                    flushed_events: i64::try_from(event_rows.len()).unwrap_or(i64::MAX),
-                });
+                return Ok(result);
             }
         };
 
-        sqlx::query(
-            r#"
-            INSERT INTO team_context_flush_checkpoint (
-                team_id,
-                run_id,
-                member_id,
-                session_id,
-                last_event_id,
-                updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            ON CONFLICT(run_id, member_id, session_id)
-            DO UPDATE SET
-                last_event_id = excluded.last_event_id,
-                updated_at = excluded.updated_at
-            "#,
+        upsert_memory_flush_checkpoint_tx(
+            &mut tx,
+            team_id.as_str(),
+            run_id,
+            normalized.member_id.as_str(),
+            session_id.as_str(),
+            event_id_to,
+            now,
         )
-        .bind(team_id.as_str())
-        .bind(run_id)
-        .bind(member_id.as_str())
-        .bind(session_id.as_str())
-        .bind(event_id_to)
-        .bind(now)
-        .execute(&mut *tx)
         .await?;
 
-        let pointer_payload = serde_json::json!({
-            "kind": pointer.artifact_kind,
-            "path": pointer.relative_path,
-            "size_bytes": pointer.artifact_size_bytes,
-            "checksum": pointer.content_checksum,
-        });
+        let pointer_payload = build_context_artifact_pointer_payload(&pointer);
         Self::append_run_event_tx(
             &mut tx,
             run_id,
@@ -2227,12 +2116,12 @@ impl TeamManager {
             "memory_flush_persisted",
             now,
             &serde_json::json!({
-                "team_id": team_id,
+                "team_id": team_id.as_str(),
                 "run_id": run_id,
-                "member_id": member_id,
-                "session_id": session_id,
-                "trigger": trigger,
-                "artifact_pointer": pointer_payload,
+                "member_id": normalized.member_id.as_str(),
+                "session_id": session_id.as_str(),
+                "trigger": normalized.trigger.as_str(),
+                "artifact_pointer": pointer_payload.clone(),
                 "artifact_size_bytes": pointer.artifact_size_bytes,
                 "event_id_from": event_id_from,
                 "event_id_to": event_id_to,
@@ -2246,14 +2135,14 @@ impl TeamManager {
             status: "persisted".to_string(),
             run_id: run_id.to_string(),
             team_id,
-            member_id,
+            member_id: normalized.member_id,
             session_id: Some(session_id),
-            trigger,
+            trigger: normalized.trigger,
             reason: None,
             artifact_pointer: Some(pointer_payload),
             event_id_from: Some(event_id_from),
             event_id_to: Some(event_id_to),
-            flushed_events: i64::try_from(event_rows.len()).unwrap_or(i64::MAX),
+            flushed_events,
         })
     }
 
@@ -2282,6 +2171,256 @@ impl TeamManager {
         }
         Ok(counts)
     }
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedMemoryFlushRequest {
+    member_id: String,
+    session_id: Option<String>,
+    trigger: String,
+    max_events: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MemoryFlushFinalizeContext<'a> {
+    run_id: &'a str,
+    team_id: &'a str,
+    member_id: &'a str,
+    session_id: Option<&'a str>,
+    trigger: &'a str,
+    now: i64,
+}
+
+fn normalize_memory_flush_request(
+    request: TeamMemoryFlushRequest,
+) -> anyhow::Result<NormalizedMemoryFlushRequest> {
+    let member_id = request.member_id.trim().to_string();
+    if member_id.is_empty() {
+        return Err(anyhow::anyhow!("member_id is required"));
+    }
+    Ok(NormalizedMemoryFlushRequest {
+        member_id,
+        session_id: request.session_id,
+        trigger: normalize_memory_flush_trigger(request.trigger.as_str()).to_string(),
+        max_events: normalize_memory_flush_max_events(request.max_events),
+    })
+}
+
+fn safe_i64_len(len: usize) -> i64 {
+    i64::try_from(len).unwrap_or(i64::MAX)
+}
+
+fn build_context_artifact_pointer_payload(pointer: &ContextArtifactPointer) -> Value {
+    serde_json::json!({
+        "kind": pointer.artifact_kind.as_str(),
+        "path": pointer.relative_path.as_str(),
+        "size_bytes": pointer.artifact_size_bytes,
+        "checksum": pointer.content_checksum.as_str(),
+    })
+}
+
+async fn load_memory_flush_team_id_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+) -> anyhow::Result<String> {
+    let run_meta_row = sqlx::query(
+        r#"
+        SELECT team_id
+        FROM team_runs
+        WHERE id = ?1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(run_meta_row.get("team_id"))
+}
+
+async fn load_memory_flush_checkpoint_event_id_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    member_id: &str,
+    session_id: &str,
+) -> anyhow::Result<i64> {
+    let checkpoint_event_id = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT last_event_id
+        FROM team_context_flush_checkpoint
+        WHERE run_id = ?1
+          AND member_id = ?2
+          AND session_id = ?3
+        "#,
+    )
+    .bind(run_id)
+    .bind(member_id)
+    .bind(session_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .unwrap_or(0);
+    Ok(checkpoint_event_id)
+}
+
+async fn load_memory_flush_event_rows_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    member_id: &str,
+    session_id: &str,
+    checkpoint_event_id: i64,
+    max_events: i64,
+) -> anyhow::Result<Vec<sqlx::sqlite::SqliteRow>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, stream, message
+        FROM agent_events
+        WHERE agent_id = ?1
+          AND session_id = ?2
+          AND id > ?3
+        ORDER BY id ASC
+        LIMIT ?4
+        "#,
+    )
+    .bind(member_id)
+    .bind(session_id)
+    .bind(checkpoint_event_id)
+    .bind(max_events)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows)
+}
+
+async fn upsert_memory_flush_checkpoint_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    team_id: &str,
+    run_id: &str,
+    member_id: &str,
+    session_id: &str,
+    event_id_to: i64,
+    now: i64,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO team_context_flush_checkpoint (
+            team_id,
+            run_id,
+            member_id,
+            session_id,
+            last_event_id,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        ON CONFLICT(run_id, member_id, session_id)
+        DO UPDATE SET
+            last_event_id = excluded.last_event_id,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(team_id)
+    .bind(run_id)
+    .bind(member_id)
+    .bind(session_id)
+    .bind(event_id_to)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn finalize_memory_flush_failed_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    context: &MemoryFlushFinalizeContext<'_>,
+    reason: &str,
+    event_range: Option<(i64, i64)>,
+    flushed_events: i64,
+    error_excerpt: Option<String>,
+) -> anyhow::Result<TeamMemoryFlushResult> {
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "team_id".to_string(),
+        Value::String(context.team_id.to_string()),
+    );
+    payload.insert(
+        "run_id".to_string(),
+        Value::String(context.run_id.to_string()),
+    );
+    payload.insert(
+        "member_id".to_string(),
+        Value::String(context.member_id.to_string()),
+    );
+    payload.insert(
+        "trigger".to_string(),
+        Value::String(context.trigger.to_string()),
+    );
+    payload.insert("reason_code".to_string(), Value::String(reason.to_string()));
+    payload.insert("ts".to_string(), Value::from(context.now));
+    if let Some(session_id) = context.session_id {
+        payload.insert(
+            "session_id".to_string(),
+            Value::String(session_id.to_string()),
+        );
+    }
+    if let Some(error_excerpt) = error_excerpt {
+        payload.insert("error_excerpt".to_string(), Value::String(error_excerpt));
+    }
+    TeamManager::append_run_event_tx(
+        tx,
+        context.run_id,
+        None,
+        "memory_flush_failed",
+        context.now,
+        &Value::Object(payload),
+    )
+    .await?;
+    Ok(TeamMemoryFlushResult {
+        status: "failed".to_string(),
+        run_id: context.run_id.to_string(),
+        team_id: context.team_id.to_string(),
+        member_id: context.member_id.to_string(),
+        session_id: context.session_id.map(str::to_string),
+        trigger: context.trigger.to_string(),
+        reason: Some(reason.to_string()),
+        artifact_pointer: None,
+        event_id_from: event_range.map(|(event_id_from, _)| event_id_from),
+        event_id_to: event_range.map(|(_, event_id_to)| event_id_to),
+        flushed_events,
+    })
+}
+
+async fn finalize_memory_flush_noop_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    context: &MemoryFlushFinalizeContext<'_>,
+) -> anyhow::Result<TeamMemoryFlushResult> {
+    let session_id = context
+        .session_id
+        .ok_or_else(|| anyhow::anyhow!("session_id is required for noop flush"))?;
+    TeamManager::append_run_event_tx(
+        tx,
+        context.run_id,
+        None,
+        "memory_flush_noop",
+        context.now,
+        &serde_json::json!({
+            "team_id": context.team_id,
+            "run_id": context.run_id,
+            "member_id": context.member_id,
+            "session_id": session_id,
+            "trigger": context.trigger,
+            "reason": "no_new_events",
+            "ts": context.now,
+        }),
+    )
+    .await?;
+    Ok(TeamMemoryFlushResult {
+        status: "noop".to_string(),
+        run_id: context.run_id.to_string(),
+        team_id: context.team_id.to_string(),
+        member_id: context.member_id.to_string(),
+        session_id: Some(session_id.to_string()),
+        trigger: context.trigger.to_string(),
+        reason: Some("no_new_events".to_string()),
+        artifact_pointer: None,
+        event_id_from: None,
+        event_id_to: None,
+        flushed_events: 0,
+    })
 }
 
 async fn resolve_memory_flush_session_id_tx(
@@ -2344,7 +2483,7 @@ fn build_memory_flush_observation(row: &sqlx::sqlite::SqliteRow) -> Value {
             .and_then(|obj| obj.get("type"))
             .and_then(Value::as_str)
             .unwrap_or("json_message");
-        let excerpt = truncate_continuity_text(
+        let excerpt = truncate_chars(
             redacted.to_string().as_str(),
             MEMORY_FLUSH_MAX_EXCERPT_CHARS,
         );
@@ -2360,7 +2499,7 @@ fn build_memory_flush_observation(row: &sqlx::sqlite::SqliteRow) -> Value {
         "event_id": event_id,
         "stream": stream,
         "type": "text_message",
-        "excerpt": truncate_continuity_text(message.as_str(), MEMORY_FLUSH_MAX_EXCERPT_CHARS),
+        "excerpt": truncate_chars(message.as_str(), MEMORY_FLUSH_MAX_EXCERPT_CHARS),
     })
 }
 
@@ -2381,7 +2520,7 @@ fn build_memory_flush_summary(observations: &[Value]) -> String {
             .unwrap_or_default();
         lines.push(format!("#{event_id} [{observation_type}] {excerpt}"));
     }
-    truncate_continuity_text(lines.join("\n").as_str(), MEMORY_FLUSH_MAX_SUMMARY_CHARS)
+    truncate_chars(lines.join("\n").as_str(), MEMORY_FLUSH_MAX_SUMMARY_CHARS)
 }
 
 #[derive(Debug, Clone)]
@@ -2493,13 +2632,12 @@ fn build_continuity_snapshot(output: Option<&Value>) -> ContinuitySnapshot {
         .map(str::to_string)
         .or_else(|| redacted_output.as_str().map(str::to_string))
         .unwrap_or_else(|| redacted_output.to_string());
-    let summary_text =
-        truncate_continuity_text(summary_seed.as_str(), CONTINUITY_MAX_SUMMARY_CHARS);
+    let summary_text = truncate_chars(summary_seed.as_str(), CONTINUITY_MAX_SUMMARY_CHARS);
 
     let output_excerpt_seed = redacted_output.to_string();
     let history_window = serde_json::json!({
         "schema_version": 1,
-        "output_excerpt": truncate_continuity_text(
+        "output_excerpt": truncate_chars(
             output_excerpt_seed.as_str(),
             CONTINUITY_MAX_HISTORY_CHARS
         ),
@@ -2514,13 +2652,6 @@ fn build_continuity_snapshot(output: Option<&Value>) -> ContinuitySnapshot {
 
 fn should_offload_continuity_output(raw_output: &str) -> bool {
     raw_output.chars().count() > CONTINUITY_MAX_HISTORY_CHARS
-}
-
-fn truncate_continuity_text(raw: &str, max_chars: usize) -> String {
-    if max_chars == 0 {
-        return String::new();
-    }
-    raw.chars().take(max_chars).collect::<String>()
 }
 
 fn redact_sensitive_json(value: &Value) -> Value {

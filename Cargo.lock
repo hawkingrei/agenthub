@@ -69,6 +69,7 @@ dependencies = [
  "agenthub-team-actor",
  "agenthub-team-domain",
  "agenthub-team-prompts",
+ "agenthub-text",
  "anyhow",
  "argon2",
  "async-trait",
@@ -113,6 +114,7 @@ version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
  "agenthub-acp-core",
+ "agenthub-text",
  "anyhow",
  "async-trait",
  "chrono",
@@ -188,6 +190,10 @@ dependencies = [
 
 [[package]]
 name = "agenthub-team-prompts"
+version = "0.1.0"
+
+[[package]]
+name = "agenthub-text"
 version = "0.1.0"
 
 [[package]]

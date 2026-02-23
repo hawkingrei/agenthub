@@ -4,6 +4,7 @@ members = [
     "agenthub-codex-acp",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/agenthub-text",
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",
     "crates/agenthub-team-prompts",
@@ -49,6 +50,7 @@ hmac = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
 agenthub-acp = { path = "crates/agenthub-acp" }
+agenthub-text = { path = "crates/agenthub-text" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
 agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }

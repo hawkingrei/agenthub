@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 agenthub-acp-core = { path = "../agenthub-acp-core" }
+agenthub-text = { path = "../agenthub-text" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
 anyhow = "1"
 async-trait = "0.1"
