@@ -1109,6 +1109,29 @@ mod tests {
 
         sqlx::query(
             r#"
+            CREATE TABLE team_context_artifacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                session_id TEXT,
+                artifact_seq INTEGER NOT NULL,
+                artifact_kind TEXT NOT NULL,
+                artifact_path TEXT NOT NULL,
+                artifact_size_bytes INTEGER NOT NULL,
+                content_checksum TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+                FOREIGN KEY(run_id) REFERENCES team_runs(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create team_context_artifacts");
+
+        sqlx::query(
+            r#"
             CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
             ON team_actor_messages(run_id, from_actor_id, idempotency_key)
             WHERE idempotency_key IS NOT NULL
@@ -1117,6 +1140,29 @@ mod tests {
         .execute(&pool)
         .await
         .expect("create team_actor_messages idempotency index");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'manual',
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create agents");
 
         sqlx::query(
             r#"

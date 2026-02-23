@@ -186,6 +186,47 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert actor message");
 
+    sqlx::query(
+        r#"
+        INSERT INTO team_context_artifacts (
+            team_id, run_id, member_id, session_id, artifact_seq, artifact_kind,
+            artifact_path, artifact_size_bytes, content_checksum, created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(&team.id)
+    .bind(&run.id)
+    .bind("planner")
+    .bind(&session_id)
+    .bind(1_i64)
+    .bind("memory_flush")
+    .bind("/tmp/memory-flush-artifact.json")
+    .bind(128_i64)
+    .bind("checksum")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert context artifact");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_context_flush_checkpoint (
+            team_id, run_id, member_id, session_id, last_event_id, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind(&team.id)
+    .bind(&run.id)
+    .bind("planner")
+    .bind(&session_id)
+    .bind(9_i64)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert context flush checkpoint");
+
     let Json(deleted) = delete_team(
         State(state.clone()),
         headers.clone(),
@@ -241,6 +282,23 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .await
             .expect("count messages");
     assert_eq!(message_count, 0);
+
+    let artifact_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_context_artifacts WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count context artifacts");
+    assert_eq!(artifact_count, 0);
+
+    let checkpoint_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_context_flush_checkpoint WHERE run_id = ?1",
+    )
+    .bind(&run.id)
+    .fetch_one(&state.db)
+    .await
+    .expect("count context flush checkpoint");
+    assert_eq!(checkpoint_count, 0);
 
     let session_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1",
@@ -736,6 +794,178 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
         missing_events_err.into_response().status(),
         StatusCode::NOT_FOUND
     );
+}
+
+#[tokio::test]
+async fn team_runs_api_supports_manual_context_flush() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let now = Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+        "#,
+    )
+    .bind("executor")
+    .bind("executor-agent")
+    .bind("/tmp")
+    .bind("/bin/sh")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("running")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert executor agent");
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "flush-api-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-flush-api".to_string()),
+            input: Some(json!({"prompt":"collect"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind("session-flush-api")
+    .bind("executor")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert agent session for flush");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("executor")
+    .bind("session-flush-api")
+    .bind("1")
+    .bind(now)
+    .bind("acp")
+    .bind(r#"{"type":"agent_message","content":"flush me","token":"secret"}"#)
+    .execute(&state.db)
+    .await
+    .expect("insert agent event");
+
+    let Json(flush_result) = flush_team_run_context(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(FlushTeamRunContextRequest {
+            member_id: "executor".to_string(),
+            session_id: Some("session-flush-api".to_string()),
+            trigger: Some("manual".to_string()),
+            max_events: None,
+        }),
+    )
+    .await
+    .expect("flush run context");
+
+    assert_eq!(flush_result.status, "persisted");
+    assert_eq!(flush_result.member_id, "executor");
+    assert_eq!(
+        flush_result.session_id.as_deref(),
+        Some("session-flush-api")
+    );
+    assert!(flush_result.artifact_pointer.is_some());
+    assert_eq!(flush_result.flushed_events, 1);
+
+    let Json(events) = list_team_run_events(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(100),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "memory_flush_started")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "memory_flush_persisted")
+    );
+}
+
+#[tokio::test]
+async fn team_runs_api_rejects_invalid_context_flush_trigger() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "flush-trigger-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-flush-trigger".to_string()),
+            input: Some(json!({"prompt":"collect"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let err = flush_team_run_context(
+        State(state),
+        headers,
+        Path(run.id),
+        Json(FlushTeamRunContextRequest {
+            member_id: "executor".to_string(),
+            session_id: Some("session-flush-api".to_string()),
+            trigger: Some("invalid-trigger".to_string()),
+            max_events: None,
+        }),
+    )
+    .await
+    .expect_err("invalid trigger should fail");
+    assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
