@@ -276,6 +276,7 @@ pub struct TeamMemberSnapshot {
     pub member_id: String,
     pub role: String,
     pub model: Option<String>,
+    pub description: Option<String>,
     pub prompt: Option<String>,
     pub skills: Vec<String>,
     pub pending_inbox_count: i64,
@@ -844,6 +845,7 @@ async fn get_team_run_snapshot(
             member_id: member.member_id.clone(),
             role: role.to_string(),
             model: member.model.clone(),
+            description: member.description.clone(),
             prompt,
             skills,
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
@@ -2402,6 +2404,7 @@ struct TeamMemberSpec {
     role: String,
     model: Option<String>,
     prompt: Option<String>,
+    description: Option<String>,
     skills: Vec<String>,
 }
 
@@ -2726,6 +2729,7 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
         let role = parse_required_member_role(member.get("role"))?;
         let model = parse_optional_member_text(member.get("model"), "model")?;
         let prompt = parse_optional_member_text(member.get("prompt"), "prompt")?;
+        let description = parse_optional_member_description(member.get("description"))?;
         let skills = parse_optional_member_skills(member.get("skills"))?;
 
         out.push(TeamMemberSpec {
@@ -2733,6 +2737,7 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
             role,
             model,
             prompt,
+            description,
             skills,
         });
     }
@@ -2785,6 +2790,23 @@ fn parse_required_member_role(value: Option<&Value>) -> Result<String, ApiError>
         ));
     }
     Ok(raw.to_string())
+}
+
+fn parse_optional_member_description(value: Option<&Value>) -> Result<Option<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let raw = value
+        .as_str()
+        .ok_or_else(|| ApiError::bad_request("spec.members[].description must be a string"))?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 fn parse_optional_member_skills(value: Option<&Value>) -> Result<Vec<String>, ApiError> {

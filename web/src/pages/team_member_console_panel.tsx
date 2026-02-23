@@ -153,6 +153,12 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.model ?? "-"}</span>
             </div>
             <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>member_description</div>
+              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+                {selectedMemberSnapshot.description ?? "-"}
+              </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
               <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>status</div>
               <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.status}</span>
             </div>
@@ -206,6 +212,12 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
                   <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>schema_version</div>
                   <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
                     {memberDiscoveryCard.schema_version}
+                  </span>
+                </div>
+                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>description</div>
+                  <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
+                    {memberDiscoveryCard.description}
                   </span>
                 </div>
                 <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>

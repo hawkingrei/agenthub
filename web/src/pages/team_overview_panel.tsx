@@ -22,6 +22,12 @@ type TeamOverviewPanelProps = {
 
 const OVERVIEW_META_CLASS =
   "teams-overview-meta mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
+const OVERVIEW_PLAYBOOK_CLASS =
+  "teams-overview-playbook mb-3 rounded-xl border border-slate-200 bg-white p-3";
+const OVERVIEW_PLAYBOOK_GRID_CLASS = "grid gap-3 md:grid-cols-2";
+const OVERVIEW_PLAYBOOK_CARD_CLASS = "rounded-lg border border-slate-200 bg-slate-50/70 p-3";
+const OVERVIEW_PLAYBOOK_TITLE_CLASS = "text-xs font-semibold uppercase tracking-wide text-slate-500";
+const OVERVIEW_PLAYBOOK_LIST_CLASS = "mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700";
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
 const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
   `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
@@ -56,6 +62,34 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
           </button>
+        </div>
+      </div>
+
+      <div className={OVERVIEW_PLAYBOOK_CLASS}>
+        <h4 className="text-sm font-semibold text-slate-900">Cold Start Playbook</h4>
+        <p className="muted mt-1 text-sm text-slate-600">
+          On each process start, both roles should check unfinished TODO items before consuming new
+          mailbox tasks.
+        </p>
+        <div className={`${OVERVIEW_PLAYBOOK_GRID_CLASS} mt-3`}>
+          <section className={OVERVIEW_PLAYBOOK_CARD_CLASS}>
+            <p className={OVERVIEW_PLAYBOOK_TITLE_CLASS}>Leader startup</p>
+            <ol className={OVERVIEW_PLAYBOOK_LIST_CLASS}>
+              <li>Scan workspace TODO files for unfinished planning work.</li>
+              <li>Resume existing plan if found; otherwise start from zero with human goal sync.</li>
+              <li>Update AGENTS.md with plan, owners, and next checkpoint.</li>
+              <li>Answer human planning questions directly instead of redirecting to workers.</li>
+            </ol>
+          </section>
+          <section className={OVERVIEW_PLAYBOOK_CARD_CLASS}>
+            <p className={OVERVIEW_PLAYBOOK_TITLE_CLASS}>Worker startup</p>
+            <ol className={OVERVIEW_PLAYBOOK_LIST_CLASS}>
+              <li>Scan workspace TODO files for unfinished execution items.</li>
+              <li>Finish unfinished worker items first, then pull inbox assignments.</li>
+              <li>If no assignment exists, report idle and request next task from leader.</li>
+              <li>Send execution evidence to leader; keep human-facing planning with leader.</li>
+            </ol>
+          </section>
         </div>
       </div>
 

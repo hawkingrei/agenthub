@@ -44,6 +44,7 @@ export function buildTeamSpecFromForm(
   const normalizedWorkers = workers
     .map((worker) => ({
       member_id: worker.member_id.trim(),
+      description: worker.description.trim(),
       model: worker.model.trim(),
       prompt: worker.prompt.trim() || DEFAULT_TEAM_WORKER_PROMPT,
       skills: normalizeSkillSelection(
@@ -75,6 +76,7 @@ export function buildTeamSpecFromForm(
     ...normalizedWorkers.map((worker) => ({
       member_id: worker.member_id,
       role: "worker",
+      description: worker.description || undefined,
       model: worker.model || undefined,
       prompt: worker.prompt,
       skills: worker.skills,

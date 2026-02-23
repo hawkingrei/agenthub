@@ -57,6 +57,7 @@ function normalizeWorkerDrafts(value: unknown): WorkerDraft[] {
       const candidate = item as Record<string, unknown>;
       return {
         member_id: asString(candidate.member_id),
+        description: asString(candidate.description),
         model: asString(candidate.model),
         prompt: asString(candidate.prompt),
         skills: asStringArray(candidate.skills),

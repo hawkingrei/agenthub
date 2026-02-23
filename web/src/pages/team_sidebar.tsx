@@ -89,6 +89,15 @@ export function TeamSidebar(props: TeamSidebarProps) {
       <div className="teams-form teams-create-launch flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
         <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
         <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Operating Model
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            Leader plans and talks to human actor. Workers execute delegated tasks and report
+            evidence back to leader.
+          </p>
+        </div>
         <div className="teams-create-entry-actions mt-3 flex flex-wrap gap-2">
           <button
             onClick={onOpenCreateTeamWizard}

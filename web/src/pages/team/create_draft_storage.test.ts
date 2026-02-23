@@ -36,6 +36,7 @@ function buildState(
     workers: [
       {
         member_id: "worker-1",
+        description: "",
         model: "codex",
         prompt: "worker prompt",
         skills: ["agenthub-actor-runtime", "team-worker-executor"],
@@ -211,6 +212,7 @@ describe("team create draft storage", () => {
     expect(restored.draft?.workers).toEqual([
       {
         member_id: "worker-2",
+        description: "",
         model: "",
         prompt: "",
         skills: ["team-worker-executor"],

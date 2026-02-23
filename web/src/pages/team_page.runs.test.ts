@@ -578,6 +578,7 @@ describe("team run list helpers", () => {
       [
         {
           member_id: "",
+          description: "",
           model: "",
           prompt: "worker prompt",
           skills: ["team-worker-executor"],
@@ -592,6 +593,7 @@ describe("team run list helpers", () => {
       [
         {
           member_id: "worker-1",
+          description: "",
           model: "",
           prompt: "worker prompt",
           skills: ["team-worker-executor"],

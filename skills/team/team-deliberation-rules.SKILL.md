@@ -6,6 +6,22 @@ name: team-deliberation-rules
 
 Apply these rules whenever you collaborate in a Team run.
 
+## Shared Workflow Phases
+
+Every discussion and decision should map to one of these phases:
+
+1. Team formation
+2. Task analysis
+3. Role assignment
+4. Communication and collaboration
+5. Consensus formation
+6. Result integration
+
+Phase rules:
+- Always include `current_phase` in high-value status updates.
+- Do not skip directly from `Task analysis` to `Result integration`; pass through assignment and collaboration.
+- Enter `Consensus formation` only when required evidence is present from responsible members.
+
 ## Decision Principles
 
 1. State assumptions explicitly before proposing implementation.
@@ -20,6 +36,10 @@ Apply these rules whenever you collaborate in a Team run.
 2. Separate facts, inferences, and proposals.
 3. Include concrete evidence for claims (file path, test name, command).
 4. Report blockers with a specific unblock request and next action.
+5. Leader communicates planning decisions to human actor directly; workers report to leader unless explicitly routed.
+6. During `Consensus formation`, summarize accepted and rejected options with reasons.
+7. During `Result integration`, ensure output is unified and non-contradictory before sending to human actor.
+8. Keep `AGENTS.md` as index-level communication; attach deep implementation guidance in relevant skills/docs.
 
 ## Conflict Resolution
 
@@ -32,3 +52,5 @@ Apply these rules whenever you collaborate in a Team run.
 - Scope is clear and unchanged unless explicitly re-scoped.
 - Acceptance criteria are testable.
 - Risks and follow-up items are listed when unresolved.
+- Current phase and transition condition are explicit.
+- TODO status is consistent with actual execution (`completed` only after acceptance evidence).

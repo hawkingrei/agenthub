@@ -110,14 +110,23 @@ agenthub/
 - Team role workflow policy:
   - Leader acts as architect/reviewer and should not implement feature code directly
   - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation
+  - `AGENTS.md` is the role-level index and routing table; detailed execution procedures live in role/feature `SKILL.md` files
+  - At role startup, agent should read `AGENTS.md` first, then load only the skills required for current phase/task
   - Leader runtime starts from an empty workspace and should maintain coordination context in `AGENTS.md`
   - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
+  - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
+  - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
+  - Leader must answer human planning questions directly and should not redirect human users to worker agents
+  - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work
+  - TODO lifecycle details (when to create, status transitions, completion guardrails) belong to role skills; `AGENTS.md` only keeps pointers and current progress index
   - Backend runtime enforces leader starts with `worktree_mode=use_existing` and an empty workspace
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
   - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
   - Workers may coordinate with peers when dependencies overlap, but status/evidence must still flow back to leader
   - Each agent (leader/worker) owns and updates its context state only in its own workspace-local `.cache/context` tree
   - Leader should use an empty workspace dedicated to context management and coordination artifacts (avoid feature-code edits in leader workspace)
+  - `spec.members[].description` is the canonical member identity description and must map to `/api/agents/:id/.well-known/agent-card` response `description`
+  - `AGENTS.md` should include identity-card ownership/update pointers; detailed identity update workflow stays in team role skills
 - Context management policy (OpenClaw-inspired, AgentHub-adapted):
   - Team prompt assembly must separate a stable prefix from a dynamic tail.
   - Stable prefix should include role charter, tool schemas, and safety guardrails, and must avoid non-deterministic fields (timestamps, random IDs, unstable key ordering).
@@ -128,6 +137,7 @@ agenthub/
   - Before context compaction, runtime should trigger a pre-compaction memory flush attempt and persist explicit flush outcome (`persisted` or `noop`) for auditability.
   - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
   - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
+  - Context and memory sections in `AGENTS.md` should stay concise as index pointers; append implementation details to dedicated skills/docs.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership
@@ -182,6 +192,13 @@ agenthub/
 - `User Docs`: Docusaurus docs install/build checks.
 
 ## 13. Change Log
+
+### 2026-02-24
+
+- Expanded Team role workflow policy with six-phase collaboration model and cold-start TODO-first checks (`TODO.md`, `.cache/context/todo.md`).
+- Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
+- Clarified `AGENTS.md` as index/routing artifact and moved detailed execution guidance responsibility to skill files.
+- Added pointer-level policy that TODO lifecycle rules are owned by role skills, while `AGENTS.md` remains index-only.
 
 ### 2026-02-22
 

@@ -19,6 +19,7 @@ import {
 function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
   return {
     member_id: "worker-alpha",
+    description: "",
     model: "gpt-5",
     prompt: "Run optimization",
     skills: ["team-deliberation-rules"],
@@ -38,6 +39,7 @@ describe("team create helpers", () => {
       [
         buildWorker({
           member_id: "worker alpha",
+          description: "query optimizer specialist",
           model: "gpt-5-mini",
           prompt: "",
           custom_skills: "custom-worker-skill",
@@ -51,6 +53,7 @@ describe("team create helpers", () => {
       members: Array<{
         member_id: string;
         role: string;
+        description?: string;
         model?: string;
         prompt: string;
         skills: string[];
@@ -77,6 +80,7 @@ describe("team create helpers", () => {
       ])
     );
     expect(spec.members[1]?.prompt).toContain("You are a Worker in an AgentHub team");
+    expect(spec.members[1]?.description).toBe("query optimizer specialist");
     expect(spec.members[1]?.prompt).toContain("Work in your own git worktree only.");
     expect(spec.members[1]?.prompt).toContain("Create a random branch at start");
     expect(spec.members[1]?.skills).toEqual(
@@ -108,6 +112,7 @@ describe("team create helpers", () => {
   it("falls back to single planning step when no workers are provided", () => {
     const spec = buildTeamSpecFromForm("leader-only", "", "", [], "", []) as {
       entrypoint: string;
+      members: Array<{ member_id: string; prompt: string }>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
     expect(spec.entrypoint).toBe("leader_plan");
@@ -118,6 +123,12 @@ describe("team create helpers", () => {
         depends_on: [],
       },
     ]);
+    expect(spec.members[0]?.member_id).toBe("leader-only");
+    expect(spec.members[0]?.prompt).toContain("Decision Complete");
+    expect(spec.members[0]?.prompt).toContain("Explore Before Asking");
+    expect(spec.members[0]?.prompt).toContain("Clearance checklist before delegation");
+    expect(spec.members[0]?.prompt).toContain("spec.members[].member_id");
+    expect(spec.members[0]?.prompt).toContain("Finalization by mode");
   });
 
   it("parses error message from plain and JSON-formatted errors", () => {

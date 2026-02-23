@@ -25,6 +25,7 @@ type E2eAgentRecord = {
 type TeamSpecMember = {
   member_id: string;
   role?: string;
+  description?: string;
   model?: string;
   skills?: string[];
 };
@@ -273,6 +274,7 @@ async function mockTeamPageApis(
       jsonResponse({
         card_id: `agenthub://agents/${agent.id}`,
         schema_version: "agenthub.a2a.discovery_card.v1",
+        description: `AgentHub team member ${agent.name} (provider: ${acpProvider}) supports ${capabilityTags.join(", ")}`,
         identity: {
           agent_id: agent.id,
           name: agent.name,
@@ -2129,14 +2131,17 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     hasText: "Team B",
   });
 
-  await teamBItem.click();
+  await teamBItem.focus();
+  await teamBItem.press("Enter");
   await expect(runFilter).toHaveValue("all");
   await runFilter.selectOption("failed");
   await expect(runFilter).toHaveValue("failed");
 
-  await teamAItem.click();
+  await teamAItem.focus();
+  await teamAItem.press("Enter");
   await expect(runFilter).toHaveValue("working");
 
-  await teamBItem.click();
+  await teamBItem.focus();
+  await teamBItem.press("Enter");
   await expect(runFilter).toHaveValue("failed");
 });
