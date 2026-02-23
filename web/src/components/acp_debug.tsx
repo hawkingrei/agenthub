@@ -1,6 +1,18 @@
 import React from "react";
 import { AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
+import {
+  ACP_DEBUG_EMPTY_CLASS,
+  ACP_DEBUG_PERMISSION_SUBMETA_CLASS,
+  ACP_DEBUG_PERMISSION_TOGGLE_CLASS,
+  ACP_DEBUG_PERMISSION_WARNING_CLASS,
+  ACP_DEBUG_RAW_PRE_CLASS,
+  ACP_DEBUG_ROOT_CLASS,
+  ACP_DEBUG_SECTION_CLASS,
+  ACP_DEBUG_TABS_CLASS,
+  ACP_TAB_BUTTON_ACTIVE_CLASS,
+  ACP_TAB_BUTTON_IDLE_CLASS,
+} from "../ui/tailwind_classes";
 
 type DebugTab = "session" | "runtime" | "permissions" | "raw";
 
@@ -87,11 +99,7 @@ export function AcpDebug({
     ? Math.round((runtimeMetrics.ansiCacheHits / ansiTotal) * 100)
     : 0;
   const debugTabClassName = (isActive: boolean) =>
-    `acp-debug-tab inline-flex min-h-[30px] items-center rounded-md px-3 py-1.5 text-xs font-medium leading-tight transition sm:text-sm ${
-      isActive
-        ? "bg-slate-900 text-white shadow-sm"
-        : "text-slate-600 hover:bg-white hover:text-slate-900"
-    }`;
+    `acp-debug-tab ${isActive ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
   const debugInputClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300";
   const debugSecondaryButtonClassName =
@@ -131,8 +139,8 @@ export function AcpDebug({
   }, []);
 
   return (
-    <div className="acp-debug flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
-      <div className="acp-debug-tabs flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+    <div className={ACP_DEBUG_ROOT_CLASS}>
+      <div className={ACP_DEBUG_TABS_CLASS}>
         <button
           className={debugTabClassName(tab === "session")}
           onClick={() => setTab("session")}
@@ -159,7 +167,7 @@ export function AcpDebug({
         </button>
       </div>
       {tab === "session" && (
-        <div className="acp-controls space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className={`acp-controls ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Session Controls</h4>
           <div className="acp-control-meta text-sm text-slate-600">
             Current mode: {currentMode ?? "unknown"}
@@ -214,7 +222,7 @@ export function AcpDebug({
         </div>
       )}
       {tab === "runtime" && (
-        <div className="acp-runtime space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className={`acp-runtime ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Runtime Metrics</h4>
           <div className="acp-runtime-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <RuntimeMetricCard label="Conversation (total/source/rendered)">
@@ -269,10 +277,10 @@ export function AcpDebug({
         </div>
       )}
       {tab === "permissions" && (
-        <div className="acp-permissions space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className={`acp-permissions ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4>Permissions</h4>
           {acpPermissionHistory.length === 0 && (
-            <div className="empty rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+            <div className={ACP_DEBUG_EMPTY_CLASS}>
               No permissions yet.
             </div>
           )}
@@ -284,7 +292,7 @@ export function AcpDebug({
               <div key={permission.id} className="acp-permission rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                 <div className="head flex items-start justify-between gap-2">
                   <button
-                    className="acp-permission-toggle flex min-w-0 flex-1 flex-col items-start gap-1 rounded-lg border border-transparent px-2 py-1 text-left transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className={ACP_DEBUG_PERMISSION_TOGGLE_CLASS}
                     type="button"
                     onClick={() => onJumpToPermissionHistory(permission)}
                     disabled={!canJump}
@@ -302,7 +310,7 @@ export function AcpDebug({
                     {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
-                <div className="acp-permission-submeta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                <div className={ACP_DEBUG_PERMISSION_SUBMETA_CLASS}>
                   <span className="mono">{permission.id}</span>
                   {permission.tool_call_id && (
                     <span className="mono">tool_call {permission.tool_call_id}</span>
@@ -313,7 +321,7 @@ export function AcpDebug({
                   )}
                 </div>
                 {!canJump && (
-                  <div className="acp-permission-options mono mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                  <div className={ACP_DEBUG_PERMISSION_WARNING_CLASS}>
                     no linked tool call in conversation
                   </div>
                 )}
@@ -323,7 +331,7 @@ export function AcpDebug({
         </div>
       )}
       {tab === "raw" && (
-        <div className="acp-raw-wrapper space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className={`acp-raw-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Raw Events</h4>
           <ul className="acp-raw max-h-[420px] space-y-2 overflow-auto pr-1" ref={rawRef}>
             {rawEvents.map((evt, idx) => (
@@ -332,7 +340,7 @@ export function AcpDebug({
                   <span>{new Date(evt.ts * 1000).toLocaleTimeString()}</span>
                   <span className="mono">{evt.type}</span>
                 </div>
-                <pre className="acp-content mt-2 overflow-auto rounded-md border border-slate-200 bg-white p-2 text-xs leading-5 text-slate-700">
+                <pre className={ACP_DEBUG_RAW_PRE_CLASS}>
                   {JSON.stringify(evt.payload, null, 2)}
                 </pre>
               </li>

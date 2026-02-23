@@ -10,6 +10,18 @@ import {
   isToolCallLive,
 } from "../conversation";
 import { renderMarkdown } from "../markdown";
+import {
+  ACP_BUBBLE_PLAN_CLASS,
+  ACP_BUBBLE_THINKING_CLASS,
+  ACP_CONVERSATION_TOP_HINT_CLASS,
+  ACP_DIFF_PRE_CLASS,
+  ACP_PLAN_INDEX_BADGE_CLASS,
+  ACP_PLAN_PRIORITY_BADGE_CLASS,
+  ACP_PLAN_STATUS_BADGE_CLASS,
+  ACP_SEGMENTED_BUTTON_CLASS,
+  ACP_SEGMENTED_NOTE_WARNING_CLASS,
+  ACP_TERMINAL_PRE_CLASS,
+} from "../ui/tailwind_classes";
 
 type AcpConversationProps = {
   items: ConversationItem[];
@@ -194,7 +206,7 @@ export function AcpConversation({
     >
       <div className="acp-conversation-inner flex w-full flex-col gap-3">
         {topHint ? (
-          <div className="acp-conversation-top-hint rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className={ACP_CONVERSATION_TOP_HINT_CLASS}>
             {topHint}
           </div>
         ) : null}
@@ -276,7 +288,7 @@ const ConversationBubble = React.memo(
       const thinkingLabel = deriveThinkingLabel(msg.text);
       const label = msg.live ? `${thinkingLabel} (live)` : thinkingLabel;
       return (
-        <div className="acp-bubble agent_thinking rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+        <div className={ACP_BUBBLE_THINKING_CLASS}>
           <div className="acp-thinking-title text-xs font-semibold uppercase tracking-wide text-slate-500">
             {label}
           </div>
@@ -849,7 +861,7 @@ const PlanBubble = React.memo(
         ? `Plan: ${preview}`
         : "Plan (collapsed)";
     return (
-      <div className="acp-bubble agent_plan rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-2 shadow-sm">
+      <div className={ACP_BUBBLE_PLAN_CLASS}>
         <details className="acp-thought-fold acp-plan-fold">
           <summary className="cursor-pointer text-sm font-semibold text-violet-800">{summary}</summary>
           <div className="acp-text mt-2 text-sm text-slate-700">
@@ -876,17 +888,17 @@ const PlanBubble = React.memo(
                         key={`${idx}-${entry.content}`}
                         className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5`}
                       >
-                        <span className="acp-plan-index inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold text-slate-600">
+                        <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
                           {idx + 1}
                         </span>
                         <span className="acp-plan-content text-sm text-slate-800">{entry.content}</span>
                         {entry.priority && (
-                          <span className="acp-plan-priority rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          <span className={ACP_PLAN_PRIORITY_BADGE_CLASS}>
                             {entry.priority}
                           </span>
                         )}
                         {entry.status && (
-                          <span className="acp-plan-status rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                          <span className={ACP_PLAN_STATUS_BADGE_CLASS}>
                             {entry.status}
                           </span>
                         )}
@@ -1471,7 +1483,7 @@ function ToolTextContent({
   if (markdownText && tooLargeForMarkdown) {
     return (
       <div className="acp-segmented-block space-y-2">
-        <div className="acp-segmented-note rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+        <div className={ACP_SEGMENTED_NOTE_WARNING_CLASS}>
           Large markdown payload is rendered as plain text for performance.
         </div>
         <ToolPlainTextView text={text} asciiLike={false} />
@@ -1532,7 +1544,7 @@ function TerminalOutputView({
   );
   return (
     <div className="acp-segmented-block space-y-2">
-      <pre className="acp-content rounded-md border border-slate-200 bg-slate-950 p-2 text-xs text-slate-100">{rendered}</pre>
+      <pre className={ACP_TERMINAL_PRE_CLASS}>{rendered}</pre>
       {hasMore && (
         <SegmentedMoreFooter
           remaining={remaining}
@@ -1602,7 +1614,7 @@ function SegmentedMoreFooter({
       </span>
       <button
         type="button"
-        className="acp-segmented-button inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+        className={ACP_SEGMENTED_BUTTON_CLASS}
         onClick={onShowMore}
         aria-label={`Show ${remaining} more ${unitLabel}`}
       >
@@ -1679,7 +1691,7 @@ function ToolDiffView({ text }: { text: string }) {
   const visibleLines = lines.slice(0, visibleCount);
   return (
     <div className="acp-segmented-block space-y-2">
-      <pre className="acp-content acp-diff-view overflow-auto rounded-md border border-slate-200 bg-slate-950 p-2 text-xs text-slate-100">
+      <pre className={ACP_DIFF_PRE_CLASS}>
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);
           return (
