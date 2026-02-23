@@ -86,6 +86,34 @@ async fn load_team_for_user(
     Ok(team)
 }
 
+async fn load_run_for_user(
+    state: &AppState,
+    run_id: &str,
+    user: &UserRecord,
+) -> Result<TeamRunRecord, ApiError> {
+    let run = state
+        .teams
+        .get_run(run_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    load_team_for_user(state, &run.team_id, user).await?;
+    Ok(run)
+}
+
+async fn load_run_and_team_for_user(
+    state: &AppState,
+    run_id: &str,
+    user: &UserRecord,
+) -> Result<(TeamRunRecord, TeamDefinitionRecord), ApiError> {
+    let run = state
+        .teams
+        .get_run(run_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    let team = load_team_for_user(state, &run.team_id, user).await?;
+    Ok((run, team))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
     pub name: String,
@@ -648,12 +676,8 @@ async fn create_team_run(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamRunRequest>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let team = state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     validate_team_spec(&team.spec)?;
     let run = state
         .teams
@@ -673,12 +697,8 @@ async fn list_team_runs(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamRunsQuery>,
 ) -> Result<Json<Vec<TeamRunRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_team(&team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let status = normalize_optional_run_status_filter(query.status.as_deref())?;
     let runs = state
@@ -694,12 +714,8 @@ async fn get_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let run = state
-        .teams
-        .get_run(&run_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let run = load_run_for_user(&state, &run_id, &user).await?;
     Ok(Json(run))
 }
 
@@ -708,7 +724,8 @@ async fn cancel_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
         .cancel_run(&run_id)
@@ -722,7 +739,8 @@ async fn resume_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
         .resume_run(&run_id)
@@ -736,7 +754,8 @@ async fn restart_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
         .restart_run(&run_id)
@@ -751,18 +770,8 @@ async fn get_team_run_snapshot(
     Path(run_id): Path<String>,
     Query(query): Query<TeamRunSnapshotQuery>,
 ) -> Result<Json<TeamRunSnapshotResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-
-    let run = state
-        .teams
-        .get_run(&run_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "run not found"))?;
-    let team = state
-        .teams
-        .get_team(&run.team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let user = require_user(&headers, &state).await?;
+    let (run, team) = load_run_and_team_for_user(&state, &run_id, &user).await?;
     validate_team_spec(&team.spec)?;
 
     let spec_obj = team
@@ -875,12 +884,8 @@ async fn list_team_run_events(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunEventsQuery>,
 ) -> Result<Json<Vec<TeamRunEventRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    state
-        .teams
-        .get_run(&run_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "run not found"))?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let limit = query.limit.unwrap_or(500).clamp(1, 1000);
     let events = state
         .teams
@@ -896,7 +901,8 @@ async fn flush_team_run_context(
     Path(run_id): Path<String>,
     Json(payload): Json<FlushTeamRunContextRequest>,
 ) -> Result<Json<FlushTeamRunContextResponse>, ApiError> {
-    let _ = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let member_id = payload.member_id.trim().to_string();
     if member_id.is_empty() {
         return Err(ApiError::bad_request("member_id is required"));
@@ -937,8 +943,8 @@ async fn list_team_run_steps(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<Vec<TeamStepRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     let steps = state
         .teams
         .list_steps(&run_id)
@@ -953,8 +959,8 @@ async fn submit_team_run_step(
     Path(run_id): Path<String>,
     Json(payload): Json<SubmitTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
 
     let step_key = payload.step_key.trim().to_string();
     if step_key.is_empty() {
@@ -980,8 +986,8 @@ async fn start_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<StartTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let remote_task_id = payload
         .remote_task_id
@@ -1002,8 +1008,8 @@ async fn complete_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<CompleteTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
         .teams
@@ -1019,8 +1025,8 @@ async fn fail_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<FailTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let error_text = payload.error_text.trim();
     if error_text.is_empty() {
@@ -1040,8 +1046,8 @@ async fn set_team_run_step_input_required(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<SetTeamRunStepInputRequiredRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let reason = normalize_optional_non_empty(payload.reason.as_deref())?.map(str::to_string);
     let step = state
@@ -1058,8 +1064,8 @@ async fn resume_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<ResumeTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    ensure_run_exists(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
         .teams
@@ -1075,8 +1081,8 @@ async fn send_team_run_message(
     Path(run_id): Path<String>,
     Json(payload): Json<SendTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let (run, member_ids) = load_run_and_member_ids(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    let (run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let SendTeamRunMessageRequest {
         from_actor_id,
         to_actor_id,
@@ -1141,8 +1147,8 @@ async fn list_team_run_inbox(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunInboxQuery>,
 ) -> Result<Json<Vec<TeamActorMessageRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let (_run, member_ids) = load_run_and_member_ids(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_id = normalize_required_field(query.actor_id, "actor_id")?;
     if !member_ids.contains(actor_id.as_str()) {
         return Err(ApiError::bad_request(
@@ -1180,8 +1186,8 @@ async fn ack_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<AckTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
-    let (_run, member_ids) = load_run_and_member_ids(&state, &run_id).await?;
+    let user = require_user(&headers, &state).await?;
+    let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_id = normalize_required_field(payload.actor_id, "actor_id")?;
     if !member_ids.contains(actor_id.as_str()) {
         return Err(ApiError::bad_request(
@@ -1643,12 +1649,12 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
     out
 }
 
-async fn ensure_run_exists(state: &AppState, run_id: &str) -> Result<(), ApiError> {
-    state
-        .teams
-        .get_run(run_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "run not found"))?;
+async fn ensure_run_access_for_user(
+    state: &AppState,
+    run_id: &str,
+    user: &UserRecord,
+) -> Result<(), ApiError> {
+    load_run_for_user(state, run_id, user).await?;
     Ok(())
 }
 
@@ -1742,24 +1748,19 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
 }
 
 fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, ApiError> {
-    let Some(raw) = value else {
-        return Ok("manual");
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok("manual");
+    match value
+        .map(str::trim)
+        .filter(|candidate| !candidate.is_empty())
+    {
+        None => Ok("manual"),
+        Some("manual") => Ok("manual"),
+        Some("soft_threshold") => Ok("soft_threshold"),
+        Some("hard_error") => Ok("hard_error"),
+        Some(_) => Err(ApiError::bad_request(&format!(
+            "trigger must be one of: {}",
+            TEAM_MEMORY_FLUSH_TRIGGER_VALUES.join(", ")
+        ))),
     }
-    if TEAM_MEMORY_FLUSH_TRIGGER_VALUES.contains(&trimmed) {
-        return Ok(match trimmed {
-            "soft_threshold" => "soft_threshold",
-            "hard_error" => "hard_error",
-            _ => "manual",
-        });
-    }
-    Err(ApiError::bad_request(&format!(
-        "trigger must be one of: {}",
-        TEAM_MEMORY_FLUSH_TRIGGER_VALUES.join(", ")
-    )))
 }
 
 fn normalize_conversation_mode(value: Option<&str>) -> Result<String, ApiError> {
@@ -2344,20 +2345,12 @@ fn normalize_enum_value(
     )))
 }
 
-async fn load_run_and_member_ids(
+async fn load_run_and_member_ids_for_user(
     state: &AppState,
     run_id: &str,
+    user: &UserRecord,
 ) -> Result<(TeamRunRecord, HashSet<String>), ApiError> {
-    let run = state
-        .teams
-        .get_run(run_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "run not found"))?;
-    let team = state
-        .teams
-        .get_team(&run.team_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+    let (run, team) = load_run_and_team_for_user(state, run_id, user).await?;
     let member_ids = parse_member_ids(team.spec.get("members"))?;
     Ok((run, member_ids))
 }

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use agenthub_text::truncate_chars;
 use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -372,7 +373,7 @@ impl TeamOrchestratorWorker {
                         mode: continuity_mode.to_string(),
                         source_run_id: state.source_run_id,
                         source_session_id: state.source_session_id,
-                        summary_text: truncate_text(
+                        summary_text: truncate_chars(
                             state.summary_text.as_str(),
                             continuity_max_chars,
                         ),
@@ -559,13 +560,6 @@ fn parse_run_continuity_max_chars(run_input: &Value) -> usize {
         return 1200;
     };
     raw.clamp(256, 20000) as usize
-}
-
-fn truncate_text(raw: &str, max_chars: usize) -> String {
-    if raw.is_empty() || max_chars == 0 {
-        return String::new();
-    }
-    raw.chars().take(max_chars).collect::<String>()
 }
 
 fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
