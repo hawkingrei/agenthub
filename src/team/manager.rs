@@ -862,29 +862,23 @@ impl TeamManager {
     async fn persist_continuity_artifact_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, Sqlite>,
-        team_id: &str,
-        run_id: &str,
-        member_id: &str,
-        session_id: Option<&str>,
+        owner: ContextArtifactOwner<'_>,
         snapshot: &ContinuitySnapshot,
         now: i64,
     ) -> anyhow::Result<Option<ContextArtifactPointer>> {
         let artifact_payload = serde_json::json!({
             "schema_version": 1,
-            "team_id": team_id,
-            "run_id": run_id,
-            "member_id": member_id,
-            "session_id": session_id,
+            "team_id": owner.team_id,
+            "run_id": owner.run_id,
+            "member_id": owner.member_id,
+            "session_id": owner.session_id,
             "summary_text": snapshot.summary_text,
             "redacted_output": snapshot.redacted_output,
             "created_at": now,
         });
         self.persist_context_artifact_tx(
             tx,
-            team_id,
-            run_id,
-            member_id,
-            session_id,
+            owner,
             CONTINUITY_ARTIFACT_KIND_OUTPUT,
             artifact_payload,
             now,
@@ -895,10 +889,7 @@ impl TeamManager {
     async fn persist_context_artifact_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, Sqlite>,
-        team_id: &str,
-        run_id: &str,
-        member_id: &str,
-        session_id: Option<&str>,
+        owner: ContextArtifactOwner<'_>,
         artifact_kind: &str,
         artifact_payload: Value,
         now: i64,
@@ -910,7 +901,7 @@ impl TeamManager {
             WHERE id = ?1
             "#,
         )
-        .bind(member_id)
+        .bind(owner.member_id)
         .fetch_optional(&mut **tx)
         .await?
         .map(|value| value.trim().to_string())
@@ -925,7 +916,7 @@ impl TeamManager {
             WHERE run_id = ?1
             "#,
         )
-        .bind(run_id)
+        .bind(owner.run_id)
         .fetch_one(&mut **tx)
         .await?;
 
@@ -933,15 +924,15 @@ impl TeamManager {
             .join(".cache")
             .join("context")
             .join("run")
-            .join(run_id);
+            .join(owner.run_id);
         std::fs::create_dir_all(&run_context_dir)?;
 
         let file_name = format!("artifact-{artifact_seq}-{artifact_kind}.json");
         let absolute_path = run_context_dir.join(&file_name);
-        let relative_path = format!(".cache/context/run/{run_id}/{file_name}");
+        let relative_path = format!(".cache/context/run/{}/{file_name}", owner.run_id);
         let artifact_bytes = serde_json::to_vec(&artifact_payload)?;
         std::fs::write(&absolute_path, &artifact_bytes)?;
-        let artifact_size_bytes = i64::try_from(artifact_bytes.len()).unwrap_or(i64::MAX);
+        let artifact_size_bytes = i64::try_from(artifact_bytes.len()).ok().unwrap_or(i64::MAX);
         let content_checksum = format!("{:x}", Sha256::digest(&artifact_bytes));
         let absolute_path_string = absolute_path.to_string_lossy().to_string();
 
@@ -962,10 +953,10 @@ impl TeamManager {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
         )
-        .bind(team_id)
-        .bind(run_id)
-        .bind(member_id)
-        .bind(session_id)
+        .bind(owner.team_id)
+        .bind(owner.run_id)
+        .bind(owner.member_id)
+        .bind(owner.session_id)
         .bind(artifact_seq)
         .bind(artifact_kind)
         .bind(absolute_path_string)
@@ -1397,10 +1388,12 @@ impl TeamManager {
                 match self
                     .persist_continuity_artifact_tx(
                         &mut tx,
-                        &team_id,
-                        &step.run_id,
-                        &step.member_id,
-                        step.remote_task_id.as_deref(),
+                        ContextArtifactOwner {
+                            team_id: &team_id,
+                            run_id: &step.run_id,
+                            member_id: &step.member_id,
+                            session_id: step.remote_task_id.as_deref(),
+                        },
                         &continuity_snapshot,
                         now,
                     )
@@ -2111,10 +2104,12 @@ impl TeamManager {
         let pointer = match self
             .persist_context_artifact_tx(
                 &mut tx,
-                team_id.as_str(),
-                run_id,
-                member_id.as_str(),
-                Some(session_id.as_str()),
+                ContextArtifactOwner {
+                    team_id: team_id.as_str(),
+                    run_id,
+                    member_id: member_id.as_str(),
+                    session_id: Some(session_id.as_str()),
+                },
                 MEMORY_FLUSH_ARTIFACT_KIND,
                 flush_payload,
                 now,
@@ -2395,6 +2390,14 @@ struct ContinuitySnapshot {
     history_window: Value,
     redacted_output: Value,
     redacted_output_text: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ContextArtifactOwner<'a> {
+    team_id: &'a str,
+    run_id: &'a str,
+    member_id: &'a str,
+    session_id: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
