@@ -378,6 +378,7 @@ impl AgentManager {
     }
 
     pub async fn list_agents(&self) -> anyhow::Result<Vec<AgentRecord>> {
+        self.reconcile_stale_running_agents().await?;
         let active_team_member_agents = self.list_active_team_member_agents().await?;
         let rows = if self.has_agents_source_column().await? {
             sqlx::query(
@@ -430,6 +431,72 @@ impl AgentManager {
         Ok(agents)
     }
 
+    async fn reconcile_stale_running_agents(&self) -> anyhow::Result<()> {
+        let running_rows = sqlx::query(
+            r#"
+            SELECT id
+            FROM agents
+            WHERE status = 'running'
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        if running_rows.is_empty() {
+            return Ok(());
+        }
+
+        let stale_ids = {
+            let active_guard = self.inner.read().await;
+            let starting_guard = self.starting.lock().await;
+            running_rows
+                .into_iter()
+                .map(|row| row.get::<String, _>("id"))
+                .filter(|agent_id| {
+                    !active_guard.contains_key(agent_id) && !starting_guard.contains(agent_id)
+                })
+                .collect::<Vec<_>>()
+        };
+        if stale_ids.is_empty() {
+            return Ok(());
+        }
+
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        for agent_id in &stale_ids {
+            sqlx::query(
+                r#"
+                UPDATE agent_sessions
+                SET status = 'exited', ended_at = ?1
+                WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
+                "#,
+            )
+            .bind(now)
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                UPDATE agents
+                SET status = 'exited', updated_at = ?1
+                WHERE id = ?2 AND status = 'running'
+                "#,
+            )
+            .bind(now)
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+
+        tracing::warn!(
+            stale_agent_count = stale_ids.len(),
+            stale_agent_ids = ?stale_ids,
+            "reconciled stale running agents without runtime handles"
+        );
+        Ok(())
+    }
+
     async fn has_agents_source_column(&self) -> anyhow::Result<bool> {
         let rows = sqlx::query(
             r#"
@@ -480,6 +547,7 @@ impl AgentManager {
     }
 
     pub async fn get_agent(&self, agent_id: &str) -> anyhow::Result<AgentRecord> {
+        self.reconcile_stale_running_agents().await?;
         let row = sqlx::query(
             r#"
             SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at

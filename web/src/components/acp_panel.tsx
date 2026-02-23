@@ -9,6 +9,8 @@ type AcpPanelProps = {
   acpTab: "conversation" | "debug";
   onSelectTab: (tab: "conversation" | "debug") => void;
   showConversationBadge: boolean;
+  showConversationJump: boolean;
+  onJumpToConversationBottom: () => void;
   conversation: AcpConversationProps;
   debug: AcpDebugProps;
 };
@@ -18,11 +20,13 @@ function AcpPanelView({
   acpTab,
   onSelectTab,
   showConversationBadge,
+  showConversationJump,
+  onJumpToConversationBottom,
   conversation,
   debug,
 }: AcpPanelProps) {
   return (
-    <div className="acp flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-100 bg-white/90 shadow-sm">
+    <div className="acp relative flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-100 bg-white/90 shadow-sm">
       <div className="acp-head minimal flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-3 py-2 sm:px-4">
         <div className="acp-subtitle min-h-5 text-xs text-slate-500 sm:text-sm">
           {subtitle ?? " "}
@@ -59,6 +63,16 @@ function AcpPanelView({
       </div>
       {acpTab === "conversation" && <AcpConversation {...conversation} />}
       {acpTab === "debug" && <AcpDebug {...debug} />}
+      {acpTab === "conversation" && showConversationJump ? (
+        <button
+          className="acp-jump-bottom absolute bottom-3 right-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-800 shadow-md transition hover:border-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+          onClick={onJumpToConversationBottom}
+          title="Jump to bottom"
+          aria-label="Jump to bottom"
+        >
+          <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 }

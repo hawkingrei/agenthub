@@ -615,10 +615,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .jump-bottom {
-  position: fixed;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: static;
+  justify-self: end;
+  margin-left: auto;
   width: 32px;
   height: 32px;
   border-radius: 999px;
@@ -2716,7 +2715,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .jump-bottom {
     width: 30px;
     height: 30px;
-    right: 12px;
   }
 
   .acp-bubble {

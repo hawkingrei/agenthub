@@ -9,6 +9,8 @@ type UseTeamCreateModalLifecycleEffectsOptions = {
   showCreateTeamModal: boolean;
   leaderMemberId: string;
   teamForgeAgents: AgentRecord[];
+  parseError: (err: unknown) => string;
+  setError: (next: string | null) => void;
   setForgeDefaultWorktreeRoot: (next: string) => void;
   setLeaderMemberId: (next: string) => void;
   setShowCreateTeamModal: (next: boolean) => void;
@@ -24,6 +26,8 @@ export function useTeamCreateModalLifecycleEffects(
     showCreateTeamModal,
     leaderMemberId,
     teamForgeAgents,
+    parseError,
+    setError,
     setForgeDefaultWorktreeRoot,
     setLeaderMemberId,
     setShowCreateTeamModal,
@@ -44,8 +48,13 @@ export function useTeamCreateModalLifecycleEffects(
         );
         setForgeDefaultWorktreeRoot(root);
       })
-      .catch(() => undefined);
-  }, [setForgeDefaultWorktreeRoot, token]);
+      .catch((err) => {
+        if (!showCreateTeamModal) {
+          return;
+        }
+        setError(`Failed to load Team Forge defaults: ${parseError(err)}`);
+      });
+  }, [parseError, setError, setForgeDefaultWorktreeRoot, showCreateTeamModal, token]);
 
   useEffect(() => {
     if (!showCreateTeamModal) return;

@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkerDraft } from "./member_helpers";
 import {
+  buildTeamForgeCleanupWarning,
   buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
+  cleanupUnusedTeamForgeAgents,
+  collectTeamSpecMemberIds,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   parseOptionalInteger,
   parseOptionalJson,
   parseRequiredJson,
+  resolveUnusedTeamForgeAgentIds,
   resolveTeamModelOptions,
 } from "./create_helpers";
 
@@ -195,6 +199,37 @@ describe("team create helpers", () => {
     });
   });
 
+  it("collects unique member ids from team spec members", () => {
+    expect(
+      collectTeamSpecMemberIds({
+        members: [
+          { member_id: "leader-gemini" },
+          { member_id: "worker-1" },
+          { member_id: "worker-1" },
+          { member_id: "  " },
+          { role: "worker" },
+          null,
+        ],
+      })
+    ).toEqual(["leader-gemini", "worker-1"]);
+    expect(collectTeamSpecMemberIds({ members: "invalid" })).toEqual([]);
+    expect(collectTeamSpecMemberIds(null)).toEqual([]);
+  });
+
+  it("resolves unused forged agents by subtracting selected member ids", () => {
+    const stale = resolveUnusedTeamForgeAgentIds(
+      ["leader-codex", "leader-gemini", "worker-1", "worker-1", "", "  "],
+      {
+        members: [{ member_id: "leader-gemini" }, { member_id: "worker-1" }],
+      }
+    );
+    expect(stale).toEqual(["leader-codex"]);
+    expect(resolveUnusedTeamForgeAgentIds(["a", "a", "b"], { invalid: true })).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
   it("builds leader forge default workdir under .agenthub root", () => {
     expect(
       buildLeaderForgeDefaultWorkdir(
@@ -206,6 +241,36 @@ describe("team create helpers", () => {
 
     expect(buildLeaderForgeDefaultWorkdir("", "###", 10)).toBe(
       "~/.agenthub/worktrees/leader-a"
+    );
+  });
+
+  it("cleans up stale forged agents and collects failures", async () => {
+    const deleteAgent = vi.fn(async (_token: string, agentId: string) => {
+      if (agentId === "worker-2") {
+        throw new Error("permission denied");
+      }
+    });
+    const result = await cleanupUnusedTeamForgeAgents(
+      "token-1",
+      ["leader-1", "worker-2", "leader-1", " ", ""],
+      deleteAgent
+    );
+    expect(deleteAgent).toHaveBeenCalledTimes(2);
+    expect(result.deletedForgeAgentIds).toEqual(["leader-1"]);
+    expect(result.cleanupErrors).toEqual(["worker-2: permission denied"]);
+  });
+
+  it("returns empty cleanup result when no stale forged agents exist", async () => {
+    const deleteAgent = vi.fn(async () => {});
+    const result = await cleanupUnusedTeamForgeAgents("token-1", [], deleteAgent);
+    expect(result).toEqual({ deletedForgeAgentIds: [], cleanupErrors: [] });
+    expect(deleteAgent).not.toHaveBeenCalled();
+  });
+
+  it("builds cleanup warning only when failures exist", () => {
+    expect(buildTeamForgeCleanupWarning([])).toBeNull();
+    expect(buildTeamForgeCleanupWarning(["a: denied", "b: timeout"])).toBe(
+      "Team created, but failed to clean up 2 unused forged agent(s): a: denied; b: timeout"
     );
   });
 });
