@@ -17,6 +17,21 @@ type TeamMemberLifecycleSummary = {
   unknown: number;
 };
 
+const TEAM_MEMBER_SUMMARY_STATUSES: TeamMemberLifecycle[] = [
+  "working",
+  "idle",
+  "stopped",
+  "missing",
+];
+
+const TEAM_MEMBER_SUMMARY_BADGE_CLASS: Record<TeamMemberLifecycle, string> = {
+  working: "border-emerald-200 bg-emerald-50",
+  idle: "border-amber-200 bg-amber-50",
+  stopped: "border-slate-200 bg-slate-50",
+  missing: "border-rose-200 bg-rose-50",
+  unknown: "border-slate-200 bg-slate-50",
+};
+
 export function normalizeTeamMemberLifecycle(member: TeamMemberAgentStatus): TeamMemberLifecycle {
   if (member.missing_agent) {
     return "missing";
@@ -36,7 +51,7 @@ export function normalizeTeamMemberLifecycle(member: TeamMemberAgentStatus): Tea
   ) {
     return "stopped";
   }
-  return normalized.length > 0 ? "unknown" : "unknown";
+  return "unknown";
 }
 
 function resolveLifecycleTone(lifecycle: TeamMemberLifecycle): StatusTone {
@@ -70,18 +85,14 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Status</h3>
         <div className="mono flex flex-wrap items-center gap-2 text-xs text-slate-600">
-          <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1">
-            working={summary.working}
-          </span>
-          <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1">
-            idle={summary.idle}
-          </span>
-          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
-            stopped={summary.stopped}
-          </span>
-          <span className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1">
-            missing={summary.missing}
-          </span>
+          {TEAM_MEMBER_SUMMARY_STATUSES.map((status) => (
+            <span
+              key={status}
+              className={`rounded-md border ${TEAM_MEMBER_SUMMARY_BADGE_CLASS[status]} px-2 py-1`}
+            >
+              {status}={summary[status]}
+            </span>
+          ))}
         </div>
       </div>
       {members.length === 0 ? (

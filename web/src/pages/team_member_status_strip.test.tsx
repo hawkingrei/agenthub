@@ -25,6 +25,7 @@ describe("TeamMemberStatusStrip", () => {
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "running" }))).toBe("working");
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "working" }))).toBe("working");
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "idle" }))).toBe("idle");
+    expect(normalizeTeamMemberLifecycle(buildMember({ status: "  IDLE  " }))).toBe("idle");
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "stopped" }))).toBe("stopped");
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "failed" }))).toBe("stopped");
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "exited" }))).toBe("stopped");
@@ -32,6 +33,7 @@ describe("TeamMemberStatusStrip", () => {
       "stopped"
     );
     expect(normalizeTeamMemberLifecycle(buildMember({ status: "weird" }))).toBe("unknown");
+    expect(normalizeTeamMemberLifecycle(buildMember({ status: "   " }))).toBe("unknown");
     expect(normalizeTeamMemberLifecycle(buildMember({ missing_agent: true }))).toBe("missing");
   });
 
