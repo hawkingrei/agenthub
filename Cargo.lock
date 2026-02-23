@@ -168,25 +168,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agenthub-linkerdog-acp"
-version = "0.1.0"
-dependencies = [
- "agent-client-protocol",
- "anyhow",
- "async-trait",
- "chrono",
- "clap",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "agenthub-team-actor"
 version = "0.1.0"
 dependencies = [
@@ -4368,6 +4349,44 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "linkerdog-acp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "linkerdog-core",
+ "tokio",
+]
+
+[[package]]
+name = "linkerdog-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "linkerdog-acp",
+ "tokio",
+]
+
+[[package]]
+name = "linkerdog-core"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

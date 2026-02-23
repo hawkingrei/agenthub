@@ -2,9 +2,11 @@
 members = [
     ".",
     "agenthub-codex-acp",
-    "agenthub-linkerdog-acp",
+    "linkerdog-acp",
+    "linkerdog-cli",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/linkerdog-core",
     "crates/agenthub-text",
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",

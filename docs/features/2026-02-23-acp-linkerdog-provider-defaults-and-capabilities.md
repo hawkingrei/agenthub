@@ -24,7 +24,8 @@ applied a global Codex default mode. This left three gaps:
 ## Key Decisions
 
 - Refactor ACP provider detection in `AgentManager` into provider specs
-  (command matcher + argument gate), and add `linkerdog acp` support.
+  (command matcher + argument gate), and add both `linkerdog acp` and
+  `linkerdog-acp` support.
 - Introduce provider-scoped ACP defaults in config:
   `codex_acp.provider_defaults.<provider>.default_mode/default_model`.
 - Keep backward compatibility by merging legacy `codex_acp.default_mode` and

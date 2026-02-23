@@ -1,7 +1,5 @@
-use crate::{CliArgs, LinkerdogRuntimeConfig, agent::LinkerdogAgent};
+use crate::{LinkerdogRuntimeConfig, agent::LinkerdogAgent};
 use agent_client_protocol::AgentSideConnection;
-use anyhow::Result;
-use clap::Parser;
 use std::io::Result as IoResult;
 use std::sync::{Arc, OnceLock};
 use tokio::task::LocalSet;
@@ -42,15 +40,4 @@ pub async fn run_main(config: LinkerdogRuntimeConfig) -> IoResult<()> {
         .await?;
 
     Ok(())
-}
-
-pub async fn run_from_args<I>(args: I) -> Result<()>
-where
-    I: IntoIterator<Item = std::ffi::OsString>,
-{
-    let normalized = crate::normalize_cli_args(args);
-    let cli = CliArgs::parse_from(normalized);
-    let config = LinkerdogRuntimeConfig::from_raw_overrides(&cli.raw_overrides)
-        .map_err(anyhow::Error::msg)?;
-    run_main(config).await.map_err(anyhow::Error::from)
 }

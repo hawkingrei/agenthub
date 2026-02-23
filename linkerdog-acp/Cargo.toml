@@ -1,0 +1,28 @@
+[package]
+name = "linkerdog-acp"
+version = "0.1.0"
+edition = "2024"
+authors = ["AgentHub <dev@agenthub.local>"]
+license = "Apache-2.0"
+description = "Standalone Linkerdog ACP runtime entrypoint"
+repository = "https://github.com/hawkingrei/agenthub"
+homepage = "https://github.com/hawkingrei/agenthub"
+
+[[bin]]
+name = "linkerdog-acp"
+path = "src/main.rs"
+
+[lib]
+name = "linkerdog_acp"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+linkerdog-core = { path = "../crates/linkerdog-core" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[lints.rust]
+let-underscore = "warn"
+rust-2018-idioms = "warn"
+unused = "warn"

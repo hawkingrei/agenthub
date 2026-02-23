@@ -35,6 +35,12 @@ const ACP_PROVIDER_SPECS: &[AcpProviderSpec] = &[
         use_configured_binary: false,
     },
     AcpProviderSpec {
+        id: ACP_PROVIDER_LINKERDOG,
+        command_names: &["linkerdog-acp"],
+        require_args: None,
+        use_configured_binary: false,
+    },
+    AcpProviderSpec {
         id: ACP_PROVIDER_CODEX,
         command_names: &["agenthub-codex-acp", "codex-acp"],
         require_args: None,

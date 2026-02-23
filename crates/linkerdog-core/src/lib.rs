@@ -3,34 +3,9 @@
 mod agent;
 mod runtime;
 
-use clap::Parser;
 use std::ffi::OsString;
 
-pub use runtime::{run_from_args, run_main};
-
-#[derive(Parser, Debug, Default, Clone)]
-#[command(name = "linkerdog")]
-pub struct CliArgs {
-    /// Override runtime defaults using key=value.
-    ///
-    /// Supported keys:
-    /// - provider
-    /// - model
-    /// - mode
-    ///
-    /// Namespaced aliases are also supported:
-    /// - linkerdog.provider
-    /// - linkerdog.model
-    /// - linkerdog.mode
-    #[arg(
-        short = 'c',
-        long = "config",
-        value_name = "key=value",
-        action = clap::ArgAction::Append,
-        global = true,
-    )]
-    pub raw_overrides: Vec<String>,
-}
+pub use runtime::{ACP_CLIENT, run_main};
 
 /// Runtime defaults parsed from CLI overrides.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,8 +54,8 @@ impl LinkerdogRuntimeConfig {
     }
 }
 
-/// Accept both `linkerdog` and `linkerdog acp` as entry forms.
-pub fn normalize_cli_args<I>(args: I) -> Vec<OsString>
+/// Accept both `linkerdog` and `linkerdog acp` as ACP entry forms.
+pub fn normalize_acp_cli_args<I>(args: I) -> Vec<OsString>
 where
     I: IntoIterator<Item = OsString>,
 {
@@ -109,7 +84,7 @@ pub fn parse_cli_overrides(raw_overrides: &[String]) -> Result<Vec<(String, toml
             }
 
             let value = parse_toml_value(value_str).unwrap_or_else(|_| {
-                let trimmed = value_str.trim().trim_matches(|c| c == '\"' || c == '\'');
+                let trimmed = value_str.trim().trim_matches(|c| c == '"' || c == '\'');
                 toml::Value::String(trimmed.to_string())
             });
             Ok((key.to_string(), value))
@@ -138,7 +113,7 @@ fn toml_value_to_string(value: &toml::Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{LinkerdogRuntimeConfig, normalize_cli_args, parse_cli_overrides};
+    use super::{LinkerdogRuntimeConfig, normalize_acp_cli_args, parse_cli_overrides};
     use std::ffi::OsString;
 
     fn os_args(values: &[&str]) -> Vec<OsString> {
@@ -146,22 +121,22 @@ mod tests {
     }
 
     #[test]
-    fn normalize_cli_args_keeps_direct_invocation() {
+    fn normalize_acp_cli_args_keeps_direct_invocation() {
         let args = os_args(&["linkerdog", "-c", "model=o3"]);
-        assert_eq!(normalize_cli_args(args.clone()), args);
+        assert_eq!(normalize_acp_cli_args(args.clone()), args);
     }
 
     #[test]
-    fn normalize_cli_args_strips_acp_subcommand_once() {
+    fn normalize_acp_cli_args_strips_acp_subcommand_once() {
         let args = os_args(&["linkerdog", "acp", "-c", "model=o3"]);
         let expected = os_args(&["linkerdog", "-c", "model=o3"]);
-        assert_eq!(normalize_cli_args(args), expected);
+        assert_eq!(normalize_acp_cli_args(args), expected);
     }
 
     #[test]
-    fn normalize_cli_args_keeps_non_first_acp_argument() {
+    fn normalize_acp_cli_args_keeps_non_first_acp_argument() {
         let args = os_args(&["linkerdog", "-c", "mode=acp"]);
-        assert_eq!(normalize_cli_args(args.clone()), args);
+        assert_eq!(normalize_acp_cli_args(args.clone()), args);
     }
 
     #[test]

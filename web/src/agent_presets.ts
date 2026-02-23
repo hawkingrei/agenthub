@@ -32,9 +32,9 @@ const PRESETS: AgentPreset[] = [
   },
   {
     id: "linkerdog",
-    label: "Linkerdog CLI",
-    command: "linkerdog",
-    args: ["acp"],
+    label: "Linkerdog ACP",
+    command: "linkerdog-acp",
+    args: [],
     provider: "linkerdog",
   },
 ];
@@ -70,7 +70,7 @@ export function resolveAcpProvider(command: string): string | null {
   if (name === "agenthub-codex-acp" || name === "codex-acp") return "codex";
   if (name === "gemini") return "gemini";
   if (name === "kimi") return "kimi";
-  if (name === "linkerdog") return "linkerdog";
+  if (name === "linkerdog" || name === "linkerdog-acp") return "linkerdog";
   return null;
 }
 

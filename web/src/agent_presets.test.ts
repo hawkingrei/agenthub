@@ -26,8 +26,10 @@ describe("agent presets", () => {
   it("formats command summaries", () => {
     const codex = getAgentPreset(DEFAULT_AGENT_PRESET_ID);
     const gemini = getAgentPreset("gemini");
+    const linkerdog = getAgentPreset("linkerdog");
     expect(formatAgentCommand(codex)).toBe("agenthub-codex-acp");
     expect(formatAgentCommand(gemini)).toBe("gemini --experimental-acp");
+    expect(formatAgentCommand(linkerdog)).toBe("linkerdog-acp");
   });
 
   it("resolves ACP provider from command", () => {
@@ -35,6 +37,7 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("/usr/local/bin/gemini")).toBe("gemini");
     expect(resolveAcpProvider("kimi")).toBe("kimi");
     expect(resolveAcpProvider("linkerdog")).toBe("linkerdog");
+    expect(resolveAcpProvider("linkerdog-acp")).toBe("linkerdog");
     expect(resolveAcpProvider("unknown")).toBe(null);
   });
 
@@ -44,6 +47,6 @@ describe("agent presets", () => {
       .toBe("gemini-1.5-pro");
     expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
       .toBe("moonshot-v1");
-    expect(formatAgentModelLabel("linkerdog", [])).toBe("Linkerdog");
+    expect(formatAgentModelLabel("linkerdog-acp", [])).toBe("Linkerdog");
   });
 });
