@@ -18,9 +18,14 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
 }
 
 async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
-    let pool = try_connect(db_path)
-        .await
-        .map_err(|err| anyhow::anyhow!("failed to open db at {}: {}", db_path.display(), err))?;
+    let pool = try_connect(db_path).await.map_err(|err| {
+        tracing::error!(
+            db_path = %db_path.display(),
+            error = %err,
+            "db init failed to open sqlite database"
+        );
+        anyhow::anyhow!("failed to open db at {}: {}", db_path.display(), err)
+    })?;
 
     sqlx::query(
         r#"
@@ -825,7 +830,16 @@ pub async fn cleanup_agent_event_history(
     )
     .bind(cutoff_ts)
     .execute(pool)
-    .await?
+    .await
+    .map_err(|err| {
+        tracing::error!(
+            cutoff_ts,
+            retention_days,
+            error = %err,
+            "db cleanup failed to delete expired agent_events rows"
+        );
+        err
+    })?
     .rows_affected();
 
     if let Err(err) = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
@@ -872,7 +886,15 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)
-        .await?;
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                db_path = %db_path.display(),
+                error = %err,
+                "db connect_with failed"
+            );
+            err
+        })?;
     Ok(pool)
 }
 
@@ -890,7 +912,14 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent).map_err(|err| {
+            tracing::error!(
+                parent = %parent.display(),
+                error = %err,
+                "db init failed to create parent directory"
+            );
+            err
+        })?;
     }
     Ok(())
 }
