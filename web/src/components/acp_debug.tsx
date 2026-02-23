@@ -1,5 +1,5 @@
 import React from "react";
-import { AcpRawEvent } from "../acp";
+import { AcpRawEvent, AcpSessionCapabilities } from "../acp";
 import { AcpPermissionRecord } from "../api";
 
 type DebugTab = "session" | "runtime" | "permissions" | "raw";
@@ -25,6 +25,7 @@ type AcpRuntimeMetrics = {
 
 type AcpDebugProps = {
   currentMode: string | null;
+  sessionCapabilities?: AcpSessionCapabilities | null;
   rawEvents: AcpRawEvent[];
   acpPermissionHistory: AcpPermissionRecord[];
   acpModeId: string;
@@ -47,9 +48,14 @@ type AcpDebugProps = {
 };
 
 const COPIED_STATE_RESET_DELAY_MS = 1600;
+const EMPTY_MODE_OPTIONS: AcpSessionCapabilities["modes"] = [];
+const EMPTY_MODEL_OPTIONS: AcpSessionCapabilities["models"] = [];
+const EMPTY_CONFIG_OPTIONS: AcpSessionCapabilities["configOptions"] = [];
+const EMPTY_CONFIG_VALUE_OPTIONS: AcpSessionCapabilities["configOptions"][number]["values"] = [];
 
 export function AcpDebug({
   currentMode,
+  sessionCapabilities = null,
   rawEvents,
   acpPermissionHistory,
   acpModeId,
@@ -74,8 +80,22 @@ export function AcpDebug({
   const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
   const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
+  const inputListIdPrefix = React.useId();
   const markdownTotal = runtimeMetrics.markdownCacheHits + runtimeMetrics.markdownCacheMisses;
   const ansiTotal = runtimeMetrics.ansiCacheHits + runtimeMetrics.ansiCacheMisses;
+  const modeOptions = sessionCapabilities?.modes ?? EMPTY_MODE_OPTIONS;
+  const modelOptions = sessionCapabilities?.models ?? EMPTY_MODEL_OPTIONS;
+  const configOptions = sessionCapabilities?.configOptions ?? EMPTY_CONFIG_OPTIONS;
+  const selectedConfig = React.useMemo(() => {
+    const selectedId = acpConfigId.trim();
+    if (!selectedId) return null;
+    return configOptions.find((option) => option.id === selectedId) ?? null;
+  }, [acpConfigId, configOptions]);
+  const configValueOptions = selectedConfig?.values ?? EMPTY_CONFIG_VALUE_OPTIONS;
+  const modeListId = `${inputListIdPrefix}-mode-options`;
+  const modelListId = `${inputListIdPrefix}-model-options`;
+  const configListId = `${inputListIdPrefix}-config-options`;
+  const configValueListId = `${inputListIdPrefix}-config-value-options`;
   const payloadParseSuccess = Math.max(
     0,
     runtimeMetrics.payloadParses - runtimeMetrics.payloadParseFailures
@@ -163,12 +183,61 @@ export function AcpDebug({
           <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Session Controls</h4>
           <div className="acp-control-meta text-sm text-slate-600">
             Current mode: {currentMode ?? "unknown"}
+            {sessionCapabilities?.currentModelId ? (
+              <span className="ml-2">Current model: {sessionCapabilities.currentModelId}</span>
+            ) : null}
           </div>
+          {sessionCapabilities ? (
+            <div className="acp-control-meta text-xs text-slate-500">
+              detected capabilities: {modeOptions.length} modes, {modelOptions.length} models, {configOptions.length} config options
+            </div>
+          ) : (
+            <div className="acp-control-meta text-xs text-slate-500">
+              capabilities not published by current ACP provider; manual input is still available
+            </div>
+          )}
+          {modeOptions.length > 0 && (
+            <datalist id={modeListId}>
+              {modeOptions.map((mode) => (
+                <option key={mode.id} value={mode.id}>
+                  {mode.name}
+                </option>
+              ))}
+            </datalist>
+          )}
+          {modelOptions.length > 0 && (
+            <datalist id={modelListId}>
+              {modelOptions.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
+                </option>
+              ))}
+            </datalist>
+          )}
+          {configOptions.length > 0 && (
+            <datalist id={configListId}>
+              {configOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </datalist>
+          )}
+          {configValueOptions.length > 0 && (
+            <datalist id={configValueListId}>
+              {configValueOptions.map((option) => (
+                <option key={`${option.group ?? "default"}-${option.value}`} value={option.value}>
+                  {option.groupName ? `${option.groupName}: ${option.name}` : option.name}
+                </option>
+              ))}
+            </datalist>
+          )}
           <div className="form-row flex flex-col gap-2 sm:flex-row">
             <input
               className={debugInputClassName}
               placeholder="Mode ID"
               value={acpModeId}
+              list={modeOptions.length > 0 ? modeListId : undefined}
               onChange={(e) => onAcpModeIdChange(e.target.value)}
             />
             <button className={debugSecondaryButtonClassName} onClick={onAcpSetMode} disabled={!canControlAcp}>
@@ -180,6 +249,7 @@ export function AcpDebug({
               className={debugInputClassName}
               placeholder="Model ID"
               value={acpModelId}
+              list={modelOptions.length > 0 ? modelListId : undefined}
               onChange={(e) => onAcpModelIdChange(e.target.value)}
             />
             <button className={debugSecondaryButtonClassName} onClick={onAcpSetModel} disabled={!canControlAcp}>
@@ -191,12 +261,14 @@ export function AcpDebug({
               className={debugInputClassName}
               placeholder="Config ID"
               value={acpConfigId}
+              list={configOptions.length > 0 ? configListId : undefined}
               onChange={(e) => onAcpConfigIdChange(e.target.value)}
             />
             <input
               className={debugInputClassName}
               placeholder="Config Value ID"
               value={acpConfigValue}
+              list={configValueOptions.length > 0 ? configValueListId : undefined}
               onChange={(e) => onAcpConfigValueChange(e.target.value)}
             />
             <button className={debugSecondaryButtonClassName} onClick={onAcpSetConfig} disabled={!canControlAcp}>

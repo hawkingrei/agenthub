@@ -670,6 +670,29 @@ async fn dispatch_acp_command(
     }
 }
 
+async fn emit_session_capabilities_event(
+    event_sink: Arc<dyn AcpEventSink>,
+    modes: Option<Value>,
+    models: Option<Value>,
+    config_options: Option<Value>,
+) {
+    if modes.is_none() && models.is_none() && config_options.is_none() {
+        return;
+    }
+    event_sink
+        .emit_raw(
+            AcpStream::Acp,
+            serde_json::json!({
+                "type": "session_capabilities",
+                "modes": modes,
+                "models": models,
+                "config_options": config_options,
+            })
+            .to_string(),
+        )
+        .await;
+}
+
 pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
     let SpawnAcpSessionRequest {
         event_sink,
@@ -761,7 +784,23 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     request = request.meta(meta);
                 }
                 match conn.load_session(request).await {
-                    Ok(_) => {
+                    Ok(response) => {
+                        emit_session_capabilities_event(
+                            event_sink.clone(),
+                            response
+                                .modes
+                                .as_ref()
+                                .and_then(|modes| serde_json::to_value(modes).ok()),
+                            response
+                                .models
+                                .as_ref()
+                                .and_then(|models| serde_json::to_value(models).ok()),
+                            response
+                                .config_options
+                                .as_ref()
+                                .and_then(|options| serde_json::to_value(options).ok()),
+                        )
+                        .await;
                         event_sink
                             .emit_raw(
                                 AcpStream::System,
@@ -790,6 +829,22 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         return;
                     }
                 };
+                emit_session_capabilities_event(
+                    event_sink.clone(),
+                    session
+                        .modes
+                        .as_ref()
+                        .and_then(|modes| serde_json::to_value(modes).ok()),
+                    session
+                        .models
+                        .as_ref()
+                        .and_then(|models| serde_json::to_value(models).ok()),
+                    session
+                        .config_options
+                        .as_ref()
+                        .and_then(|options| serde_json::to_value(options).ok()),
+                )
+                .await;
                 session_id = Some(session.session_id.to_string());
             }
 
@@ -1283,16 +1338,32 @@ impl AcpPermissionService {
 #[cfg(test)]
 mod tests {
     use super::{
-        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle, AcpSendError,
-        build_actor_mailbox_mcp_server, load_mcp_servers_from_path,
-        should_queue_while_prompt_running,
+        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpEventSink, AcpHandle,
+        AcpSendError, AcpStream, build_actor_mailbox_mcp_server, emit_session_capabilities_event,
+        load_mcp_servers_from_path, should_queue_while_prompt_running,
     };
     use agent_client_protocol::McpServer;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::sync::mpsc;
     use uuid::Uuid;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        events: Mutex<Vec<(AcpStream, String)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl AcpEventSink for RecordingSink {
+        async fn emit_raw(&self, stream: AcpStream, message: String) {
+            self.events
+                .lock()
+                .expect("lock events")
+                .push((stream, message));
+        }
+    }
 
     fn test_actor_context() -> AcpActorSkillContext {
         AcpActorSkillContext {
@@ -1482,5 +1553,44 @@ mod tests {
         let names = servers.iter().map(server_name).collect::<Vec<_>>();
         assert!(names.contains(&"local-stdio"));
         assert!(names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME));
+    }
+
+    #[tokio::test]
+    async fn session_capabilities_event_skips_empty_payload() {
+        let sink = Arc::new(RecordingSink::default());
+        emit_session_capabilities_event(sink.clone(), None, None, None).await;
+        let events = sink.events.lock().expect("lock events");
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_capabilities_event_emits_acp_event_payload() {
+        let sink = Arc::new(RecordingSink::default());
+        emit_session_capabilities_event(
+            sink.clone(),
+            Some(serde_json::json!({
+                "current_mode_id": "code",
+                "available_modes": [{ "id": "code", "name": "Code" }],
+            })),
+            None,
+            None,
+        )
+        .await;
+
+        let events = sink.events.lock().expect("lock events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, AcpStream::Acp);
+        let payload: serde_json::Value = serde_json::from_str(&events[0].1).expect("parse payload");
+        assert_eq!(
+            payload.get("type").and_then(|value| value.as_str()),
+            Some("session_capabilities")
+        );
+        assert_eq!(
+            payload
+                .get("modes")
+                .and_then(|modes| modes.get("current_mode_id"))
+                .and_then(|value| value.as_str()),
+            Some("code")
+        );
     }
 }

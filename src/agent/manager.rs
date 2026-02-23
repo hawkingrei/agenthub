@@ -30,6 +30,7 @@ use crate::acp::{
     SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context, spawn_acp_session,
 };
 use crate::auth::AuthService;
+use crate::config::AcpProviderDefaults;
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 
@@ -40,7 +41,7 @@ pub struct AgentManager {
     auth: Arc<AuthService>,
     proxy_env: Vec<(String, String)>,
     codex_acp_binary: String,
-    acp_default_mode: Option<String>,
+    acp_provider_defaults: HashMap<String, AcpProviderDefaults>,
     permissions: Arc<AcpPermissionService>,
     starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
@@ -49,6 +50,7 @@ pub struct AgentManager {
 const ACP_PROVIDER_CODEX: &str = "codex";
 const ACP_PROVIDER_GEMINI: &str = "gemini";
 const ACP_PROVIDER_KIMI: &str = "kimi";
+const ACP_PROVIDER_LINKERDOG: &str = "linkerdog";
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
@@ -240,7 +242,7 @@ impl AgentManager {
         push: Arc<PushService>,
         proxy_env: Vec<(String, String)>,
         codex_acp_binary: String,
-        acp_default_mode: Option<String>,
+        acp_provider_defaults: HashMap<String, AcpProviderDefaults>,
         permissions: Arc<AcpPermissionService>,
         auth: Arc<AuthService>,
     ) -> Self {
@@ -250,7 +252,7 @@ impl AgentManager {
             auth,
             proxy_env,
             codex_acp_binary,
-            acp_default_mode,
+            acp_provider_defaults,
             permissions,
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
@@ -1162,23 +1164,29 @@ impl AgentManager {
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            if provider == ACP_PROVIDER_CODEX {
-                if let Some(mode_id) = self.acp_default_mode.as_deref()
+            if let Some(defaults) = self.acp_provider_defaults.get(provider) {
+                if let Some(mode_id) = defaults.default_mode.as_deref()
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
                     tracing::warn!(
-                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
+                        "set acp default mode failed: agent_id={}, provider={}, mode_id={}, error={}",
                         agent.id,
+                        provider,
                         mode_id,
                         err
                     );
                 }
-            } else if self.acp_default_mode.is_some() {
-                tracing::debug!(
-                    "acp default mode ignored for provider {} (agent_id={})",
-                    provider,
-                    agent.id
-                );
+                if let Some(model_id) = defaults.default_model.as_deref()
+                    && let Err(err) = handle.set_model(model_id.to_string()).await
+                {
+                    tracing::warn!(
+                        "set acp default model failed: agent_id={}, provider={}, model_id={}, error={}",
+                        agent.id,
+                        provider,
+                        model_id,
+                        err
+                    );
+                }
             }
             AgentInput::Acp(handle.clone())
         } else {

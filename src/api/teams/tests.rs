@@ -92,7 +92,7 @@ async fn build_test_state_with_db_source(
         push.clone(),
         Vec::new(),
         "agenthub-codex-acp".to_string(),
-        None,
+        std::collections::HashMap::new(),
         permissions.clone(),
         auth.clone(),
     ));

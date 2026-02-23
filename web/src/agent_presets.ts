@@ -1,4 +1,4 @@
-export type AgentPresetId = "codex" | "gemini" | "kimi";
+export type AgentPresetId = "codex" | "gemini" | "kimi" | "linkerdog";
 
 export type AgentPreset = {
   id: AgentPresetId;
@@ -29,6 +29,13 @@ const PRESETS: AgentPreset[] = [
     command: "kimi",
     args: ["acp"],
     provider: "kimi",
+  },
+  {
+    id: "linkerdog",
+    label: "Linkerdog CLI",
+    command: "linkerdog",
+    args: ["acp"],
+    provider: "linkerdog",
   },
 ];
 
@@ -63,6 +70,7 @@ export function resolveAcpProvider(command: string): string | null {
   if (name === "agenthub-codex-acp" || name === "codex-acp") return "codex";
   if (name === "gemini") return "gemini";
   if (name === "kimi") return "kimi";
+  if (name === "linkerdog") return "linkerdog";
   return null;
 }
 
@@ -77,6 +85,7 @@ export function formatAgentModelLabel(
     if (provider === "codex") return "Codex";
     if (provider === "gemini") return "Gemini";
     if (provider === "kimi") return "Kimi";
+    if (provider === "linkerdog") return "Linkerdog";
     return provider;
   }
   const name = command.split(/[\\/]/).pop()?.trim();

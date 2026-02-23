@@ -59,7 +59,7 @@ impl AppState {
             push.clone(),
             config.proxy_env(),
             config.codex_acp_binary(),
-            config.codex_acp_default_mode(),
+            config.acp_provider_defaults(),
             acp_permissions.clone(),
             auth.clone(),
         ));

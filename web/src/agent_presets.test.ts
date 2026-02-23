@@ -12,13 +12,14 @@ import {
 describe("agent presets", () => {
   it("lists known presets", () => {
     const ids = listAgentPresets().map((preset) => preset.id);
-    expect(ids).toEqual(["codex", "gemini", "kimi"]);
+    expect(ids).toEqual(["codex", "gemini", "kimi", "linkerdog"]);
   });
 
   it("validates preset ids", () => {
     expect(isAgentPresetId("codex")).toBe(true);
     expect(isAgentPresetId("gemini")).toBe(true);
     expect(isAgentPresetId("kimi")).toBe(true);
+    expect(isAgentPresetId("linkerdog")).toBe(true);
     expect(isAgentPresetId("unknown")).toBe(false);
   });
 
@@ -33,6 +34,7 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("agenthub-codex-acp")).toBe("codex");
     expect(resolveAcpProvider("/usr/local/bin/gemini")).toBe("gemini");
     expect(resolveAcpProvider("kimi")).toBe("kimi");
+    expect(resolveAcpProvider("linkerdog")).toBe("linkerdog");
     expect(resolveAcpProvider("unknown")).toBe(null);
   });
 
@@ -42,5 +44,6 @@ describe("agent presets", () => {
       .toBe("gemini-1.5-pro");
     expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
       .toBe("moonshot-v1");
+    expect(formatAgentModelLabel("linkerdog", [])).toBe("Linkerdog");
   });
 });

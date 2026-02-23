@@ -481,7 +481,7 @@ mod tests {
             push.clone(),
             Vec::new(),
             "agenthub-codex-acp".to_string(),
-            None,
+            std::collections::HashMap::new(),
             permissions.clone(),
             auth.clone(),
         ));

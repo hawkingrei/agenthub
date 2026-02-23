@@ -2391,6 +2391,7 @@ export function App() {
   const acpDebugProps = useMemo(
     () => ({
       currentMode: acpView.currentMode,
+      sessionCapabilities: acpView.sessionCapabilities,
       rawEvents: acpView.rawEvents,
       acpPermissionHistory: scopedAcpPermissionHistory,
       acpModeId,
@@ -2412,6 +2413,7 @@ export function App() {
     }),
     [
       acpView.currentMode,
+      acpView.sessionCapabilities,
       acpView.rawEvents,
       scopedAcpPermissionHistory,
       acpModeId,

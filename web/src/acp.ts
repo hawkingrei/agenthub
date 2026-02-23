@@ -53,6 +53,43 @@ export type AcpCommand = {
   meta?: unknown;
 };
 
+export type AcpSessionModeOption = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type AcpSessionModelOption = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type AcpSessionConfigValueOption = {
+  value: string;
+  name: string;
+  description?: string;
+  group?: string;
+  groupName?: string;
+};
+
+export type AcpSessionConfigOption = {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  currentValue: string | null;
+  values: AcpSessionConfigValueOption[];
+};
+
+export type AcpSessionCapabilities = {
+  currentModeId: string | null;
+  modes: AcpSessionModeOption[];
+  currentModelId: string | null;
+  models: AcpSessionModelOption[];
+  configOptions: AcpSessionConfigOption[];
+};
+
 export type AcpRawEvent = {
   ts: number;
   type: string;
@@ -81,6 +118,7 @@ export type AcpView = {
   plan: AcpPlanView | null;
   commands: AcpCommand[];
   currentMode: string | null;
+  sessionCapabilities: AcpSessionCapabilities | null;
   runStatus: AcpRunStatus | null;
   thinkingStartTs: number | null;
 };
@@ -95,6 +133,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
   let plan: AcpPlanView | null = null;
   let commands: AcpCommand[] = [];
   let currentMode: string | null = null;
+  let sessionCapabilities: AcpSessionCapabilities | null = null;
   let runStatus: AcpRunStatus | null = null;
   let thinkingStartTs: number | null = null;
   let inThinking = false;
@@ -310,6 +349,25 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       }
       if (parsed.current_mode_id) {
         currentMode = String(parsed.current_mode_id);
+        if (sessionCapabilities) {
+          sessionCapabilities = {
+            ...sessionCapabilities,
+            currentModeId: currentMode,
+          };
+        }
+      }
+    }
+    if (parsed.type === "session_capabilities") {
+      if (inThinking) {
+        inThinking = false;
+        thinkingStartTs = null;
+      }
+      const parsedCapabilities = parseSessionCapabilities(parsed);
+      if (parsedCapabilities) {
+        sessionCapabilities = parsedCapabilities;
+        if (currentMode == null && parsedCapabilities.currentModeId) {
+          currentMode = parsedCapabilities.currentModeId;
+        }
       }
     }
     if (parsed.type === "run_status") {
@@ -332,16 +390,160 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       messages.length > 0 ||
       limitedRawEvents.length > 0 ||
       (plan?.entries?.length ?? 0) > 0 ||
-      commands.length > 0,
+      commands.length > 0 ||
+      sessionCapabilities != null,
     toolCalls,
     messages,
     rawEvents: limitedRawEvents,
     plan,
     commands,
     currentMode,
+    sessionCapabilities,
     runStatus,
     thinkingStartTs,
   };
+}
+
+function parseSessionCapabilities(
+  payload: Record<string, unknown>
+): AcpSessionCapabilities | null {
+  const modesState = toObjectRecord(payload.modes);
+  const modelsState = toObjectRecord(payload.models);
+  const configOptionsRaw = Array.isArray(payload.config_options)
+    ? payload.config_options
+    : Array.isArray(payload.configOptions)
+      ? payload.configOptions
+      : null;
+  if (!modesState && !modelsState && !configOptionsRaw) {
+    return null;
+  }
+  return {
+    currentModeId: asStringOrNull(
+      modesState?.currentModeId ?? modesState?.current_mode_id
+    ),
+    modes: parseModeOptions(
+      modesState?.availableModes ?? modesState?.available_modes
+    ),
+    currentModelId: asStringOrNull(
+      modelsState?.currentModelId ?? modelsState?.current_model_id
+    ),
+    models: parseModelOptions(
+      modelsState?.availableModels ?? modelsState?.available_models
+    ),
+    configOptions: parseConfigOptions(configOptionsRaw),
+  };
+}
+
+function parseModeOptions(raw: unknown): AcpSessionModeOption[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const item = toObjectRecord(entry);
+      if (!item) return null;
+      const id = asStringOrNull(item.id);
+      if (!id) return null;
+      const name = asStringOrNull(item.name) ?? id;
+      const description = asStringOrNull(item.description) ?? undefined;
+      return { id, name, description } satisfies AcpSessionModeOption;
+    })
+    .filter((entry): entry is AcpSessionModeOption => entry != null);
+}
+
+function parseModelOptions(raw: unknown): AcpSessionModelOption[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const item = toObjectRecord(entry);
+      if (!item) return null;
+      const id = asStringOrNull(item.modelId ?? item.model_id);
+      if (!id) return null;
+      const name = asStringOrNull(item.name) ?? id;
+      const description = asStringOrNull(item.description) ?? undefined;
+      return { id, name, description } satisfies AcpSessionModelOption;
+    })
+    .filter((entry): entry is AcpSessionModelOption => entry != null);
+}
+
+function parseConfigOptions(raw: unknown): AcpSessionConfigOption[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const item = toObjectRecord(entry);
+      if (!item) return null;
+      const id = asStringOrNull(item.id);
+      if (!id) return null;
+      const name = asStringOrNull(item.name) ?? id;
+      const description = asStringOrNull(item.description) ?? undefined;
+      const category = asStringOrNull(item.category) ?? undefined;
+      const currentValue = asStringOrNull(item.currentValue ?? item.current_value);
+      const values = parseConfigValueOptions(item.options);
+      return {
+        id,
+        name,
+        description,
+        category,
+        currentValue,
+        values,
+      } satisfies AcpSessionConfigOption;
+    })
+    .filter((entry): entry is AcpSessionConfigOption => entry != null);
+}
+
+function parseConfigValueOptions(raw: unknown): AcpSessionConfigValueOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AcpSessionConfigValueOption[] = [];
+  for (const entry of raw) {
+    const candidate = toObjectRecord(entry);
+    if (!candidate) continue;
+    const maybeGroupedOptions = candidate.options;
+    if (Array.isArray(maybeGroupedOptions)) {
+      const group = asStringOrNull(candidate.group) ?? undefined;
+      const groupName = asStringOrNull(candidate.name) ?? undefined;
+      for (const groupedOption of maybeGroupedOptions) {
+        const parsed = parseConfigValueOption(groupedOption, group, groupName);
+        if (parsed) out.push(parsed);
+      }
+      continue;
+    }
+    const parsed = parseConfigValueOption(entry);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+function parseConfigValueOption(
+  raw: unknown,
+  group?: string,
+  groupName?: string
+): AcpSessionConfigValueOption | null {
+  const item = toObjectRecord(raw);
+  if (!item) return null;
+  const value = asStringOrNull(item.value);
+  if (!value) return null;
+  const name = asStringOrNull(item.name) ?? value;
+  const description = asStringOrNull(item.description) ?? undefined;
+  return {
+    value,
+    name,
+    description,
+    group,
+    groupName,
+  };
+}
+
+function toObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asStringOrNull(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
 }
 
 function parseAcpEvent(line: string): Record<string, unknown> | null {

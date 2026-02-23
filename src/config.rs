@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
@@ -54,6 +54,20 @@ pub struct WorktreeConfig {
 pub struct CodexAcpConfig {
     pub binary: Option<String>,
     pub default_mode: Option<String>,
+    pub default_model: Option<String>,
+    pub provider_defaults: Option<HashMap<String, AcpProviderDefaultsConfig>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AcpProviderDefaultsConfig {
+    pub default_mode: Option<String>,
+    pub default_model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AcpProviderDefaults {
+    pub default_mode: Option<String>,
+    pub default_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -214,6 +228,67 @@ impl AppConfig {
             .map(|value| value.to_string())
     }
 
+    pub fn codex_acp_default_model(&self) -> Option<String> {
+        self.codex_acp
+            .as_ref()
+            .and_then(|c| c.default_model.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    pub fn acp_provider_defaults(&self) -> HashMap<String, AcpProviderDefaults> {
+        let mut defaults = HashMap::new();
+        if let Some(provider_defaults) = self
+            .codex_acp
+            .as_ref()
+            .and_then(|c| c.provider_defaults.as_ref())
+        {
+            for (provider_key, config) in provider_defaults {
+                let provider = provider_key.trim().to_ascii_lowercase();
+                if provider.is_empty() {
+                    continue;
+                }
+                let default_mode = config
+                    .default_mode
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let default_model = config
+                    .default_model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                if default_mode.is_none() && default_model.is_none() {
+                    continue;
+                }
+                defaults.insert(
+                    provider,
+                    AcpProviderDefaults {
+                        default_mode,
+                        default_model,
+                    },
+                );
+            }
+        }
+
+        let legacy_default_mode = self.codex_acp_default_mode();
+        let legacy_default_model = self.codex_acp_default_model();
+        if legacy_default_mode.is_some() || legacy_default_model.is_some() {
+            let entry = defaults.entry("codex".to_string()).or_default();
+            if entry.default_mode.is_none() {
+                entry.default_mode = legacy_default_mode;
+            }
+            if entry.default_model.is_none() {
+                entry.default_model = legacy_default_model;
+            }
+        }
+
+        defaults
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -366,6 +441,7 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
         "AGENTHUB_CODEX_ACP_DEFAULT_MODE",
+        "AGENTHUB_CODEX_ACP_DEFAULT_MODEL",
         "AGENTHUB_HISTORY_EVENT_RETENTION_DAYS",
         "AGENTHUB_HISTORY_VACUUM_ON_CLEANUP",
         "AGENTHUB_INTERNAL_GRPC_ENABLED",
@@ -408,7 +484,11 @@ fn expand_tilde(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, HistoryConfig, WorktreeConfig};
+    use super::{
+        AcpProviderDefaults, AcpProviderDefaultsConfig, AppConfig, CodexAcpConfig, HistoryConfig,
+        WorktreeConfig,
+    };
+    use std::collections::HashMap;
 
     #[test]
     fn default_worktree_root_uses_builtin_default() {
@@ -506,5 +586,101 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.history_event_retention_days(), None);
+    }
+
+    #[test]
+    fn acp_provider_defaults_supports_legacy_codex_defaults() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: Some(" code ".to_string()),
+                default_model: Some(" gpt-5 ".to_string()),
+                provider_defaults: None,
+            }),
+            ..Default::default()
+        };
+
+        let defaults = config.acp_provider_defaults();
+        assert_eq!(
+            defaults.get("codex"),
+            Some(&AcpProviderDefaults {
+                default_mode: Some("code".to_string()),
+                default_model: Some("gpt-5".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn acp_provider_defaults_reads_provider_map() {
+        let provider_defaults = HashMap::from([
+            (
+                "Gemini".to_string(),
+                AcpProviderDefaultsConfig {
+                    default_mode: Some("default".to_string()),
+                    default_model: Some("gemini-2.5-pro".to_string()),
+                },
+            ),
+            (
+                "linkerdog".to_string(),
+                AcpProviderDefaultsConfig {
+                    default_mode: Some("planning".to_string()),
+                    default_model: None,
+                },
+            ),
+        ]);
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: None,
+                default_model: None,
+                provider_defaults: Some(provider_defaults),
+            }),
+            ..Default::default()
+        };
+
+        let defaults = config.acp_provider_defaults();
+        assert_eq!(
+            defaults.get("gemini"),
+            Some(&AcpProviderDefaults {
+                default_mode: Some("default".to_string()),
+                default_model: Some("gemini-2.5-pro".to_string()),
+            })
+        );
+        assert_eq!(
+            defaults.get("linkerdog"),
+            Some(&AcpProviderDefaults {
+                default_mode: Some("planning".to_string()),
+                default_model: None,
+            })
+        );
+    }
+
+    #[test]
+    fn acp_provider_defaults_prefers_provider_specific_codex_values() {
+        let provider_defaults = HashMap::from([(
+            "codex".to_string(),
+            AcpProviderDefaultsConfig {
+                default_mode: Some("safe".to_string()),
+                default_model: None,
+            },
+        )]);
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: Some("code".to_string()),
+                default_model: Some("gpt-5".to_string()),
+                provider_defaults: Some(provider_defaults),
+            }),
+            ..Default::default()
+        };
+
+        let defaults = config.acp_provider_defaults();
+        assert_eq!(
+            defaults.get("codex"),
+            Some(&AcpProviderDefaults {
+                default_mode: Some("safe".to_string()),
+                default_model: Some("gpt-5".to_string()),
+            })
+        );
     }
 }

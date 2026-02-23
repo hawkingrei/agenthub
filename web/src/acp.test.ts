@@ -302,4 +302,62 @@ describe("buildAcpView", () => {
     expect(view.thinkingStartTs).toBe(null);
     expect(view.runStatus?.status).toBe("running");
   });
+
+  it("parses session capabilities updates", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "session_capabilities",
+          modes: {
+            currentModeId: "code",
+            availableModes: [
+              { id: "code", name: "Code" },
+              { id: "ask", name: "Ask" },
+            ],
+          },
+          models: {
+            currentModelId: "gpt-5",
+            availableModels: [
+              { modelId: "gpt-5", name: "GPT-5" },
+              { modelId: "gpt-5-mini", name: "GPT-5 Mini" },
+            ],
+          },
+          config_options: [
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              options: [
+                { value: "low", name: "Low" },
+                { value: "medium", name: "Medium" },
+              ],
+            },
+          ],
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.hasAcp).toBe(true);
+    expect(view.currentMode).toBe("code");
+    expect(view.sessionCapabilities?.currentModeId).toBe("code");
+    expect(view.sessionCapabilities?.currentModelId).toBe("gpt-5");
+    expect(view.sessionCapabilities?.modes.map((mode) => mode.id)).toEqual([
+      "code",
+      "ask",
+    ]);
+    expect(view.sessionCapabilities?.models.map((model) => model.id)).toEqual([
+      "gpt-5",
+      "gpt-5-mini",
+    ]);
+    expect(view.sessionCapabilities?.configOptions[0]?.id).toBe("reasoning_effort");
+    expect(view.sessionCapabilities?.configOptions[0]?.values.map((value) => value.value)).toEqual([
+      "low",
+      "medium",
+    ]);
+  });
 });

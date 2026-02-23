@@ -1,9 +1,10 @@
 use super::codec::is_acp_message;
 use super::{
-    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
-    OutputStream, WorktreeMode, acp_provider_for_agent_with_binary, build_runtime_start_policy,
-    ensure_team_leader_workdir_exists, expand_tilde, is_path_allowed, normalize_path,
-    status_from_str, status_to_str, stream_from_str, stream_to_str,
+    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, ACP_PROVIDER_LINKERDOG,
+    AgentRecord, AgentStatus, OutputStream, WorktreeMode, acp_provider_for_agent_with_binary,
+    build_runtime_start_policy, ensure_team_leader_workdir_exists, expand_tilde,
+    is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
+    stream_to_str,
 };
 use crate::acp::AcpActorSkillContext;
 use crate::acp::default_actor_cli_path;
@@ -101,6 +102,14 @@ fn acp_provider_for_agent_requires_expected_args() {
     assert_eq!(
         acp_provider_for_agent_with_binary(codex_bin, "kimi", &["acp".to_string()]),
         Some(ACP_PROVIDER_KIMI)
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "linkerdog", &[]),
+        None
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "linkerdog", &["acp".to_string()]),
+        Some(ACP_PROVIDER_LINKERDOG)
     );
     assert_eq!(
         acp_provider_for_agent_with_binary(codex_bin, "codex-acp", &[]),

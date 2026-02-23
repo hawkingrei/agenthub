@@ -2,7 +2,54 @@ use std::path::Path;
 
 use crate::agent::{AgentStatus, OutputStream, WorktreeMode};
 
-use super::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentManager};
+use super::{
+    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, ACP_PROVIDER_LINKERDOG,
+    AgentManager,
+};
+
+#[derive(Clone, Copy)]
+struct AcpProviderSpec {
+    id: &'static str,
+    command_names: &'static [&'static str],
+    require_args: Option<fn(&[String]) -> bool>,
+    use_configured_binary: bool,
+}
+
+const ACP_PROVIDER_SPECS: &[AcpProviderSpec] = &[
+    AcpProviderSpec {
+        id: ACP_PROVIDER_GEMINI,
+        command_names: &["gemini"],
+        require_args: Some(requires_gemini_acp_flag),
+        use_configured_binary: false,
+    },
+    AcpProviderSpec {
+        id: ACP_PROVIDER_KIMI,
+        command_names: &["kimi"],
+        require_args: Some(requires_acp_subcommand),
+        use_configured_binary: false,
+    },
+    AcpProviderSpec {
+        id: ACP_PROVIDER_LINKERDOG,
+        command_names: &["linkerdog"],
+        require_args: Some(requires_acp_subcommand),
+        use_configured_binary: false,
+    },
+    AcpProviderSpec {
+        id: ACP_PROVIDER_CODEX,
+        command_names: &["agenthub-codex-acp", "codex-acp"],
+        require_args: None,
+        use_configured_binary: true,
+    },
+];
+
+fn requires_gemini_acp_flag(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "--experimental-acp" || arg.starts_with("--experimental-acp="))
+}
+
+fn requires_acp_subcommand(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "acp")
+}
 
 pub(super) fn status_to_str(status: &AgentStatus) -> &'static str {
     match status {
@@ -109,52 +156,32 @@ pub(super) fn acp_provider_for_agent_with_binary(
     command: &str,
     args: &[String],
 ) -> Option<&'static str> {
-    let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
-    match provider {
-        ACP_PROVIDER_GEMINI => {
-            let has_flag = args
-                .iter()
-                .any(|arg| arg == "--experimental-acp" || arg.starts_with("--experimental-acp="));
-            if has_flag {
-                Some(ACP_PROVIDER_GEMINI)
-            } else {
-                None
-            }
-        }
-        ACP_PROVIDER_KIMI => {
-            if args.iter().any(|arg| arg == "acp") {
-                Some(ACP_PROVIDER_KIMI)
-            } else {
-                None
-            }
-        }
-        _ => Some(ACP_PROVIDER_CODEX),
+    let spec = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
+    if let Some(require_args) = spec.require_args
+        && !require_args(args)
+    {
+        return None;
     }
+    Some(spec.id)
 }
 
 fn acp_provider_for_command_with_binary(
     codex_acp_binary: &str,
     command: &str,
-) -> Option<&'static str> {
-    if command == codex_acp_binary {
-        return Some(ACP_PROVIDER_CODEX);
-    }
+) -> Option<&'static AcpProviderSpec> {
     let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
-    match command_name {
-        "gemini" => Some(ACP_PROVIDER_GEMINI),
-        "kimi" => Some(ACP_PROVIDER_KIMI),
-        "agenthub-codex-acp" | "codex-acp" => Some(ACP_PROVIDER_CODEX),
-        name => {
-            let target_name = Path::new(codex_acp_binary)
-                .file_name()
-                .and_then(|n| n.to_str());
-            if target_name == Some(name) {
-                Some(ACP_PROVIDER_CODEX)
-            } else {
-                None
-            }
+    let configured_name = Path::new(codex_acp_binary)
+        .file_name()
+        .and_then(|n| n.to_str());
+    for spec in ACP_PROVIDER_SPECS {
+        let matched_name = spec.command_names.iter().any(|name| *name == command_name);
+        let matched_configured_binary = spec.use_configured_binary
+            && (command == codex_acp_binary || configured_name == Some(command_name));
+        if matched_name || matched_configured_binary {
+            return Some(spec);
         }
     }
+    None
 }
 
 pub(super) fn expand_tilde(path: &str) -> String {

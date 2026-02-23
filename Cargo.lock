@@ -168,6 +168,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-linkerdog-acp"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "agenthub-team-actor"
 version = "0.1.0"
 dependencies = [

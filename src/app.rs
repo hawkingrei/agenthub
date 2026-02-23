@@ -93,13 +93,18 @@ fn log_config_details(
     );
     tracing::info!("effective web_dir: {}", web_dir.unwrap_or("embedded"));
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
-    tracing::info!(
-        "config codex_acp_default_mode: {}",
-        config
-            .codex_acp_default_mode()
-            .as_deref()
-            .unwrap_or("<unset>")
-    );
+    let provider_defaults = config.acp_provider_defaults();
+    tracing::info!("config acp_provider_defaults: {}", provider_defaults.len());
+    if let Some(codex_defaults) = provider_defaults.get("codex") {
+        tracing::info!(
+            "config codex_default_mode: {}",
+            codex_defaults.default_mode.as_deref().unwrap_or("<unset>")
+        );
+        tracing::info!(
+            "config codex_default_model: {}",
+            codex_defaults.default_model.as_deref().unwrap_or("<unset>")
+        );
+    }
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
     tracing::info!(
         "config vapid_keys_path: {}",

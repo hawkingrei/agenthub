@@ -12,6 +12,7 @@ const baseView: AcpView = {
   plan: null,
   commands: [],
   currentMode: null,
+  sessionCapabilities: null,
   runStatus: null,
   thinkingStartTs: null,
 };
