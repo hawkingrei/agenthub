@@ -32,6 +32,7 @@ type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
   busy: string | null;
   onDeleteTeam: () => Promise<void> | void;
+  onStartTeam: () => Promise<void> | void;
   runStatusFilter: TeamRunStatusFilter;
   runStatusFilterOptions: TeamRunStatusFilterOption[];
   onRunStatusFilterChange: (value: TeamRunStatusFilter) => void;
@@ -54,6 +55,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     selectedTeam,
     busy,
     onDeleteTeam,
+    onStartTeam,
     runStatusFilter,
     runStatusFilterOptions,
     onRunStatusFilterChange,
@@ -93,6 +95,20 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         <p className="muted text-sm">
           Start or load runs from <code>Debug → Run Ops</code>. This panel focuses on run browsing.
         </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-slate-600">Quick start a new run for this team.</span>
+          <button
+            onClick={() => {
+              void onStartTeam();
+            }}
+            disabled={busy === "create-run" || !selectedTeamId}
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            title="Start a new run for the selected team"
+            aria-label="Start team"
+          >
+            {busy === "create-run" ? "Starting..." : "Start Team"}
+          </button>
+        </div>
         <div className={RUN_PANEL_LIST_HEAD_CLASS}>
           <h3>Runs</h3>
           <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>

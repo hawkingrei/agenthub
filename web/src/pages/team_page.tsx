@@ -2168,6 +2168,7 @@ export function TeamPage(props: TeamPageProps) {
                 selectedTeam={selectedTeam}
                 busy={busy}
                 onDeleteTeam={onDeleteTeam}
+                onStartTeam={onCreateRun}
                 runStatusFilter={runStatusFilter}
                 runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                 onRunStatusFilterChange={onRunStatusFilterChange}

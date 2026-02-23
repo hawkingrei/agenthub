@@ -353,6 +353,7 @@ describe("team panels interactions", () => {
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
     const onDeleteTeam = vi.fn();
+    const onStartTeam = vi.fn();
     const onRunStatusFilterChange = vi.fn();
     const onRefreshRuns = vi.fn();
     const onActiveRunChange = vi.fn();
@@ -366,6 +367,7 @@ describe("team panels interactions", () => {
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={onDeleteTeam}
+          onStartTeam={onStartTeam}
           runStatusFilter="all"
           runStatusFilterOptions={[
             { value: "all", label: "All" },
@@ -397,11 +399,13 @@ describe("team panels interactions", () => {
     );
 
     clickElement(findButtonByText(container, "Delete Team"));
+    clickElement(findButtonByText(container, "Start Team"));
     clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
     expect(onDeleteTeam).toHaveBeenCalledTimes(1);
+    expect(onStartTeam).toHaveBeenCalledTimes(1);
     expect(onRunStatusFilterChange).toHaveBeenCalledWith("working");
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
@@ -413,6 +417,7 @@ describe("team panels interactions", () => {
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={() => {}}
+          onStartTeam={() => {}}
           runStatusFilter="completed"
           runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
           onRunStatusFilterChange={() => {}}
@@ -445,6 +450,7 @@ describe("team panels interactions", () => {
           selectedTeam={buildTeam()}
           busy={null}
           onDeleteTeam={() => {}}
+          onStartTeam={() => {}}
           runStatusFilter="all"
           runStatusFilterOptions={[{ value: "all", label: "All" }]}
           onRunStatusFilterChange={() => {}}
@@ -465,6 +471,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Debug → Run Ops");
+    expect(container.textContent).toContain("Start Team");
     expect(container.textContent).not.toContain("Create Run");
     expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
   });
