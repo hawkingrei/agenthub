@@ -13,6 +13,8 @@ const baseProps: React.ComponentProps<typeof InputDock> = {
   onInterrupt: () => {},
   onNavigateHistory: () => {},
   onSelectHistoryCommand: () => {},
+  onJumpToBottom: () => {},
+  showConversationJump: false,
   isComposingRef: { current: false },
 };
 
@@ -68,8 +70,14 @@ describe("InputDock interrupt placement", () => {
     expect(sendPos).toBeGreaterThan(textareaPos);
   });
 
-  it("does not render jump-to-bottom control inside input dock", () => {
-    const html = renderDock();
-    expect(html).not.toContain('class="jump-bottom"');
+  it("keeps jump-to-bottom control outside the editor grid flow", () => {
+    const html = renderDock({ showConversationJump: true });
+    const jumpPos = html.indexOf('class="jump-bottom"');
+    const editorRowPos = html.indexOf('class="input-editor-row"');
+    const textareaPos = html.indexOf("<textarea", editorRowPos);
+    expect(jumpPos).toBeGreaterThanOrEqual(0);
+    expect(editorRowPos).toBeGreaterThanOrEqual(0);
+    expect(jumpPos).toBeLessThan(editorRowPos);
+    expect(textareaPos).toBeGreaterThan(editorRowPos);
   });
 });

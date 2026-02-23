@@ -405,13 +405,6 @@ section {
   height: 100%;
 }
 
-.output-input-stack {
-  display: grid;
-  gap: 6px;
-  margin-top: auto;
-  flex: 0 0 auto;
-}
-
 body:not(.teams-page) input:not([class*="mantine-"]) {
   width: 100%;
   padding: 10px;
@@ -509,6 +502,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   border-radius: 12px;
   padding: 10px;
   box-shadow: var(--shadow);
+  margin-top: auto;
   position: relative;
   display: grid;
   gap: 8px;
@@ -620,15 +614,11 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   height: 44px;
 }
 
-.output-jump-row {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 0;
-}
-
 .jump-bottom {
-  position: relative;
-  margin: 0 0 2px auto;
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 32px;
   height: 32px;
   border-radius: 999px;
@@ -639,8 +629,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   align-items: center;
   justify-content: center;
   padding: 0;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
-  z-index: 1;
+  z-index: 40;
 }
 
 .jump-bottom .bi {
@@ -2727,6 +2716,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .jump-bottom {
     width: 30px;
     height: 30px;
+    right: 12px;
   }
 
   .acp-bubble {
