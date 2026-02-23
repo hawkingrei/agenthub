@@ -981,6 +981,155 @@ async fn teams_router_http_contract() {
 }
 
 #[tokio::test]
+async fn teams_router_delete_team_cleans_member_session_dependents_without_500() {
+    let state = build_test_state().await;
+    let token = create_auth_token(&state).await;
+    let app = super::router(state.clone());
+    let member_agent_id = "planner";
+    let now = Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+        "#,
+    )
+    .bind(member_agent_id)
+    .bind("planner-agent")
+    .bind("/tmp")
+    .bind("/bin/sh")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("running")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert member agent");
+
+    let session_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind(&session_id)
+    .bind(member_agent_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert member session");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind(member_agent_id)
+    .bind(&session_id)
+    .bind("1")
+    .bind(now)
+    .bind("stdout")
+    .bind("event payload")
+    .execute(&state.db)
+    .await
+    .expect("insert member event");
+
+    let permission_request_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO acp_permission_requests (
+            id,
+            agent_id,
+            session_id,
+            acp_session_id,
+            tool_call_id,
+            options_json,
+            tool_call_json,
+            status,
+            selected_option_id,
+            created_at,
+            responded_at
+        )
+        VALUES (?1, ?2, ?3, NULL, NULL, ?4, NULL, ?5, NULL, ?6, NULL)
+        "#,
+    )
+    .bind(&permission_request_id)
+    .bind(member_agent_id)
+    .bind(&session_id)
+    .bind("[]")
+    .bind("pending")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert acp permission request");
+
+    let create_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": format!("router-delete-fk-{}", Uuid::new_v4()),
+                "description": "delete fk regression",
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner","role":"leader"}]
+                }
+            })),
+        ))
+        .await
+        .expect("create team via router");
+    assert_eq!(create_team_resp.status(), StatusCode::OK);
+    let created_team = decode_json_body(create_team_resp).await;
+    let team_id = created_team["id"].as_str().expect("team id").to_string();
+
+    let delete_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("delete team via router");
+    assert_eq!(delete_team_resp.status(), StatusCode::OK);
+    let deleted_team = decode_json_body(delete_team_resp).await;
+    assert_eq!(deleted_team["id"], team_id);
+
+    let session_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1",
+    )
+    .bind(member_agent_id)
+    .fetch_one(&state.db)
+    .await
+    .expect("count member sessions");
+    assert_eq!(session_count, 0);
+
+    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE agent_id = ?1")
+        .bind(member_agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count member events");
+    assert_eq!(event_count, 0);
+
+    let permission_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM acp_permission_requests WHERE agent_id = ?1")
+            .bind(member_agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count permission requests");
+    assert_eq!(permission_count, 0);
+}
+
+#[tokio::test]
 async fn teams_router_resume_restart_strategy_survives_state_reopen() {
     let base = std::env::temp_dir().join(format!("agenthub-team-run-recover-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&base).expect("create temp base");
