@@ -19,4 +19,20 @@ describe("parseApiErrorMessage", () => {
   it("reads object error field", () => {
     expect(parseApiErrorMessage({ error: "denied" })).toBe("denied");
   });
+
+  it("reads object message field and parses JSON-shaped payload", () => {
+    expect(parseApiErrorMessage({ message: "{\"error\":\"bad credentials\"}" })).toBe(
+      "bad credentials"
+    );
+  });
+
+  it("returns null for unsupported object shape", () => {
+    expect(parseApiErrorMessage({ detail: "x" })).toBeNull();
+  });
+
+  it("returns null for empty and nullish inputs", () => {
+    expect(parseApiErrorMessage(new Error(""))).toBeNull();
+    expect(parseApiErrorMessage(null)).toBeNull();
+    expect(parseApiErrorMessage(undefined)).toBeNull();
+  });
 });

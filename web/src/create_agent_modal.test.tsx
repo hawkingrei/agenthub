@@ -2,7 +2,12 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
-import { CreateAgentModal } from "./components/create_agent_modal";
+import {
+  CreateAgentModal,
+  resolveCreateAgentPresetId,
+  resolveCreateAgentWorktreeMode,
+  shouldAutoExpandCreateAgentAdvancedOptions,
+} from "./components/create_agent_modal";
 
 const baseProps = {
   agentName: "",
@@ -96,5 +101,34 @@ describe("CreateAgentModal", () => {
     });
     expect(html).toContain("Workdir (optional override)");
     expect(html).toContain('value="/tmp/custom-agent-worktree"');
+  });
+
+  it("resolves preset id with fallback to default", () => {
+    expect(resolveCreateAgentPresetId("gemini")).toBe("gemini");
+    expect(resolveCreateAgentPresetId("invalid-preset")).toBe("codex");
+    expect(resolveCreateAgentPresetId(null)).toBe("codex");
+  });
+
+  it("resolves worktree mode only for allowed values", () => {
+    expect(resolveCreateAgentWorktreeMode("use_existing")).toBe("use_existing");
+    expect(resolveCreateAgentWorktreeMode("create_worktree")).toBe("create_worktree");
+    expect(resolveCreateAgentWorktreeMode("reuse_worktree")).toBe("reuse_worktree");
+    expect(resolveCreateAgentWorktreeMode("invalid-mode")).toBeNull();
+    expect(resolveCreateAgentWorktreeMode(null)).toBeNull();
+  });
+
+  it("auto-expands advanced options only when enabled and needed", () => {
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "use_existing", null)).toBe(
+      false
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "create_worktree", null)).toBe(
+      true
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(true, "use_existing", "err")).toBe(
+      true
+    );
+    expect(shouldAutoExpandCreateAgentAdvancedOptions(false, "create_worktree", "err")).toBe(
+      false
+    );
   });
 });

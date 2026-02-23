@@ -53,6 +53,37 @@ const worktreeOptions = [
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
 
+export function resolveCreateAgentPresetId(value: string | null): AgentPresetId {
+  if (value && isAgentPresetId(value)) {
+    return value;
+  }
+  return DEFAULT_AGENT_PRESET_ID;
+}
+
+export function resolveCreateAgentWorktreeMode(
+  value: string | null
+): "use_existing" | "create_worktree" | "reuse_worktree" | null {
+  if (
+    value === "use_existing" ||
+    value === "create_worktree" ||
+    value === "reuse_worktree"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+export function shouldAutoExpandCreateAgentAdvancedOptions(
+  showWorktreeAdvancedOptions: boolean,
+  worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree",
+  worktreeError: string | null
+): boolean {
+  return (
+    showWorktreeAdvancedOptions &&
+    (worktreeMode !== "use_existing" || Boolean(worktreeError))
+  );
+}
+
 export function CreateAgentModal({
   agentName,
   setAgentName,
@@ -93,9 +124,11 @@ export function CreateAgentModal({
     normalizedCurrentWorkdir !== normalizedDefaultRoot;
   const showWorkdirInput =
     !isCreateWorktreeMode || customizeCreateWorkdir || hasCustomCreateWorkdir;
-  const shouldAutoExpandAdvancedOptions =
-    showWorktreeAdvancedOptions &&
-    (worktreeMode !== "use_existing" || Boolean(worktreeError));
+  const shouldAutoExpandAdvancedOptions = shouldAutoExpandCreateAgentAdvancedOptions(
+    showWorktreeAdvancedOptions,
+    worktreeMode,
+    worktreeError
+  );
   const previousAutoExpandConditionRef = React.useRef(shouldAutoExpandAdvancedOptions);
   const presetOptions = presets.map((entry) => ({
     value: entry.id,
@@ -147,11 +180,7 @@ export function CreateAgentModal({
             data={presetOptions}
             allowDeselect={false}
             onChange={(value) => {
-              if (value && isAgentPresetId(value)) {
-                setAgentPresetId(value);
-                return;
-              }
-              setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+              setAgentPresetId(resolveCreateAgentPresetId(value));
             }}
           />
           {showWorkdirInput ? (
@@ -209,12 +238,9 @@ export function CreateAgentModal({
               data={worktreeOptions}
               allowDeselect={false}
               onChange={(value) => {
-                if (
-                  value === "use_existing" ||
-                  value === "create_worktree" ||
-                  value === "reuse_worktree"
-                ) {
-                  setWorktreeMode(value);
+                const nextMode = resolveCreateAgentWorktreeMode(value);
+                if (nextMode) {
+                  setWorktreeMode(nextMode);
                 }
               }}
             />
