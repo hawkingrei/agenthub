@@ -118,6 +118,7 @@ agenthub/
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
   - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work
+  - TODO lifecycle details (when to create, status transitions, completion guardrails) belong to role skills; `AGENTS.md` only keeps pointers and current progress index
   - Backend runtime enforces leader starts with `worktree_mode=use_existing` and an empty workspace
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
   - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
@@ -195,6 +196,7 @@ agenthub/
 - Expanded Team role workflow policy with six-phase collaboration model and cold-start TODO-first checks (`TODO.md`, `.cache/context/todo.md`).
 - Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
 - Clarified `AGENTS.md` as index/routing artifact and moved detailed execution guidance responsibility to skill files.
+- Added pointer-level policy that TODO lifecycle rules are owned by role skills, while `AGENTS.md` remains index-only.
 
 ### 2026-02-22
 

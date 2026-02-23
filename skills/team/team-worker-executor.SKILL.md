@@ -12,6 +12,36 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Keep detailed worker procedures in this skill (and related skill files), not in `AGENTS.md`.
 - On each new task, confirm current phase and referenced skills from `AGENTS.md` before execution.
 
+## Team TODO Lifecycle (Worker)
+
+Use worker-local TODO files as the execution ledger for non-trivial assignments.
+
+Primary files:
+- `TODO.md`
+- `.cache/context/todo.md`
+
+Create or refresh TODO entries when:
+- assignment requires 3 or more meaningful steps
+- assignment includes multiple deliverables
+- additional requirements are discovered during implementation
+- leader explicitly requires tracked sub-steps
+
+Do not force TODO tracking when:
+- assignment is one trivial, one-step action
+- assignment is purely informational
+
+State rules (worker-local):
+- states: `pending`, `in_progress`, `completed`, `blocked`
+- keep exactly one `in_progress` item per worker at a time
+- set `in_progress` before coding/research starts
+- mark `completed` immediately after acceptance evidence is produced
+- if blocked, set `blocked` and send `next_action` to leader
+
+Completion guardrails:
+- never mark task `completed` when acceptance is unmet
+- never mark task `completed` while unresolved errors/blockers remain
+- add follow-up TODO items when new required work is discovered
+
 ## Team Workflow Phases
 
 Align your execution updates with these phases:

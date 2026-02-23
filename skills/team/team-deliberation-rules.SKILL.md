@@ -53,3 +53,4 @@ Phase rules:
 - Acceptance criteria are testable.
 - Risks and follow-up items are listed when unresolved.
 - Current phase and transition condition are explicit.
+- TODO status is consistent with actual execution (`completed` only after acceptance evidence).

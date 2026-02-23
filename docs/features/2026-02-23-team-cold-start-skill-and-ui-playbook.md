@@ -9,6 +9,7 @@ Team runs needed a clearer startup contract for both leader and worker roles:
 - leader should communicate planning decisions directly with the human actor
 - team collaboration should follow a consistent phase model across prompts and skills
 - `AGENTS.md` should act as an index/routing artifact, while detailed procedures stay in `SKILL.md`
+- Team TODO lifecycle should be explicit (creation triggers, state transitions, completion guardrails)
 
 The previous role prompts and skill files did not enforce these startup expectations strongly enough, and `/teams` UI did not present the operating model clearly.
 
@@ -17,6 +18,7 @@ The previous role prompts and skill files did not enforce these startup expectat
 - Expand Team role skill instructions (`leader`, `worker`, `deliberation`) with explicit cold-start workflow.
 - Expand Team default role prompts with TODO-first startup policy and leader-human communication boundary.
 - Align Team workflow semantics with a six-phase collaboration model and AGENTS.md section template.
+- Add TodoWrite-aligned lifecycle rules into Team role skills (adapted to per-agent execution).
 - Reorganize `/teams` UI panels to surface operating model and cold-start playbook.
 
 Out of scope:
@@ -48,6 +50,11 @@ Out of scope:
 7. Keep `AGENTS.md` index-oriented:
    - include objective/phase/skill pointers
    - avoid embedding full procedural details already defined in role skills
+8. Adopt per-agent TODO lifecycle in role skills:
+   - explicit create/skip triggers for TODO tracking
+   - statuses: `pending` / `in_progress` / `completed` / `blocked`
+   - one `in_progress` item per agent role at a time
+   - `completed` only after acceptance evidence
 
 ## Files Changed
 

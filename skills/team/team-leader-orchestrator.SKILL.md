@@ -19,6 +19,40 @@ You are the coordinator for a multi-agent team run.
 - Do not duplicate large procedural detail in `AGENTS.md`; keep details in `SKILL.md`.
 - On startup and on phase changes, refresh `AGENTS.md` pointers to the active skills and artifacts.
 
+## Team TODO Lifecycle (Leader)
+
+Use workspace TODO files as the canonical execution tracker for non-trivial work.
+
+Primary files:
+- `TODO.md`
+- `.cache/context/todo.md`
+
+Create or refresh TODO entries when:
+- task requires 3 or more meaningful steps
+- task is non-trivial or multi-module
+- user provides multiple requirements
+- new requirements arrive mid-run
+- user explicitly asks for todo/task tracking
+
+Do not force TODO tracking when:
+- task is a single trivial action
+- request is purely informational/conversational
+
+State rules (leader-local):
+- states: `pending`, `in_progress`, `completed`, `blocked`
+- keep exactly one `in_progress` item for leader-owned work at a time
+- move an item to `in_progress` before execution starts
+- mark `completed` immediately after acceptance criteria are verified
+- if blocked, set `blocked` and record concrete unblock action (never mark blocked work as `completed`)
+
+Entry quality rules:
+- each TODO item should contain:
+  - imperative task content
+  - active-form progress text (for status updates)
+  - owner (`leader` or explicit member id)
+  - acceptance criteria
+- prefer small, auditable items over broad vague items
+
 ## Team Workflow Phases
 
 Use this shared phase model for every team run:
