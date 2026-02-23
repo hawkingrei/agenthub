@@ -117,6 +117,51 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert member session");
 
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind(member_agent_id)
+    .bind(&session_id)
+    .bind("1")
+    .bind(now)
+    .bind("stdout")
+    .bind("event payload")
+    .execute(&state.db)
+    .await
+    .expect("insert member event");
+
+    let permission_request_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO acp_permission_requests (
+            id,
+            agent_id,
+            session_id,
+            acp_session_id,
+            tool_call_id,
+            options_json,
+            tool_call_json,
+            status,
+            selected_option_id,
+            created_at,
+            responded_at
+        )
+        VALUES (?1, ?2, ?3, NULL, NULL, ?4, NULL, ?5, NULL, ?6, NULL)
+        "#,
+    )
+    .bind(&permission_request_id)
+    .bind(member_agent_id)
+    .bind(&session_id)
+    .bind("[]")
+    .bind("pending")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert acp permission request");
+
     let Json(team) = create_team(
         State(state.clone()),
         headers.clone(),
@@ -308,6 +353,22 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("count member sessions");
     assert_eq!(session_count, 0);
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE agent_id = ?1")
+            .bind(member_agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count member events");
+    assert_eq!(event_count, 0);
+
+    let permission_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM acp_permission_requests WHERE agent_id = ?1")
+            .bind(member_agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count permission requests");
+    assert_eq!(permission_count, 0);
 }
 
 #[tokio::test]
