@@ -1124,6 +1124,39 @@ branch refs/heads/agent-a
     }
 
     #[tokio::test]
+    async fn list_agents_does_not_reconcile_running_status_while_agent_is_starting() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "list-agents-starting").await;
+
+        {
+            let mut starting = state.agents.starting.lock().await;
+            starting.insert(agent_id.clone());
+        }
+
+        let agents = state.agents.list_agents().await.expect("list agents");
+        let agent = agents
+            .into_iter()
+            .find(|item| item.id == agent_id)
+            .expect("starting agent should exist");
+        assert_eq!(agent.status, crate::agent::AgentStatus::Running);
+
+        let session_row = sqlx::query(
+            r#"
+            SELECT status, ended_at
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&session_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load running session row");
+        assert_eq!(session_row.get::<String, _>("status"), "running");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_none());
+    }
+
+    #[tokio::test]
     async fn prepare_worktree_use_existing_mode_succeeds() {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, _session_id) = insert_agent_and_session(&state.db, "prepare-existing").await;

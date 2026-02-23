@@ -443,20 +443,17 @@ impl AgentManager {
             return Ok(());
         }
 
-        let active_ids = {
-            let guard = self.inner.read().await;
-            guard.keys().cloned().collect::<HashSet<_>>()
+        let stale_ids = {
+            let active_guard = self.inner.read().await;
+            let starting_guard = self.starting.lock().await;
+            running_rows
+                .into_iter()
+                .map(|row| row.get::<String, _>("id"))
+                .filter(|agent_id| {
+                    !active_guard.contains_key(agent_id) && !starting_guard.contains(agent_id)
+                })
+                .collect::<Vec<_>>()
         };
-        let starting_ids = {
-            let guard = self.starting.lock().await;
-            guard.clone()
-        };
-
-        let stale_ids = running_rows
-            .into_iter()
-            .map(|row| row.get::<String, _>("id"))
-            .filter(|agent_id| !active_ids.contains(agent_id) && !starting_ids.contains(agent_id))
-            .collect::<Vec<_>>();
         if stale_ids.is_empty() {
             return Ok(());
         }
