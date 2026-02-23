@@ -234,6 +234,8 @@ describe("team panels interactions", () => {
     const onOpenCreateTeamWizard = vi.fn();
     const onOpenCreateTeamManual = vi.fn();
     const onSelectTeam = vi.fn();
+    const teamOne = buildTeam();
+    const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
 
     act(() => {
       root.render(
@@ -245,14 +247,23 @@ describe("team panels interactions", () => {
           draftTeamName="alpha"
           leaderMemberId="leader-agent"
           configuredWorkerCount={2}
-          teams={[buildTeam()]}
-          selectedTeamId={null}
+          teams={[teamOne, teamTwo]}
+          selectedTeamId="team-1"
           teamMemberSummaryByTeamId={new Map([
             [
               "team-1",
               {
                 active: 1,
                 inactive: 1,
+                missing: 0,
+                total: 2,
+              },
+            ],
+            [
+              "team-2",
+              {
+                active: 2,
+                inactive: 0,
                 missing: 0,
                 total: 2,
               },
@@ -267,12 +278,53 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Guided Wizard"));
     clickElement(findButtonByText(container, "Manual Spec"));
     clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
+    const filterInput = required(
+      container.querySelector("input[aria-label='Filter teams']"),
+      "team filter input missing"
+    ) as HTMLInputElement;
+    changeInputValue(filterInput, "team-2");
+    expect(container.textContent).toContain("Team Two");
+    expect(container.textContent).not.toContain("Team One");
+    expect(container.textContent).toContain("filtered=1 total=2");
+    clickElement(findButtonByAriaLabel(container, "Clear team filter"));
+    expect(container.textContent).toContain("Team One");
+    expect(container.textContent).toContain("Team Two");
+    const selectedItem = required(
+      container.querySelector("button[aria-current='true']"),
+      "selected team item missing"
+    );
+    expect(selectedItem.textContent).toContain("Team One");
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-1");
     expect(container.textContent).toContain("active=1 inactive=1 missing=0 total=2");
+
+    act(() => {
+      root.render(
+        <TeamSidebar
+          busy={null}
+          onRefreshTeams={() => {}}
+          onOpenCreateTeamWizard={() => {}}
+          onOpenCreateTeamManual={() => {}}
+          draftTeamName=""
+          leaderMemberId=""
+          configuredWorkerCount={0}
+          teams={[buildTeam()]}
+          selectedTeamId={null}
+          teamMemberSummaryByTeamId={new Map()}
+          onSelectTeam={() => {}}
+        />
+      );
+    });
+
+    const unmatchedFilterInput = required(
+      container.querySelector("input[aria-label='Filter teams']"),
+      "team filter input missing"
+    ) as HTMLInputElement;
+    changeInputValue(unmatchedFilterInput, "missing-team");
+    expect(container.textContent).toContain("No teams match current filter.");
 
     act(() => {
       root.render(

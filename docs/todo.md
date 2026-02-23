@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify Teams sidebar filter UX (`Filter teams by name or id` + clear action + selected item `aria-current`) and mailbox helper coverage additions remain stable in Web CI (`lint`, unit tests, build) for both `push` and `pull_request` events (see `docs/features/2026-02-23-team-sidebar-filter-and-mailbox-helper-coverage.md`).
 - [ ] Verify `DELETE /api/teams/:id` no longer returns `500` when member agents have dependent `agent_events` / `acp_permission_requests` rows, and record push + PR CI run IDs after merge (see `docs/features/2026-02-23-team-delete-member-session-fk-hardening.md`).
 - [ ] Verify Team run ownership hardening covers run-scoped APIs (`get/cancel/resume/restart/snapshot/events/steps/messages/context flush`) and that new shared crate `agenthub-text` remains stable in both Cargo and Bazel CI (see `docs/features/2026-02-23-team-run-access-and-memory-flush-hardening.md`).
 - [ ] [LOW] Defer Team ACL hardening (explicit owner/member permission matrix across Team main-task/run/mailbox APIs and UI visibility) until the chat-first baseline workflow and core Team features are complete.
