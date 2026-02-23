@@ -112,6 +112,10 @@ agenthub/
   - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation
   - Leader runtime starts from an empty workspace and should maintain coordination context in `AGENTS.md`
   - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
+  - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
+  - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
+  - Leader must answer human planning questions directly and should not redirect human users to worker agents
+  - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work
   - Backend runtime enforces leader starts with `worktree_mode=use_existing` and an empty workspace
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`
   - Backend runtime enforces worker starts with `worktree_mode=create_worktree`, per-run isolated workdir, and random branch checkout
@@ -182,6 +186,11 @@ agenthub/
 - `User Docs`: Docusaurus docs install/build checks.
 
 ## 13. Change Log
+
+### 2026-02-24
+
+- Expanded Team role workflow policy with six-phase collaboration model and cold-start TODO-first checks (`TODO.md`, `.cache/context/todo.md`).
+- Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
 
 ### 2026-02-22
 

@@ -7,6 +7,7 @@ Team runs needed a clearer startup contract for both leader and worker roles:
 - each agent should check local TODO continuity before new mailbox work
 - leader should determine whether to resume an existing plan or start from zero
 - leader should communicate planning decisions directly with the human actor
+- team collaboration should follow a consistent phase model across prompts and skills
 
 The previous role prompts and skill files did not enforce these startup expectations strongly enough, and `/teams` UI did not present the operating model clearly.
 
@@ -14,6 +15,7 @@ The previous role prompts and skill files did not enforce these startup expectat
 
 - Expand Team role skill instructions (`leader`, `worker`, `deliberation`) with explicit cold-start workflow.
 - Expand Team default role prompts with TODO-first startup policy and leader-human communication boundary.
+- Align Team workflow semantics with a six-phase collaboration model and AGENTS.md section template.
 - Reorganize `/teams` UI panels to surface operating model and cold-start playbook.
 
 Out of scope:
@@ -33,13 +35,24 @@ Out of scope:
 4. Surface the same policy in UI:
    - Team Sidebar adds an "Operating Model" note
    - Team Overview adds a "Cold Start Playbook" card (leader startup + worker startup)
+5. Add explicit phase model in prompts/skills:
+   - `Team formation`
+   - `Task analysis`
+   - `Role assignment`
+   - `Communication and collaboration`
+   - `Consensus formation`
+   - `Result integration`
+6. Align leader coordination artifact template with phase-aware sections:
+   - `Run Objective`, `Current Phase`, `Role Assignment`, `Consensus Decisions`, `Result Integration`, `Open Risks`, `Next Checkpoint`
 
 ## Files Changed
 
 - `skills/team/team-leader-orchestrator.SKILL.md`
 - `skills/team/team-worker-executor.SKILL.md`
 - `skills/team/team-deliberation-rules.SKILL.md`
+- `crates/agenthub-team-prompts/src/lib.rs`
 - `web/src/pages/team/member_helpers.ts`
+- `AGENTS.md`
 - `web/src/pages/team_overview_panel.tsx`
 - `web/src/pages/team_sidebar.tsx`
 - `web/src/pages/team_panels.test.tsx`
