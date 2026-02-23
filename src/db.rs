@@ -928,6 +928,7 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
 mod tests {
     use super::{cleanup_agent_event_history, create_parent_dir, init_db_at_path, try_connect};
     use sqlx::Row;
+    use sqlx::sqlite::SqlitePoolOptions;
     use uuid::Uuid;
 
     fn unique_temp_dir(name: &str) -> std::path::PathBuf {
@@ -1031,6 +1032,72 @@ mod tests {
             "parent directory should exist"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_parent_dir_returns_error_when_parent_is_file() {
+        let dir = unique_temp_dir("db-parent-fail");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let blocker = dir.join("not-a-directory");
+        std::fs::write(&blocker, "block").expect("create blocker file");
+
+        let file_path = blocker.join("child.sqlite");
+        let err = create_parent_dir(&file_path).expect_err("parent file should fail mkdir");
+        assert!(
+            !err.to_string().is_empty(),
+            "expected non-empty create_parent_dir error"
+        );
+
+        let _ = std::fs::remove_file(&blocker);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn try_connect_returns_error_for_directory_path() {
+        let dir = unique_temp_dir("db-connect-dir");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+
+        let err = try_connect(&dir)
+            .await
+            .expect_err("sqlite filename pointing to directory should fail");
+        assert!(
+            !err.to_string().is_empty(),
+            "expected non-empty sqlite error"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_at_path_returns_error_for_directory_path() {
+        let dir = unique_temp_dir("db-init-dir");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+
+        let err = init_db_at_path(&dir)
+            .await
+            .expect_err("init db should fail when db path points to directory");
+        assert!(!err.to_string().is_empty(), "expected non-empty init error");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cleanup_agent_event_history_returns_error_without_agent_events_table() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect scratch sqlite");
+
+        let err = cleanup_agent_event_history(&pool, 5, false)
+            .await
+            .expect_err("cleanup should fail without agent_events table");
+        assert!(
+            !err.to_string().is_empty(),
+            "expected non-empty cleanup error"
+        );
+
+        pool.close().await;
     }
 
     #[tokio::test]

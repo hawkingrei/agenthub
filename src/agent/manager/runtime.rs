@@ -1067,4 +1067,165 @@ branch refs/heads/agent-a
             "agent should stay running during startup window"
         );
     }
+
+    #[tokio::test]
+    async fn prepare_worktree_use_existing_mode_succeeds() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, _session_id) = insert_agent_and_session(&state.db, "prepare-existing").await;
+        let agent = state
+            .agents
+            .get_agent(&agent_id)
+            .await
+            .expect("load inserted agent");
+
+        state
+            .agents
+            .prepare_worktree_with_paths(&agent, &agent.workdir, None)
+            .await
+            .expect("use_existing should skip worktree mutations");
+    }
+
+    #[tokio::test]
+    async fn set_code_mode_updates_agent_row() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, _session_id) = insert_agent_and_session(&state.db, "code-mode").await;
+
+        state
+            .agents
+            .set_code_mode(&agent_id, true)
+            .await
+            .expect("set code mode");
+
+        let row = sqlx::query("SELECT code_mode FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load agent row");
+        assert_eq!(row.get::<i64, _>("code_mode"), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_agent_removes_related_rows() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, "delete-agent").await;
+        let now = Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_persistent_sessions (
+                agent_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (agent_id, provider)
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("ensure agent_persistent_sessions table");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&agent_id)
+        .bind(&session_id)
+        .bind("seq-delete")
+        .bind(now)
+        .bind("system")
+        .bind("event")
+        .execute(&state.db)
+        .await
+        .expect("insert agent event");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_persistent_sessions (agent_id, provider, session_id, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+        )
+        .bind(&agent_id)
+        .bind("codex")
+        .bind("persisted-session")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert persistent session");
+
+        state
+            .agents
+            .delete_agent(&agent_id)
+            .await
+            .expect("delete agent");
+
+        let remaining_agents: i64 = sqlx::query("SELECT COUNT(*) AS cnt FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count agents")
+            .get("cnt");
+        let remaining_sessions: i64 =
+            sqlx::query("SELECT COUNT(*) AS cnt FROM agent_sessions WHERE agent_id = ?1")
+                .bind(&agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("count sessions")
+                .get("cnt");
+        let remaining_events: i64 =
+            sqlx::query("SELECT COUNT(*) AS cnt FROM agent_events WHERE agent_id = ?1")
+                .bind(&agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("count events")
+                .get("cnt");
+        let remaining_persistent: i64 = sqlx::query(
+            "SELECT COUNT(*) AS cnt FROM agent_persistent_sessions WHERE agent_id = ?1",
+        )
+        .bind(&agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count persistent sessions")
+        .get("cnt");
+
+        assert_eq!(remaining_agents, 0);
+        assert_eq!(remaining_sessions, 0);
+        assert_eq!(remaining_events, 0);
+        assert_eq!(remaining_persistent, 0);
+    }
+
+    #[tokio::test]
+    async fn mark_exited_on_startup_returns_error_after_pool_close() {
+        let state = crate::api::team_tests::build_test_state().await;
+        state.db.close().await;
+
+        let err = state
+            .agents
+            .mark_exited_on_startup()
+            .await
+            .expect_err("closed pool should fail mark_exited_on_startup");
+        assert!(
+            !err.to_string().is_empty(),
+            "expected non-empty error after close"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalize_process_exit_tolerates_closed_pool() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, "finalize-closed").await;
+        state.db.close().await;
+
+        super::AgentManager::finalize_process_exit(
+            &state.db,
+            &state.agents.inner,
+            &state.push,
+            &agent_id,
+            &session_id,
+            false,
+        )
+        .await;
+    }
 }

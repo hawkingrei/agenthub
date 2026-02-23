@@ -52,5 +52,9 @@ Executed locally:
 - `cargo test -p agenthub send_input_does_not_mark_running_session_exited_while_agent_is_starting -- --nocapture`
 - `cargo test -p agenthub init_db_creates_schema_and_enforces_foreign_keys -- --nocapture`
 - `cargo test -p agenthub cleanup_agent_event_history_deletes_rows_older_than_retention -- --nocapture`
+- `cargo test -p agenthub create_parent_dir_returns_error_when_parent_is_file -- --nocapture`
+- `cargo test -p agenthub try_connect_returns_error_for_directory_path -- --nocapture`
+- `cargo test -p agenthub init_db_at_path_returns_error_for_directory_path -- --nocapture`
+- `cargo test -p agenthub cleanup_agent_event_history_returns_error_without_agent_events_table -- --nocapture`
 
 All commands passed.

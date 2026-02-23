@@ -50,5 +50,10 @@ Executed locally:
 
 - `cargo test -p agenthub format_error_chain_keeps_root_causes -- --nocapture`
 - `cargo test -p agenthub send_input_does_not_mark_running_session_exited_while_agent_is_starting -- --nocapture`
+- `cargo test -p agenthub prepare_worktree_use_existing_mode_succeeds -- --nocapture`
+- `cargo test -p agenthub set_code_mode_updates_agent_row -- --nocapture`
+- `cargo test -p agenthub delete_agent_removes_related_rows -- --nocapture`
+- `cargo test -p agenthub mark_exited_on_startup_returns_error_after_pool_close -- --nocapture`
+- `cargo test -p agenthub finalize_process_exit_tolerates_closed_pool -- --nocapture`
 
-Both commands passed.
+All commands passed.
