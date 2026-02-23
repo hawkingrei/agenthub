@@ -167,9 +167,18 @@ impl AgentManager {
         .bind(message.clone())
         .execute(&self.db)
         .await;
-        let Ok(result) = result else {
-            tracing::error!("emit_run_status: failed to persist event");
-            return;
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                tracing::error!(
+                    agent_id = %agent_id,
+                    session_id = %session_id,
+                    status = %status,
+                    error = %err,
+                    "emit_run_status failed to persist event"
+                );
+                return;
+            }
         };
         let output = AgentOutput {
             event_id: result.last_insert_rowid(),
@@ -221,9 +230,18 @@ impl AgentManager {
                 .bind(&line)
                 .execute(&db)
                 .await;
-                let Ok(result) = result else {
-                    tracing::error!("spawn_output_reader: failed to persist event");
-                    continue;
+                let result = match result {
+                    Ok(result) => result,
+                    Err(err) => {
+                        tracing::error!(
+                            agent_id = %agent_id,
+                            session_id = %session_id,
+                            stream = %stream_name,
+                            error = %err,
+                            "spawn_output_reader failed to persist event"
+                        );
+                        continue;
+                    }
                 };
                 let output = AgentOutput {
                     event_id: result.last_insert_rowid(),
@@ -290,9 +308,19 @@ impl AgentManager {
         )
         .bind(session_id)
         .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
+        .await;
+        let row = match row {
+            Ok(row) => row,
+            Err(err) => {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    session_id = %session_id,
+                    error = %err,
+                    "finalize_process_exit failed to read existing session state"
+                );
+                None
+            }
+        };
         let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
         if ended_at.is_some() {
             let mut guard = inner.write().await;
@@ -303,7 +331,7 @@ impl AgentManager {
         let now = Utc::now().timestamp();
         let state = if success { "completed" } else { "failed" };
         let status = if success { "stopped" } else { "failed" };
-        let _ = sqlx::query(
+        if let Err(err) = sqlx::query(
             r#"
             UPDATE agent_sessions
             SET status = ?1, ended_at = ?2
@@ -314,9 +342,18 @@ impl AgentManager {
         .bind(now)
         .bind(session_id)
         .execute(db)
-        .await;
+        .await
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                status = %state,
+                error = %err,
+                "finalize_process_exit failed to update agent_sessions state"
+            );
+        }
 
-        let _ = sqlx::query(
+        if let Err(err) = sqlx::query(
             r#"
             UPDATE agents
             SET status = ?1, updated_at = ?2
@@ -327,7 +364,16 @@ impl AgentManager {
         .bind(now)
         .bind(agent_id)
         .execute(db)
-        .await;
+        .await
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                status = %status,
+                error = %err,
+                "finalize_process_exit failed to update agents state"
+            );
+        }
 
         let seq = Uuid::now_v7().to_string();
         let ts = Utc::now().timestamp();
@@ -352,13 +398,21 @@ impl AgentManager {
         .execute(db)
         .await;
 
-        let Ok(result) = result else {
-            tracing::error!("finalize_process_exit: failed to persist event");
-            let mut guard = inner.write().await;
-            guard.remove(agent_id);
-            return;
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                tracing::error!(
+                    agent_id = %agent_id,
+                    session_id = %session_id,
+                    status = %state,
+                    error = %err,
+                    "finalize_process_exit failed to persist run-status event"
+                );
+                let mut guard = inner.write().await;
+                guard.remove(agent_id);
+                return;
+            }
         };
-
         let output = AgentOutput {
             event_id: result.last_insert_rowid(),
             agent_id: agent_id.to_string(),
@@ -372,7 +426,14 @@ impl AgentManager {
             let _ = handle.output_tx.send(output);
         }
 
-        let _ = push.notify_agent_completed(agent_id, session_id).await;
+        if let Err(err) = push.notify_agent_completed(agent_id, session_id).await {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                error = %err,
+                "finalize_process_exit failed to emit push completion notification"
+            );
+        }
         let mut guard = inner.write().await;
         guard.remove(agent_id);
     }
@@ -681,7 +742,7 @@ impl AgentManager {
 
     pub async fn mark_exited_on_startup(&self) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
-        let _ = sqlx::query(
+        sqlx::query(
             r#"
             UPDATE agent_sessions
             SET status = 'exited', ended_at = ?1
@@ -690,9 +751,16 @@ impl AgentManager {
         )
         .bind(now)
         .execute(&self.db)
-        .await?;
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                error = %err,
+                "mark_exited_on_startup failed to update running agent sessions"
+            );
+            err
+        })?;
 
-        let _ = sqlx::query(
+        sqlx::query(
             r#"
             UPDATE agents
             SET status = 'exited', updated_at = ?1
@@ -701,7 +769,14 @@ impl AgentManager {
         )
         .bind(now)
         .execute(&self.db)
-        .await?;
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                error = %err,
+                "mark_exited_on_startup failed to update running agents"
+            );
+            err
+        })?;
 
         Ok(())
     }
