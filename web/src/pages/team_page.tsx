@@ -32,6 +32,7 @@ import {
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
+import { TeamMemberStatusStrip } from "./team_member_status_strip";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -639,6 +640,12 @@ export function TeamPage(props: TeamPageProps) {
     }
     return next;
   }, [teamMemberStatusByTeamId, teams]);
+  const selectedTeamMemberStatuses = useMemo(() => {
+    if (!selectedTeam) {
+      return [];
+    }
+    return teamMemberStatusByTeamId.get(selectedTeam.id) ?? [];
+  }, [selectedTeam, teamMemberStatusByTeamId]);
   const teamForgeAgents = useMemo(
     () => selectTeamForgeAgents(agents, teamForgeAgentIds),
     [agents, teamForgeAgentIds]
@@ -2155,6 +2162,8 @@ export function TeamPage(props: TeamPageProps) {
 
           {selectedTeam && (
             <>
+              <TeamMemberStatusStrip members={selectedTeamMemberStatuses} />
+
               <TeamRunPanel
                 selectedTeam={selectedTeam}
                 busy={busy}
