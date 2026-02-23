@@ -4,7 +4,10 @@ mod mailbox;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 pub use agenthub_team_domain::TeamRunResumeError;
 use agenthub_text::truncate_chars;
@@ -156,7 +159,11 @@ impl TeamManager {
         parse_team_definition_row(&row)
     }
 
-    pub async fn delete_team(&self, team_id: &str) -> anyhow::Result<TeamDefinitionRecord> {
+    pub async fn delete_team(
+        &self,
+        team_id: &str,
+        member_ids: &HashSet<String>,
+    ) -> anyhow::Result<TeamDefinitionRecord> {
         let mut tx = self.db.begin().await?;
         let team_row = sqlx::query(
             r#"
@@ -169,6 +176,21 @@ impl TeamManager {
         .fetch_one(&mut *tx)
         .await?;
         let team = parse_team_definition_row(&team_row)?;
+
+        for member_id in member_ids {
+            sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
+                .bind(member_id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
+                .bind(member_id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
+                .bind(member_id)
+                .execute(&mut *tx)
+                .await?;
+        }
 
         sqlx::query(
             r#"
