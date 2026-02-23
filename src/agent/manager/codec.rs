@@ -180,7 +180,7 @@ fn acp_provider_for_command_with_binary(
         .file_name()
         .and_then(|n| n.to_str());
     for spec in ACP_PROVIDER_SPECS {
-        let matched_name = spec.command_names.iter().any(|name| *name == command_name);
+        let matched_name = spec.command_names.contains(&command_name);
         let matched_configured_binary = spec.use_configured_binary
             && (command == codex_acp_binary || configured_name == Some(command_name));
         if matched_name || matched_configured_binary {
