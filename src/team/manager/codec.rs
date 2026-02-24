@@ -1,6 +1,8 @@
 use serde_json::Value;
 use sqlx::Row;
 
+use agenthub_team_actor::infer_actor_identity_kind;
+
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
@@ -115,11 +117,15 @@ pub(super) fn parse_team_actor_message_row(
     let payload: Value = serde_json::from_str(&payload_json)?;
     let transport_raw: String = row.get("transport");
     let status_raw: String = row.get("status");
+    let from_actor_id: String = row.get("from_actor_id");
+    let to_actor_id: String = row.get("to_actor_id");
     Ok(TeamActorMessageRecord {
         message_id: row.get("id"),
         run_id: row.get("run_id"),
-        from_actor_id: row.get("from_actor_id"),
-        to_actor_id: row.get("to_actor_id"),
+        from_actor_id: from_actor_id.clone(),
+        from_actor_kind: infer_actor_identity_kind(from_actor_id.as_str()),
+        to_actor_id: to_actor_id.clone(),
+        to_actor_kind: infer_actor_identity_kind(to_actor_id.as_str()),
         channel: row.get("channel"),
         transport: team_actor_message_transport_from_str(&transport_raw),
         route,

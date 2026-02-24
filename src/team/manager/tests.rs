@@ -9,7 +9,7 @@ use crate::team::{
     TeamMainTaskStatus, TeamRunStatus, TeamStepStatus,
 };
 use agenthub_team_actor::{
-    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
+    ActorAckRequest, ActorIdentityKind, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
     ActorServiceErrorCode,
 };
 use axum::body::Bytes;
@@ -1309,13 +1309,42 @@ async fn actor_messages_support_inbox_and_ack_flow() {
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);
     assert_eq!(sent.transport, TeamActorMessageTransport::Local);
     assert_eq!(sent.payload, json!({"text":"please review"}));
+    assert_eq!(sent.from_actor_kind, ActorIdentityKind::Agent);
+    assert_eq!(sent.to_actor_kind, ActorIdentityKind::Agent);
+
+    let human_sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"text":"human request"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send human message");
+    assert_eq!(human_sent.from_actor_kind, ActorIdentityKind::Human);
+    assert_eq!(human_sent.to_actor_kind, ActorIdentityKind::Agent);
 
     let pending_inbox = manager
         .list_actor_inbox(&run.id, "reviewer", 100, None, false)
         .await
         .expect("list pending inbox");
-    assert_eq!(pending_inbox.len(), 1);
-    assert_eq!(pending_inbox[0].message_id, sent.message_id);
+    assert_eq!(pending_inbox.len(), 2);
+    let pending_ids = pending_inbox
+        .iter()
+        .map(|message| message.message_id)
+        .collect::<Vec<_>>();
+    assert!(pending_ids.contains(&sent.message_id));
+    assert!(pending_ids.contains(&human_sent.message_id));
+    let human_inbox = pending_inbox
+        .iter()
+        .find(|message| message.message_id == human_sent.message_id)
+        .expect("human message in inbox");
+    assert_eq!(human_inbox.from_actor_kind, ActorIdentityKind::Human);
+    assert_eq!(human_inbox.to_actor_kind, ActorIdentityKind::Agent);
 
     let delivered = manager
         .ack_actor_message(&run.id, "reviewer", sent.message_id)
@@ -1328,17 +1357,20 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .list_actor_inbox(&run.id, "reviewer", 100, None, false)
         .await
         .expect("list pending after ack");
-    assert!(pending_after_ack.is_empty());
+    assert_eq!(pending_after_ack.len(), 1);
+    assert_eq!(pending_after_ack[0].message_id, human_sent.message_id);
+    assert_eq!(pending_after_ack[0].from_actor_kind, ActorIdentityKind::Human);
 
     let inbox_with_delivered = manager
         .list_actor_inbox(&run.id, "reviewer", 100, None, true)
         .await
         .expect("list inbox with delivered");
-    assert_eq!(inbox_with_delivered.len(), 1);
-    assert_eq!(
-        inbox_with_delivered[0].status,
-        TeamActorMessageStatus::Delivered
-    );
+    assert_eq!(inbox_with_delivered.len(), 2);
+    let delivered_message = inbox_with_delivered
+        .iter()
+        .find(|message| message.message_id == sent.message_id)
+        .expect("delivered message exists");
+    assert_eq!(delivered_message.status, TeamActorMessageStatus::Delivered);
 
     let events = manager
         .list_run_events(&run.id, 100, None)
@@ -1352,6 +1384,7 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         event_types,
         vec![
             "run_submitted",
+            "actor_message_sent",
             "actor_message_sent",
             "actor_message_delivered"
         ]
@@ -1721,7 +1754,9 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
     );
     assert_eq!(captured[0].body["run_id"], run.id);
     assert_eq!(captured[0].body["from_actor_id"], "planner");
+    assert_eq!(captured[0].body["from_actor_kind"], "agent");
     assert_eq!(captured[0].body["to_actor_id"], "remote-reviewer");
+    assert_eq!(captured[0].body["to_actor_kind"], "agent");
     assert_eq!(captured[0].body["payload"]["text"], "review this");
     drop(captured);
     server_handle.abort();

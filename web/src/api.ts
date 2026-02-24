@@ -169,6 +169,7 @@ export type TeamStepStatus =
 export type TeamActorMessageTransport = "local" | "remote";
 
 export type TeamActorMessageStatus = "pending" | "delivered" | "dead_letter";
+export type TeamActorIdentityKind = "agent" | "human";
 
 export type TeamDefinitionRecord = {
   id: string;
@@ -256,7 +257,9 @@ export type TeamActorMessageRecord = {
   message_id: number;
   run_id: string;
   from_actor_id: string;
+  from_actor_kind: TeamActorIdentityKind;
   to_actor_id: string;
+  to_actor_kind: TeamActorIdentityKind;
   channel: string;
   transport: TeamActorMessageTransport;
   route?: unknown;

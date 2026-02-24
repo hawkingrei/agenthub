@@ -20,6 +20,10 @@ made operations less aligned with Team UI terminology.
   - `agenthub actor-mcp`: `--agent-id` alias for `--actor-id`
 - Add environment fallback alias:
   - `AGENTHUB_ACTOR_AGENT_ID` (alongside existing `AGENTHUB_ACTOR_ID`)
+- Add explicit human/agent identity markers on mailbox message records:
+  - `from_actor_kind`: `agent | human`
+  - `to_actor_kind`: `agent | human`
+  - inferred server-side from actor id (`user` / `human` aliases -> `human`)
 
 ## Key Decisions
 
@@ -31,12 +35,17 @@ made operations less aligned with Team UI terminology.
 2. Expose `agent_id` aliases at tool boundary only.
 
 - Improve operator UX and naming consistency.
-- No schema/table/API contract changes required.
+- Keep DB schema unchanged; identity kind is computed at read-time and returned in API payloads.
 
 ## Files
 
 - `src/actor_cli.rs`
 - `src/actor_mcp.rs`
+- `crates/agenthub-team-actor/src/message.rs`
+- `src/team/manager/codec.rs`
+- `src/team/manager/mailbox.rs`
+- `src/api/openapi/spec.rs`
+- `web/src/api.ts`
 - `docs/todo.md`
 
 ## Validation
@@ -49,5 +58,6 @@ cargo test parse_inbox_uses_agent_id_env_fallback
 cargo test parse_send_accepts_agent_id_alias_flags
 cargo test parse_actor_mcp_context_uses_agent_id_env_alias
 cargo test parse_actor_mcp_context_accepts_agent_id_flag
+cargo test -p agenthub-team-actor
+cargo test openapi -- --nocapture
 ```
-
