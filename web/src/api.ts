@@ -156,6 +156,8 @@ export type TeamRunStatus =
   | "failed"
   | "canceled";
 
+export type TeamMainTaskStatus = "open" | "in_progress" | "completed" | "canceled";
+
 export type TeamStepStatus =
   | "submitted"
   | "working"
@@ -175,6 +177,43 @@ export type TeamDefinitionRecord = {
   spec: unknown;
   created_at: number;
   updated_at: number;
+};
+
+export type TeamMainTaskRecord = {
+  id: string;
+  team_id: string;
+  title: string;
+  status: TeamMainTaskStatus;
+  created_by_actor_id: string;
+  context: unknown;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamConversationRecord = {
+  id: string;
+  team_id: string;
+  main_task_id: string;
+  mode: "to_leader" | "to_member" | "group_chat";
+  topic?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamConversationMessageRecord = {
+  message_id: number;
+  conversation_id: string;
+  main_task_id: string;
+  from_actor_id: string;
+  to_actor_id?: string | null;
+  route: "to_leader" | "to_member" | "group_chat";
+  payload: unknown;
+  created_at: number;
+};
+
+export type TeamMainTaskDetailResponse = {
+  task: TeamMainTaskRecord;
+  conversation: TeamConversationRecord;
 };
 
 export type TeamRunRecord = {
@@ -450,6 +489,73 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
+  createTeamMainTask: (
+    token: string,
+    teamId: string,
+    payload: {
+      title: string;
+      created_by_actor_id?: string;
+      context?: unknown;
+      conversation_mode?: "to_leader" | "to_member" | "group_chat";
+      topic?: string;
+    }
+  ) =>
+    apiFetch<TeamMainTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  listTeamMainTasks: (token: string, teamId: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit != null) params.set("limit", String(limit));
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<TeamMainTaskRecord[]>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks${suffix}`,
+      token
+    );
+  },
+  getTeamMainTask: (token: string, teamId: string, mainTaskId: string) =>
+    apiFetch<TeamMainTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}`,
+      token
+    ),
+  sendTeamMainTaskMessage: (
+    token: string,
+    teamId: string,
+    mainTaskId: string,
+    payload: {
+      from_actor_id: string;
+      to_actor_id?: string;
+      route?: "to_leader" | "to_member" | "group_chat";
+      payload: unknown;
+    }
+  ) =>
+    apiFetch<TeamConversationMessageRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/messages`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  listTeamMainTaskMessages: (
+    token: string,
+    teamId: string,
+    mainTaskId: string,
+    payload?: { limit?: number; before_id?: number }
+  ) => {
+    const params = new URLSearchParams();
+    if (payload?.limit != null) params.set("limit", String(payload.limit));
+    if (payload?.before_id != null) params.set("before_id", String(payload.before_id));
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<TeamConversationMessageRecord[]>(
+      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/messages${suffix}`,
+      token
+    );
+  },
   compileTeamMainTaskRunPreview: (
     token: string,
     teamId: string,

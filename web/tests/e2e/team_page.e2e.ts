@@ -72,6 +72,28 @@ type TeamRunRecord = {
   ended_at: number | null;
 };
 
+type TeamMainTaskRecord = {
+  id: string;
+  team_id: string;
+  title: string;
+  status: "open" | "in_progress" | "completed" | "archived";
+  created_by_actor_id: string;
+  context: Record<string, unknown>;
+  created_at: number;
+  updated_at: number;
+};
+
+type TeamConversationMessageRecord = {
+  message_id: number;
+  conversation_id: string;
+  main_task_id: string;
+  from_actor_id: string;
+  to_actor_id: string | null;
+  route: "to_leader" | "to_member" | "group_chat";
+  payload: unknown;
+  created_at: number;
+};
+
 type TeamActorMessageRecord = {
   message_id: number;
   run_id: string;
@@ -197,7 +219,31 @@ async function mockTeamPageApis(
     },
   ];
   const teams: TeamDefinitionRecord[] = [];
+  const mainTasksByTeamId = new Map<string, TeamMainTaskRecord[]>();
+  const mainTaskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
+  const mainTaskCounterByTeamId = new Map<string, number>();
   let createTeamPayload: CreateTeamPayload | null = null;
+
+  const ensureMainTasks = (teamId: string): TeamMainTaskRecord[] => {
+    const existing = mainTasksByTeamId.get(teamId);
+    if (existing) {
+      return existing;
+    }
+    const defaultTask: TeamMainTaskRecord = {
+      id: `main-task-${teamId}-1`,
+      team_id: teamId,
+      title: "Default planning conversation",
+      status: "open",
+      created_by_actor_id: `user:${auth.userId}`,
+      context: { source: "e2e-default" },
+      created_at: now + 1,
+      updated_at: now + 1,
+    };
+    mainTasksByTeamId.set(teamId, [defaultTask]);
+    mainTaskCounterByTeamId.set(teamId, 1);
+    mainTaskMessagesById.set(defaultTask.id, []);
+    return [defaultTask];
+  };
 
   await page.addInitScript((storedAuth: StoredAuthState) => {
     window.localStorage.setItem("agenthub_auth", JSON.stringify(storedAuth));
@@ -339,6 +385,201 @@ async function mockTeamPageApis(
     }
     await route.fallback();
   });
+
+  await page.route(/\/api\/teams\/[^/]+\/main_tasks(?:\?.*)?$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+    if (!teamId) {
+      await route.fulfill(jsonResponse({ error: "team id missing" }, 400));
+      return;
+    }
+    if (request.method() === "GET") {
+      const tasks = ensureMainTasks(teamId);
+      await route.fulfill(jsonResponse(tasks));
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as {
+        title?: string;
+        created_by_actor_id?: string;
+        topic?: string;
+        conversation_mode?: "to_leader" | "to_member" | "group_chat";
+      };
+      const current = ensureMainTasks(teamId);
+      const nextIndex = (mainTaskCounterByTeamId.get(teamId) ?? current.length) + 1;
+      mainTaskCounterByTeamId.set(teamId, nextIndex);
+      const taskId = `main-task-${teamId}-${nextIndex}`;
+      const createdAt = now + 100 + nextIndex;
+      const createdTask: TeamMainTaskRecord = {
+        id: taskId,
+        team_id: teamId,
+        title: payload.title?.trim() || `Conversation ${nextIndex}`,
+        status: "open",
+        created_by_actor_id: payload.created_by_actor_id ?? `user:${auth.userId}`,
+        context: {
+          topic: payload.topic ?? null,
+          conversation_mode: payload.conversation_mode ?? "to_leader",
+        },
+        created_at: createdAt,
+        updated_at: createdAt,
+      };
+      mainTasksByTeamId.set(teamId, [createdTask, ...current.filter((item) => item.id !== taskId)]);
+      mainTaskMessagesById.set(taskId, []);
+      await route.fulfill(jsonResponse({ task: createdTask }));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(
+    /\/api\/teams\/[^/]+\/main_tasks\/[^/]+\/messages(?:\?.*)?$/,
+    async (route, request) => {
+      const url = new URL(request.url());
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+      const taskId =
+        url.pathname.match(/\/main_tasks\/([^/]+)\/messages(?:\?.*)?$/)?.[1] ?? "";
+      if (!teamId || !taskId) {
+        await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
+        return;
+      }
+      const tasks = ensureMainTasks(teamId);
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) {
+        await route.fulfill(jsonResponse({ error: "task not found" }, 404));
+        return;
+      }
+      const existingMessages = mainTaskMessagesById.get(taskId) ?? [];
+      if (request.method() === "GET") {
+        await route.fulfill(jsonResponse(existingMessages));
+        return;
+      }
+      if (request.method() === "POST") {
+        const payload = request.postDataJSON() as {
+          from_actor_id?: string;
+          to_actor_id?: string | null;
+          route?: "to_leader" | "to_member" | "group_chat";
+          payload?: unknown;
+        };
+        const nextMessageId =
+          (existingMessages.length > 0
+            ? existingMessages[existingMessages.length - 1]?.message_id ?? 0
+            : 0) + 1;
+        const createdMessage: TeamConversationMessageRecord = {
+          message_id: nextMessageId,
+          conversation_id: `conversation-${taskId}`,
+          main_task_id: taskId,
+          from_actor_id: payload.from_actor_id ?? `user:${auth.userId}`,
+          to_actor_id:
+            payload.to_actor_id ??
+            (payload.route === "to_member" ? "agent-worker-1" : "agent-leader-1"),
+          route: payload.route ?? "to_leader",
+          payload: payload.payload ?? { type: "chat_message", text: "" },
+          created_at: now + 200 + nextMessageId,
+        };
+        const nextMessages = [...existingMessages, createdMessage];
+        mainTaskMessagesById.set(taskId, nextMessages);
+        await route.fulfill(jsonResponse(createdMessage));
+        return;
+      }
+      await route.fallback();
+    }
+  );
+
+  await page.route(
+    /\/api\/teams\/[^/]+\/main_tasks\/[^/]+\/compile_run_preview$/,
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(request.url());
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+      const taskId =
+        url.pathname.match(/\/main_tasks\/([^/]+)\/compile_run_preview$/)?.[1] ?? "";
+      if (!teamId || !taskId) {
+        await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
+        return;
+      }
+      const task = ensureMainTasks(teamId).find((item) => item.id === taskId);
+      if (!task) {
+        await route.fulfill(jsonResponse({ error: "task not found" }, 404));
+        return;
+      }
+      const team = teams.find((item) => item.id === teamId);
+      const leaderMemberId = team?.spec.leader_member_id ?? "agent-leader-1";
+      const workerMemberId =
+        team?.spec.members.find((member) => member.role === "worker")?.member_id ??
+        leaderMemberId;
+      const messageList = mainTaskMessagesById.get(taskId) ?? [];
+      const latestMessageId = messageList.length > 0 ? messageList[messageList.length - 1]?.message_id ?? 0 : 0;
+      await route.fulfill(
+        jsonResponse({
+          main_task_id: taskId,
+          conversation_id: `conversation-${taskId}`,
+          run_payload: {
+            context_id: `ctx-${taskId}`,
+            input: {
+              main_task_compile_version: 1,
+              main_task_id: taskId,
+              conversation_id: `conversation-${taskId}`,
+              tool_name: "tiny-json-cli",
+              objective: task.title,
+              task_list: [
+                "Define tiny CLI interface",
+                "Implement parse/format commands",
+                "Add tests and usage docs",
+              ],
+            },
+          },
+          plan: {
+            task_list: [
+              "Define tiny CLI interface",
+              "Implement parse/format commands",
+              "Add tests and usage docs",
+            ],
+            acceptance_criteria: [
+              "CLI can parse and pretty-print JSON",
+              "Unit tests pass for main happy paths",
+            ],
+            deadline: "2026-03-20",
+            step_template: [
+              {
+                step_key: "leader_plan",
+                member_id: leaderMemberId,
+                role: "leader",
+                depends_on: [],
+              },
+              {
+                step_key: "worker_build_tool",
+                member_id: workerMemberId,
+                role: "worker",
+                depends_on: ["leader_plan"],
+              },
+              {
+                step_key: "leader_synthesize",
+                member_id: leaderMemberId,
+                role: "leader",
+                depends_on: ["worker_build_tool"],
+              },
+            ],
+            role_assignments: [
+              {
+                member_id: leaderMemberId,
+                role: "leader",
+                step_keys: ["leader_plan", "leader_synthesize"],
+              },
+              {
+                member_id: workerMemberId,
+                role: "worker",
+                step_keys: ["worker_build_tool"],
+              },
+            ],
+            source_message_id: latestMessageId,
+          },
+        })
+      );
+    }
+  );
 
   await page.route(/\/api\/teams\/[^/]+\/runs(?:\?.*)?$/, async (route, request) => {
     if (request.method() !== "GET") {
@@ -1181,12 +1422,11 @@ test("team debug run ops compiles main task preview and applies payload to creat
   );
 
   await page.goto("/teams");
+  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
 
-  await page.getByPlaceholder("main_task_id").fill("main-task-compile-1");
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
-  await expect(page.getByText("main_task_id: main-task-compile-1")).toBeVisible();
   await expect(page.getByText("conversation_id: conversation-compile-1")).toBeVisible();
   await expect(page.getByText("context_id: ctx-main-task-compile-1")).toBeVisible();
   expect(compileRequests).toEqual([{}]);
@@ -1599,9 +1839,9 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await page.goto("/teams");
   await expect(page.getByRole("heading", { name: "Chat First Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
 
-  await page.getByPlaceholder("main_task_id").fill("main-task-chat-1");
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation_id: conversation-chat-1")).toBeVisible();
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
@@ -1650,6 +1890,171 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await expect(page.locator(".teams-event-list")).toContainText(
     "Final deliverable prepared and returned to user."
   );
+});
+
+test("team conversation-first integration supports virtual team tiny-tool delivery flow", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const runId = "run-virtual-tool-1";
+  let activeRun: TeamRunRecord | null = null;
+  const createRunRequests: Array<{ context_id?: string; input?: unknown }> = [];
+
+  await page.route(/\/api\/teams\/[^/]+\/runs(?:\?.*)?$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runs$/)?.[1] ?? "";
+    if (!teamId) {
+      await route.fulfill(jsonResponse({ error: "team id missing" }, 400));
+      return;
+    }
+    if (request.method() === "GET") {
+      await route.fulfill(
+        jsonResponse(activeRun && activeRun.team_id === teamId ? [activeRun] : [])
+      );
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { context_id?: string; input?: unknown };
+      createRunRequests.push(payload);
+      activeRun = {
+        id: runId,
+        team_id: teamId,
+        context_id: payload.context_id ?? "ctx-virtual-tool-fallback",
+        status: "working",
+        input: (payload.input as Record<string, unknown>) ?? {},
+        created_at: fixture.now + 900,
+        started_at: fixture.now + 901,
+        ended_at: null,
+      };
+      await route.fulfill(jsonResponse(activeRun));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (!activeRun) {
+      await route.fulfill(jsonResponse({ error: "run not found" }, 404));
+      return;
+    }
+    await route.fulfill(jsonResponse(activeRun));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/steps$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/snapshot(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (!activeRun) {
+      await route.fulfill(jsonResponse({ error: "snapshot unavailable" }, 404));
+      return;
+    }
+    const team = fixture.teams.find((item) => item.id === activeRun?.team_id) ?? null;
+    await route.fulfill(
+      jsonResponse({
+        run: activeRun,
+        team,
+        leader_member_id: team?.spec.leader_member_id ?? "tool-leader",
+        members: [],
+        steps: [],
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [],
+        },
+      })
+    );
+  });
+
+  await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "Manual Spec" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Team Forge" });
+  await dialog.getByPlaceholder("team name").fill("virtual-tool-team");
+  await dialog.getByRole("button", { name: "Next Stage" }).click();
+  await expect(dialog.getByRole("heading", { name: "Launch Team" })).toBeVisible();
+
+  const virtualToolSpec = {
+    spec_version: 1,
+    entrypoint: "leader_plan",
+    leader_member_id: "tool-leader",
+    members: [
+      { member_id: "tool-leader", role: "leader", model: "codex" },
+      { member_id: "tool-worker", role: "worker", model: "gemini" },
+    ],
+    steps: [
+      { step_key: "leader_plan", member_id: "tool-leader", depends_on: [] },
+      { step_key: "worker_build_tool", member_id: "tool-worker", depends_on: ["leader_plan"] },
+      {
+        step_key: "leader_synthesize",
+        member_id: "tool-leader",
+        depends_on: ["worker_build_tool"],
+      },
+    ],
+  };
+  await dialog.locator(".team-create-panel textarea").fill(JSON.stringify(virtualToolSpec, null, 2));
+  await dialog.getByRole("button", { name: "Create Team" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".team-item", { hasText: "virtual-tool-team" })).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
+  await page.getByPlaceholder("new conversation title").fill("Build tiny JSON CLI");
+  await page.getByPlaceholder("topic (optional)").fill("tooling");
+  await page.getByRole("button", { name: "Create Conversation" }).click();
+
+  await page
+    .getByPlaceholder("Type planning message for leader/teammates")
+    .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
+  await page.getByRole("button", { name: "Send Message" }).click();
+  await expect(page.locator(".teams-message-list")).toContainText(
+    "Please build a tiny JSON CLI with parse and pretty-print commands."
+  );
+
+  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
+  await expect(page.locator(".teams-step-body")).toContainText(
+    "Define tiny CLI interface"
+  );
+
+  await page.getByRole("button", { name: "Create Run from Preview" }).click();
+  await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
+  expect(createRunRequests).toHaveLength(1);
+  expect(
+    (createRunRequests[0]?.input as { tool_name?: string } | undefined)?.tool_name
+  ).toBe("tiny-json-cli");
+  expect(
+    (createRunRequests[0]?.input as { objective?: string } | undefined)?.objective
+  ).toBe("Build tiny JSON CLI");
 });
 
 test("team mailbox IM mode supports conversation focus, unread, auto-follow and advanced controls", async ({

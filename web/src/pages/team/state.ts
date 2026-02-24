@@ -5,6 +5,7 @@ import { createInitialTeamDraftState, type TeamCreateDraftState } from "./member
 import type { TeamRunStatusFilter } from "./run_helpers";
 
 export type TeamTab =
+  | "conversation"
   | "overview"
   | "events"
   | "steps"
@@ -107,7 +108,7 @@ export const DEFAULT_TEAM_RUN_BROWSER_STATE: TeamRunBrowserState = {
 };
 
 export const DEFAULT_TEAM_UI_STATE: TeamUiState = {
-  tab: "overview",
+  tab: "conversation",
   runLookupId: "",
   eventsAutoRefresh: true,
 };

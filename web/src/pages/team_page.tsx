@@ -4,8 +4,10 @@ import {
   AgentRecord,
   AgentEvent,
   api,
+  TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
+  TeamMainTaskRecord,
   TeamMainTaskRunCompilePreviewRecord,
   TeamRunEventRecord,
   TeamRunRecord,
@@ -33,6 +35,10 @@ import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamMemberStatusStrip } from "./team_member_status_strip";
+import {
+  TeamMainTaskConversationMode,
+  TeamMainTaskPanel,
+} from "./team_main_task_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -57,6 +63,7 @@ import {
 } from "./team/create_draft_storage";
 import {
   MailboxTemplateKey,
+  buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
@@ -498,7 +505,19 @@ export function TeamPage(props: TeamPageProps) {
   const [memberDiscoveryCardLoadingById, setMemberDiscoveryCardLoadingById] = useState<
     Record<string, boolean>
   >({});
-  const [compileMainTaskId, setCompileMainTaskId] = useState("");
+  const [mainTasks, setMainTasks] = useState<TeamMainTaskRecord[]>([]);
+  const [mainTasksLoading, setMainTasksLoading] = useState(false);
+  const [selectedMainTaskId, setSelectedMainTaskId] = useState("");
+  const [mainTaskMessages, setMainTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
+  const [mainTaskMessagesLoading, setMainTaskMessagesLoading] = useState(false);
+  const [newMainTaskTitle, setNewMainTaskTitle] = useState("");
+  const [newMainTaskTopic, setNewMainTaskTopic] = useState("");
+  const [newMainTaskConversationMode, setNewMainTaskConversationMode] =
+    useState<TeamMainTaskConversationMode>("to_leader");
+  const [mainTaskMessageRoute, setMainTaskMessageRoute] =
+    useState<TeamMainTaskConversationMode>("to_leader");
+  const [mainTaskMessageTargetMemberId, setMainTaskMessageTargetMemberId] = useState("");
+  const [mainTaskMessageDraft, setMainTaskMessageDraft] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamMainTaskRunCompilePreviewRecord | null>(null);
@@ -615,8 +634,17 @@ export function TeamPage(props: TeamPageProps) {
   );
   useEffect(() => {
     setCompiledRunPreview(null);
-    setCompileMainTaskId("");
     setCompilePreviewContextId("");
+    setMainTasks([]);
+    setMainTasksLoading(false);
+    setSelectedMainTaskId("");
+    setMainTaskMessages([]);
+    setMainTaskMessagesLoading(false);
+    setNewMainTaskTitle("");
+    setNewMainTaskTopic("");
+    setMainTaskMessageRoute("to_leader");
+    setMainTaskMessageTargetMemberId("");
+    setMainTaskMessageDraft("");
   }, [selectedTeamId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1662,6 +1690,172 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
+  const mainTaskMemberOptions = useMemo(
+    () => (selectedTeam ? parseTeamSpecMembers(selectedTeam.spec) : []),
+    [selectedTeam]
+  );
+  const selectedConversation = useMemo(
+    () => mainTasks.find((task) => task.id === selectedMainTaskId) ?? null,
+    [mainTasks, selectedMainTaskId]
+  );
+
+  const refreshMainTasks = useCallback(
+    async (teamId: string) => {
+      setMainTasksLoading(true);
+      try {
+        const list = await api.listTeamMainTasks(props.token, teamId, 100);
+        setMainTasks(list);
+        setSelectedMainTaskId((prev) => {
+          const selectedId = prev.trim();
+          const hasSelected =
+            selectedId.length > 0 && list.some((task) => task.id === selectedId);
+          const nextSelectedId = hasSelected ? selectedId : list[0]?.id ?? "";
+          return nextSelectedId;
+        });
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setMainTasksLoading(false);
+      }
+    },
+    [props.token]
+  );
+
+  const refreshMainTaskMessages = useCallback(
+    async (mainTaskIdOverride?: string) => {
+      const teamId = selectedTeamId;
+      const mainTaskId = (mainTaskIdOverride ?? selectedMainTaskId).trim();
+      if (!teamId || !mainTaskId) {
+        setMainTaskMessages([]);
+        return;
+      }
+      setMainTaskMessagesLoading(true);
+      try {
+        const messages = await api.listTeamMainTaskMessages(props.token, teamId, mainTaskId, {
+          limit: 200,
+        });
+        setMainTaskMessages(messages);
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setMainTaskMessagesLoading(false);
+      }
+    },
+    [props.token, selectedMainTaskId, selectedTeamId]
+  );
+
+  useEffect(() => {
+    if (!selectedTeamId) {
+      return;
+    }
+    void refreshMainTasks(selectedTeamId);
+  }, [refreshMainTasks, selectedTeamId]);
+
+  useEffect(() => {
+    if (!selectedTeamId) {
+      return;
+    }
+    const mainTaskId = selectedMainTaskId.trim();
+    if (!mainTaskId) {
+      setMainTaskMessages([]);
+      return;
+    }
+    void refreshMainTaskMessages(mainTaskId);
+  }, [refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
+
+  const onCreateMainTask = useCallback(async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    const title = newMainTaskTitle.trim();
+    if (!title) {
+      setError("Conversation title is required");
+      return;
+    }
+    setBusy("create-main-task");
+    setError(null);
+    try {
+      const created = await api.createTeamMainTask(props.token, selectedTeamId, {
+        title,
+        created_by_actor_id: "user",
+        conversation_mode: newMainTaskConversationMode,
+        topic: newMainTaskTopic.trim() || undefined,
+        context: { source: "team_workbench" },
+      });
+      setMainTasks((prev) => {
+        const next = [created.task, ...prev.filter((task) => task.id !== created.task.id)];
+        return next.sort((left, right) => right.created_at - left.created_at);
+      });
+      setSelectedMainTaskId(created.task.id);
+      setMainTaskMessages([]);
+      setNewMainTaskTitle("");
+      setNewMainTaskTopic("");
+      setMainTaskMessageRoute("to_leader");
+      setMainTaskMessageTargetMemberId("");
+      setMainTaskMessageDraft("");
+      await refreshMainTaskMessages(created.task.id);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    newMainTaskConversationMode,
+    newMainTaskTitle,
+    newMainTaskTopic,
+    props.token,
+    refreshMainTaskMessages,
+    selectedTeamId,
+  ]);
+
+  const onSendMainTaskMessage = useCallback(async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    const mainTaskId = selectedMainTaskId.trim();
+    if (!mainTaskId) {
+      setError("Select a conversation first");
+      return;
+    }
+    const text = mainTaskMessageDraft.trim();
+    if (!text) {
+      setError("Conversation message is required");
+      return;
+    }
+    const targetMemberId = mainTaskMessageTargetMemberId.trim();
+    if (mainTaskMessageRoute === "to_member" && !targetMemberId) {
+      setError("Select a member target for route=to_member");
+      return;
+    }
+    setBusy("send-main-task-message");
+    setError(null);
+    try {
+      const message = await api.sendTeamMainTaskMessage(props.token, selectedTeamId, mainTaskId, {
+        from_actor_id: "user",
+        to_actor_id: mainTaskMessageRoute === "to_member" ? targetMemberId : undefined,
+        route: mainTaskMessageRoute,
+        payload: buildMailboxChatPayload(text),
+      });
+      setMainTaskMessages((prev) =>
+        [...prev, message].sort((left, right) => left.message_id - right.message_id)
+      );
+      setMainTaskMessageDraft("");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    mainTaskMessageDraft,
+    mainTaskMessageRoute,
+    mainTaskMessageTargetMemberId,
+    props.token,
+    selectedMainTaskId,
+    selectedTeamId,
+  ]);
+
   const onRefreshMemberConsole = useCallback(async () => {
     if (selectedMemberSnapshot) {
       await loadMemberEvents("replace");
@@ -1813,20 +2007,28 @@ export function TeamPage(props: TeamPageProps) {
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
-  const canCompileMainTask = busy !== "compile-main-task" && compileMainTaskId.trim().length > 0;
+  const canCompileMainTask = busy !== "compile-main-task" && selectedConversation !== null;
   const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const modalFieldClassName =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+  const onRefreshMainTasks = useCallback(async () => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    setError(null);
+    await refreshMainTasks(selectedTeamId);
+  }, [refreshMainTasks, selectedTeamId]);
   const onCompileMainTaskRunPreview = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
       return;
     }
-    const mainTaskId = compileMainTaskId.trim();
+    const mainTaskId = selectedMainTaskId.trim();
     if (!mainTaskId) {
-      setError("Main task ID is required");
+      setError("Select a conversation first");
       return;
     }
     setBusy("compile-main-task");
@@ -1847,9 +2049,9 @@ export function TeamPage(props: TeamPageProps) {
       setBusy(null);
     }
   }, [
-    compileMainTaskId,
     compilePreviewContextId,
     props.token,
+    selectedMainTaskId,
     selectedTeamId,
     setBusy,
     setError,
@@ -1891,20 +2093,42 @@ export function TeamPage(props: TeamPageProps) {
     setBusy,
     setError,
   ]);
-  const runOpsPanel = (
+  const conversationPanel = (
     <div className="space-y-3">
+      <TeamMainTaskPanel
+        tasks={mainTasks}
+        tasksLoading={mainTasksLoading}
+        selectedMainTaskId={selectedMainTaskId}
+        onSelectedMainTaskIdChange={setSelectedMainTaskId}
+        onRefreshTasks={onRefreshMainTasks}
+        newTaskTitle={newMainTaskTitle}
+        onNewTaskTitleChange={setNewMainTaskTitle}
+        newTaskTopic={newMainTaskTopic}
+        onNewTaskTopicChange={setNewMainTaskTopic}
+        newTaskConversationMode={newMainTaskConversationMode}
+        onNewTaskConversationModeChange={setNewMainTaskConversationMode}
+        onCreateTask={onCreateMainTask}
+        messageRoute={mainTaskMessageRoute}
+        onMessageRouteChange={setMainTaskMessageRoute}
+        messageTargetMemberId={mainTaskMessageTargetMemberId}
+        onMessageTargetMemberIdChange={setMainTaskMessageTargetMemberId}
+        messageDraft={mainTaskMessageDraft}
+        onMessageDraftChange={setMainTaskMessageDraft}
+        onSendMessage={onSendMainTaskMessage}
+        onRefreshMessages={refreshMainTaskMessages}
+        messages={mainTaskMessages}
+        messagesLoading={mainTaskMessagesLoading}
+        busy={busy}
+        memberOptions={mainTaskMemberOptions}
+        formatTs={formatTs}
+        toPrettyJson={toPrettyJson}
+      />
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h4 className="text-sm font-semibold text-slate-900">Compile Main Task</h4>
+        <h4 className="text-sm font-semibold text-slate-900">Compile Conversation</h4>
         <p className="muted mt-2 text-sm text-slate-600">
-          Compile chat-approved main task into a deterministic run payload preview.
+          Compile chat-approved conversation into a deterministic run payload preview.
         </p>
-        <div className="form-row mt-3">
-          <input
-            className={panelInputClassName}
-            placeholder="main_task_id"
-            value={compileMainTaskId}
-            onChange={(event) => setCompileMainTaskId(event.target.value)}
-          />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             className={panelPrimaryButtonClassName}
             onClick={onCompileMainTaskRunPreview}
@@ -1912,6 +2136,11 @@ export function TeamPage(props: TeamPageProps) {
           >
             Compile Preview
           </button>
+          <span className="mono text-xs text-slate-500">
+            {selectedConversation
+              ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
+              : "selected_conversation=-"}
+          </span>
         </div>
         <input
           className={`${panelInputClassName} mt-2`}
@@ -1922,9 +2151,6 @@ export function TeamPage(props: TeamPageProps) {
         {compiledRunPreview ? (
           <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="mono text-xs text-slate-700">
-              <div>
-                <strong>main_task_id:</strong> {compiledRunPreview.main_task_id}
-              </div>
               <div>
                 <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
               </div>
@@ -1950,15 +2176,23 @@ export function TeamPage(props: TeamPageProps) {
               </button>
             </div>
             <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-              {toPrettyJson(compiledRunPreview)}
+              {toPrettyJson({
+                conversation_id: compiledRunPreview.conversation_id,
+                run_payload: compiledRunPreview.run_payload,
+              })}
             </pre>
           </div>
         ) : (
           <p className="mt-2 text-xs text-slate-500">
-            Submit a <code>main_task_id</code> to preview compiled run payload.
+            Select a conversation to preview compiled run payload.
           </p>
         )}
       </div>
+    </div>
+  );
+
+  const runOpsPanel = (
+    <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h4 className="text-sm font-semibold text-slate-900">Create Run</h4>
         <p className="muted mt-2 text-sm text-slate-600">
@@ -2205,13 +2439,23 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {!activeRunForSelectedTeam && !runsLoading && (
-                <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h3 className="text-base font-semibold text-slate-900">Debug Run Ops</h3>
-                  <p className="mt-2 text-sm text-slate-600">
-                    No active run is selected. Use debug run operations to create or load one.
-                  </p>
-                  <div className="mt-3">{runOpsPanel}</div>
-                </div>
+                <>
+                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="text-base font-semibold text-slate-900">Conversation</h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      No active run is selected. Start with conversation planning before launching
+                      a run.
+                    </p>
+                    <div className="mt-3">{conversationPanel}</div>
+                  </div>
+                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="text-base font-semibold text-slate-900">Debug Run Ops</h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Internal operations for manually creating or loading runs.
+                    </p>
+                    <div className="mt-3">{runOpsPanel}</div>
+                  </div>
+                </>
               )}
 
               {activeRunForSelectedTeam && !runsLoading && (
@@ -2300,6 +2544,14 @@ export function TeamPage(props: TeamPageProps) {
 
                   <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`}>
                     <button
+                      className={
+                        tab === "conversation" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS
+                      }
+                      onClick={() => setTab("conversation")}
+                    >
+                      Conversation
+                    </button>
+                    <button
                       className={tab === "overview" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
                       onClick={() => setTab("overview")}
                     >
@@ -2342,6 +2594,8 @@ export function TeamPage(props: TeamPageProps) {
                   </div>
 
                   <div className="flex min-w-0 flex-col gap-3">
+                    {tab === "conversation" && conversationPanel}
+
                     {tab === "overview" && (
                       <TeamOverviewPanel
                         snapshot={snapshot}
