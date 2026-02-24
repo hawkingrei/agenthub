@@ -189,3 +189,80 @@ export const ACP_TERMINAL_PRE_CLASS =
 
 export const ACP_DIFF_PRE_CLASS =
   "acp-content acp-diff-view overflow-auto rounded-md border border-ui-border bg-brand-primary p-2 text-ui-xs text-ui-text-inverse";
+
+export const TEAM_MUTED_TEXT_CLASS = "muted text-ui-sm text-ui-text-muted";
+
+export const TEAM_SIDEBAR_ROOT_CLASS =
+  "teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
+
+export const TEAM_SIDEBAR_FORGE_CARD_CLASS =
+  "teams-form teams-create-launch flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
+
+export const TEAM_SIDEBAR_INFO_CARD_CLASS =
+  "rounded-lg border border-ui-border bg-ui-surface px-ctrl-x py-ctrl-y";
+
+export const TEAM_SIDEBAR_INFO_LABEL_CLASS =
+  "text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
+
+export const TEAM_SIDEBAR_INFO_TEXT_CLASS = "mt-1 text-ui-sm text-ui-text-secondary";
+
+export const TEAM_SIDEBAR_META_GRID_CLASS =
+  "teams-create-launch-meta mono mt-3 grid gap-1 text-ui-xs text-ui-text-muted";
+
+export const AGENTS_PANEL_EXPANDED_CLASS =
+  "workspace-left rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+
+export const AGENTS_PANEL_COLLAPSED_CLASS =
+  "workspace-left collapsed rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+
+export const AGENTS_TOOLBAR_CLASS = "mb-3 flex items-center justify-between gap-2";
+export const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-2";
+
+export const AGENTS_CREATE_BUTTON_CLASS =
+  "rounded-lg bg-brand-primary px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-inverse hover:bg-brand-primary-hover";
+
+export const AGENTS_ROW_CLASS =
+  "agent-row rounded-xl border border-ui-border bg-ui-surface px-ctrl-x py-3 transition hover:border-ui-border-strong";
+
+export const AGENTS_ROW_ACTIVE_CLASS =
+  "agent-row active rounded-xl border border-ui-border-strong bg-ui-surface-soft px-ctrl-x py-3";
+
+export const OUTPUT_HEADER_ROOT_CLASS =
+  "output-header rounded-xl border border-ui-border/80 bg-ui-surface/80 px-ctrl-x py-ctrl-y shadow-sm";
+
+export const OUTPUT_HEADER_TITLE_CLASS = "output-title flex items-center gap-2";
+export const OUTPUT_HEADER_TITLE_MAIN_CLASS = "output-title-main flex items-center gap-2";
+export const OUTPUT_HEADER_META_CLASS = "output-meta flex flex-wrap items-center gap-2";
+
+export const OUTPUT_HEADER_PILL_CLASS =
+  "output-pill rounded-full border border-ui-border-strong bg-ui-surface px-2 py-1 text-ui-xs font-medium text-ui-text-secondary";
+
+export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS = "output-subtitle-row mt-1";
+export const OUTPUT_HEADER_SUBTITLE_CLASS = "output-subtitle text-ui-sm text-ui-text-muted";
+
+export const OUTPUT_BODY_ROOT_CLASS =
+  "output-body rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+
+export const OUTPUT_BODY_LOADING_CLASS =
+  "output-loading flex h-full min-h-40 flex-col items-center justify-center gap-2 text-ui-text-muted";
+
+export const OUTPUT_BODY_EMPTY_CLASS =
+  "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-ui-border-strong bg-ui-surface-soft/60 p-4 text-center";
+
+export const INPUT_DOCK_ROOT_CLASS =
+  "input docked rounded-2xl border border-ui-border/80 bg-ui-surface/85 p-3 shadow-sm backdrop-blur";
+
+export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
+  "acp-interrupt-button input-interrupt-button rounded-lg border border-state-warning-border bg-state-warning-bg px-ctrl-x py-ctrl-y text-ui-sm font-medium text-state-warning-text hover:border-ui-border-emphasis";
+
+export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
+  "history-toggle rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-secondary hover:border-ui-border-emphasis";
+
+export const INPUT_DOCK_HISTORY_MENU_CLASS =
+  "input-history-menu rounded-lg border border-ui-border-strong bg-ui-surface p-1 shadow";
+
+export const INPUT_DOCK_HISTORY_ITEM_CLASS =
+  "input-history-item block w-full rounded-md px-2 py-1 text-left text-ui-sm hover:bg-ui-surface-muted";
+
+export const INPUT_DOCK_TEXTAREA_CLASS =
+  "min-h-16 w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border";

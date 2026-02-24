@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamDefinitionRecord } from "../api";
 import {
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
@@ -9,6 +10,12 @@ import {
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
+  TEAM_SIDEBAR_FORGE_CARD_CLASS,
+  TEAM_SIDEBAR_INFO_CARD_CLASS,
+  TEAM_SIDEBAR_INFO_LABEL_CLASS,
+  TEAM_SIDEBAR_INFO_TEXT_CLASS,
+  TEAM_SIDEBAR_META_GRID_CLASS,
+  TEAM_SIDEBAR_ROOT_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamMemberSummary = {
@@ -61,7 +68,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
   const hasTeamFilter = normalizedTeamFilter.length > 0;
 
   return (
-    <aside className="teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <aside className={TEAM_SIDEBAR_ROOT_CLASS}>
       <div className="mode-switch mb-3 flex items-center gap-2">
         <a className="mode-tag" href="/">
           Agents
@@ -86,14 +93,14 @@ export function TeamSidebar(props: TeamSidebarProps) {
         </button>
       </div>
 
-      <div className="teams-form teams-create-launch flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <div className={TEAM_SIDEBAR_FORGE_CARD_CLASS}>
         <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
-        <p className="muted">Choose a creation entry: guided wizard or direct manual spec.</p>
-        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <p className={TEAM_MUTED_TEXT_CLASS}>Choose a creation entry: guided wizard or direct manual spec.</p>
+        <div className={TEAM_SIDEBAR_INFO_CARD_CLASS}>
+          <p className={TEAM_SIDEBAR_INFO_LABEL_CLASS}>
             Operating Model
           </p>
-          <p className="mt-1 text-sm text-slate-700">
+          <p className={TEAM_SIDEBAR_INFO_TEXT_CLASS}>
             Leader plans and talks to human actor. Workers execute delegated tasks and report
             evidence back to leader.
           </p>
@@ -112,7 +119,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
             Manual Spec
           </button>
         </div>
-        <div className="teams-create-launch-meta mono mt-3 grid gap-1 text-xs text-slate-600">
+        <div className={TEAM_SIDEBAR_META_GRID_CLASS}>
           <span>draft_team={draftTeamName.trim() || "-"}</span>
           <span>leader={leaderMemberId.trim() || "-"}</span>
           <span>workers={configuredWorkerCount}</span>
@@ -141,12 +148,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
       </div>
 
       <div className="teams-list flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
-        {teams.length === 0 && <p className="muted">No teams yet.</p>}
+        {teams.length === 0 && <p className={TEAM_MUTED_TEXT_CLASS}>No teams yet.</p>}
         {teams.length > 0 && filteredTeams.length === 0 && (
-          <p className="muted">No teams match current filter.</p>
+          <p className={TEAM_MUTED_TEXT_CLASS}>No teams match current filter.</p>
         )}
         {hasTeamFilter && filteredTeams.length > 0 && (
-          <p className="muted mono">{`filtered=${filteredTeams.length} total=${teams.length}`}</p>
+          <p className={`${TEAM_MUTED_TEXT_CLASS} mono`}>{`filtered=${filteredTeams.length} total=${teams.length}`}</p>
         )}
         {filteredTeams.map((team) => {
           const summary = teamMemberSummaryByTeamId.get(team.id);
