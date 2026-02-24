@@ -233,15 +233,15 @@ Expected verification set for this feature area:
 
 ## Canonical References
 
-- `docs/features/2026-02-22-team-context-memory-architecture.md`
-- `docs/features/2026-02-18-agent-actor-local-distributed-architecture.md`
+- `docs/journal/2026-02-22-team-context-memory-architecture.md`
+- `docs/journal/2026-02-18-agent-actor-local-distributed-architecture.md`
 
 ## Superseded Notes
 
-Merged into this spec and removed from `docs/features`:
+This note merged the following previously split topics:
 
-- `docs/features/2026-02-24-team-operating-model-spec.md`
-- `docs/features/2026-02-24-team-operating-model-spec.md`
-- `docs/features/2026-02-24-team-operating-model-spec.md`
-- `docs/features/2026-02-24-team-operating-model-spec.md`
-- `docs/features/2026-02-24-team-operating-model-spec.md`
+- `docs/journal/2026-02-20-team-role-workflow-policy.md`
+- `docs/journal/2026-02-23-team-create-draft-creating-state-and-member-role-alignment.md`
+- `docs/journal/2026-02-23-team-top-member-status-strip.md`
+- `docs/journal/2026-02-24-team-main-task-human-conversation-ui.md`
+- `docs/journal/2026-02-24-team-role-skill-runtime-spec.md`

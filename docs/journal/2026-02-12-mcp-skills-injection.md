@@ -30,7 +30,7 @@ across Codex, Gemini, and Kimi ACP agents.
 ## Scope
 
 - `src/acp.rs`
-- `docs/features/2026-02-12-mcp-skills-injection.md`
+- `docs/journal/2026-02-12-mcp-skills-injection.md`
 - `docs/todo.md`
 
 ## Validation

@@ -16,7 +16,7 @@ checklist also needed runnable coverage to keep A2A progress trackable.
 
 - `src/api/error.rs`
 - `src/api/teams.rs`
-- `docs/features/2026-02-12-a2a-agent-team-phase1.md`
+- `docs/journal/2026-02-12-a2a-agent-team-phase1.md`
 - `docs/todo.md`
 
 ## Key Decisions

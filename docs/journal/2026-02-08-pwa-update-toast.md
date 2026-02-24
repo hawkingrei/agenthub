@@ -5,7 +5,7 @@ status: implemented
 ---
 
 Deprecated: PWA support was removed on 2026-02-08. This update flow is no
-longer used. See `docs/features/2026-02-08-pwa-removal.md`.
+longer used. See `docs/journal/2026-02-08-pwa-removal.md`.
 
 ## Summary
 

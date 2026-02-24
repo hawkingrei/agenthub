@@ -1,6 +1,6 @@
 # Bazel Build and Test Integration
 
-> Note: This document captures the initial shell-wrapper Bazel integration. It is superseded by `docs/features/2026-02-15-bazel-native-rules-rust-core.md` for the native `rules_rust` migration.
+> Note: This document captures the initial shell-wrapper Bazel integration. It is superseded by `docs/journal/2026-02-15-bazel-native-rules-rust-core.md` for the native `rules_rust` migration.
 
 ## Background
 

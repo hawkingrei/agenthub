@@ -1,44 +1,49 @@
 # Feature Docs Standard
 
-This directory stores feature-oriented technical documents, not per-PR journals.
+This directory stores stable, domain-oriented technical specifications.
+Chronological implementation records are stored in `docs/journal/`.
 
 ## Goal
 
-Keep one durable technical document per feature area as the source of truth for:
-- problem statement and scope
-- architecture and runtime contracts
-- configuration and operational constraints
+Keep a small set of durable feature docs as the source of truth for:
+
+- architecture boundaries
+- runtime/data contracts
+- UI/UX interaction contracts
+- operational constraints and failure handling
 - validation matrix and open risks
 
 ## Required Structure
 
-Each active feature document should contain:
+Each active feature spec should include:
+
 - `Problem`
 - `Scope`
 - `Non-Goals`
 - `Architecture`
-- `Contracts` (API/schema/runtime behavior)
+- `Contracts`
 - `Validation Matrix`
-- `Operational Notes` (rollout, compatibility, failure handling)
+- `Operational Notes`
 - `Open Risks`
-- `Superseded Notes` (optional, when merged from older notes)
+- `Source Journals` (links to journal records)
 
-## Writing Rules
+## File Policy
 
-- Prefer stable technical language over timeline/journal narration.
-- Avoid embedding long command transcripts unless required for reproducibility.
-- Keep implementation details tied to interfaces and invariants, not commit history.
-- Use explicit file references for critical contracts.
+- `docs/features/`: theme/domain docs only (no date-prefixed changelog notes).
+- `docs/journal/`: date-prefixed implementation records (`YYYY-MM-DD-topic.md`).
+- When a feature evolves, update the canonical feature doc and add/append a journal note.
 
 ## Compaction Policy
 
-When 3+ notes describe the same feature area:
-1. Merge them into one canonical spec document.
-2. Replace old notes with short `Superseded by ...` pointers.
-3. Update `docs/todo.md` references to the canonical spec document.
-4. Keep only one active verification source per feature area.
+When multiple journal notes describe the same area:
 
-## Naming
+1. extract stable conclusions into one feature spec in `docs/features/`;
+2. keep detailed implementation timeline in `docs/journal/`;
+3. update `docs/todo.md` to reference the canonical feature spec for ongoing validation;
+4. avoid duplicating operational contracts across multiple feature specs.
 
-- Keep the existing `YYYY-MM-DD-topic.md` naming.
-- Use topic names that describe feature domains (for example, `team-role-skill-runtime-spec`) rather than PR mechanics.
+## Current Canonical Specs
+
+- `docs/features/frontend-design.md`
+- `docs/features/agents-teams.md`
+- `docs/features/backend-runtime-logic.md`

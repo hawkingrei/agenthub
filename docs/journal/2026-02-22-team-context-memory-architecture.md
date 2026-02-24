@@ -221,7 +221,7 @@ When used context approaches budget:
 
 Detailed design reference:
 
-- `docs/features/2026-02-22-team-memory-flush-spec.md`
+- `docs/journal/2026-02-22-team-memory-flush-spec.md`
 
 ### Lifecycle
 

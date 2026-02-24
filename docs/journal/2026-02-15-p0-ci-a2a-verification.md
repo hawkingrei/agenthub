@@ -8,8 +8,8 @@ actor-runtime wiring, and worktree default-root validation.
 ## Scope
 
 - `docs/todo.md`
-- `docs/features/2026-02-14-a2a-team-actor-runtime-context-start-api.md`
-- `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`
+- `docs/journal/2026-02-14-a2a-team-actor-runtime-context-start-api.md`
+- `docs/journal/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`
 - `src/api/teams/tests.rs`
 
 ## Evidence
@@ -72,7 +72,7 @@ cargo test dispatch_once_injects_actor_runtime_and_supports_inbox_ack_flow -- --
 Added receiver-side anti-replay guidance with timestamp skew and idempotency
 dedupe reference flow in:
 
-- `docs/features/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`
+- `docs/journal/2026-02-15-a2a-team-review-followup-orchestrator-relay-hardening.md`
 
 ## Follow-ups
 

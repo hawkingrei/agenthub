@@ -22,7 +22,7 @@ policy document.
 - `src/api/agents.rs`
 - `crates/agenthub-acp/src/actor_runtime_skill.rs`
 - `docs/todo.md`
-- `docs/features/2026-02-15-a2a-team-actor-runtime-start-and-relay-replay-guidance.md`
+- `docs/journal/2026-02-15-a2a-team-actor-runtime-start-and-relay-replay-guidance.md`
 
 ## Key Decisions
 

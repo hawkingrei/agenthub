@@ -1,6 +1,6 @@
 # Team Context/Memory Reuse Strategy
 
-> Superseded by `docs/features/2026-02-22-team-context-memory-architecture.md` for active implementation sequencing.
+> Superseded by `docs/journal/2026-02-22-team-context-memory-architecture.md` for active implementation sequencing.
 
 ## Background
 

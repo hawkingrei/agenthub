@@ -36,7 +36,7 @@ For context-heavy research and implementation review, we need:
 - `scripts/setup_ck_search_context.sh`
 - `AGENTS.md`
 - `docs/todo.md`
-- `docs/features/2026-02-22-ck-search-mcp-and-info-research-layout.md`
+- `docs/journal/2026-02-22-ck-search-mcp-and-info-research-layout.md`
 
 ## Usage
 

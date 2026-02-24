@@ -26,7 +26,7 @@ The PR had two concrete issues:
 - `web/src/acp_debug.interaction.test.tsx`
 - `web/src/app.runtime_effects.test.tsx`
 - `web/src/hooks/use_acp_conversation.interaction.test.tsx`
-- `docs/features/2026-02-16-acp-permission-history-bubble-copy.md`
+- `docs/journal/2026-02-16-acp-permission-history-bubble-copy.md`
 
 ## Key Decisions
 

@@ -51,5 +51,5 @@ cargo test team::manager::tests::list_steps_returns_sorted_steps_for_a_run -- --
 - Add explicit `input_required` and `resume` scheduler APIs for human-in-the-loop
   coordination.
 - Orchestrator worker now dispatches ready submitted steps in backend service
-  loop (see `docs/features/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
+  loop (see `docs/journal/2026-02-15-a2a-team-orchestrator-worker-agent-start.md`).
 - Validate worker behavior against real remote executors and end-to-end retries.
