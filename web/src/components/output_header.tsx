@@ -17,6 +17,7 @@ type OutputHeaderProps = {
   agentsCollapsed: boolean;
   hasAcp: boolean;
   thinkingStartTs: number | null;
+  runStatus?: string | null;
   modelLabel?: string | null;
   onToggleAgents: () => void;
 };
@@ -27,6 +28,7 @@ export const OutputHeader = React.memo(function OutputHeader({
   agentsCollapsed,
   hasAcp,
   thinkingStartTs,
+  runStatus,
   modelLabel,
   onToggleAgents,
 }: OutputHeaderProps) {
@@ -42,6 +44,15 @@ export const OutputHeader = React.memo(function OutputHeader({
     thinkingStartTs
       ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - thinkingStartTs))}s`
       : null;
+  const mergedStatus = (
+    runStatus?.trim().toLowerCase() ||
+    activeAgent?.status.trim().toLowerCase() ||
+    "unknown"
+  );
+  const mergedStatusLabel = thinkingLabel
+    ? `${mergedStatus} · ${thinkingLabel}`
+    : mergedStatus;
+  const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
       <div className={OUTPUT_HEADER_TITLE_CLASS}>
@@ -70,17 +81,14 @@ export const OutputHeader = React.memo(function OutputHeader({
       {activeAgent ? (
         <div className={OUTPUT_HEADER_META_CLASS}>
           <StatusBadge
-            label={activeAgent.status}
-            tone={resolveAgentStatusTone(activeAgent.status)}
-            className={`agent-status status-${activeAgent.status}`}
-            title={`status: ${activeAgent.status}`}
+            label={mergedStatusLabel}
+            tone={resolveAgentStatusTone(mergedStatus)}
+            className={`agent-status status-${mergedStatusClassToken}`}
+            title={`status: ${mergedStatusLabel}`}
           />
           <span className={OUTPUT_HEADER_PILL_CLASS}>
             Code mode {activeAgent.code_mode ? "on" : "off"}
           </span>
-          {thinkingLabel && (
-            <span className="acp-thinking">{thinkingLabel}</span>
-          )}
           {sessionLabel && (
             <span className="output-session mono">Session {sessionLabel}</span>
           )}
