@@ -760,7 +760,7 @@ impl TeamManager {
                 canceled_count += 1;
                 // Best-effort audit trail: cancellation already committed by cancel_run.
                 // We should not fail startup because of a follow-up event write error.
-                let _ = self
+                if let Err(err) = self
                     .append_run_event(
                         &run_id,
                         "run_startup_canceled",
@@ -769,7 +769,14 @@ impl TeamManager {
                             "reason": "manual_start_required_after_service_restart",
                         }),
                     )
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        error = %err,
+                        "failed to append startup cancellation event"
+                    );
+                }
             }
         }
         Ok(canceled_count)
