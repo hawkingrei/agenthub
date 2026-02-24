@@ -246,17 +246,35 @@ export const AGENTS_ROW_ACTIVE_CLASS =
   "agent-row active rounded-xl border border-ui-border-strong bg-ui-surface-soft px-ctrl-x py-3";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
-  "output-header rounded-xl border border-ui-border/80 bg-ui-surface/80 px-ctrl-x py-ctrl-y shadow-sm";
+  "output-header grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center justify-between gap-x-2.5 gap-y-1.5 rounded-xl border border-ui-border/80 bg-ui-surface/80 px-ctrl-x py-ctrl-y shadow-sm max-[720px]:grid-cols-1 max-[720px]:grid-rows-[auto_auto_auto]";
 
-export const OUTPUT_HEADER_TITLE_CLASS = "output-title flex items-center gap-2";
-export const OUTPUT_HEADER_TITLE_MAIN_CLASS = "output-title-main flex items-center gap-2";
-export const OUTPUT_HEADER_META_CLASS = "output-meta flex flex-wrap items-center gap-2";
+export const OUTPUT_HEADER_TITLE_CLASS =
+  "output-title col-start-1 row-start-1 inline-flex min-w-0 w-fit max-w-[clamp(160px,32vw,360px)] items-center gap-2 max-[720px]:max-w-full";
+
+export const OUTPUT_HEADER_TITLE_TEXT_CLASS =
+  "output-title-text flex min-w-0 flex-col gap-0.5";
+
+export const OUTPUT_HEADER_TITLE_MAIN_CLASS =
+  "output-title-main flex min-w-0 flex-wrap items-center gap-2";
+
+export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
+  "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[18px] leading-[1.05] text-ui-text-primary";
+
+export const OUTPUT_HEADER_META_CLASS =
+  "output-meta col-start-2 row-start-1 flex max-w-[52vw] flex-nowrap items-center justify-self-end gap-2 overflow-hidden whitespace-nowrap text-ui-xs text-ui-text-muted max-[720px]:col-start-1 max-[720px]:row-start-2 max-[720px]:grid max-[720px]:max-w-full max-[720px]:grid-cols-2 max-[720px]:gap-x-2 max-[720px]:gap-y-1 max-[720px]:justify-self-start max-[720px]:whitespace-normal [&>*]:min-w-0 [&>*]:overflow-hidden [&>*]:text-ellipsis [&>*]:whitespace-nowrap max-[720px]:[&>*:nth-child(n+5)]:hidden";
 
 export const OUTPUT_HEADER_PILL_CLASS =
   "output-pill rounded-full border border-ui-border-strong bg-ui-surface px-2 py-1 text-ui-xs font-medium text-ui-text-secondary";
 
-export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS = "output-subtitle-row mt-1";
-export const OUTPUT_HEADER_SUBTITLE_CLASS = "output-subtitle text-ui-sm text-ui-text-muted";
+export const OUTPUT_HEADER_SESSION_CLASS = "output-session mono text-[11px] text-ui-text-muted";
+
+export const OUTPUT_HEADER_UPDATED_CLASS = "output-updated text-[11px] text-ui-text-muted";
+
+export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS =
+  "output-subtitle-row col-start-1 row-start-2 mt-1 flex min-w-0 items-center justify-self-start max-w-full max-[720px]:row-start-3";
+
+export const OUTPUT_HEADER_SUBTITLE_CLASS =
+  "output-subtitle overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ui-text-muted";
 
 export const OUTPUT_BODY_ROOT_CLASS =
   "output-body rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";

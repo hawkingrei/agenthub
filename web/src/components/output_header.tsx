@@ -5,10 +5,14 @@ import {
   OUTPUT_HEADER_META_CLASS,
   OUTPUT_HEADER_PILL_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
+  OUTPUT_HEADER_SESSION_CLASS,
   OUTPUT_HEADER_SUBTITLE_CLASS,
   OUTPUT_HEADER_SUBTITLE_ROW_CLASS,
   OUTPUT_HEADER_TITLE_CLASS,
+  OUTPUT_HEADER_TITLE_HEADING_CLASS,
   OUTPUT_HEADER_TITLE_MAIN_CLASS,
+  OUTPUT_HEADER_TITLE_TEXT_CLASS,
+  OUTPUT_HEADER_UPDATED_CLASS,
 } from "../ui/tailwind_classes";
 
 type OutputHeaderProps = {
@@ -69,9 +73,9 @@ export const OutputHeader = React.memo(function OutputHeader({
             aria-hidden="true"
           />
         </button>
-        <div className="output-title-text">
+        <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
           <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
-            <h2>{titleText}</h2>
+            <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{titleText}</h2>
             {modelLabel ? (
               <span className="agent-tag">{modelLabel}</span>
             ) : null}
@@ -90,10 +94,10 @@ export const OutputHeader = React.memo(function OutputHeader({
             Code mode {activeAgent.code_mode ? "on" : "off"}
           </span>
           {sessionLabel && (
-            <span className="output-session mono">Session {sessionLabel}</span>
+            <span className={OUTPUT_HEADER_SESSION_CLASS}>Session {sessionLabel}</span>
           )}
           {updatedLabel && (
-            <span className="output-updated">Updated {updatedLabel}</span>
+            <span className={OUTPUT_HEADER_UPDATED_CLASS}>Updated {updatedLabel}</span>
           )}
         </div>
       ) : null}
