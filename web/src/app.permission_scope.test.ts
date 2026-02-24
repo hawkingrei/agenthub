@@ -407,6 +407,13 @@ describe("app helper decisions", () => {
     expect(
       decidePermissionJump(
         { toolCallId: "call-1", sessionId: "s1", attempts: 0 },
+        "plan",
+        "s1"
+      )
+    ).toBe("wait");
+    expect(
+      decidePermissionJump(
+        { toolCallId: "call-1", sessionId: "s1", attempts: 0 },
         "conversation",
         "s2"
       )

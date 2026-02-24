@@ -28,15 +28,12 @@ export const OutputBody = React.memo(function OutputBody({
   acpPanelProps,
 }: OutputBodyProps) {
   const showLoading = isOutputLoading || isConversationLoading;
-  const loadingLabel = isConversationLoading
-    ? "Loading conversation"
-    : "Waiting for output";
   return (
     <div className={OUTPUT_BODY_ROOT_CLASS}>
       {showLoading ? (
         <div className={OUTPUT_BODY_LOADING_CLASS}>
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-          <div className="label">{loadingLabel}</div>
+          <div className="label">加载中</div>
         </div>
       ) : acpPanelProps.acpView.hasAcp ? (
         <AcpPanel {...acpPanelProps} />

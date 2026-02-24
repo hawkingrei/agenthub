@@ -42,7 +42,16 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
     containerRef: React.createRef<HTMLDivElement>(),
     ansi: (input) => input,
   },
+  plan: {
+    plan: null,
+  },
   debug: {
+    terminalOutputs: [],
+    ansi: (input) => input,
+    terminalRef: React.createRef<HTMLDivElement>(),
+    onTerminalScroll: () => {},
+    showTerminalJump: false,
+    onJumpToTerminalBottom: () => {},
     currentMode: null,
     rawEvents: [],
     acpPermissionHistory: [],
@@ -107,7 +116,7 @@ const renderBody = ({
 describe("OutputBody", () => {
   it("shows loading state before output is ready", () => {
     const html = renderBody({ isOutputLoading: true, outputs: [] });
-    expect(html).toContain("Waiting for output");
+    expect(html).toContain("加载中");
     expect(html).not.toContain("No output yet");
   });
 
@@ -127,7 +136,7 @@ describe("OutputBody", () => {
         },
       ],
     });
-    expect(html).toContain("Loading conversation");
+    expect(html).toContain("加载中");
     expect(html).not.toContain("terminal line");
   });
 

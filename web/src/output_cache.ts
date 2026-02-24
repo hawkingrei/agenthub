@@ -154,6 +154,19 @@ export function buildOutputCacheSlice(
   return merged.slice(merged.length - maxCachedEvents);
 }
 
+export function limitOutputCacheSessions(
+  cache: Record<string, OutputLine[]>,
+  maxCachedSessions: number
+): Record<string, OutputLine[]> {
+  if (maxCachedSessions <= 0) return {};
+  const entries = Object.entries(cache).filter(([, lines]) => lines.length > 0);
+  if (entries.length <= maxCachedSessions) return cache;
+  const limited = entries
+    .sort((a, b) => getOutputListRecency(b[1]) - getOutputListRecency(a[1]))
+    .slice(0, maxCachedSessions);
+  return Object.fromEntries(limited);
+}
+
 export type CachedOutputSelection = {
   outputs: OutputLine[] | null;
   acpOutputs: OutputLine[] | null;
@@ -185,4 +198,11 @@ export function selectCachedOutputs(
     };
   }
   return { outputs: null, acpOutputs: null, source: "none" };
+}
+
+function getOutputListRecency(list: OutputLine[]): number {
+  if (list.length === 0) return 0;
+  const last = list[list.length - 1];
+  if (typeof last.ts === "number" && Number.isFinite(last.ts)) return last.ts;
+  return 0;
 }

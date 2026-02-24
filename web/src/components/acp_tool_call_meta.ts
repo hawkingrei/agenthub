@@ -14,6 +14,12 @@ export type ToolCallDetailItem = {
 };
 
 const EDIT_OUTPUT_KEY = "unified_diff";
+const DURATION_KEY_NORMALIZED = new Set<string>([
+  "duration",
+  "durationms",
+  "elapsedms",
+  "latencyms",
+]);
 
 export function resolveToolGroupStatusClassName(tone: ToolGroupStatusTone): string {
   let toneClass = ACP_TOOL_STATUS_GROUP_DEFAULT_CLASS;
@@ -46,7 +52,7 @@ export function selectToolCallOutputForDisplay(
   if (!isEditToolTitle(title)) return rawOutput;
   const topLevel = toTopLevelPayloadObject(rawOutput);
   if (!topLevel) return rawOutput;
-  if (!hasOwn(topLevel, EDIT_OUTPUT_KEY)) return rawOutput;
+  if (!hasOwn(topLevel, EDIT_OUTPUT_KEY)) return null;
   return { [EDIT_OUTPUT_KEY]: topLevel[EDIT_OUTPUT_KEY] };
 }
 
@@ -58,10 +64,14 @@ export function extractToolCallDetails(
   const details: ToolCallDetailItem[] = [{ key: "call_id", value: callId }];
   const topLevel = toTopLevelPayloadObject(rawOutput);
   if (!topLevel) return details;
-  if (isEditToolTitle(title) && hasOwn(topLevel, EDIT_OUTPUT_KEY)) {
+  if (isEditToolTitle(title)) {
     for (const [key, value] of Object.entries(topLevel)) {
       const normalized = normalizePayloadKey(key);
-      if (normalized === "callid" || normalized === normalizePayloadKey(EDIT_OUTPUT_KEY)) {
+      if (
+        normalized === "callid" ||
+        normalized === normalizePayloadKey(EDIT_OUTPUT_KEY) ||
+        DURATION_KEY_NORMALIZED.has(normalized)
+      ) {
         continue;
       }
       const detailValue = formatDetailValue(value);

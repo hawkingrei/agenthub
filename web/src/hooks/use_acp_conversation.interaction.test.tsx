@@ -38,7 +38,7 @@ function HookHarness({
   onSnapshot,
 }: {
   acpView?: AcpView;
-  acpTab?: "conversation" | "debug";
+  acpTab?: "conversation" | "plan" | "debug";
   renderToolCallNode?: boolean;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }) {

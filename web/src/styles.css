@@ -2119,43 +2119,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-diff-view {
-  margin: 0;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid #d9e4dd;
-  background: #f7fbf8;
-  white-space: pre;
-  overflow-x: auto;
   line-height: 1.45;
-}
-
-.acp-diff-line {
-  display: block;
-  padding: 0 4px;
-}
-
-.acp-diff-line.meta {
-  color: #355946;
-  background: rgba(53, 89, 70, 0.08);
-}
-
-.acp-diff-line.hunk {
-  color: #4d4f91;
-  background: rgba(77, 79, 145, 0.12);
-}
-
-.acp-diff-line.add {
-  color: #1f6a38;
-  background: rgba(45, 153, 82, 0.14);
-}
-
-.acp-diff-line.remove {
-  color: #8a1d2d;
-  background: rgba(196, 38, 73, 0.12);
-}
-
-.acp-diff-line.context {
-  color: #2f3a33;
 }
 
 .acp-segmented-block {
@@ -2721,10 +2685,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .acp-diff-view {
     padding: 6px;
     font-size: 11px;
-  }
-
-  .acp-diff-line {
-    padding: 0 2px;
   }
 
   .acp-runtime-grid {

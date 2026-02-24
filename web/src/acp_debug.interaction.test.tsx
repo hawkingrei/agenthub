@@ -26,6 +26,12 @@ function buildProps(
   override: Partial<AcpDebugProps> = {}
 ): AcpDebugProps {
   return {
+    terminalOutputs: [],
+    ansi: (input) => input,
+    terminalRef: React.createRef<HTMLDivElement>(),
+    onTerminalScroll: () => {},
+    showTerminalJump: false,
+    onJumpToTerminalBottom: () => {},
     currentMode: "default",
     rawEvents: [],
     acpPermissionHistory: [permission],
@@ -100,6 +106,35 @@ describe("AcpDebug interactions", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("invokes terminal jump callback from terminal tab", () => {
+    const onJumpTerminal = vi.fn();
+    act(() => {
+      root.render(
+        <AcpDebug
+          {...buildProps({
+            initialTab: "terminal",
+            showTerminalJump: true,
+            onJumpToTerminalBottom: onJumpTerminal,
+            terminalOutputs: [
+              {
+                event_id: 1,
+                ts: 1,
+                seq: "1",
+                stream: "stdout",
+                message: "line 1",
+                agent_id: "agent-a",
+                session_id: "session-a",
+              },
+            ],
+          })}
+        />
+      );
+    });
+
+    clickByText(container, "Jump to latest");
+    expect(onJumpTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("invokes jump callback on permission row click", () => {

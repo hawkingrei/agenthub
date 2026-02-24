@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 import { AcpDebug, AcpDebugProps } from "./components/acp_debug";
 
 const baseProps: AcpDebugProps = {
+  terminalOutputs: [],
+  ansi: (input) => input,
+  terminalRef: React.createRef<HTMLDivElement>(),
+  onTerminalScroll: () => {},
+  showTerminalJump: false,
+  onJumpToTerminalBottom: () => {},
   currentMode: "default",
   rawEvents: [],
   acpPermissionHistory: [],
@@ -56,9 +62,32 @@ describe("AcpDebug", () => {
 
   it("renders debug tabs", () => {
     const html = renderToStaticMarkup(<AcpDebug {...baseProps} />);
+    expect(html).toContain("Terminal");
     expect(html).toContain("Runtime");
     expect(html).toContain("Permissions");
     expect(html).toContain("Raw Events");
+  });
+
+  it("renders terminal tab with output", () => {
+    const html = renderToStaticMarkup(
+      <AcpDebug
+        {...baseProps}
+        initialTab="terminal"
+        terminalOutputs={[
+          {
+            event_id: 1,
+            ts: 1,
+            seq: "1",
+            stream: "stdout",
+            message: "hello terminal",
+            agent_id: "agent-1",
+            session_id: "session-1",
+          },
+        ]}
+      />
+    );
+    expect(html).toContain("Terminal");
+    expect(html).toContain("hello terminal");
   });
 
   it("renders runtime metrics tab when initial tab is runtime", () => {

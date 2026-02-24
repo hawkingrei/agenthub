@@ -54,6 +54,10 @@ type AcpConversationProps = {
 
 const MARKDOWN_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
+const MARKDOWN_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+const ANSI_SEGMENT_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+const MARKDOWN_CACHE_MAX_ENTRY_CHARS = 120_000;
+const ANSI_SEGMENT_CACHE_MAX_ENTRY_CHARS = 120_000;
 const TOOL_PAYLOAD_PREVIEW_LIMIT = 88;
 const TOOL_PAYLOAD_MAX_NESTED_DEPTH = 2;
 const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
@@ -63,6 +67,10 @@ const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
   "callid",
   "cwd",
   "success",
+  "duration",
+  "durationms",
+  "elapsedms",
+  "latencyms",
 ]);
 const TOOL_PAYLOAD_OUTPUT_PRIORITY_NORMALIZED = [
   "aggregatedoutput",
@@ -75,6 +83,11 @@ const TOOL_PAYLOAD_OUTPUT_PRIORITY_KEY_NORMALIZED = new Set<string>(
 const TOOL_PAYLOAD_HIDE_EMPTY_STREAM_KEY_NORMALIZED = new Set<string>([
   "stdout",
   "stderr",
+]);
+const TOOL_PAYLOAD_PLAIN_TEXT_KEY_NORMALIZED = new Set<string>([
+  "parsedcmd",
+  "context",
+  "content",
 ]);
 const TOOL_TEXT_INITIAL_LINES = 120;
 const TOOL_TEXT_LINE_CHUNK = 220;
@@ -93,7 +106,11 @@ const FAILED_TOOL_STATUSES = new Set([
 const SKILL_BLOCK_PATTERN = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
 
 const markdownHtmlCache = new Map<string, string>();
+const markdownHtmlCacheSize = new Map<string, number>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
+const ansiSegmentCacheSize = new Map<string, number>();
+let markdownCacheBytes = 0;
+let ansiCacheBytes = 0;
 let markdownCacheHitCount = 0;
 let markdownCacheMissCount = 0;
 let ansiCacheHitCount = 0;
@@ -112,7 +129,11 @@ type CacheStats = {
 
 export function resetAcpConversationCaches(): void {
   markdownHtmlCache.clear();
+  markdownHtmlCacheSize.clear();
   ansiSegmentCache.clear();
+  ansiSegmentCacheSize.clear();
+  markdownCacheBytes = 0;
+  ansiCacheBytes = 0;
   markdownCacheHitCount = 0;
   markdownCacheMissCount = 0;
   ansiCacheHitCount = 0;
@@ -133,6 +154,10 @@ export function getAcpConversationCacheStats(): CacheStats {
 }
 
 export function renderMarkdownCached(text: string): string {
+  if (text.length > MARKDOWN_CACHE_MAX_ENTRY_CHARS) {
+    markdownCacheMissCount += 1;
+    return renderMarkdown(normalizeSkillBlocksForMarkdown(text));
+  }
   const cached = markdownHtmlCache.get(text);
   if (cached != null) {
     markdownCacheHitCount += 1;
@@ -140,11 +165,21 @@ export function renderMarkdownCached(text: string): string {
   }
   markdownCacheMissCount += 1;
   const normalized = normalizeSkillBlocksForMarkdown(text);
-  return cacheWithLruEviction(
+  const rendered = renderMarkdown(normalized);
+  const estimatedBytes =
+    estimateStringBytes(text) + estimateStringBytes(rendered);
+  return cacheWithLruBudget(
     markdownHtmlCache,
+    markdownHtmlCacheSize,
+    () => markdownCacheBytes,
+    (next) => {
+      markdownCacheBytes = next;
+    },
     text,
-    renderMarkdown(normalized),
-    MARKDOWN_CACHE_LIMIT
+    rendered,
+    estimatedBytes,
+    MARKDOWN_CACHE_LIMIT,
+    MARKDOWN_CACHE_MAX_BYTES
   );
 }
 
@@ -497,6 +532,7 @@ const ToolCallBubble = React.memo(
               <ToolTextContent
                 text={unescapeLineBreaks(msg.content)}
                 markdownClassName="acp-payload-markdown"
+                preferPlainText={true}
               />
             </FoldSection>
           )}
@@ -1147,6 +1183,10 @@ function summarizeToolPayload(payload: NormalizedToolPayload, limit: number): st
 }
 
 function summarizePayloadValue(value: unknown): string {
+  const normalizedValue = normalizeNumericKeyedObject(value);
+  if (normalizedValue !== value) {
+    return summarizePayloadValue(normalizedValue);
+  }
   if (value == null) return "null";
   if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 120);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -1195,6 +1235,10 @@ function summarizePayloadValue(value: unknown): string {
 }
 
 function summarizeScalarValue(value: unknown): string {
+  const normalizedValue = normalizeNumericKeyedObject(value);
+  if (normalizedValue !== value) {
+    return summarizeScalarValue(normalizedValue);
+  }
   if (value == null) return "null";
   if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 48);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -1401,6 +1445,10 @@ function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
 }
 
 function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
+  const normalizedValue = normalizeNumericKeyedObject(value);
+  if (normalizedValue !== value) {
+    return renderPayloadValue(normalizedValue, depth);
+  }
   if (value == null) {
     return <span className="acp-payload-scalar muted text-xs text-slate-400">null</span>;
   }
@@ -1488,7 +1536,9 @@ function PayloadObjectView({
         {visibleEntries.map(([key, item]) => (
           <div className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" key={key}>
             <dt>{key}</dt>
-            <dd className="text-sm text-slate-700">{renderNestedPayloadValue(item, depth + 1)}</dd>
+            <dd className="text-sm text-slate-700">
+              {renderPayloadFieldValue(key, item, depth + 1)}
+            </dd>
           </div>
         ))}
       </dl>
@@ -1501,6 +1551,29 @@ function PayloadObjectView({
       )}
     </div>
   );
+}
+
+function renderPayloadFieldValue(
+  key: string,
+  value: unknown,
+  depth: number
+): React.ReactNode {
+  if (
+    typeof value === "string" &&
+    shouldPreferPlainTextForPayloadKey(key)
+  ) {
+    const text = unescapeLineBreaks(value);
+    return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
+  }
+  if (isPrimaryOutputPayloadField(key) && typeof value === "string") {
+    const text = unescapeLineBreaks(value);
+    return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
+  }
+  return renderNestedPayloadValue(value, depth);
+}
+
+function isPrimaryOutputPayloadField(key: string): boolean {
+  return TOOL_PAYLOAD_OUTPUT_PRIORITY_KEY_NORMALIZED.has(normalizePayloadKey(key));
 }
 
 function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
@@ -1545,12 +1618,17 @@ function shouldInlineStructuredPayload(value: unknown, depth: number): boolean {
 function ToolTextContent({
   text,
   markdownClassName,
+  preferPlainText = false,
 }: {
   text: string;
   markdownClassName?: string;
+  preferPlainText?: boolean;
 }) {
   if (shouldRenderDiffText(text)) {
     return <ToolDiffView text={text} />;
+  }
+  if (preferPlainText) {
+    return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
   }
   const markdownText = shouldRenderMarkdownText(text);
   const tooLargeForMarkdown =
@@ -1757,6 +1835,10 @@ function shouldRenderMarkdownText(text: string): boolean {
   return false;
 }
 
+function shouldPreferPlainTextForPayloadKey(key: string): boolean {
+  return TOOL_PAYLOAD_PLAIN_TEXT_KEY_NORMALIZED.has(normalizePayloadKey(key));
+}
+
 function shouldRenderDiffText(text: string): boolean {
   const normalized = text.trim();
   if (!normalized || !normalized.includes("\n")) return false;
@@ -1789,6 +1871,23 @@ function shouldPreserveAsciiText(text: string): boolean {
   return symbolicLines >= Math.min(2, lines.length);
 }
 
+function normalizeNumericKeyedObject(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 0) return value;
+  if (!keys.every((key) => /^\d+$/.test(key))) return value;
+  const sorted = keys.map((key) => Number(key)).sort((a, b) => a - b);
+  const start = sorted[0];
+  if (start !== 0 && start !== 1) return value;
+  const end = sorted[sorted.length - 1];
+  if (end - start + 1 !== sorted.length) return value;
+  const normalized: unknown[] = [];
+  for (let index = start; index <= end; index += 1) {
+    normalized.push(value[String(index)]);
+  }
+  return normalized;
+}
+
 type DiffLineKind = "meta" | "hunk" | "add" | "remove" | "context";
 
 function classifyDiffLine(line: string): DiffLineKind {
@@ -1806,6 +1905,22 @@ function classifyDiffLine(line: string): DiffLineKind {
   return "context";
 }
 
+function resolveDiffLineToneClassName(kind: DiffLineKind): string {
+  switch (kind) {
+    case "meta":
+      return "text-sky-200 bg-sky-400/15";
+    case "hunk":
+      return "text-violet-200 bg-violet-400/15";
+    case "add":
+      return "text-emerald-200 bg-emerald-400/15";
+    case "remove":
+      return "text-rose-200 bg-rose-400/15";
+    case "context":
+    default:
+      return "text-slate-200";
+  }
+}
+
 function ToolDiffView({ text }: { text: string }) {
   const lines = React.useMemo(() => text.split("\n"), [text]);
   const { startIndex, endIndex, hasMore, remaining, showMore } = useProgressiveTailWindow(
@@ -1820,7 +1935,10 @@ function ToolDiffView({ text }: { text: string }) {
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);
           return (
-            <span className={`acp-diff-line ${kind}`} key={index}>
+            <span
+              className={`acp-diff-line ${kind} block px-1 ${resolveDiffLineToneClassName(kind)}`}
+              key={index}
+            >
               {line.length > 0 ? line : " "}
             </span>
           );
@@ -1908,17 +2026,30 @@ function renderAnsiTerminalOutput(input: string): React.ReactNode[] {
 }
 
 export function parseAnsiSegmentsCached(input: string): AnsiSegment[] {
+  if (input.length > ANSI_SEGMENT_CACHE_MAX_ENTRY_CHARS) {
+    ansiCacheMissCount += 1;
+    return parseAnsiSegments(input);
+  }
   const cached = ansiSegmentCache.get(input);
   if (cached != null) {
     ansiCacheHitCount += 1;
     return cached;
   }
   ansiCacheMissCount += 1;
-  return cacheWithLruEviction(
+  const parsed = parseAnsiSegments(input);
+  const estimatedBytes = estimateAnsiSegmentsBytes(input, parsed);
+  return cacheWithLruBudget(
     ansiSegmentCache,
+    ansiSegmentCacheSize,
+    () => ansiCacheBytes,
+    (next) => {
+      ansiCacheBytes = next;
+    },
     input,
-    parseAnsiSegments(input),
-    ANSI_SEGMENT_CACHE_LIMIT
+    parsed,
+    estimatedBytes,
+    ANSI_SEGMENT_CACHE_LIMIT,
+    ANSI_SEGMENT_CACHE_MAX_BYTES
   );
 }
 
@@ -1949,23 +2080,62 @@ function parseAnsiSegments(input: string): AnsiSegment[] {
   return segments;
 }
 
-function cacheWithLruEviction<K, V>(
+function cacheWithLruBudget<K, V>(
   cache: Map<K, V>,
+  sizes: Map<K, number>,
+  currentBytes: () => number,
+  setBytes: (next: number) => void,
   key: K,
   value: V,
-  limit: number
+  size: number,
+  entryLimit: number,
+  byteLimit: number
 ): V {
   if (cache.has(key)) {
+    const previousSize = sizes.get(key) ?? 0;
+    setBytes(Math.max(0, currentBytes() - previousSize));
+    sizes.delete(key);
     cache.delete(key);
   }
   cache.set(key, value);
-  if (cache.size > limit) {
+  sizes.set(key, size);
+  setBytes(currentBytes() + size);
+  while (cache.size > entryLimit || currentBytes() > byteLimit) {
     const oldestKey = cache.keys().next().value;
     if (oldestKey !== undefined) {
+      const oldestSize = sizes.get(oldestKey) ?? 0;
+      setBytes(Math.max(0, currentBytes() - oldestSize));
+      sizes.delete(oldestKey);
       cache.delete(oldestKey);
+      continue;
     }
+    break;
   }
   return value;
+}
+
+function estimateStringBytes(text: string): number {
+  return text.length * 2;
+}
+
+function estimateAnsiSegmentsBytes(
+  input: string,
+  segments: AnsiSegment[]
+): number {
+  let total = estimateStringBytes(input);
+  for (const segment of segments) {
+    total += estimateStringBytes(segment.text);
+    if (!segment.style) continue;
+    for (const [key, value] of Object.entries(segment.style)) {
+      total += estimateStringBytes(key);
+      if (typeof value === "string") {
+        total += estimateStringBytes(value);
+      } else if (typeof value === "number") {
+        total += 8;
+      }
+    }
+  }
+  return total;
 }
 
 function pushAnsiSegment(

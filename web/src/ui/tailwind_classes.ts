@@ -188,7 +188,7 @@ export const ACP_TERMINAL_PRE_CLASS =
   "acp-content rounded-md border border-ui-border bg-brand-primary p-2 text-ui-xs text-ui-text-inverse";
 
 export const ACP_DIFF_PRE_CLASS =
-  "acp-content acp-diff-view overflow-auto rounded-md border border-ui-border bg-brand-primary p-2 text-ui-xs text-ui-text-inverse";
+  "acp-content acp-diff-view m-0 overflow-auto whitespace-pre rounded-md border border-slate-700 bg-slate-950 p-2 text-ui-xs text-slate-100 leading-[1.45]";
 
 export const ACP_TOOL_STATUS_CLASS =
   "acp-tool-status ml-auto mt-px inline-flex shrink-0 items-center self-start whitespace-nowrap rounded-full border px-[5px] py-0.5 text-[10px] leading-tight sm:px-1.5 sm:text-[11px]";
