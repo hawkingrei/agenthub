@@ -167,18 +167,15 @@ agenthub/
 
 ## 11. Documentation And Context Notes
 
-- Every change must be documented.
-- Add a TODO entry in `docs/todo.md` for follow-up or verification items.
-- Add a feature note under `docs/features/` describing background, scope, key decisions, and validation.
-- Feature notes should use `YYYY-MM-DD-topic.md` naming for easy lookup.
-- API naming conventions live in `docs/api_naming.md` and must be followed for all AgentHub-owned payloads.
-- `.info/` is reserved for local, non-versioned research context (for example papers, reference implementations, and temporary prompts used for design/review work).
-- Recommended local research layout under `.info/`:
-  - `.info/papers/` for source PDFs
-  - `.info/clippings/` for clipped external notes/pages
-  - keep promoted outcomes in tracked docs (`docs/features/`, `docs/todo.md`)
-- Optional local search backend: configure `ck` MCP server (`ck --serve`) in `~/.agenthub/mcp.json` so ACP agents can use semantic/hybrid search during research and implementation review.
-- Do not rely on `.info/` as a source of production truth; when a decision is adopted, promote the outcome into tracked docs under `docs/features/` or `docs/todo.md`.
+- Every change must be documented in tracked docs.
+- `docs/features/` stores stable feature design docs (background, scope, key decisions, validation).
+- Feature doc filenames must be topic-oriented kebab-case (no date prefix), for example `agents-teams.md`, `frontend-design.md`.
+- `docs/journal/` stores dated implementation logs and checkpoints; filenames must use `YYYY-MM-DD-topic.md`.
+- Add follow-up and verification items to `docs/todo.md`.
+- API naming conventions live in `docs/api_naming.md` and must be followed for AgentHub-owned payloads.
+- `.info/` is for local, non-versioned research context (for example papers, clippings, reference implementations).
+- Do not treat `.info/` as production truth. Promote adopted decisions into `docs/features/` and/or `docs/todo.md`.
+- Optional local search backend: configure `ck` MCP server (`ck --serve`) in `~/.agenthub/mcp.json` for ACP semantic/hybrid search.
 
 ## 12. TODO Lifecycle And CI Verification Rules
 
@@ -199,48 +196,3 @@ agenthub/
 - `Web E2E`: Playwright E2E coverage + Codecov flag `web-e2e`.
 - `Bazel`: `bazel build //...` and `bazel test //...`.
 - `User Docs`: Docusaurus docs install/build checks.
-
-## 13. Change Log
-
-### 2026-02-24
-
-- Expanded Team role workflow policy with six-phase collaboration model and cold-start TODO-first checks (`TODO.md`, `.cache/context/todo.md`).
-- Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
-- Clarified `AGENTS.md` as index/routing artifact and moved detailed execution guidance responsibility to skill files.
-- Added pointer-level policy that TODO lifecycle rules are owned by role skills, while `AGENTS.md` remains index-only.
-- Added explicit Team workflow-to-skill routing index, including actor mailbox protocol as a dedicated skill.
-- Added shared Team index injection (`skills/team/AGENTS.md`) for both leader and worker startup.
-- Added role-specific Team AGENTS index injection for leader/worker startup.
-- Clarified that humans provide goals/constraints while leader compiles internal Team tasks.
-
-### 2026-02-22
-
-- Added Team context-management policy based on stable-prefix/dynamic-tail prompt assembly, filesystem-backed context memory, append-only error/decision trails, pre-compaction memory flush, and allowed-action gating.
-- Added local research layout guidance for `.info/papers` and `.info/clippings`, plus optional `ck` MCP (`ck --serve`) integration guidance via `~/.agenthub/mcp.json`.
-
-### 2026-02-21
-
-- Added Bazel-first Rust packaging constraints: domain-oriented crate decomposition, thin bootstrap entrypoint policy, and crate-to-Bazel boundary alignment guidance.
-- Added explicit requirement/policy notes for future Rust migrations from `src/*` modules into cohesive `crates/*` libraries.
-- Documented `.info/` as a git-ignored local reference directory for papers/external examples and clarified promotion rules into tracked documentation.
-
-### 2026-02-05
-
-- ACP session view switched to "bottom-stacked + scrollable", auto-stick to bottom on new messages (do not force when user scrolls up)
-- ACP container height and scrolling constraints fixed (`output-body`/`acp`/`acp-conversation` all use flex constraints)
-- ACP thought block collapse rule: only collapse after first agent_message appears
-- User input de-dup: introduce `message_id` to avoid duplicates from WS + HTTP
-- Session filter relaxed: allow messages missing `session_id` into the current view
-- Mobile UX: Agents panel becomes overlay drawer with backdrop; smaller input and button sizes
-- Agents collapse toggle moved next to Output title to ensure it is always reachable
-- Tighten UI whitespace: reduce top padding in `acp-head` and set `align-items: flex-start`
-- New style guard test: `tests/web_assets.rs` validates ACP container key styles
-- Output history changed to "scroll up to load": when near top, fetch earlier records from DB (remove fixed Recent tab)
-- Conversation view changed to waterfall order: `agent_thought` becomes `agent_thinking` bubble, inserted by `seq` between user and AI replies
-- `agent_thinking` collapses by default after completion; stays expanded while thinking
-- Local input events now get global `seq` and participate in ordering to avoid merge and ordering issues
-- A2A requirement added: global ordering across multiple agents must be strictly replayable
-- Output scrolling strategy: `output-body` fixed height and no own scroll; ACP/Terminal scroll independently
-- Output history auto-fill: when current session has too few messages, auto-page earlier records
-- Default active running agent: on first load, select the first running agent if none selected (otherwise the first in list)
-- Input dock fixed at Output bottom (`.input.docked` uses `margin-top: auto`)

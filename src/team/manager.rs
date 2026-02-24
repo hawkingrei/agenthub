@@ -739,6 +739,8 @@ impl TeamManager {
         Ok(runs)
     }
 
+    // Cancel all non-terminal runs left from a previous process lifetime.
+    // This keeps startup deterministic and shifts resumption to explicit user action.
     pub async fn cancel_active_runs_on_startup(&self) -> anyhow::Result<usize> {
         let active_run_ids = sqlx::query_scalar::<_, String>(
             r#"
@@ -756,6 +758,8 @@ impl TeamManager {
             let canceled = self.cancel_run(&run_id).await?;
             if canceled.status == TeamRunStatus::Canceled {
                 canceled_count += 1;
+                // Best-effort audit trail: cancellation already committed by cancel_run.
+                // We should not fail startup because of a follow-up event write error.
                 let _ = self
                     .append_run_event(
                         &run_id,
