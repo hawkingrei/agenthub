@@ -1,0 +1,122 @@
+# ACP Runtime Specification
+
+## Problem
+
+ACP behavior spans backend runtime integration, streaming transport, frontend conversation/debug surfaces,
+and permission workflows. Historical updates were recorded in date-based notes, but a stable ACP domain
+spec is required to keep contracts consistent across providers and UI/runtime layers.
+
+## Scope
+
+- ACP runtime module boundaries and bootstrap integration.
+- ACP event ingestion/rendering model in web conversation/debug surfaces.
+- ACP transport/reliability behavior (streaming + fallback).
+- ACP permission workflow and scoping guarantees.
+- ACP provider compatibility baseline for Codex/Gemini/Kimi adapters.
+
+## Non-Goals
+
+- Replacing provider-specific adapter implementations.
+- Re-documenting every ACP UI polish change as timeline history.
+- Defining Team orchestration semantics beyond ACP interaction boundaries.
+
+## Architecture
+
+### 1) Runtime Module Boundary
+
+ACP runtime is managed as a package-style module with clear boundaries:
+
+- `src/acp/mod.rs`
+- `src/acp/event_sink.rs`
+- `src/acp/runtime.rs`
+
+Service bootstrap remains thin and keeps ACP contracts stable to callers.
+
+### 2) End-to-End Event Path
+
+1. ACP provider emits runtime events/tool-call outputs.
+2. Backend event sink normalizes and persists stream artifacts.
+3. Frontend ACP conversation/debug surfaces consume ordered events.
+4. UI applies rendering policies (group/fold/humanized payloads/permission linking).
+
+### 3) Conversation/Debug Surfaces
+
+- Conversation is the primary event timeline with ordered render.
+- Debug provides advanced state/introspection:
+  - permission pending/history
+  - runtime metrics
+  - raw events and jump/copy operations
+
+### 4) Transport Model
+
+- Streaming path uses SSE for near-real-time updates.
+- Polling/history paths provide fallback/replay continuity.
+- Multi-agent subscriptions and bounded fan-in behavior should avoid stream overload.
+
+### 5) Permission Workflow
+
+ACP permission requests are first-class runtime records:
+
+- request list/history
+- scoped rendering to active agent/session
+- copy/jump interactions to trace request <-> conversation context
+
+## Contracts
+
+### 1) Ordering Contract
+
+- ACP conversation rendering must preserve deterministic event ordering.
+- Tool/thinking/output blocks must remain stable under mixed event bursts.
+- Replay history and live stream should converge to one ordered view.
+
+### 2) Stick-Bottom And Virtualization Contract
+
+- Auto-stick should follow new tail updates when user is near bottom.
+- Manual scroll-up should disable forced jump until explicit return.
+- Long sessions should use bounded rendering/virtualization to control DOM/CPU cost.
+
+### 3) Permission Scope Contract
+
+- Permission pending/history must be scoped to active agent context.
+- Agent switch must clear stale permission view state immediately.
+- Late async responses from previous agent context must be ignored.
+
+### 4) Session Safety Contract
+
+- Input/send paths must validate session alignment to avoid stale session writes.
+- Session mismatch and unavailable gateway states should surface deterministic, non-leaky errors.
+
+### 5) Provider Compatibility Contract
+
+- ACP protocol mapping must stay aligned with upstream provider schemas.
+- Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
+- Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
+
+## Validation Matrix
+
+- `pnpm -C web run lint`
+- `pnpm -C web run build`
+- `pnpm -C web exec vitest run src/acp_panel.test.tsx src/acp_debug.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/hooks/use_acp_conversation.test.ts`
+- `cargo check -p agenthub-codex-acp`
+- `cargo test -p agenthub-codex-acp`
+
+## Operational Notes
+
+- Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
+- Prefer additive compatibility changes when protocol evolves.
+- Keep debug capabilities available without exposing internal-only controls in primary user path.
+
+## Open Risks
+
+- Upstream protocol drift may still require frequent adapter sync and lockfile refresh.
+- Long-session rendering can regress if virtualization/stick-bottom heuristics are bypassed.
+- Permission UX still needs periodic real-browser verification under rapid agent switching.
+
+## Source Journals
+
+- `docs/journal/2026-02-20-acp-package-and-bootstrap-module-migration.md`
+- `docs/journal/2026-02-09-codex-acp-protocol-sync.md`
+- `docs/journal/2026-02-15-acp-conversation-stick-bottom-hardening.md`
+- `docs/journal/2026-02-16-permission-history-agent-scope.md`
+- `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
+- `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
