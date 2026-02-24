@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Verify actor runtime alias behavior in local/manual flow: `agenthub actor` and `agenthub actor-mcp` accept `agent_id` aliases (`--agent-id`, `--from-agent-id`, `--to-agent-id`, `AGENTHUB_ACTOR_AGENT_ID`) while preserving required `run_id` partitioning (see `docs/features/2026-02-24-actor-agent-id-alias.md`).
 - [ ] Verify web Tailwind design-token rollout wave-1 remains stable across Team/ACP/Agents shared components (`tailwind.config.cjs` semantic tokens + `tailwind_classes.ts` preset migration) and record push + PR CI run IDs after merge (see `docs/features/2026-02-23-web-tailwind-design-token-rollout-wave1.md`).
 - [ ] Verify `/teams` primary `Conversation` workflow is user-facing and does not expose internal `main_task` wording (create/select conversation, send planning messages with route modes, refresh message history, and one-click sync selected conversation into compile-run-preview); record push + PR CI run IDs after merge (see `docs/features/2026-02-24-team-main-task-human-conversation-ui.md`).
 - [ ] Continue `docs/features` compact wave-2: merge remaining Team UI extraction/reducer phase notes into domain-level canonical specs and replace merged notes with `Superseded by ...` pointers (follow `docs/features/README.md`).

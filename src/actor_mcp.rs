@@ -12,6 +12,7 @@ use crate::team::TeamManager;
 
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
+const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 const JSONRPC_PARSE_ERROR: i32 = -32700;
@@ -53,11 +54,12 @@ struct ActorSendToolArgs {
 
 fn actor_mcp_usage() -> &'static str {
     r#"Usage:
-  agenthub actor-mcp [--run-id <run_id>] [--actor-id <actor_id>] [--channel <name>]
+  agenthub actor-mcp [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--channel <name>]
 
 Environment fallback:
   AGENTHUB_ACTOR_RUN_ID
   AGENTHUB_ACTOR_ID
+  AGENTHUB_ACTOR_AGENT_ID
   AGENTHUB_ACTOR_CHANNEL
 "#
 }
@@ -69,21 +71,17 @@ fn normalized_env_var(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn take_required(
-    value: Option<String>,
-    env_key: Option<&str>,
-    field: &str,
-) -> anyhow::Result<String> {
+fn take_required(value: Option<String>, env_keys: &[&str], field: &str) -> anyhow::Result<String> {
     if let Some(value) = value {
         let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
             return Ok(trimmed);
         }
     }
-    if let Some(env_key) = env_key
-        && let Some(value) = normalized_env_var(env_key)
-    {
-        return Ok(value);
+    for env_key in env_keys {
+        if let Some(value) = normalized_env_var(env_key) {
+            return Ok(value);
+        }
     }
     Err(anyhow::anyhow!(
         "{} is required (flag or env fallback)",
@@ -119,7 +117,7 @@ where
                         .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                 );
             }
-            "--actor-id" => {
+            "--actor-id" | "--agent-id" => {
                 idx += 1;
                 actor_id = Some(
                     args.get(idx)
@@ -151,12 +149,14 @@ where
 
     let run_id = take_required(
         run_id.or_else(|| env_lookup(ACTOR_RUNTIME_RUN_ID_ENV)),
-        None,
+        &[],
         "run_id",
     )?;
     let actor_id = take_required(
-        actor_id.or_else(|| env_lookup(ACTOR_RUNTIME_ACTOR_ID_ENV)),
-        None,
+        actor_id
+            .or_else(|| env_lookup(ACTOR_RUNTIME_ACTOR_ID_ENV))
+            .or_else(|| env_lookup(ACTOR_RUNTIME_AGENT_ID_ENV)),
+        &[],
         "actor_id",
     )?;
     let default_channel = take_optional(channel)
@@ -420,7 +420,7 @@ async fn tool_actor_send<S: ActorMailboxService>(
         Ok(args) => args,
         Err(err) => return tool_result_error(err, None),
     };
-    let to_actor_id = match take_required(args.to_actor_id, None, "to_actor_id") {
+    let to_actor_id = match take_required(args.to_actor_id, &[], "to_actor_id") {
         Ok(value) => value,
         Err(err) => return tool_result_error(err.to_string(), None),
     };
@@ -697,6 +697,36 @@ mod tests {
         assert_eq!(context.run_id, "run-x");
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.default_channel, "coord");
+    }
+
+    #[test]
+    fn parse_actor_mcp_context_uses_agent_id_env_alias() {
+        let env = [
+            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (
+                ACTOR_RUNTIME_AGENT_ID_ENV.to_string(),
+                "planner-agent".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+        let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
+            .expect("parse actor mcp context");
+        assert_eq!(context.actor_id, "planner-agent");
+    }
+
+    #[test]
+    fn parse_actor_mcp_context_accepts_agent_id_flag() {
+        let args = vec![
+            "--run-id".to_string(),
+            "run-flag".to_string(),
+            "--agent-id".to_string(),
+            "planner-agent".to_string(),
+        ];
+        let context =
+            parse_actor_mcp_context_with_env(&args, |_| None).expect("parse actor mcp context");
+        assert_eq!(context.run_id, "run-flag");
+        assert_eq!(context.actor_id, "planner-agent");
     }
 
     #[test]
