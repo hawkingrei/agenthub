@@ -43,6 +43,7 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   isSameOutputList,
+  limitOutputCacheSessions,
   mergeOutputsPreserveHistory,
   mergeOutputs,
   replaceAcpCacheSlice,
@@ -256,7 +257,7 @@ export function toNonNegativeRoundedPx(value: number | null | undefined): number
 
 export function decidePermissionJump(
   pending: PendingPermissionJumpState | null,
-  acpTab: "conversation" | "debug",
+  acpTab: "conversation" | "plan" | "debug",
   activeSessionId: string | null,
   maxAttempts: number = PERMISSION_JUMP_MAX_ATTEMPTS
 ): PermissionJumpDecision {
@@ -655,6 +656,7 @@ export function App() {
   const [pendingPermissionCounts, setPendingPermissionCounts] = useState<
     Record<string, number>
   >({});
+  const [startingAgentIds, setStartingAgentIds] = useState<Record<string, boolean>>({});
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const ansi = useMemo(() => createAnsiRenderer(), []);
   const [input, setInput] = useState("");
@@ -681,10 +683,10 @@ export function App() {
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(true);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
-  const [acpTab, setAcpTab] = useState<"conversation" | "debug">(
+  const [acpTab, setAcpTab] = useState<"conversation" | "plan" | "debug">(
     "conversation"
   );
-  const handleAcpTabSelect = useCallback((next: "conversation" | "debug") => {
+  const handleAcpTabSelect = useCallback((next: "conversation" | "plan" | "debug") => {
     setAcpTab(next);
   }, []);
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
@@ -811,41 +813,54 @@ export function App() {
         maxCachedEvents
       );
       if (!isSameOutputList(existing, nextSlice)) {
-        const nextCache = { ...outputCacheRef.current, [key]: nextSlice };
+        const nextCache = limitOutputCacheSessions(
+          { ...outputCacheRef.current, [key]: nextSlice },
+          maxCachedSessions
+        );
         outputCacheRef.current = nextCache;
         setOutputCache(nextCache);
       }
       return nextSlice;
     },
-    [maxCachedEvents]
+    [maxCachedEvents, maxCachedSessions]
   );
   const updateAcpOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = acpOutputCacheRef.current[key] ?? [];
       const nextSlice = buildAcpCacheSlice(existing, ordered, maxCachedEvents);
       if (!isSameOutputList(existing, nextSlice)) {
-        const nextCache = { ...acpOutputCacheRef.current, [key]: nextSlice };
+        const nextCache = limitOutputCacheSessions(
+          { ...acpOutputCacheRef.current, [key]: nextSlice },
+          maxCachedSessions
+        );
         acpOutputCacheRef.current = nextCache;
         setAcpOutputCache(nextCache);
       }
       return nextSlice;
     },
-    [maxCachedEvents]
+    [maxCachedEvents, maxCachedSessions]
   );
   const replaceAcpOutputCacheEntry = useCallback(
     (key: string, ordered: OutputLine[]) => {
       const existing = acpOutputCacheRef.current[key] ?? [];
       const nextSlice = replaceAcpCacheSlice(ordered, maxCachedEvents);
       if (!isSameOutputList(existing, nextSlice)) {
-        const nextCache = { ...acpOutputCacheRef.current, [key]: nextSlice };
+        const nextCache = limitOutputCacheSessions(
+          { ...acpOutputCacheRef.current, [key]: nextSlice },
+          maxCachedSessions
+        );
         acpOutputCacheRef.current = nextCache;
         setAcpOutputCache(nextCache);
       }
       return nextSlice;
     },
-    [maxCachedEvents]
+    [maxCachedEvents, maxCachedSessions]
   );
   const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
+  const terminalOutputs = useMemo(
+    () => outputs.filter((line) => line.stream !== "acp"),
+    [outputs]
+  );
   const activeAgentRecord = useMemo(
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
@@ -898,6 +913,11 @@ export function App() {
     : null;
   const isOutputLoading =
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
+  const isConversationLoading =
+    Boolean(activeAgent) &&
+    acpTab === "conversation" &&
+    (activeAgentRecord?.code_mode ?? true) &&
+    !acpView.hasAcp;
 
   const token = auth?.token ?? null;
   useEffect(() => {
@@ -1900,6 +1920,7 @@ export function App() {
     if (!token) return;
     setError(null);
     setWorktreeError(null);
+    setStartingAgentIds((prev) => ({ ...prev, [id]: true }));
     try {
       const res = await api.startAgent(token, id);
       setActiveSessionId(res.session_id);
@@ -1914,6 +1935,13 @@ export function App() {
       }
       const hint = formatWorktreeError(err);
       setError(hint ?? message);
+    } finally {
+      setStartingAgentIds((prev) => {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   }, [token, refreshAgents]);
 
@@ -2419,6 +2447,12 @@ export function App() {
   );
   const acpDebugProps = useMemo(
     () => ({
+      terminalOutputs,
+      ansi,
+      terminalRef,
+      onTerminalScroll: handleTerminalScroll,
+      showTerminalJump: terminalShowJump,
+      onJumpToTerminalBottom: jumpToTerminalBottom,
       currentMode: acpView.currentMode,
       rawEvents: acpView.rawEvents,
       acpPermissionHistory: scopedAcpPermissionHistory,
@@ -2440,6 +2474,12 @@ export function App() {
       runtimeMetrics: acpRuntimeMetrics,
     }),
     [
+      terminalOutputs,
+      ansi,
+      terminalRef,
+      handleTerminalScroll,
+      terminalShowJump,
+      jumpToTerminalBottom,
       acpView.currentMode,
       acpView.rawEvents,
       scopedAcpPermissionHistory,
@@ -2467,6 +2507,9 @@ export function App() {
       showConversationJump: acpConversation.showConversationJump,
       onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
       conversation: acpConversationProps,
+      plan: {
+        plan: acpView.plan,
+      },
       debug: acpDebugProps,
     }),
     [
@@ -2641,6 +2684,7 @@ export function App() {
             agentsCollapsed={agentsCollapsed}
             hasPendingPermissions={hasPendingPermissions}
             pendingPermissionCounts={pendingPermissionCounts}
+            startingAgentIds={startingAgentIds}
             onCollapse={handleCollapseAgents}
             onExpand={handleExpandAgents}
             onCreateAgent={openCreateAgentModal}
@@ -2667,6 +2711,7 @@ export function App() {
                   terminalRef={terminalRef}
                   onTerminalScroll={handleTerminalScroll}
                   isOutputLoading={isOutputLoading}
+                  isConversationLoading={isConversationLoading}
                   outputs={outputs}
                   ansi={ansi}
                   acpPanelProps={acpPanelProps}

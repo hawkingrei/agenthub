@@ -40,7 +40,16 @@ const baseProps: AcpPanelProps = {
     containerRef: React.createRef<HTMLDivElement>(),
     ansi: (input) => input,
   },
+  plan: {
+    plan: null,
+  },
   debug: {
+    terminalOutputs: [],
+    ansi: (input) => input,
+    terminalRef: React.createRef<HTMLDivElement>(),
+    onTerminalScroll: () => {},
+    showTerminalJump: false,
+    onJumpToTerminalBottom: () => {},
     currentMode: null,
     rawEvents: [],
     acpPermissionHistory: [],
@@ -103,6 +112,7 @@ describe("AcpPanel layout", () => {
     );
     expect(html).toContain("/repo/workdir");
     expect(html).toContain("Conversation");
+    expect(html).toContain("Plan");
     expect(html).toContain("Debug");
     expect(html).not.toContain("Interrupt");
   });
@@ -127,11 +137,18 @@ describe("AcpPanel layout", () => {
       conversation: { ...baseProps.conversation, pendingCount: 1 },
     });
     const buttons = collectButtons(tree);
-    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
     const conversationButton = buttons.find(
       (btn) =>
         typeof btn.props.className === "string" &&
-        btn.props.className.includes("acp-tab-button")
+        btn.props.className.includes("acp-tab-button") &&
+        JSON.stringify(btn.props.children).includes("Conversation")
+    );
+    const planButton = buttons.find(
+      (btn) =>
+        typeof btn.props.className === "string" &&
+        btn.props.className.includes("acp-tab-button") &&
+        JSON.stringify(btn.props.children).includes("Plan")
     );
     const debugButton = buttons.find(
       (btn) =>
@@ -140,11 +157,34 @@ describe("AcpPanel layout", () => {
         JSON.stringify(btn.props.children).includes("Debug")
     );
     expect(conversationButton).toBeDefined();
+    expect(planButton).toBeDefined();
     expect(debugButton).toBeDefined();
     conversationButton?.props.onClick?.();
+    planButton?.props.onClick?.();
     debugButton?.props.onClick?.();
     expect(onSelectTab).toHaveBeenNthCalledWith(1, "conversation");
-    expect(onSelectTab).toHaveBeenNthCalledWith(2, "debug");
+    expect(onSelectTab).toHaveBeenNthCalledWith(2, "plan");
+    expect(onSelectTab).toHaveBeenNthCalledWith(3, "debug");
+  });
+
+  it("renders plan view when acpTab is plan", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        acpTab="plan"
+        plan={{
+          plan: {
+            entries: [
+              { content: "Analyze issue", status: "completed", priority: "high" },
+              { content: "Apply patch", status: "in_progress" },
+            ],
+          },
+        }}
+      />
+    );
+    expect(html).toContain("Current Plan");
+    expect(html).toContain("Analyze issue");
+    expect(html).toContain("Apply patch");
   });
 
   it("renders debug view when acpTab is debug", () => {

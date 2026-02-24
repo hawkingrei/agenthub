@@ -1,6 +1,8 @@
 import React from "react";
 import { AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
+import { OutputLine } from "../output_cache";
+import { TerminalOutput } from "./terminal_output";
 import {
   ACP_DEBUG_EMPTY_CLASS,
   ACP_DEBUG_PERMISSION_SUBMETA_CLASS,
@@ -14,7 +16,7 @@ import {
   ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 
-type DebugTab = "session" | "runtime" | "permissions" | "raw";
+type DebugTab = "terminal" | "session" | "runtime" | "permissions" | "raw";
 
 type AcpRuntimeMetrics = {
   totalConversationItems: number;
@@ -36,6 +38,12 @@ type AcpRuntimeMetrics = {
 };
 
 type AcpDebugProps = {
+  terminalOutputs: OutputLine[];
+  ansi: (input: string) => string;
+  terminalRef?: React.RefObject<HTMLDivElement>;
+  onTerminalScroll?: () => void;
+  showTerminalJump?: boolean;
+  onJumpToTerminalBottom?: () => void;
   currentMode: string | null;
   rawEvents: AcpRawEvent[];
   acpPermissionHistory: AcpPermissionRecord[];
@@ -61,6 +69,12 @@ type AcpDebugProps = {
 const COPIED_STATE_RESET_DELAY_MS = 1600;
 
 export function AcpDebug({
+  terminalOutputs,
+  ansi,
+  terminalRef,
+  onTerminalScroll,
+  showTerminalJump = false,
+  onJumpToTerminalBottom,
   currentMode,
   rawEvents,
   acpPermissionHistory,
@@ -142,6 +156,12 @@ export function AcpDebug({
     <div className={ACP_DEBUG_ROOT_CLASS}>
       <div className={ACP_DEBUG_TABS_CLASS}>
         <button
+          className={debugTabClassName(tab === "terminal")}
+          onClick={() => setTab("terminal")}
+        >
+          Terminal
+        </button>
+        <button
           className={debugTabClassName(tab === "session")}
           onClick={() => setTab("session")}
         >
@@ -166,6 +186,34 @@ export function AcpDebug({
           Raw Events
         </button>
       </div>
+      {tab === "terminal" && (
+        <div className={`acp-terminal-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Terminal</h4>
+            {showTerminalJump ? (
+              <button
+                className={debugSecondaryButtonClassName}
+                type="button"
+                onClick={onJumpToTerminalBottom}
+              >
+                Jump to latest
+              </button>
+            ) : null}
+          </div>
+          {terminalOutputs.length === 0 ? (
+            <div className={ACP_DEBUG_EMPTY_CLASS}>No terminal output yet.</div>
+          ) : (
+            <div className="h-[420px] min-h-[220px]">
+              <TerminalOutput
+                outputs={terminalOutputs}
+                ansi={ansi}
+                containerRef={terminalRef}
+                onScroll={onTerminalScroll}
+              />
+            </div>
+          )}
+        </div>
+      )}
       {tab === "session" && (
         <div className={`acp-controls ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Session Controls</h4>

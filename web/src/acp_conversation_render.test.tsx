@@ -325,6 +325,27 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("aria-label=\"Failed\"");
   });
 
+  it("shows duration next to tool status when raw_output provides duration", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-duration-status",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          duration: {
+            secs: 2,
+            nanos: 250_000_000,
+          },
+        },
+      },
+    ]);
+
+    expect(html).toContain("Completed");
+    expect(html).toContain("2.25s");
+    expect(html).not.toContain("<dt>duration</dt>");
+  });
+
   it("shows segmented footer for long tool text payloads", () => {
     const lines = Array.from({ length: 400 }, (_, idx) => `line-${idx}`).join("\n");
     const html = renderConversation([
@@ -339,7 +360,50 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Show more");
     expect(html).toContain("more lines");
-    expect(html).toContain("line-0");
+    expect(html).toContain('<pre class="acp-content acp-payload-text">line-280');
+    expect(html).toContain("line-399");
+    expect(html).not.toContain('<pre class="acp-content acp-payload-text">line-0');
+  });
+
+  it("renders aggregated_output in tail-first mode and keeps older lines behind Show more", () => {
+    const lines = Array.from({ length: 400 }, (_, idx) => `agg-${idx}`).join("\n");
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-aggregated-tail",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: lines,
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>aggregated_output</dt>");
+    expect(html).toContain("Show more");
+    expect(html).toContain('<pre class="acp-content acp-payload-text">agg-280');
+    expect(html).toContain("agg-399");
+    expect(html).not.toContain('<pre class="acp-content acp-payload-text">agg-0');
+  });
+
+  it("renders aggregated_output as plain terminal block even when text looks like markdown", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-aggregated-markdown-like",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: "```bash\necho hello\n```",
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>aggregated_output</dt>");
+    expect(html).toContain('<pre class="acp-content acp-payload-text');
+    expect(html).toContain("```bash");
+    expect(html).toContain("echo hello");
+    expect(html).not.toContain("acp-payload-markdown");
   });
 
   it("shows segmented footer for large structured payloads", () => {
@@ -394,6 +458,91 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("p-1");
   });
 
+  it("hides call_id/cwd/success from regular payload fields and shows them in Detailed section", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-hidden-in-payload",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          call_id: "call-hidden-in-payload",
+          cwd: "/tmp/work",
+          success: true,
+          duration_ms: 987,
+          summary: "done",
+        },
+      },
+    ]);
+
+    expect(html).toContain("Detailed");
+    expect(html).toContain("call-hidden-in-payload");
+    expect(html).toContain("<dt>summary</dt>");
+    const callIdRows = html.match(/<dt>call_id<\/dt>/g) ?? [];
+    expect(callIdRows.length).toBe(1);
+    const cwdRows = html.match(/<dt>cwd<\/dt>/g) ?? [];
+    expect(cwdRows.length).toBe(1);
+    const successRows = html.match(/<dt>success<\/dt>/g) ?? [];
+    expect(successRows.length).toBe(1);
+    expect(html).not.toContain("<dt>duration_ms</dt>");
+  });
+
+  it("shows only unified_diff in edit output and moves other fields to Detailed", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-edit-only-diff",
+        title: "Edit",
+        status: "completed",
+        raw_output: {
+          unified_diff: "--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new",
+          path: "src/file.ts",
+          cwd: "/tmp/work",
+          success: true,
+          duration_ms: 1234,
+          summary: "applied",
+        },
+      },
+    ]);
+
+    const diffRows = html.match(/<dt>unified_diff<\/dt>/g) ?? [];
+    expect(diffRows.length).toBe(1);
+    expect(html).toContain("+++ b/file.ts");
+
+    const pathRows = html.match(/<dt>path<\/dt>/g) ?? [];
+    expect(pathRows.length).toBe(1);
+    const cwdRows = html.match(/<dt>cwd<\/dt>/g) ?? [];
+    expect(cwdRows.length).toBe(1);
+    const successRows = html.match(/<dt>success<\/dt>/g) ?? [];
+    expect(successRows.length).toBe(1);
+    const summaryRows = html.match(/<dt>summary<\/dt>/g) ?? [];
+    expect(summaryRows.length).toBe(1);
+    expect(html).not.toContain("<dt>duration_ms</dt>");
+  });
+
+  it("keeps edit old/new content in Detailed and hides edit output when unified_diff is missing", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-edit-old-new-detailed",
+        title: "Edit",
+        status: "completed",
+        raw_output: {
+          old_content: "line-old-1\\nline-old-2",
+          new_content: "line-new-1\\nline-new-2",
+          summary: "prepared",
+        },
+      },
+    ]);
+
+    expect(html).toContain("Detailed");
+    expect(html).toContain("<dt>old_content</dt>");
+    expect(html).toContain("<dt>new_content</dt>");
+    expect(html).toContain("<dt>summary</dt>");
+    expect(html).not.toContain("<dt>unified_diff</dt>");
+    expect(html).not.toContain(">Output</span>");
+  });
+
   it("hides empty stderr/stdout fields while keeping non-empty stream output", () => {
     const html = renderConversation([
       {
@@ -414,6 +563,96 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("<dt>summary</dt>");
     expect(html).toContain("done");
     expect(html).not.toContain("<dt>stderr</dt>");
+  });
+
+  it("renders small nested arrays inline instead of collapsed Array(N) details", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-inline-small-array",
+        title: "Search",
+        status: "completed",
+        raw_output: {
+          results: [
+            { path: "a.ts" },
+            { path: "b.ts" },
+            { path: "c.ts" },
+          ],
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>results</dt>");
+    expect(html).toContain("a.ts");
+    expect(html).toContain("b.ts");
+    expect(html).toContain("c.ts");
+    expect(html).not.toContain("Array(3)");
+  });
+
+  it("renders structured array payload without numeric list markers", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-structured-array-no-numbering",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          parsed_cmd: Array.from({ length: 11 }, (_, idx) => ({
+            arg: `arg-${idx}`,
+          })),
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>parsed_cmd</dt>");
+    expect(html).toContain("arg-0");
+    expect(html).toContain("<ul class=\"acp-payload-list");
+    expect(html).not.toContain("<ol class=\"acp-payload-list");
+    expect(html).not.toContain("list-decimal");
+  });
+
+  it("normalizes numeric-key objects into array-style payload rendering", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-numeric-key-object",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          parsed_cmd: {
+            1: { arg: "arg-1" },
+            2: { arg: "arg-2" },
+          },
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>parsed_cmd</dt>");
+    expect(html).toContain("arg-1");
+    expect(html).toContain("arg-2");
+    expect(html).not.toContain("<dt>1</dt>");
+    expect(html).not.toContain("<dt>2</dt>");
+  });
+
+  it("renders payload context/content strings as plain text without markdown list numbering", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-payload-context-plain-text",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          context: "1. step one\\n2. step two",
+          content: "1. item one\\n2. item two",
+        },
+      },
+    ]);
+
+    expect(html).toContain("<dt>context</dt>");
+    expect(html).toContain("<dt>content</dt>");
+    expect(html).toContain("1. step one");
+    expect(html).toContain("2. item two");
+    expect(html).not.toContain("<ol>");
   });
 
   it("hides empty stderr/stdout fields for JSON-like string payloads", () => {

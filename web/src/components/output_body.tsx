@@ -12,6 +12,7 @@ type OutputBodyProps = {
   terminalRef: React.RefObject<HTMLDivElement>;
   onTerminalScroll?: () => void;
   isOutputLoading: boolean;
+  isConversationLoading?: boolean;
   outputs: OutputLine[];
   ansi: (input: string) => string;
   acpPanelProps: AcpPanelProps;
@@ -21,16 +22,18 @@ export const OutputBody = React.memo(function OutputBody({
   terminalRef,
   onTerminalScroll,
   isOutputLoading,
+  isConversationLoading = false,
   outputs,
   ansi,
   acpPanelProps,
 }: OutputBodyProps) {
+  const showLoading = isOutputLoading || isConversationLoading;
   return (
     <div className={OUTPUT_BODY_ROOT_CLASS}>
-      {isOutputLoading ? (
+      {showLoading ? (
         <div className={OUTPUT_BODY_LOADING_CLASS}>
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-          <div className="label">Waiting for output</div>
+          <div className="label">Loading...</div>
         </div>
       ) : acpPanelProps.acpView.hasAcp ? (
         <AcpPanel {...acpPanelProps} />

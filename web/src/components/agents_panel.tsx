@@ -19,6 +19,7 @@ type AgentsPanelProps = {
   agentsCollapsed: boolean;
   hasPendingPermissions: boolean;
   pendingPermissionCounts: Record<string, number>;
+  startingAgentIds: Record<string, boolean>;
   onCollapse: () => void;
   onExpand: () => void;
   onCreateAgent: () => void;
@@ -35,6 +36,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   agentsCollapsed,
   hasPendingPermissions,
   pendingPermissionCounts,
+  startingAgentIds,
   onCollapse,
   onExpand,
   onCreateAgent,
@@ -118,6 +120,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             <div className="agent-layout">
               <div className="agent-list">
                 {agents.map((agent) => {
+                  const isStarting = Boolean(startingAgentIds[agent.id]);
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
@@ -194,21 +197,26 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           />
                           <button
                             className="icon-button small"
-                            disabled={isAgentActiveStatus(agent.status)}
+                            disabled={isAgentActiveStatus(agent.status) || isStarting}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isAgentActiveStatus(agent.status)) {
+                              if (!isAgentActiveStatus(agent.status) && !isStarting) {
                                 onStartAgent(agent.id);
                               }
                             }}
                             title={
                               isAgentActiveStatus(agent.status)
                                 ? "Already running"
-                                : "Start"
+                                : isStarting
+                                  ? "Starting..."
+                                  : "Start"
                             }
-                            aria-label="Start"
+                            aria-label={isStarting ? "Starting" : "Start"}
                           >
-                            <i className="bi bi-play-fill" aria-hidden="true" />
+                            <i
+                              className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}
+                              aria-hidden="true"
+                            />
                           </button>
                           {isAgentActiveStatus(agent.status) && (
                             <button

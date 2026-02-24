@@ -42,7 +42,16 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
     containerRef: React.createRef<HTMLDivElement>(),
     ansi: (input) => input,
   },
+  plan: {
+    plan: null,
+  },
   debug: {
+    terminalOutputs: [],
+    ansi: (input) => input,
+    terminalRef: React.createRef<HTMLDivElement>(),
+    onTerminalScroll: () => {},
+    showTerminalJump: false,
+    onJumpToTerminalBottom: () => {},
     currentMode: null,
     rawEvents: [],
     acpPermissionHistory: [],
@@ -84,10 +93,12 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
 
 const renderBody = ({
   isOutputLoading,
+  isConversationLoading,
   outputs,
   acpOverride,
 }: {
   isOutputLoading: boolean;
+  isConversationLoading?: boolean;
   outputs: OutputLine[];
   acpOverride?: Partial<AcpView>;
 }) =>
@@ -95,6 +106,7 @@ const renderBody = ({
     <OutputBody
       terminalRef={React.createRef<HTMLDivElement>()}
       isOutputLoading={isOutputLoading}
+      isConversationLoading={isConversationLoading}
       outputs={outputs}
       ansi={(input) => input}
       acpPanelProps={makeAcpPanelProps(acpOverride)}
@@ -104,8 +116,28 @@ const renderBody = ({
 describe("OutputBody", () => {
   it("shows loading state before output is ready", () => {
     const html = renderBody({ isOutputLoading: true, outputs: [] });
-    expect(html).toContain("Waiting for output");
+    expect(html).toContain("Loading...");
     expect(html).not.toContain("No output yet");
+  });
+
+  it("shows conversation loading state for ACP conversation before ACP data is ready", () => {
+    const html = renderBody({
+      isOutputLoading: false,
+      isConversationLoading: true,
+      outputs: [
+        {
+          event_id: 1,
+          ts: 1,
+          seq: "1",
+          stream: "stdout",
+          message: "terminal line",
+          agent_id: "agent-1",
+          session_id: "session-1",
+        },
+      ],
+    });
+    expect(html).toContain("Loading...");
+    expect(html).not.toContain("terminal line");
   });
 
   it("renders ACP panel when ACP data exists", () => {

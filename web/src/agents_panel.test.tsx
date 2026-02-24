@@ -40,6 +40,7 @@ const baseProps = {
   activeAgent: "agent-1",
   hasPendingPermissions: false,
   pendingPermissionCounts: {},
+  startingAgentIds: {},
   onCollapse: () => {},
   onExpand: () => {},
   onCreateAgent: () => {},
@@ -121,5 +122,18 @@ describe("AgentsPanel", () => {
       />
     );
     expect(html).not.toContain("agent-permission-dot");
+  });
+
+  it("renders spinning start icon when agent is starting", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        startingAgentIds={{ "agent-2": true }}
+      />
+    );
+    expect(html).toContain("bi-arrow-repeat");
+    expect(html).toContain("animate-spin");
+    expect(html).toContain('aria-label="Starting"');
   });
 });

@@ -30,7 +30,7 @@ type UseAcpConversationArgs = {
   acpView: AcpView;
   activeAgent: string | null;
   activeSessionId: string | null;
-  acpTab: "conversation" | "debug";
+  acpTab: "conversation" | "plan" | "debug";
   eventMeta: Record<string, EventMeta>;
   isAgentActive: boolean;
   onLoadOlder: () => void;
@@ -207,7 +207,7 @@ export function nextConversationViewport(
 }
 
 export function shouldAutoLoadConversationHistory(
-  acpTab: "conversation" | "debug",
+  acpTab: "conversation" | "plan" | "debug",
   activeAgent: string | null,
   canLoadOlder: boolean,
   conversationMessageCount: number,
@@ -242,7 +242,7 @@ export function restoreConversationScrollTop(
 }
 
 export function deriveConversationJumpState(
-  acpTab: "conversation" | "debug",
+  acpTab: "conversation" | "plan" | "debug",
   conversationStickToBottom: boolean,
   conversationPendingCount: number
 ): { showConversationJump: boolean; showConversationBadge: boolean } {

@@ -2,6 +2,7 @@ import React from "react";
 import { AcpView } from "../acp";
 import { AcpDebug, AcpDebugProps } from "./acp_debug";
 import { AcpConversation, AcpConversationProps } from "./acp_conversation";
+import { AcpPlan, AcpPlanProps } from "./acp_plan";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   ACP_PANEL_HEAD_CLASS,
@@ -12,15 +13,18 @@ import {
   ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 
+type AcpPanelTab = "conversation" | "plan" | "debug";
+
 type AcpPanelProps = {
   acpView: AcpView;
   subtitle: string | null;
-  acpTab: "conversation" | "debug";
-  onSelectTab: (tab: "conversation" | "debug") => void;
+  acpTab: AcpPanelTab;
+  onSelectTab: (tab: AcpPanelTab) => void;
   showConversationBadge: boolean;
   showConversationJump: boolean;
   onJumpToConversationBottom: () => void;
   conversation: AcpConversationProps;
+  plan: AcpPlanProps;
   debug: AcpDebugProps;
 };
 
@@ -32,6 +36,7 @@ function AcpPanelView({
   showConversationJump,
   onJumpToConversationBottom,
   conversation,
+  plan,
   debug,
 }: AcpPanelProps) {
   const tabButtonClassName = (selected: boolean, withGap = false) =>
@@ -56,6 +61,12 @@ function AcpPanelView({
               )}
             </button>
             <button
+              className={tabButtonClassName(acpTab === "plan")}
+              onClick={() => onSelectTab("plan")}
+            >
+              Plan
+            </button>
+            <button
               className={tabButtonClassName(acpTab === "debug")}
               onClick={() => onSelectTab("debug")}
             >
@@ -65,6 +76,7 @@ function AcpPanelView({
         </div>
       </div>
       {acpTab === "conversation" && <AcpConversation {...conversation} />}
+      {acpTab === "plan" && <AcpPlan {...plan} />}
       {acpTab === "debug" && <AcpDebug {...debug} />}
       {acpTab === "conversation" && showConversationJump ? (
         <button

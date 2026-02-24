@@ -3,6 +3,7 @@ import {
   appendOutputLine,
   buildAcpCacheSlice,
   buildOutputCacheSlice,
+  limitOutputCacheSessions,
   mergeOutputsPreserveHistory,
   replaceAcpCacheSlice,
   selectCachedOutputs,
@@ -194,5 +195,25 @@ describe("mergeOutputsPreserveHistory", () => {
     const previous = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
     const merged = mergeOutputsPreserveHistory(previous, [], true);
     expect(merged.map((evt) => evt.event_id)).toEqual([1, 2]);
+  });
+});
+
+describe("limitOutputCacheSessions", () => {
+  it("keeps only the most recent session slices", () => {
+    const cache = {
+      "agent-1:s-1": [makeEvent(1, "stdout")],
+      "agent-1:s-2": [{ ...makeEvent(2, "stdout"), ts: 200 }],
+      "agent-1:s-3": [{ ...makeEvent(3, "stdout"), ts: 300 }],
+    };
+    const limited = limitOutputCacheSessions(cache, 2);
+    expect(Object.keys(limited).sort()).toEqual(["agent-1:s-2", "agent-1:s-3"]);
+  });
+
+  it("returns original cache when session count is already within limit", () => {
+    const cache = {
+      "agent-1:s-1": [makeEvent(1, "stdout")],
+      "agent-1:s-2": [makeEvent(2, "stdout")],
+    };
+    expect(limitOutputCacheSessions(cache, 2)).toBe(cache);
   });
 });
