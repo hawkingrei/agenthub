@@ -93,4 +93,117 @@ describe("AcpConversation fold interactions", () => {
     expect(findSubfold("Input").open).toBe(false);
     expect(findSubfold("Output").open).toBe(false);
   });
+
+  it("shows newest lines first for long payloads and reveals older lines after Show more", () => {
+    const lines = Array.from({ length: 260 }, (_, idx) => `line-${idx}`).join("\n");
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-tail-window",
+        title: "Shell",
+        status: "in_progress",
+        content: lines,
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+        />
+      );
+    });
+
+    const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
+    expect(beforePre).not.toBeNull();
+    const preTextBeforeExpand = beforePre?.textContent ?? "";
+    expect(preTextBeforeExpand).toContain("line-259");
+    expect(preTextBeforeExpand).not.toContain("line-0");
+
+    const showMoreButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Show more")
+    );
+    expect(showMoreButton).not.toBeUndefined();
+    if (!showMoreButton) return;
+
+    act(() => {
+      showMoreButton.click();
+    });
+
+    const afterPre = container.querySelector("pre.acp-content.acp-payload-text");
+    expect(afterPre).not.toBeNull();
+    const preTextAfterExpand = afterPre?.textContent ?? "";
+    expect(preTextAfterExpand).toContain("line-0");
+    expect(preTextAfterExpand).toContain("line-259");
+  });
+
+  it("keeps Detailed collapsed by default after output fold disappears on rerender", () => {
+    const baseProps = {
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input: string) => input,
+    };
+    const firstItems: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-detailed-default-collapsed",
+        title: "Shell",
+        status: "completed",
+        raw_output: { stdout: "line-1" },
+      },
+    ];
+
+    act(() => {
+      root.render(<AcpConversation items={firstItems} {...baseProps} />);
+    });
+
+    const secondItems: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-detailed-default-collapsed",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          call_id: "call-detailed-default-collapsed",
+          cwd: "/tmp/work",
+          success: true,
+        },
+      },
+    ];
+
+    act(() => {
+      root.render(<AcpConversation items={secondItems} {...baseProps} />);
+    });
+
+    const detailedFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+      const firstSpan = node.querySelector("summary span");
+      return firstSpan?.textContent?.trim() === "Detailed";
+    }) as HTMLDetailsElement | undefined;
+
+    expect(detailedFold).not.toBeUndefined();
+    expect(detailedFold?.open).toBe(false);
+  });
 });

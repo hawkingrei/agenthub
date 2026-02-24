@@ -190,6 +190,24 @@ export const ACP_TERMINAL_PRE_CLASS =
 export const ACP_DIFF_PRE_CLASS =
   "acp-content acp-diff-view overflow-auto rounded-md border border-ui-border bg-brand-primary p-2 text-ui-xs text-ui-text-inverse";
 
+export const ACP_TOOL_STATUS_CLASS =
+  "acp-tool-status ml-auto mt-px inline-flex shrink-0 items-center self-start whitespace-nowrap rounded-full border px-[5px] py-0.5 text-[10px] leading-tight sm:px-1.5 sm:text-[11px]";
+
+export const ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS =
+  "border-[rgba(138,90,19,0.26)] bg-[#ffe7c2] text-[#8a5a13]";
+
+export const ACP_TOOL_STATUS_GROUP_DEFAULT_CLASS =
+  "border-[rgba(138,90,19,0.26)] bg-[#ffe3bf] text-[#8a5a13]";
+
+export const ACP_TOOL_STATUS_GROUP_SUCCESS_CLASS =
+  "border-[rgba(31,122,61,0.32)] bg-[rgba(31,122,61,0.14)] text-[#1f7a3d]";
+
+export const ACP_TOOL_STATUS_GROUP_FAILURE_CLASS =
+  "border-[rgba(180,35,24,0.32)] bg-[rgba(180,35,24,0.14)] text-[#b42318]";
+
+export const ACP_TOOL_STATUS_GROUP_RUNNING_CLASS =
+  "border-[rgba(37,99,235,0.32)] bg-[rgba(37,99,235,0.14)] text-[#1d4ed8]";
+
 export const TEAM_MUTED_TEXT_CLASS = "muted text-ui-sm text-ui-text-muted";
 
 export const TEAM_SIDEBAR_ROOT_CLASS =

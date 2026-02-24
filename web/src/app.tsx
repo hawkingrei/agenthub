@@ -898,6 +898,10 @@ export function App() {
     : null;
   const isOutputLoading =
     Boolean(activeEventKey) && eventMeta[activeEventKey]?.loaded !== true;
+  const isConversationLoading =
+    Boolean(activeAgentRecord?.code_mode) &&
+    acpTab === "conversation" &&
+    !acpView.hasAcp;
 
   const token = auth?.token ?? null;
   useEffect(() => {
@@ -2667,6 +2671,7 @@ export function App() {
                   terminalRef={terminalRef}
                   onTerminalScroll={handleTerminalScroll}
                   isOutputLoading={isOutputLoading}
+                  isConversationLoading={isConversationLoading}
                   outputs={outputs}
                   ansi={ansi}
                   acpPanelProps={acpPanelProps}

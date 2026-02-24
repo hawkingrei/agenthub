@@ -21,7 +21,17 @@ import {
   ACP_SEGMENTED_BUTTON_CLASS,
   ACP_SEGMENTED_NOTE_WARNING_CLASS,
   ACP_TERMINAL_PRE_CLASS,
+  ACP_TOOL_STATUS_CLASS,
+  ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS,
 } from "../ui/tailwind_classes";
+import {
+  extractToolCallDetails,
+  formatToolCallDurationLabel,
+  resolveToolGroupStatusClassName,
+  selectToolCallOutputForDisplay,
+  type ToolCallDetailItem,
+  type ToolGroupStatusTone,
+} from "./acp_tool_call_meta";
 
 type AcpConversationProps = {
   items: ConversationItem[];
@@ -50,6 +60,9 @@ const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
   "turnid",
   "processid",
   "source",
+  "callid",
+  "cwd",
+  "success",
 ]);
 const TOOL_PAYLOAD_OUTPUT_PRIORITY_NORMALIZED = [
   "aggregatedoutput",
@@ -397,9 +410,13 @@ const ToolCallBubble = React.memo(
       () => normalizeToolPayload(msg.raw_input),
       [msg.raw_input]
     );
+    const outputPayloadSource = React.useMemo(
+      () => selectToolCallOutputForDisplay(msg.title, msg.raw_output),
+      [msg.title, msg.raw_output]
+    );
     const outputPayload = React.useMemo(
-      () => normalizeToolPayload(msg.raw_output),
-      [msg.raw_output]
+      () => normalizeToolPayload(outputPayloadSource),
+      [outputPayloadSource]
     );
     const inputPreview = React.useMemo(
       () => summarizeToolPayload(inputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
@@ -410,6 +427,10 @@ const ToolCallBubble = React.memo(
       [outputPayload]
     );
     const statusLabel = formatToolCallStatus(msg.status);
+    const durationLabel = React.useMemo(
+      () => formatToolCallDurationLabel(msg.raw_output),
+      [msg.raw_output]
+    );
     const statusMark = getToolCallStatusMark(msg.status);
 
     React.useEffect(() => {
@@ -457,13 +478,17 @@ const ToolCallBubble = React.memo(
               </span>
             </span>
             {msg.status && (
-              <span className="acp-tool-status">
+              <span
+                className={`${ACP_TOOL_STATUS_CLASS} ${ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS}`}
+              >
                 {statusLabel}
+                {durationLabel ? ` · ${durationLabel}` : ""}
               </span>
             )}
           </summary>
           {msg.content && (
             <FoldSection
+              key="content"
               label="Content"
               preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
               defaultOpen={isLive}
@@ -477,6 +502,7 @@ const ToolCallBubble = React.memo(
           )}
           {hasToolPayload(inputPayload) && (
             <FoldSection
+              key="input"
               label="Input"
               preview={inputPreview}
               defaultOpen={false}
@@ -488,6 +514,7 @@ const ToolCallBubble = React.memo(
           )}
           {hasToolPayload(outputPayload) && (
             <FoldSection
+              key="output"
               label="Output"
               preview={outputPreview}
               defaultOpen={!isLive}
@@ -497,8 +524,23 @@ const ToolCallBubble = React.memo(
               <ToolPayloadView payload={outputPayload} />
             </FoldSection>
           )}
+          {msg.id && (
+            <FoldSection
+              key="detailed"
+              label="Detailed"
+              preview={`call_id=${formatConversationPreview(msg.id, 40)}`}
+              defaultOpen={false}
+              parentOpen={open}
+              lazyRender={false}
+            >
+              <ToolCallDetailsView
+                details={extractToolCallDetails(msg.id, msg.raw_output, msg.title)}
+              />
+            </FoldSection>
+          )}
           {msg.terminal_output && (
             <FoldSection
+              key="terminal"
               label="Terminal"
               preview={formatConversationPreview(unescapeLineBreaks(msg.terminal_output), 88)}
               defaultOpen={isLive}
@@ -572,9 +614,7 @@ const ToolCallGroupBubble = React.memo(
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
             {statusSummary && (
-              <span
-                className={`acp-tool-status acp-tool-group-status tone-${statusSummary.tone}`}
-              >
+              <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
                 {statusSummary.label}
               </span>
             )}
@@ -665,9 +705,7 @@ const ExploreGroupBubble = React.memo(
               {titlePreview ? ` · ${titlePreview}` : ""}
             </span>
             {statusSummary && (
-              <span
-                className={`acp-tool-status acp-tool-group-status tone-${statusSummary.tone}`}
-              >
+              <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
                 {statusSummary.label}
               </span>
             )}
@@ -1160,7 +1198,17 @@ function summarizeScalarValue(value: unknown): string {
   if (value == null) return "null";
   if (typeof value === "string") return formatConversationPreview(unescapeLineBreaks(value), 48);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "Array(0)";
+    if (value.length <= 3) {
+      const inline = value
+        .map((item) => summarizePayloadValue(item))
+        .filter((item) => item.length > 0)
+        .join(", ");
+      if (inline) return inline;
+    }
+    return `Array(${value.length})`;
+  }
   if (isPlainObject(value)) return `Object(${Object.keys(value).length})`;
   return "";
 }
@@ -1175,8 +1223,6 @@ function summarizeToolGroupTitles(calls: ToolCallConversationItem[]): string {
   if (calls.length <= 2) return previews.join(" · ");
   return `${previews.join(" · ")} +${calls.length - 2} more`;
 }
-
-type ToolGroupStatusTone = "running" | "failure" | "success";
 
 function deriveToolGroupStatusSummary(
   calls: ToolCallConversationItem[],
@@ -1334,6 +1380,26 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
   );
 }
 
+function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
+  return (
+    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <dl className="acp-payload-grid grid gap-3">
+        {details.map((detail) => (
+          <div
+            className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5"
+            key={detail.key}
+          >
+            <dt>{detail.key}</dt>
+            <dd className="text-sm text-slate-700">
+              <code>{detail.value}</code>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
   if (value == null) {
     return <span className="acp-payload-scalar muted text-xs text-slate-400">null</span>;
@@ -1383,13 +1449,13 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
 
   return (
     <div className="acp-payload-segmented space-y-2">
-      <ol className="acp-payload-list list-decimal space-y-1 pl-5 text-sm text-slate-700">
+      <ul className="acp-payload-list list-none space-y-1 pl-0 text-sm text-slate-700">
         {visibleItems.map((item, index) => (
           <li key={index}>
             {renderNestedPayloadValue(item, depth + 1)}
           </li>
         ))}
-      </ol>
+      </ul>
       {hasMore && (
         <SegmentedMoreFooter
           remaining={remaining}
@@ -1442,6 +1508,13 @@ function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNod
   if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
     return <span className="acp-payload-scalar text-sm text-slate-600">{summarizePayloadValue(value)}</span>;
   }
+  if (isStructured && shouldInlineStructuredPayload(value, depth)) {
+    return (
+      <div className="acp-payload-inline">
+        {renderPayloadValue(value, depth)}
+      </div>
+    );
+  }
   if (isStructured) {
     return (
       <details className="acp-payload-nested rounded-md border border-slate-200 bg-white">
@@ -1455,6 +1528,18 @@ function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNod
     );
   }
   return renderPayloadValue(value, depth);
+}
+
+function shouldInlineStructuredPayload(value: unknown, depth: number): boolean {
+  if (depth > 2) return false;
+  if (Array.isArray(value)) {
+    return value.length > 0 && value.length <= 10;
+  }
+  if (isPlainObject(value)) {
+    const size = Object.keys(value).length;
+    return size > 0 && size <= 8;
+  }
+  return false;
 }
 
 function ToolTextContent({
@@ -1495,14 +1580,14 @@ function ToolTextContent({
 
 function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boolean }) {
   const lines = React.useMemo(() => text.split("\n"), [text]);
-  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+  const { startIndex, endIndex, hasMore, remaining, showMore } = useProgressiveTailWindow(
     lines.length,
     TOOL_TEXT_INITIAL_LINES,
     TOOL_TEXT_LINE_CHUNK
   );
   const visibleText = React.useMemo(
-    () => lines.slice(0, visibleCount).join("\n"),
-    [lines, visibleCount]
+    () => lines.slice(startIndex, endIndex).join("\n"),
+    [lines, startIndex, endIndex]
   );
   const className = asciiLike
     ? "acp-content acp-payload-text acp-payload-ascii"
@@ -1529,14 +1614,14 @@ function TerminalOutputView({
   ansi: (input: string) => string;
 }) {
   const lines = React.useMemo(() => text.split("\n"), [text]);
-  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+  const { startIndex, endIndex, hasMore, remaining, showMore } = useProgressiveTailWindow(
     lines.length,
     TOOL_TEXT_INITIAL_LINES,
     TOOL_TEXT_LINE_CHUNK
   );
   const visibleText = React.useMemo(
-    () => lines.slice(0, visibleCount).join("\n"),
-    [lines, visibleCount]
+    () => lines.slice(startIndex, endIndex).join("\n"),
+    [lines, startIndex, endIndex]
   );
   const rendered = React.useMemo(
     () => renderAnsiTerminalOutput(ansi(visibleText)),
@@ -1594,6 +1679,46 @@ function useProgressiveVisibleCount(
     visibleCount,
     hasMore,
     remaining: hasMore ? total - visibleCount : 0,
+    showMore,
+  };
+}
+
+function useProgressiveTailWindow(
+  total: number,
+  initial: number,
+  step: number
+): {
+  startIndex: number;
+  endIndex: number;
+  hasMore: boolean;
+  remaining: number;
+  showMore: () => void;
+} {
+  const safeInitial = Math.max(1, initial);
+  const safeStep = Math.max(1, step);
+  const baseline = Math.min(total, safeInitial);
+  const [visibleCount, setVisibleCount] = React.useState(() => baseline);
+
+  React.useEffect(() => {
+    setVisibleCount((prev) => {
+      const clampedPrev = Math.min(total, Math.max(prev, 0));
+      if (clampedPrev === 0) return baseline;
+      return Math.max(baseline, clampedPrev);
+    });
+  }, [baseline, total]);
+
+  const showMore = React.useCallback(() => {
+    setVisibleCount((prev) => Math.min(total, prev + safeStep));
+  }, [safeStep, total]);
+
+  const hasMore = visibleCount < total;
+  const remaining = hasMore ? total - visibleCount : 0;
+  const startIndex = Math.max(0, total - visibleCount);
+  return {
+    startIndex,
+    endIndex: total,
+    hasMore,
+    remaining,
     showMore,
   };
 }
@@ -1683,12 +1808,12 @@ function classifyDiffLine(line: string): DiffLineKind {
 
 function ToolDiffView({ text }: { text: string }) {
   const lines = React.useMemo(() => text.split("\n"), [text]);
-  const { visibleCount, hasMore, remaining, showMore } = useProgressiveVisibleCount(
+  const { startIndex, endIndex, hasMore, remaining, showMore } = useProgressiveTailWindow(
     lines.length,
     TOOL_TEXT_INITIAL_LINES,
     TOOL_TEXT_LINE_CHUNK
   );
-  const visibleLines = lines.slice(0, visibleCount);
+  const visibleLines = lines.slice(startIndex, endIndex);
   return (
     <div className="acp-segmented-block space-y-2">
       <pre className={ACP_DIFF_PRE_CLASS}>
