@@ -144,6 +144,7 @@ import {
   TEAM_CREATE_STEP_PREVIEW_CLASS,
   TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS,
   TEAM_CREATE_WORKER_CARD_CLASS,
+  TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
@@ -2002,16 +2003,33 @@ export function TeamPage(props: TeamPageProps) {
 
   const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
   const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
-  const panelInputClassName =
-    `${TEAM_PANEL_INPUT_CLASS} shadow-sm focus:border-slate-400 focus:ring-slate-300`;
+  const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
   const canCompileMainTask = busy !== "compile-main-task" && selectedConversation !== null;
   const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
+  const teamSectionCardClassName =
+    "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
+  const teamSectionCardLargeClassName =
+    "min-h-0 rounded-2xl border border-ui-border bg-ui-surface p-5 shadow-sm";
+  const teamSectionHeadingClassName = "text-sm font-semibold text-ui-text-primary";
+  const teamSectionTitleClassName = "text-base font-semibold text-ui-text-primary";
+  const teamSectionBodyTextClassName = "mt-2 text-sm text-ui-text-muted";
+  const teamSectionHintTextClassName = "mt-2 text-xs text-ui-text-muted";
+  const teamRunMetaItemClassName =
+    "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
+  const teamDebugTabsClassName =
+    "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
+  const teamDebugTabBaseClassName =
+    "rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm";
+  const teamDebugTabActiveClassName =
+    `${teamDebugTabBaseClassName} bg-brand-primary text-ui-text-inverse shadow-sm`;
+  const teamDebugTabIdleClassName =
+    `${teamDebugTabBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
   const modalFieldClassName =
-    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+    "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
   const onRefreshMainTasks = useCallback(async () => {
     if (!selectedTeamId) {
@@ -2123,9 +2141,9 @@ export function TeamPage(props: TeamPageProps) {
         formatTs={formatTs}
         toPrettyJson={toPrettyJson}
       />
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h4 className="text-sm font-semibold text-slate-900">Compile Conversation</h4>
-        <p className="muted mt-2 text-sm text-slate-600">
+      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+        <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
+        <p className={teamSectionBodyTextClassName}>
           Compile chat-approved conversation into a deterministic run payload preview.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -2136,7 +2154,7 @@ export function TeamPage(props: TeamPageProps) {
           >
             Compile Preview
           </button>
-          <span className="mono text-xs text-slate-500">
+          <span className="mono text-xs text-ui-text-muted">
             {selectedConversation
               ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
               : "selected_conversation=-"}
@@ -2149,8 +2167,8 @@ export function TeamPage(props: TeamPageProps) {
           onChange={(event) => setCompilePreviewContextId(event.target.value)}
         />
         {compiledRunPreview ? (
-          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="mono text-xs text-slate-700">
+          <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
+            <div className="mono text-xs text-ui-text-secondary">
               <div>
                 <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
               </div>
@@ -2175,7 +2193,7 @@ export function TeamPage(props: TeamPageProps) {
                 Create Run from Preview
               </button>
             </div>
-            <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
               {toPrettyJson({
                 conversation_id: compiledRunPreview.conversation_id,
                 run_payload: compiledRunPreview.run_payload,
@@ -2183,7 +2201,7 @@ export function TeamPage(props: TeamPageProps) {
             </pre>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className={teamSectionHintTextClassName}>
             Select a conversation to preview compiled run payload.
           </p>
         )}
@@ -2193,9 +2211,9 @@ export function TeamPage(props: TeamPageProps) {
 
   const runOpsPanel = (
     <div className="space-y-3">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h4 className="text-sm font-semibold text-slate-900">Create Run</h4>
-        <p className="muted mt-2 text-sm text-slate-600">
+      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+        <h4 className={teamSectionHeadingClassName}>Create Run</h4>
+        <p className={teamSectionBodyTextClassName}>
           Debug entry for manually starting a Team run.
         </p>
         <div className="form-row mt-3">
@@ -2214,7 +2232,7 @@ export function TeamPage(props: TeamPageProps) {
             Create Run
           </button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className={teamSectionHintTextClassName}>
           <code>context_id</code> can be empty. Use one when you want retries/resume grouped
           under the same context.
         </p>
@@ -2238,7 +2256,7 @@ export function TeamPage(props: TeamPageProps) {
             {runInputValidation.error}
           </p>
         ) : (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className={teamSectionHintTextClassName}>
             Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run.
           </p>
         )}
@@ -2295,13 +2313,13 @@ export function TeamPage(props: TeamPageProps) {
             Clear
           </button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className={teamSectionHintTextClassName}>
           Leave empty to submit default empty input <code>{`{}`}</code>.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h4 className="text-sm font-semibold text-slate-900">Load Existing Run</h4>
-        <p className="muted mt-2 text-sm text-slate-600">
+      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+        <h4 className={teamSectionHeadingClassName}>Load Existing Run</h4>
+        <p className={teamSectionBodyTextClassName}>
           Load by <code>run_id</code> for the currently selected team only.
         </p>
         <div className="form-row mt-3">
@@ -2411,9 +2429,11 @@ export function TeamPage(props: TeamPageProps) {
 
         <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
           {!selectedTeam && (
-            <div className="min-h-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">Team Workbench</h2>
-              <p className="mt-2 text-sm text-slate-600">
+            <div className={teamSectionCardLargeClassName}>
+              <h2 className="text-lg font-semibold tracking-tight text-ui-text-primary">
+                Team Workbench
+              </h2>
+              <p className={teamSectionBodyTextClassName}>
                 Select a team from the left panel to manage runs, steps, and messages.
               </p>
             </div>
@@ -2446,24 +2466,26 @@ export function TeamPage(props: TeamPageProps) {
               />
 
               {runsLoading && !activeRunForSelectedTeam && (
-                <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-sm text-slate-600">Loading run context for selected team...</p>
+                <div className={teamSectionCardClassName}>
+                  <p className="text-sm text-ui-text-muted">
+                    Loading run context for selected team...
+                  </p>
                 </div>
               )}
 
               {!activeRunForSelectedTeam && !runsLoading && (
                 <>
-                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="text-base font-semibold text-slate-900">Conversation</h3>
-                    <p className="mt-2 text-sm text-slate-600">
+                  <div className={teamSectionCardClassName}>
+                    <h3 className={teamSectionTitleClassName}>Conversation</h3>
+                    <p className={teamSectionBodyTextClassName}>
                       No active run is selected. Start with conversation planning before launching
                       a run.
                     </p>
                     <div className="mt-3">{conversationPanel}</div>
                   </div>
-                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="text-base font-semibold text-slate-900">Debug Run Ops</h3>
-                    <p className="mt-2 text-sm text-slate-600">
+                  <div className={teamSectionCardClassName}>
+                    <h3 className={teamSectionTitleClassName}>Debug Run Ops</h3>
+                    <p className={teamSectionBodyTextClassName}>
                       Internal operations for manually creating or loading runs.
                     </p>
                     <div className="mt-3">{runOpsPanel}</div>
@@ -2473,9 +2495,9 @@ export function TeamPage(props: TeamPageProps) {
 
               {activeRunForSelectedTeam && !runsLoading && (
                 <>
-                  <div className="min-h-0 min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className={teamSectionCardClassName}>
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-base font-semibold text-slate-900">Active Run</h3>
+                      <h3 className={teamSectionTitleClassName}>Active Run</h3>
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           className={panelRefreshButtonClassName}
@@ -2527,11 +2549,11 @@ export function TeamPage(props: TeamPageProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-3 grid min-w-0 gap-2 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3">
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="mt-3 grid min-w-0 gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>ID:</strong> <code>{activeRunForSelectedTeam.id}</code>
                       </span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>Status:</strong>{" "}
                         <StatusBadge
                           label={activeRunForSelectedTeam.status}
@@ -2540,16 +2562,16 @@ export function TeamPage(props: TeamPageProps) {
                           title={`run status: ${activeRunForSelectedTeam.status}`}
                         />
                       </span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>Context:</strong> {activeRunForSelectedTeam.context_id}
                       </span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>Created:</strong> {formatTs(activeRunForSelectedTeam.created_at)}
                       </span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>Started:</strong> {formatTs(activeRunForSelectedTeam.started_at)}
                       </span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className={teamRunMetaItemClassName}>
                         <strong>Ended:</strong> {formatTs(activeRunForSelectedTeam.ended_at)}
                       </span>
                     </div>
@@ -2750,36 +2772,36 @@ export function TeamPage(props: TeamPageProps) {
 
                     {tab === "debug" && (
                       <>
-                        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <h3 className="text-sm font-semibold text-slate-900">Debug Tools</h3>
-                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                            <h3 className={teamSectionHeadingClassName}>Debug Tools</h3>
+                            <div className={teamDebugTabsClassName}>
                               <button
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                className={
                                   teamDebugTag === "run_ops"
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                }`}
+                                    ? teamDebugTabActiveClassName
+                                    : teamDebugTabIdleClassName
+                                }
                                 onClick={() => setTeamDebugTag("run_ops")}
                               >
                                 Run Ops
                               </button>
                               <button
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                className={
                                   teamDebugTag === "step_ops"
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                }`}
+                                    ? teamDebugTabActiveClassName
+                                    : teamDebugTabIdleClassName
+                                }
                                 onClick={() => setTeamDebugTag("step_ops")}
                               >
                                 Step Ops
                               </button>
                               <button
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+                                className={
                                   teamDebugTag === "mailbox_raw"
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                }`}
+                                    ? teamDebugTabActiveClassName
+                                    : teamDebugTabIdleClassName
+                                }
                                 onClick={() => setTeamDebugTag("mailbox_raw")}
                               >
                                 Mailbox Raw
