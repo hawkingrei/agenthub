@@ -17,6 +17,8 @@ type CoverageState = {
 
 const E2E_COVERAGE_ENV = "PLAYWRIGHT_E2E_COVERAGE";
 const E2E_COVERAGE_ENABLED = process.env[E2E_COVERAGE_ENV] === "1";
+const LOCAL_LLM_E2E_ENV = "PLAYWRIGHT_LOCAL_LLM_E2E";
+const LOCAL_LLM_E2E_ENABLED = process.env[LOCAL_LLM_E2E_ENV] === "1";
 const WEB_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const COVERAGE_DIR = path.join(WEB_ROOT, "coverage/e2e");
 
@@ -101,5 +103,7 @@ export const test = base.extend({
     }
   },
 });
+
+export const testLocalLlm = LOCAL_LLM_E2E_ENABLED ? test : test.skip;
 
 export { expect };

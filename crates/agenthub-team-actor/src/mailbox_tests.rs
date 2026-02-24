@@ -7,6 +7,7 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use super::*;
+use crate::infer_actor_identity_kind;
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -122,7 +123,9 @@ impl ActorMailboxStore for TestStore {
             message_id: state.next_message_id,
             run_id: cmd.run_id.clone(),
             from_actor_id: cmd.from_actor_id.clone(),
+            from_actor_kind: infer_actor_identity_kind(cmd.from_actor_id.as_str()),
             to_actor_id: cmd.to_actor_id.clone(),
+            to_actor_kind: infer_actor_identity_kind(cmd.to_actor_id.as_str()),
             channel: cmd.channel.clone(),
             transport: cmd.transport.clone(),
             route: cmd.route.clone(),

@@ -101,13 +101,15 @@ pub(super) fn openapi_spec() -> Value {
           "TeamActorMessageRecord": {
             "type": "object",
             "required": [
-              "message_id", "run_id", "from_actor_id", "to_actor_id", "channel", "transport", "payload", "status", "created_at"
+              "message_id", "run_id", "from_actor_id", "from_actor_kind", "to_actor_id", "to_actor_kind", "channel", "transport", "payload", "status", "created_at"
             ],
             "properties": {
               "message_id": { "type": "integer", "format": "int64" },
               "run_id": { "type": "string" },
               "from_actor_id": { "type": "string" },
+              "from_actor_kind": { "type": "string", "enum": ["agent", "human"] },
               "to_actor_id": { "type": "string" },
+              "to_actor_kind": { "type": "string", "enum": ["agent", "human"] },
               "channel": { "type": "string" },
               "transport": { "type": "string", "enum": ["local", "remote"] },
               "route": { "type": ["object", "null"], "additionalProperties": true },

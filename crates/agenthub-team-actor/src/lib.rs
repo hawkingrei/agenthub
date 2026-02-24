@@ -17,6 +17,9 @@ pub use mailbox::{
     ActorMailboxStore, CreatePendingMessageResult, ListActorInboxQuery, PendingRemoteRelayRecord,
     RelayRemotePendingCommand, RelayRemotePendingResult, SendActorMessageCommand,
 };
-pub use message::{ActorMessageRecord, ActorMessageStatus, ActorMessageTransport};
+pub use message::{
+    ActorIdentityKind, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
+    infer_actor_identity_kind,
+};
 pub use relay::{ActorMessageRelay, ActorRelayError};
 pub use transport::{ParseActorTransportError, parse_actor_transport};

@@ -5,6 +5,7 @@ use crate::team::{SendActorMessageInput, TeamActorMessageTransport, TeamManager}
 
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
+const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 enum ActorCommand {
@@ -35,13 +36,14 @@ enum ActorCommand {
 
 fn actor_usage() -> &'static str {
     r#"Usage:
-  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id>] [--limit <n>] [--after-id <id>] [--include-delivered]
-  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id>]
-  agenthub actor send --to-actor-id <actor_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]
+  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]
+  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]
+  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]
 
 Environment fallback:
   AGENTHUB_ACTOR_RUN_ID
   AGENTHUB_ACTOR_ID
+  AGENTHUB_ACTOR_AGENT_ID
   AGENTHUB_ACTOR_CHANNEL
 "#
 }
@@ -64,9 +66,9 @@ fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
         .map_err(|err| anyhow::anyhow!("invalid {} JSON: {}", field, err))
 }
 
-fn take_required(
+fn take_required_with_env_keys(
     value: Option<String>,
-    env_key: Option<&str>,
+    env_keys: &[&str],
     field: &str,
 ) -> anyhow::Result<String> {
     if let Some(value) = value {
@@ -75,10 +77,10 @@ fn take_required(
             return Ok(trimmed);
         }
     }
-    if let Some(env_key) = env_key
-        && let Some(value) = normalized_env_var(env_key)
-    {
-        return Ok(value);
+    for env_key in env_keys {
+        if let Some(value) = normalized_env_var(env_key) {
+            return Ok(value);
+        }
     }
     Err(anyhow::anyhow!(
         "{} is required (flag or env fallback)",
@@ -114,7 +116,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                                 .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                         );
                     }
-                    "--actor-id" => {
+                    "--actor-id" | "--agent-id" => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
@@ -146,8 +148,12 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 idx += 1;
             }
             Ok(ActorCommand::Inbox {
-                run_id: take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?,
-                actor_id: take_required(actor_id, Some(ACTOR_RUNTIME_ACTOR_ID_ENV), "actor_id")?,
+                run_id: take_required_with_env_keys(run_id, &[ACTOR_RUNTIME_RUN_ID_ENV], "run_id")?,
+                actor_id: take_required_with_env_keys(
+                    actor_id,
+                    &[ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV],
+                    "actor_id",
+                )?,
                 limit: limit.max(1),
                 after_id,
                 include_delivered,
@@ -168,7 +174,7 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                                 .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                         );
                     }
-                    "--actor-id" => {
+                    "--actor-id" | "--agent-id" => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
@@ -188,8 +194,12 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 idx += 1;
             }
             Ok(ActorCommand::Ack {
-                run_id: take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?,
-                actor_id: take_required(actor_id, Some(ACTOR_RUNTIME_ACTOR_ID_ENV), "actor_id")?,
+                run_id: take_required_with_env_keys(run_id, &[ACTOR_RUNTIME_RUN_ID_ENV], "run_id")?,
+                actor_id: take_required_with_env_keys(
+                    actor_id,
+                    &[ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV],
+                    "actor_id",
+                )?,
                 message_id: message_id.ok_or_else(|| anyhow::anyhow!("message_id is required"))?,
             })
         }
@@ -221,11 +231,25 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                                 anyhow::anyhow!("--from-actor-id requires a value")
                             })?);
                     }
+                    "--from-agent-id" => {
+                        idx += 1;
+                        from_actor_id =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--from-agent-id requires a value")
+                            })?);
+                    }
                     "--to-actor-id" => {
                         idx += 1;
                         to_actor_id =
                             Some(args.get(idx).cloned().ok_or_else(|| {
                                 anyhow::anyhow!("--to-actor-id requires a value")
+                            })?);
+                    }
+                    "--to-agent-id" => {
+                        idx += 1;
+                        to_actor_id =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--to-agent-id requires a value")
                             })?);
                     }
                     "--channel" => {
@@ -288,13 +312,14 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
 
             let fallback_channel = normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV)
                 .unwrap_or_else(|| "default".to_string());
-            let run_id = take_required(run_id, Some(ACTOR_RUNTIME_RUN_ID_ENV), "run_id")?;
-            let from_actor_id = take_required(
+            let run_id =
+                take_required_with_env_keys(run_id, &[ACTOR_RUNTIME_RUN_ID_ENV], "run_id")?;
+            let from_actor_id = take_required_with_env_keys(
                 from_actor_id,
-                Some(ACTOR_RUNTIME_ACTOR_ID_ENV),
+                &[ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV],
                 "from_actor_id",
             )?;
-            let to_actor_id = take_required(to_actor_id, None, "to_actor_id")?;
+            let to_actor_id = take_required_with_env_keys(to_actor_id, &[], "to_actor_id")?;
             let channel = take_optional(channel).unwrap_or(fallback_channel);
             let payload = payload.ok_or_else(|| anyhow::anyhow!("payload_json is required"))?;
             let explicit_idempotency_key = match idempotency_key {
@@ -448,9 +473,11 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-x");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec!["inbox".to_string(), "--limit".to_string(), "5".to_string()];
         let parsed = parse_actor_command(&args).expect("parse inbox");
@@ -469,6 +496,7 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
     #[test]
@@ -476,9 +504,11 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-x");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
             "send".to_string(),
@@ -495,6 +525,7 @@ mod tests {
         );
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
     #[test]
@@ -502,9 +533,11 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-default-key");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
             "send".to_string(),
@@ -525,6 +558,7 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
     #[test]
@@ -532,9 +566,11 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-allow-duplicate");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
             "send".to_string(),
@@ -558,6 +594,7 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
     #[test]
@@ -565,9 +602,11 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-duplicate-invalid");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
             "send".to_string(),
@@ -585,6 +624,96 @@ mod tests {
         );
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_inbox_accepts_agent_id_alias_flag() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-x");
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "inbox".to_string(),
+            "--agent-id".to_string(),
+            "planner-agent".to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox { actor_id, .. } => {
+                assert_eq!(actor_id, "planner-agent");
+            }
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_inbox_uses_agent_id_env_fallback() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-x");
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "planner-agent");
+        }
+        let args = vec!["inbox".to_string()];
+        let parsed = parse_actor_command(&args).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox { actor_id, .. } => {
+                assert_eq!(actor_id, "planner-agent");
+            }
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_accepts_agent_id_alias_flags() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-send-alias");
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "send".to_string(),
+            "--from-agent-id".to_string(),
+            "leader-agent".to_string(),
+            "--to-agent-id".to_string(),
+            "worker-agent".to_string(),
+            "--payload-json".to_string(),
+            r#"{"text":"hello"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse send");
+        match parsed {
+            ActorCommand::Send {
+                from_actor_id,
+                to_actor_id,
+                ..
+            } => {
+                assert_eq!(from_actor_id, "leader-agent");
+                assert_eq!(to_actor_id, "worker-agent");
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
     #[test]

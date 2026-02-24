@@ -93,7 +93,8 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       <div className={RUN_PANEL_LIST_CLASS}>
         <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
         <p className="muted text-sm">
-          Start or load runs from <code>Debug → Run Ops</code>. This panel focuses on run browsing.
+          Team execution is agent-driven. You can quick-start here, or use <code>Debug → Run Ops</code>{" "}
+          for manual run debugging.
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm text-slate-600">Quick start a new run for this team.</span>
