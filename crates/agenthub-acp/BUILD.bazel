@@ -9,6 +9,8 @@ rust_library(
     crate_name = "agenthub_acp",
     compile_data = [
         "//:skills/team/team-agents-index.SKILL.md",
+        "//:skills/team/team-leader-agents-index.SKILL.md",
+        "//:skills/team/team-worker-agents-index.SKILL.md",
         "//:skills/team/team-leader-orchestrator.SKILL.md",
         "//:skills/team/team-worker-executor.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",
@@ -28,6 +30,8 @@ rust_test(
     crate = ":agenthub_acp",
     compile_data = [
         "//:skills/team/team-agents-index.SKILL.md",
+        "//:skills/team/team-leader-agents-index.SKILL.md",
+        "//:skills/team/team-worker-agents-index.SKILL.md",
         "//:skills/team/team-leader-orchestrator.SKILL.md",
         "//:skills/team/team-worker-executor.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",
