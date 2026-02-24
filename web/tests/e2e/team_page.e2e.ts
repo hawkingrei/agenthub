@@ -977,6 +977,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/teams");
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
+  await page.getByRole("button", { name: "Overview" }).click();
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
   await expect(page.locator(".teams-overview-meta")).toBeVisible();
 
@@ -1345,6 +1346,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "working"
   );
+  await page.getByRole("button", { name: "Overview" }).click();
   await expect(page.locator(".team-member-row", { hasText: "quant-leader" })).toBeVisible();
   await expect(
     page.locator(".team-member-row", { hasText: "portfolio-worker" })

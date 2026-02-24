@@ -214,8 +214,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
 
       {selectedTask && (
         <div className="mono mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-          status={selectedTask.status} created_by=
-          {selectedTask.created_by_actor_id}
+          status={selectedTask.status} created_by={selectedTask.created_by_actor_id}
         </div>
       )}
 

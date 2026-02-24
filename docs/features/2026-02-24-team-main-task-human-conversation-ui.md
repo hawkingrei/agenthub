@@ -60,7 +60,7 @@ Local checks executed:
 
 ```bash
 pnpm -C web run lint
-pnpm -C web exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts
+pnpm -C web exec vitest run src/pages/team_panels.test.tsx src/pages/team/state.test.ts src/pages/team_page.runs.test.ts
 pnpm -C web run build
 ```
 
