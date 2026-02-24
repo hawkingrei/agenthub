@@ -116,7 +116,7 @@ const renderBody = ({
 describe("OutputBody", () => {
   it("shows loading state before output is ready", () => {
     const html = renderBody({ isOutputLoading: true, outputs: [] });
-    expect(html).toContain("加载中");
+    expect(html).toContain("Loading...");
     expect(html).not.toContain("No output yet");
   });
 
@@ -136,7 +136,7 @@ describe("OutputBody", () => {
         },
       ],
     });
-    expect(html).toContain("加载中");
+    expect(html).toContain("Loading...");
     expect(html).not.toContain("terminal line");
   });
 

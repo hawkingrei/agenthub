@@ -1937,7 +1937,7 @@ function ToolDiffView({ text }: { text: string }) {
           return (
             <span
               className={`acp-diff-line ${kind} block px-1 ${resolveDiffLineToneClassName(kind)}`}
-              key={index}
+              key={startIndex + index}
             >
               {line.length > 0 ? line : " "}
             </span>

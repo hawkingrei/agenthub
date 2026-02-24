@@ -33,7 +33,7 @@ export const OutputBody = React.memo(function OutputBody({
       {showLoading ? (
         <div className={OUTPUT_BODY_LOADING_CLASS}>
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-          <div className="label">加载中</div>
+          <div className="label">Loading...</div>
         </div>
       ) : acpPanelProps.acpView.hasAcp ? (
         <AcpPanel {...acpPanelProps} />
