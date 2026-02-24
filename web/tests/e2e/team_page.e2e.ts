@@ -1,4 +1,4 @@
-import { expect, test } from "./coverage";
+import { expect, test, testLocalLlm } from "./coverage";
 
 type StoredAuthState = {
   token: string;
@@ -1892,7 +1892,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   );
 });
 
-test("team conversation-first integration supports virtual team tiny-tool delivery flow", async ({
+testLocalLlm("team conversation-first integration supports virtual team tiny-tool delivery flow [local-llm]", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);

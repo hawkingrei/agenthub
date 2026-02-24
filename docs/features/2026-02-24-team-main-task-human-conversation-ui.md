@@ -66,4 +66,13 @@ pnpm -C web run build
 
 Added E2E scenario in `web/tests/e2e/team_page.e2e.ts`:
 
-- `team conversation-first integration supports virtual team tiny-tool delivery flow`
+- `team conversation-first integration supports virtual team tiny-tool delivery flow [local-llm]`
+
+LLM-permission note:
+
+- This scenario is local-only by design and is excluded from default CI runs.
+- Enable explicitly in local environment:
+
+```bash
+pnpm -C web run e2e:llm-local
+```
