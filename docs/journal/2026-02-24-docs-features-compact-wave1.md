@@ -17,16 +17,16 @@
    - defines required sections for active feature specs and compaction policy
 
 2. Added canonical Team role-skill runtime spec:
-   - `docs/features/2026-02-24-team-role-skill-runtime-spec.md`
+   - `docs/journal/2026-02-24-team-operating-model-spec.md`
    - consolidates role-skill injection pipeline, single-mode isolation, bootstrap/safe-path policy, cold-start TODO workflow, TODO lifecycle, and AGENTS/SKILL ownership boundary
 
 3. Compacted six overlapping notes into superseded pointers:
-   - `docs/features/2026-02-17-team-skills-bootstrap-script.md`
-   - `docs/features/2026-02-18-team-deliberation-rules-skill.md`
-   - `docs/features/2026-02-19-team-role-skill-acp-auto-injection.md`
-   - `docs/features/2026-02-20-team-single-node-skill-bootstrap.md`
-   - `docs/features/2026-02-22-team-role-skill-single-mode-isolation.md`
-   - `docs/features/2026-02-23-team-cold-start-skill-and-ui-playbook.md`
+   - `docs/journal/2026-02-17-team-skills-bootstrap-script.md`
+   - `docs/journal/2026-02-18-team-deliberation-rules-skill.md`
+   - `docs/journal/2026-02-19-team-role-skill-acp-auto-injection.md`
+   - `docs/journal/2026-02-20-team-single-node-skill-bootstrap.md`
+   - `docs/journal/2026-02-22-team-role-skill-single-mode-isolation.md`
+   - `docs/journal/2026-02-23-team-cold-start-skill-and-ui-playbook.md`
 
 4. Updated `docs/todo.md` references:
    - switched relevant verification items to the canonical spec

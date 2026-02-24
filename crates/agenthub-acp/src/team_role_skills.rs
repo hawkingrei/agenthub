@@ -8,10 +8,22 @@ const TEAM_WORKER_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-worker-executor.SKILL.md");
 const TEAM_DELIBERATION_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
+const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
+const TEAM_AGENTS_INDEX_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-agents-index.SKILL.md");
+const TEAM_LEADER_AGENTS_INDEX_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-leader-agents-index.SKILL.md");
+const TEAM_WORKER_AGENTS_INDEX_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-worker-agents-index.SKILL.md");
 
+const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
+const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
+const TEAM_WORKER_AGENTS_INDEX_SKILL_NAME: &str = "team-worker-agents-index";
 const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
 const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
 const TEAM_DELIBERATION_SKILL_NAME: &str = "team-deliberation-rules";
+const TEAM_ACTOR_MAILBOX_SKILL_NAME: &str = "team-actor-mailbox";
 
 fn normalize_member_role(role: Option<&str>) -> Option<&str> {
     role.map(str::trim).filter(|value| !value.is_empty())
@@ -25,9 +37,13 @@ pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillConte
 }
 
 pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
-    name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
+    name.eq_ignore_ascii_case(TEAM_AGENTS_INDEX_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_LEADER_AGENTS_INDEX_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_WORKER_AGENTS_INDEX_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_DELIBERATION_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_ACTOR_MAILBOX_SKILL_NAME)
 }
 
 pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
@@ -36,9 +52,24 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
     match role {
         Some("leader") => {
             out.push(build_skill(
+                TEAM_AGENTS_INDEX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-agents-index".to_string(),
+                TEAM_AGENTS_INDEX_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_LEADER_AGENTS_INDEX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-leader-agents-index".to_string(),
+                TEAM_LEADER_AGENTS_INDEX_SKILL_TEXT,
+            ));
+            out.push(build_skill(
                 TEAM_LEADER_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-leader-orchestrator".to_string(),
                 TEAM_LEADER_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-actor-mailbox".to_string(),
+                TEAM_ACTOR_MAILBOX_SKILL_TEXT,
             ));
             out.push(build_skill(
                 TEAM_DELIBERATION_SKILL_NAME.to_string(),
@@ -48,9 +79,24 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
         }
         Some("worker") => {
             out.push(build_skill(
+                TEAM_AGENTS_INDEX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-agents-index".to_string(),
+                TEAM_AGENTS_INDEX_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_WORKER_AGENTS_INDEX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-worker-agents-index".to_string(),
+                TEAM_WORKER_AGENTS_INDEX_SKILL_TEXT,
+            ));
+            out.push(build_skill(
                 TEAM_WORKER_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-worker-executor".to_string(),
                 TEAM_WORKER_SKILL_TEXT,
+            ));
+            out.push(build_skill(
+                TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
+                "builtin://agenthub/team/team-actor-mailbox".to_string(),
+                TEAM_ACTOR_MAILBOX_SKILL_TEXT,
             ));
             out.push(build_skill(
                 TEAM_DELIBERATION_SKILL_NAME.to_string(),
@@ -90,7 +136,13 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["team-leader-orchestrator", "team-deliberation-rules"]
+            vec![
+                "team-agents-index",
+                "team-leader-agents-index",
+                "team-leader-orchestrator",
+                "team-actor-mailbox",
+                "team-deliberation-rules"
+            ]
         );
     }
 
@@ -103,7 +155,13 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["team-worker-executor", "team-deliberation-rules"]
+            vec![
+                "team-agents-index",
+                "team-worker-agents-index",
+                "team-worker-executor",
+                "team-actor-mailbox",
+                "team-deliberation-rules"
+            ]
         );
     }
 
@@ -132,9 +190,13 @@ mod tests {
 
     #[test]
     fn is_reserved_team_role_skill_matches_expected_names() {
+        assert!(is_reserved_team_role_skill("team-agents-index"));
+        assert!(is_reserved_team_role_skill("team-leader-agents-index"));
+        assert!(is_reserved_team_role_skill("team-worker-agents-index"));
         assert!(is_reserved_team_role_skill("team-leader-orchestrator"));
         assert!(is_reserved_team_role_skill("team-worker-executor"));
         assert!(is_reserved_team_role_skill("team-deliberation-rules"));
+        assert!(is_reserved_team_role_skill("team-actor-mailbox"));
         assert!(is_reserved_team_role_skill("TEAM-WORKER-EXECUTOR"));
         assert!(!is_reserved_team_role_skill("custom-skill"));
     }

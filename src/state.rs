@@ -68,6 +68,15 @@ impl AppState {
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
         agents.mark_exited_on_startup().await?;
+        // Startup policy: never auto-resume in-flight team runs after a process restart.
+        // We force manual restart so users can re-confirm intent and avoid duplicate execution.
+        let startup_canceled_runs = teams.cancel_active_runs_on_startup().await?;
+        if startup_canceled_runs > 0 {
+            tracing::info!(
+                canceled_run_count = startup_canceled_runs,
+                "team startup policy: canceled active runs to require manual start"
+            );
+        }
         let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
             .spawn(TeamOrchestratorWorkerSettings::default());
         Self::ensure_root(&db).await?;

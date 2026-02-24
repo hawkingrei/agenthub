@@ -2212,6 +2212,91 @@ async fn list_active_runs_returns_non_terminal_runs_only() {
 }
 
 #[tokio::test]
+async fn cancel_active_runs_on_startup_requires_manual_restart() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "startup-cancel-team".to_string(),
+            description: Some("team to verify startup active-run cancellation".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let submitted_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-startup-submitted"),
+            json!({"payload":"submitted"}),
+        )
+        .await
+        .expect("create submitted run");
+    let working_run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-startup-working"),
+            json!({"payload":"working"}),
+        )
+        .await
+        .expect("create working run");
+    let working_step = manager
+        .submit_step(
+            &working_run.id,
+            "work",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"start"})),
+        )
+        .await
+        .expect("submit working step");
+    let _ = manager
+        .start_step(&working_step.id, Some("remote-startup-working"))
+        .await
+        .expect("start working step");
+
+    let canceled_count = manager
+        .cancel_active_runs_on_startup()
+        .await
+        .expect("cancel active runs on startup");
+    assert_eq!(canceled_count, 2);
+
+    let submitted_after = manager
+        .get_run(&submitted_run.id)
+        .await
+        .expect("get submitted run after startup cancel");
+    assert_eq!(submitted_after.status, TeamRunStatus::Canceled);
+
+    let working_after = manager
+        .get_run(&working_run.id)
+        .await
+        .expect("get working run after startup cancel");
+    assert_eq!(working_after.status, TeamRunStatus::Canceled);
+
+    let working_step_after = manager
+        .get_step(&working_step.id)
+        .await
+        .expect("get working step after startup cancel");
+    assert_eq!(working_step_after.status, TeamStepStatus::Canceled);
+
+    let active_after = manager
+        .list_active_runs(100)
+        .await
+        .expect("list active runs after startup cancel");
+    assert!(active_after.is_empty());
+
+    let startup_events = manager
+        .list_run_events(&working_run.id, 200, None)
+        .await
+        .expect("list working run events")
+        .into_iter()
+        .filter(|event| event.event_type == "run_startup_canceled")
+        .collect::<Vec<_>>();
+    assert_eq!(startup_events.len(), 1);
+}
+
+#[tokio::test]
 async fn resume_run_handles_active_terminal_and_completed_statuses() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);

@@ -2817,7 +2817,9 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         leader.skills,
         vec![
             "agenthub-actor-runtime".to_string(),
+            "team-agents-index".to_string(),
             "team-leader-orchestrator".to_string(),
+            "team-actor-mailbox".to_string(),
             "planning".to_string(),
             "review".to_string()
         ]

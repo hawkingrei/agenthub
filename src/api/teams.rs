@@ -36,19 +36,32 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_SKILLS: [&str; 3] = [
+const DEFAULT_TEAM_LEADER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
+    "team-agents-index",
     "team-leader-orchestrator",
+    "team-actor-mailbox",
     "team-deliberation-rules",
 ];
-const DEFAULT_TEAM_WORKER_SKILLS: [&str; 3] = [
+const DEFAULT_TEAM_WORKER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
+    "team-agents-index",
     "team-worker-executor",
+    "team-actor-mailbox",
     "team-deliberation-rules",
 ];
-const REQUIRED_TEAM_LEADER_SKILLS: [&str; 2] =
-    ["agenthub-actor-runtime", "team-leader-orchestrator"];
-const REQUIRED_TEAM_WORKER_SKILLS: [&str; 2] = ["agenthub-actor-runtime", "team-worker-executor"];
+const REQUIRED_TEAM_LEADER_SKILLS: [&str; 4] = [
+    "agenthub-actor-runtime",
+    "team-agents-index",
+    "team-leader-orchestrator",
+    "team-actor-mailbox",
+];
+const REQUIRED_TEAM_WORKER_SKILLS: [&str; 4] = [
+    "agenthub-actor-runtime",
+    "team-agents-index",
+    "team-worker-executor",
+    "team-actor-mailbox",
+];
 const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";

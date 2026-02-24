@@ -739,6 +739,49 @@ impl TeamManager {
         Ok(runs)
     }
 
+    // Cancel all non-terminal runs left from a previous process lifetime.
+    // This keeps startup deterministic and shifts resumption to explicit user action.
+    pub async fn cancel_active_runs_on_startup(&self) -> anyhow::Result<usize> {
+        let active_run_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT id
+            FROM team_runs
+            WHERE status IN ('submitted', 'working', 'input_required')
+            ORDER BY created_at ASC, id ASC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut canceled_count = 0usize;
+        for run_id in active_run_ids {
+            let canceled = self.cancel_run(&run_id).await?;
+            if canceled.status == TeamRunStatus::Canceled {
+                canceled_count += 1;
+                // Best-effort audit trail: cancellation already committed by cancel_run.
+                // We should not fail startup because of a follow-up event write error.
+                if let Err(err) = self
+                    .append_run_event(
+                        &run_id,
+                        "run_startup_canceled",
+                        serde_json::json!({
+                            "status": "canceled",
+                            "reason": "manual_start_required_after_service_restart",
+                        }),
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        error = %err,
+                        "failed to append startup cancellation event"
+                    );
+                }
+            }
+        }
+        Ok(canceled_count)
+    }
+
     pub async fn list_runs(
         &self,
         team_id: &str,
