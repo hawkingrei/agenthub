@@ -2325,10 +2325,10 @@ export function TeamPage(props: TeamPageProps) {
 
   return (
     <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
-      <header className="mb-0 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <header>
+        <div className="flex min-w-0 items-center gap-2">
           <button
-            className="icon-button small output-agents-toggle"
+            className="icon-button output-agents-toggle"
             onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
             title={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
             aria-label={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
@@ -2338,18 +2338,31 @@ export function TeamPage(props: TeamPageProps) {
               aria-hidden="true"
             />
           </button>
-          <h1 className="whitespace-normal text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-            AgentHub Teams
-          </h1>
+          <h1>AgentHub Teams</h1>
         </div>
-        <div className="team-session flex max-w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
-          <a className="icon-button" href="/" title="Back" aria-label="Back">
+        <div className="session team-session">
+          <span
+            className="session-connection muted"
+            title="Teams console"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="session-connection-dot" aria-hidden="true" />
+            <span>Teams</span>
+          </span>
+          <span>{props.auth.username}</span>
+          <a className="icon-button" href="/" title="Agents" aria-label="Agents">
             <i className="bi bi-arrow-left" aria-hidden="true" />
           </a>
-          <span className="max-w-[44vw] truncate text-sm font-medium text-slate-700 sm:max-w-none">
-            {props.auth.username}
-          </span>
-          <button className={panelSecondaryButtonClassName} onClick={props.onLogout}>
+          {props.auth.role === "root" && (
+            <a className="icon-button" href="/admin" title="Admin" aria-label="Admin">
+              <i className="bi bi-gear" aria-hidden="true" />
+            </a>
+          )}
+          <button
+            className="rounded-[var(--radius-sm)] border-0 bg-[var(--ink)] px-[14px] py-2 font-semibold tracking-[0.01em] text-white transition hover:bg-slate-800"
+            onClick={props.onLogout}
+          >
             Logout
           </button>
         </div>
