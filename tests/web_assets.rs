@@ -101,7 +101,7 @@ fn styles_keep_acp_conversation_scoped() {
         "workspace right panel should stretch and clip overflow for docked input bottom alignment"
     );
     assert!(
-        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: hidden;"),
+        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: clip;"),
         "app should keep fixed-height scroll container behavior"
     );
     assert!(
