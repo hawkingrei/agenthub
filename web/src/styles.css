@@ -84,7 +84,7 @@ body {
   padding: 2px 8px 0;
   min-height: var(--agenthub-vh, 100vh);
   height: var(--agenthub-vh, 100vh);
-  overflow-y: auto;
+  overflow: auto;
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-x: none;
