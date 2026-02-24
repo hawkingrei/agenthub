@@ -17,7 +17,7 @@
    - defines required sections for active feature specs and compaction policy
 
 2. Added canonical Team role-skill runtime spec:
-   - `docs/features/2026-02-24-team-role-skill-runtime-spec.md`
+   - `docs/features/2026-02-24-team-operating-model-spec.md`
    - consolidates role-skill injection pipeline, single-mode isolation, bootstrap/safe-path policy, cold-start TODO workflow, TODO lifecycle, and AGENTS/SKILL ownership boundary
 
 3. Compacted six overlapping notes into superseded pointers:

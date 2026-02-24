@@ -739,6 +739,38 @@ impl TeamManager {
         Ok(runs)
     }
 
+    pub async fn cancel_active_runs_on_startup(&self) -> anyhow::Result<usize> {
+        let active_run_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT id
+            FROM team_runs
+            WHERE status IN ('submitted', 'working', 'input_required')
+            ORDER BY created_at ASC, id ASC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut canceled_count = 0usize;
+        for run_id in active_run_ids {
+            let canceled = self.cancel_run(&run_id).await?;
+            if canceled.status == TeamRunStatus::Canceled {
+                canceled_count += 1;
+                let _ = self
+                    .append_run_event(
+                        &run_id,
+                        "run_startup_canceled",
+                        serde_json::json!({
+                            "status": "canceled",
+                            "reason": "manual_start_required_after_service_restart",
+                        }),
+                    )
+                    .await;
+            }
+        }
+        Ok(canceled_count)
+    }
+
     pub async fn list_runs(
         &self,
         team_id: &str,
