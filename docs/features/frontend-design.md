@@ -83,6 +83,37 @@ state labels, and panel behaviors diverged.
 - Long-tail legacy selectors may still appear in edge pages.
 - Some mobile layouts can regress under new content density unless guarded by viewport tests.
 
+## Next Milestones
+
+### Tailwind Wave 2
+
+#### Goals
+
+- Complete semantic-token adoption for remaining high-traffic pages and remove duplicated utility bundles.
+- Reduce style drift between Team, ACP, and Agents by converging on shared class presets.
+- Keep migration behavior-preserving (no API/state contract changes).
+
+#### Scope (Wave 2)
+
+- Expand `web/src/ui/tailwind_classes.ts` presets to remaining page shells and repeated control groups.
+- Replace remaining literal color/spacing utility strings with semantic tokens from `tailwind.config.cjs`.
+- Continue shrinking legacy global selectors in `web/src/styles.css` with compatibility-safe isolation.
+- Add focused visual regression coverage for mobile breakpoints where Tailwind migrations are most fragile.
+
+#### Execution Plan
+
+1. Inventory duplicated class clusters and rank by frequency/risk.
+2. Migrate one surface group per PR (small blast radius, easier rollback).
+3. Attach per-PR before/after MCP snapshots and targeted test evidence.
+4. Run compaction pass to remove superseded style helpers and stale selectors.
+
+#### Acceptance Criteria
+
+- No new handcrafted global CSS blocks.
+- Shared token/preset usage increases on all migrated surfaces.
+- Existing Team/ACP/Agents interaction tests remain green.
+- `pnpm -C web run lint` and `pnpm -C web run build` remain green on each migration PR.
+
 ## Source Journals
 
 - `docs/journal/2026-02-23-web-tailwind-design-token-rollout-wave1.md`
