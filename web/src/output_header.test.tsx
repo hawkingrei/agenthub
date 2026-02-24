@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OutputHeader } from "./components/output_header";
 import { AgentRecord } from "./api";
 
@@ -74,5 +74,13 @@ describe("OutputHeader", () => {
   it("renders model tag when label is provided", () => {
     const html = renderHeader({ modelLabel: "gpt-4o" });
     expect(html).toContain("gpt-4o");
+  });
+
+  it("merges run and thinking state into a single status badge", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(15_000);
+    const html = renderHeader({ runStatus: "running", thinkingStartTs: 10 });
+    expect(html).toContain("running · thinking 5s");
+    expect(html).not.toContain("class=\"acp-thinking\"");
+    nowSpy.mockRestore();
   });
 });
