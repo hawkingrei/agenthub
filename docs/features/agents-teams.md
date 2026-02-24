@@ -25,9 +25,10 @@ terminology and operating expectations drift.
 
 1. Human planning layer
 - Human collaborates through `Conversation` under a `Main Task`.
+- Human provides goals/constraints; humans do not create internal Team `task` objects directly.
 
 2. Orchestration layer
-- Leader compiles planning output into executable `Run` + `Step` graph.
+- Leader compiles planning output into executable `Run` + `Step` graph and internal tasks.
 
 3. Execution layer
 - Members execute steps, exchange mailbox messages, and return evidence.
@@ -49,10 +50,31 @@ terminology and operating expectations drift.
 
 ### 4) Cold-Start Workflow
 
+- Inject shared Team AGENTS index (`team-agents-index`) to both leader and worker at startup.
+- Inject role-specific AGENTS index:
+  - leader: `team-leader-agents-index`
+  - worker: `team-worker-agents-index`
 - Read `AGENTS.md` as index.
 - Check unfinished items in `TODO.md` and `.cache/context/todo.md`.
 - Load only required skills for current phase.
 - Keep decisions/errors in workspace-local context files.
+
+### 5) Team AGENTS Injection Matrix
+
+- Shared baseline for both roles:
+  - file: `skills/team/AGENTS.md`
+  - injected skill: `team-agents-index`
+- Leader-specific runtime AGENTS:
+  - file template: `skills/team/TEAM_LEADER_AGENTS.md`
+  - injected skill: `team-leader-agents-index`
+- Worker-specific runtime AGENTS:
+  - file template: `skills/team/TEAM_WORKER_AGENTS.md`
+  - injected skill: `team-worker-agents-index`
+
+Constraint:
+
+- leader and worker do not share one identical runtime `AGENTS.md`;
+- they share baseline terms but keep different role-focused AGENTS indexes.
 
 ## Contracts
 

@@ -6,6 +6,8 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Your direct edits are limited to coordination artifacts (for example `AGENTS.md`) and review notes.\n",
     "- Treat `AGENTS.md` as index/routing artifact; keep detailed procedures in skill files.\n",
     "- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.\n",
+    "- Always load `team-agents-index` before role-specific execution skills.\n",
+    "- Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template when bootstrapping.\n",
     "- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.\n",
     "- You are responsible for direct human-facing planning communication. Do not redirect human questions to workers.\n",
     "Planning quality gate:\n",
@@ -56,6 +58,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
     "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.\n",
+    "- Always load `team-agents-index` before role-specific execution skills.\n",
+    "- Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template for section layout.\n",
     "- Do not replace leader in direct human-facing planning replies unless explicitly routed.\n",
     "Team workflow phases:\n",
     "1. Team formation\n",
@@ -124,5 +128,9 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team-agents-index"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-agents-index"));
     }
 }

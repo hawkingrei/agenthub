@@ -111,10 +111,19 @@ agenthub/
   - Leader acts as architect/reviewer and should not implement feature code directly
   - Leader owns technical research and option comparison (assumptions, trade-offs, risks) before delegation
   - `AGENTS.md` is the role-level index and routing table; detailed execution procedures live in role/feature `SKILL.md` files
+  - Team workflow must be indexed in `AGENTS.md` and routed to concrete skills:
+    - shared Team baseline (injected to both leader/worker at startup): `skills/team/AGENTS.md` -> skill `team-agents-index`
+    - leader-specific Team index (injected to leader startup): `skills/team/TEAM_LEADER_AGENTS.md` -> skill `team-leader-agents-index`
+    - worker-specific Team index (injected to worker startup): `skills/team/TEAM_WORKER_AGENTS.md` -> skill `team-worker-agents-index`
+    - phase planning/orchestration: `skills/team/team-leader-orchestrator.SKILL.md`
+    - execution delivery: `skills/team/team-worker-executor.SKILL.md`
+    - deliberation quality gate: `skills/team/team-deliberation-rules.SKILL.md`
+    - actor mailbox protocol (`inbox`/`send`/`ack`): `skills/team/team-actor-mailbox.SKILL.md`
   - At role startup, agent should read `AGENTS.md` first, then load only the skills required for current phase/task
   - Leader runtime starts from an empty workspace and should maintain coordination context in `AGENTS.md`
   - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
   - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
+  - Human inputs are goals/constraints via conversation; internal Team `task` objects are created by leader planning, not directly by human users
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
   - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work
@@ -199,6 +208,10 @@ agenthub/
 - Clarified leader direct human-facing communication responsibility and phase-aware `AGENTS.md` coordination requirements.
 - Clarified `AGENTS.md` as index/routing artifact and moved detailed execution guidance responsibility to skill files.
 - Added pointer-level policy that TODO lifecycle rules are owned by role skills, while `AGENTS.md` remains index-only.
+- Added explicit Team workflow-to-skill routing index, including actor mailbox protocol as a dedicated skill.
+- Added shared Team index injection (`skills/team/AGENTS.md`) for both leader and worker startup.
+- Added role-specific Team AGENTS index injection for leader/worker startup.
+- Clarified that humans provide goals/constraints while leader compiles internal Team tasks.
 
 ### 2026-02-22
 

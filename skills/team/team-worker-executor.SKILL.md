@@ -11,6 +11,15 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Treat workspace `AGENTS.md` as index only: objectives, phase, and skill pointers.
 - Keep detailed worker procedures in this skill (and related skill files), not in `AGENTS.md`.
 - On each new task, confirm current phase and referenced skills from `AGENTS.md` before execution.
+- Bootstrap worker `AGENTS.md` from `skills/team/TEAM_WORKER_AGENTS.md`.
+
+## Skill Routing Contract
+
+- Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
+- Use `team-worker-agents-index.SKILL.md` to load worker-specific AGENTS template/rules.
+- Use this skill for worker execution and evidence reporting.
+- Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
+- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
 ## Routing Key Contract
 

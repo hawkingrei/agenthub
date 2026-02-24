@@ -19,6 +19,15 @@ You are the coordinator for a multi-agent team run.
 - Treat workspace `AGENTS.md` as the role-level index and routing source.
 - Do not duplicate large procedural detail in `AGENTS.md`; keep details in `SKILL.md`.
 - On startup and on phase changes, refresh `AGENTS.md` pointers to the active skills and artifacts.
+- Bootstrap from `skills/team/TEAM_LEADER_AGENTS.md` when creating leader `AGENTS.md`.
+
+## Skill Routing Contract
+
+- Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
+- Use `team-leader-agents-index.SKILL.md` to load leader-specific AGENTS template/rules.
+- Use this skill for leader planning, assignment, synthesis, and human-facing coordination.
+- Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
+- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
 ## Routing Key Contract
 
