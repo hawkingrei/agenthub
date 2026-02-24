@@ -2028,6 +2028,32 @@ export function TeamPage(props: TeamPageProps) {
     `${teamDebugTabBaseClassName} bg-brand-primary text-ui-text-inverse shadow-sm`;
   const teamDebugTabIdleClassName =
     `${teamDebugTabBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  const teamCreateModalHeaderClassName =
+    "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
+  const teamCreateModalTitleClassName =
+    "text-lg font-semibold tracking-tight text-ui-text-primary";
+  const teamCreateStageClassName =
+    "team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition";
+  const teamCreateStageActiveClassName =
+    `${teamCreateStageClassName} active border-brand-primary bg-brand-primary text-ui-text-inverse shadow-sm`;
+  const teamCreateStageCompletedClassName =
+    `${teamCreateStageClassName} completed border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]`;
+  const teamCreateStageLockedClassName =
+    `${teamCreateStageClassName} locked cursor-not-allowed border-ui-border bg-ui-surface-muted text-ui-text-muted`;
+  const teamCreateStageIdleClassName =
+    `${teamCreateStageClassName} border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
+  const teamCreateCheckItemReadyClassName =
+    "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
+  const teamCreateCheckItemPendingClassName =
+    "team-create-check-item pending flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm text-ui-text-muted";
+  const teamCreateAgentEntryClassName =
+    "team-create-agent-entry rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
+  const teamCreateForgeMetaClassName =
+    "team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-muted";
+  const teamCreateLaunchMetaClassName =
+    "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
+  const teamCreateLaunchMetaItemClassName =
+    "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
   const modalFieldClassName =
     "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
@@ -2378,7 +2404,7 @@ export function TeamPage(props: TeamPageProps) {
             </a>
           )}
           <button
-            className="rounded-[var(--radius-sm)] border-0 bg-[var(--ink)] px-[14px] py-2 font-semibold tracking-[0.01em] text-white transition hover:bg-slate-800"
+            className="rounded-[var(--radius-sm)] border-0 bg-[var(--ink)] px-[14px] py-2 font-semibold tracking-[0.01em] text-white transition hover:opacity-90"
             onClick={props.onLogout}
           >
             Logout
@@ -2927,8 +2953,8 @@ export function TeamPage(props: TeamPageProps) {
             aria-modal="true"
             aria-labelledby="team-create-title"
           >
-            <div className="modal-head flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
-              <h3 id="team-create-title" className="text-lg font-semibold tracking-tight text-slate-900">
+            <div className={teamCreateModalHeaderClassName}>
+              <h3 id="team-create-title" className={teamCreateModalTitleClassName}>
                 Team Forge
               </h3>
               <div className="team-create-head-meta flex flex-wrap items-center gap-2">
@@ -2952,14 +2978,14 @@ export function TeamPage(props: TeamPageProps) {
                 return (
                   <button
                     key={title}
-                    className={`team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition ${
+                    className={`${
                       isActive
-                        ? "active border-slate-900 bg-slate-900 text-white shadow-sm"
+                        ? teamCreateStageActiveClassName
                         : isCompleted
-                          ? "completed border-emerald-300 bg-emerald-50 text-emerald-700"
+                          ? teamCreateStageCompletedClassName
                           : isLocked
-                            ? "locked cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                            ? teamCreateStageLockedClassName
+                          : teamCreateStageIdleClassName
                     }`}
                     onClick={() => onSelectCreateTeamStage(stageIndex)}
                     type="button"
@@ -2986,10 +3012,10 @@ export function TeamPage(props: TeamPageProps) {
                 {questChecklist.map((item) => (
                   <div
                     key={item.key}
-                    className={`team-create-check-item flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    className={`${
                       item.ready
-                        ? "ready border-emerald-300 bg-emerald-50 text-emerald-700"
-                        : "pending border-slate-200 bg-slate-50 text-slate-600"
+                        ? teamCreateCheckItemReadyClassName
+                        : teamCreateCheckItemPendingClassName
                     }`}
                   >
                     <span
@@ -3004,9 +3030,9 @@ export function TeamPage(props: TeamPageProps) {
               </div>
 
               {createTeamStage !== 0 && !useSpecOverride && (
-                <div className="team-create-agent-entry rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className={teamCreateAgentEntryClassName}>
                   <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="text-base font-semibold text-slate-900">Agent Forge</h4>
+                    <h4 className={teamSectionTitleClassName}>Agent Forge</h4>
                     <button
                       className={panelSecondaryButtonClassName}
                       onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
@@ -3016,13 +3042,13 @@ export function TeamPage(props: TeamPageProps) {
                       {showForgeAgentForm ? "Hide" : "New Agent"}
                     </button>
                   </div>
-                  <p className="muted mt-2 text-sm text-slate-600">
+                  <p className={teamSectionBodyTextClassName}>
                     Role tag follows the current stage. In Team, worker is a role assigned to a
                     forged agent.
                   </p>
-                  <div className="team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  <div className={teamCreateForgeMetaClassName}>
                     <span>role_tag</span>
-                    <span className="text-slate-900">{forgeRoleTag ?? "-"}</span>
+                    <span className="text-ui-text-primary">{forgeRoleTag ?? "-"}</span>
                   </div>
                   {!canForgeAgentsInStage && (
                     <div className={TEAM_CREATE_NOTE_WARNING_CLASS}>
@@ -3039,9 +3065,9 @@ export function TeamPage(props: TeamPageProps) {
 
               {createTeamStage === 0 && (
                 <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className="text-base font-semibold text-slate-900">Mission Brief</h4>
+                  <h4 className={teamSectionTitleClassName}>Mission Brief</h4>
                   <div className="team-create-mission-intro mt-2">
-                    <p className="muted text-sm text-slate-600">
+                    <p className="text-sm text-ui-text-muted">
                       Pick a team name and description first. This is the party identity shown in
                       the workbench.
                     </p>
@@ -3073,8 +3099,8 @@ export function TeamPage(props: TeamPageProps) {
 
               {createTeamStage === 1 && (
                 <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className="text-base font-semibold text-slate-900">Leader Forge</h4>
-                  <p className="muted mt-2 text-sm text-slate-600">
+                  <h4 className={teamSectionTitleClassName}>Leader Forge</h4>
+                  <p className={teamSectionBodyTextClassName}>
                     Choose the leader from member agents created in this Team Forge session only.
                   </p>
                   {!isLeaderForgeReady && hasForgeAgents && (
@@ -3083,7 +3109,7 @@ export function TeamPage(props: TeamPageProps) {
                     </p>
                   )}
                   {!hasForgeAgents && (
-                    <p className="muted mt-2 text-sm text-slate-600">
+                    <p className={teamSectionBodyTextClassName}>
                       No forged agents yet. Create one in the Agent Forge entry above.
                     </p>
                   )}
@@ -3167,7 +3193,7 @@ export function TeamPage(props: TeamPageProps) {
               {createTeamStage === 2 && (
                 <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className="text-base font-semibold text-slate-900">Recruit Workers</h4>
+                    <h4 className={teamSectionTitleClassName}>Recruit Workers</h4>
                     <div className="flex flex-wrap gap-2">
                       <button
                         className={panelSecondaryButtonClassName}
@@ -3188,7 +3214,7 @@ export function TeamPage(props: TeamPageProps) {
                       </button>
                     </div>
                   </div>
-                  <p className="muted mt-2 text-sm text-slate-600">
+                  <p className={teamSectionBodyTextClassName}>
                     Build your party from Team Forge member agents only. Worker is a role
                     assignment for those agents, and model/prompt/skills can still be customized at
                     team level.
@@ -3329,7 +3355,7 @@ export function TeamPage(props: TeamPageProps) {
                     })}
                   </div>
                   {workers.length === 0 && (
-                    <p className="muted mt-3 text-sm text-slate-600">
+                    <p className="mt-3 text-sm text-ui-text-muted">
                       No workers configured. Team will run with leader only.
                     </p>
                   )}
@@ -3353,27 +3379,27 @@ export function TeamPage(props: TeamPageProps) {
 
               {createTeamStage === 3 && (
                 <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className="text-base font-semibold text-slate-900">Launch Team</h4>
-                  <p className="muted mt-2 text-sm text-slate-600">
+                  <h4 className={teamSectionTitleClassName}>Launch Team</h4>
+                  <p className={teamSectionBodyTextClassName}>
                     Final review before deployment.
                   </p>
-                  <div className="mono mt-3 grid min-w-0 gap-2 text-xs text-slate-700 sm:grid-cols-3">
-                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className={teamCreateLaunchMetaClassName}>
+                    <span className={teamCreateLaunchMetaItemClassName}>
                       team={newTeamName.trim() || "-"}
                     </span>
-                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <span className={teamCreateLaunchMetaItemClassName}>
                       leader={leaderMemberId.trim() || "-"}
                     </span>
-                    <span className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <span className={teamCreateLaunchMetaItemClassName}>
                       workers={configuredWorkerCount}
                     </span>
                   </div>
                   {useSpecOverride ? (
-                    <p className="muted mt-3 text-sm text-slate-600">
+                    <p className="mt-3 text-sm text-ui-text-muted">
                       Manual Spec entry: edit full team spec JSON directly.
                     </p>
                   ) : (
-                    <p className="muted mt-3 text-sm text-slate-600">
+                    <p className="mt-3 text-sm text-ui-text-muted">
                       Guided wizard generated this spec:
                       `leader_plan` → `worker_*` → `leader_synthesize`.
                     </p>
