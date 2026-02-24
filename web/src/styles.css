@@ -54,6 +54,7 @@
 html {
   width: 100%;
   max-width: var(--agenthub-vw, 100vw);
+  /* Keep hidden as fallback for engines without overflow-x: clip support. */
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-x: none;
@@ -77,6 +78,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Keep hidden before clip as compatibility fallback for older engines. */
 .app {
   width: 100%;
   max-width: var(--agenthub-vw, 100vw);
