@@ -51,6 +51,10 @@ describe("TeamMemberStatusStrip", () => {
             missing_agent: true,
             agent_name: undefined,
           }),
+          buildMember({
+            member_id: "worker-5",
+            status: "unknown_state",
+          }),
         ]}
       />
     );
@@ -59,6 +63,7 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("idle=1");
     expect(html).toContain("stopped=2");
     expect(html).toContain("missing=1");
+    expect(html).toContain("unknown=1");
     expect(html).toContain("leader-1");
     expect(html).toContain("worker-4");
     expect(html).toContain("role=leader");

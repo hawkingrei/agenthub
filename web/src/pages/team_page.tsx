@@ -2167,71 +2167,74 @@ export function TeamPage(props: TeamPageProps) {
         formatTs={formatTs}
         toPrettyJson={toPrettyJson}
       />
-      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-        <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
-        <p className={teamSectionBodyTextClassName}>
-          Compile chat-approved conversation into a deterministic run payload preview.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            className={panelPrimaryButtonClassName}
-            onClick={onCompileMainTaskRunPreview}
-            disabled={!canCompileMainTask}
-          >
-            Compile Preview
-          </button>
-          <span className="mono text-xs text-ui-text-muted">
-            {selectedConversation
-              ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
-              : "selected_conversation=-"}
-          </span>
-        </div>
-        <input
-          className={`${panelInputClassName} mt-2`}
-          placeholder="context_id override (optional)"
-          value={compilePreviewContextId}
-          onChange={(event) => setCompilePreviewContextId(event.target.value)}
-        />
-        {compiledRunPreview ? (
-          <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
-            <div className="mono text-xs text-ui-text-secondary">
-              <div>
-                <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
-              </div>
-              <div>
-                <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={panelSecondaryButtonClassName}
-                onClick={onUseCompiledRunPayload}
-              >
-                Use Payload in Create Run
-              </button>
-              <button
-                type="button"
-                className={panelPrimaryButtonClassName}
-                onClick={onCreateRunFromCompiledPreview}
-                disabled={busy === "create-run"}
-              >
-                Create Run from Preview
-              </button>
-            </div>
-            <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
-              {toPrettyJson({
-                conversation_id: compiledRunPreview.conversation_id,
-                run_payload: compiledRunPreview.run_payload,
-              })}
-            </pre>
-          </div>
-        ) : (
-          <p className={teamSectionHintTextClassName}>
-            Select a conversation to preview compiled run payload.
-          </p>
-        )}
+    </div>
+  );
+
+  const compilePreviewPanel = (
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+      <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
+      <p className={teamSectionBodyTextClassName}>
+        Internal debug entry for compiling conversation into deterministic run payload preview.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          className={panelPrimaryButtonClassName}
+          onClick={onCompileMainTaskRunPreview}
+          disabled={!canCompileMainTask}
+        >
+          Compile Preview
+        </button>
+        <span className="mono text-xs text-ui-text-muted">
+          {selectedConversation
+            ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
+            : "selected_conversation=-"}
+        </span>
       </div>
+      <input
+        className={`${panelInputClassName} mt-2`}
+        placeholder="context_id override (optional)"
+        value={compilePreviewContextId}
+        onChange={(event) => setCompilePreviewContextId(event.target.value)}
+      />
+      {compiledRunPreview ? (
+        <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
+          <div className="mono text-xs text-ui-text-secondary">
+            <div>
+              <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
+            </div>
+            <div>
+              <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={panelSecondaryButtonClassName}
+              onClick={onUseCompiledRunPayload}
+            >
+              Use Payload in Create Run
+            </button>
+            <button
+              type="button"
+              className={panelPrimaryButtonClassName}
+              onClick={onCreateRunFromCompiledPreview}
+              disabled={busy === "create-run"}
+            >
+              Create Run from Preview
+            </button>
+          </div>
+          <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
+            {toPrettyJson({
+              conversation_id: compiledRunPreview.conversation_id,
+              run_payload: compiledRunPreview.run_payload,
+            })}
+          </pre>
+        </div>
+      ) : (
+        <p className={teamSectionHintTextClassName}>
+          Select a conversation to preview compiled run payload.
+        </p>
+      )}
     </div>
   );
 
@@ -2364,6 +2367,7 @@ export function TeamPage(props: TeamPageProps) {
           </button>
         </div>
       </div>
+      {compilePreviewPanel}
     </div>
   );
 
@@ -2508,13 +2512,6 @@ export function TeamPage(props: TeamPageProps) {
                       a run.
                     </p>
                     <div className="mt-3">{conversationPanel}</div>
-                  </div>
-                  <div className={teamSectionCardClassName}>
-                    <h3 className={teamSectionTitleClassName}>Debug Run Ops</h3>
-                    <p className={teamSectionBodyTextClassName}>
-                      Internal operations for manually creating or loading runs.
-                    </p>
-                    <div className="mt-3">{runOpsPanel}</div>
                   </div>
                 </>
               )}

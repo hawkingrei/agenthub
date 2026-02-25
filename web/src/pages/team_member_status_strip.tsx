@@ -26,6 +26,7 @@ const TEAM_MEMBER_SUMMARY_STATUSES: TeamMemberLifecycle[] = [
   "idle",
   "stopped",
   "missing",
+  "unknown",
 ];
 
 const TEAM_MEMBER_SUMMARY_BADGE_CLASS: Record<TeamMemberLifecycle, string> = {
