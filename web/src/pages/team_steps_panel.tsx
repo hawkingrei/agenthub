@@ -46,11 +46,13 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS = "teams-step-panel rounded-xl border border-slate-200 bg-slate-50/70 p-3";
-const STEPS_LIST_CLASS = "teams-step-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
+const STEPS_PANEL_CLASS = "teams-step-panel rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const STEPS_LIST_CLASS = "teams-step-list rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
-const STEPS_PANEL_TITLE_CLASS = "mb-2 text-base font-semibold text-slate-900";
-const STEPS_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
+const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
+const STEPS_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const STEPS_LIST_ONLY_NOTE_CLASS =
+  "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
 export function TeamStepsPanel(props: TeamStepsPanelProps) {
   const {
@@ -236,7 +238,7 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
       )}
 
       {mode === "list_only" && (
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className={STEPS_LIST_ONLY_NOTE_CLASS}>
           Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
         </div>
       )}
