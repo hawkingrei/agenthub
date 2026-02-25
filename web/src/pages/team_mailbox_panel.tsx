@@ -7,6 +7,7 @@ import {
   TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -77,23 +78,27 @@ type TeamMailboxPanelProps = {
 };
 
 const MAILBOX_META_CLASS =
-  "mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4";
-const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-slate-200 bg-slate-50/60 p-3";
-const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-slate-200 bg-slate-50/60 p-3";
-const MAILBOX_MEMBER_BUTTON_BASE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
+  "mb-3 grid min-w-0 gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3 text-ui-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-4";
+const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MAILBOX_MEMBER_BUTTON_BASE_CLASS = `${TEAM_LIST_ITEM_BASE_CLASS}`;
 const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-ui-border-strong bg-ui-surface-soft ring-1 ring-ui-border`;
 const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} hover:border-slate-300`;
-const MAILBOX_UNREAD_ACTIVE_CLASS = "teams-member-unread mono text-amber-700";
-const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono muted text-slate-500";
+  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} hover:border-ui-border-strong`;
+const MAILBOX_UNREAD_ACTIVE_CLASS =
+  "teams-member-unread mono text-ui-xs text-[color:var(--status-warning-ink)]";
+const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono text-ui-xs text-ui-text-muted";
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "ghost teams-chat-jump-bottom rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
-const MAILBOX_CONVERSATION_EMPTY_CLASS = "teams-chat-empty muted text-sm text-slate-600";
+  "ghost teams-chat-jump-bottom rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
+const MAILBOX_CONVERSATION_EMPTY_CLASS = `teams-chat-empty ${TEAM_MUTED_TEXT_CLASS}`;
 const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid gap-3 lg:grid-cols-2";
 const MAILBOX_ADVANCED_PANEL_CLASS =
-  "teams-message-panel flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3";
+  "teams-message-panel flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const MAILBOX_SECTION_TITLE_CLASS = "text-ui-sm font-semibold text-ui-text-primary";
+const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-ui-sm text-ui-text-secondary";
+const MAILBOX_ADVANCED_HINT_CLASS =
+  "mt-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
@@ -245,7 +250,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           value={inboxAfterId}
           onChange={(event) => onInboxAfterIdChange(event.target.value)}
         />
-        <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
+        <label className={MAILBOX_CHECKBOX_LABEL_CLASS}>
           <input
             type="checkbox"
             checked={inboxIncludeDelivered}
@@ -293,147 +298,147 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       {showConversation && (
         <div className="teams-chat-shell">
           <div className={MAILBOX_MEMBER_LIST_CLASS}>
-          <h4>Agents</h4>
-          {snapshot?.members.map((member) => {
-            const unread = unreadByMemberId[member.member_id] ?? 0;
-            return (
-              <button
-                key={member.member_id}
-                className={
-                  selectedMemberId === member.member_id
-                    ? MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS
-                    : MAILBOX_MEMBER_BUTTON_IDLE_CLASS
-                }
-                onClick={() => onSelectMember(member.member_id)}
-              >
-                <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                  {member.member_id} ({member.role})
-                </span>
-                <StatusBadge
-                  label={member.status}
-                  tone={resolveTeamRunStatusTone(member.status)}
-                  className="team-status"
-                  title={`member status: ${member.status}`}
-                />
-                <span className={TEAM_LIST_ITEM_META_CLASS}>pending={member.pending_inbox_count}</span>
-                <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
-                  unread={unread}
-                </span>
-              </button>
-            );
-          })}
-          {(!snapshot || snapshot.members.length === 0) && (
-            <p className="muted text-sm text-slate-600">No members available.</p>
-          )}
+            <h4 className={MAILBOX_SECTION_TITLE_CLASS}>Agents</h4>
+            {snapshot?.members.map((member) => {
+              const unread = unreadByMemberId[member.member_id] ?? 0;
+              return (
+                <button
+                  key={member.member_id}
+                  className={
+                    selectedMemberId === member.member_id
+                      ? MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS
+                      : MAILBOX_MEMBER_BUTTON_IDLE_CLASS
+                  }
+                  onClick={() => onSelectMember(member.member_id)}
+                >
+                  <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
+                    {member.member_id} ({member.role})
+                  </span>
+                  <StatusBadge
+                    label={member.status}
+                    tone={resolveTeamRunStatusTone(member.status)}
+                    className="team-status"
+                    title={`member status: ${member.status}`}
+                  />
+                  <span className={TEAM_LIST_ITEM_META_CLASS}>pending={member.pending_inbox_count}</span>
+                  <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
+                    unread={unread}
+                  </span>
+                </button>
+              );
+            })}
+            {(!snapshot || snapshot.members.length === 0) && (
+              <p className={TEAM_MUTED_TEXT_CLASS}>No members available.</p>
+            )}
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-          <div className="teams-chat-head">
-            <div>
-              <strong>
-                {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
-              </strong>
-            </div>
-            <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
-            <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
-            <button
-              type="button"
-              className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
-              onClick={onJumpToBottom}
-              disabled={conversationMessages.length === 0}
-              title="Jump to latest message"
-            >
-              Jump to bottom
-            </button>
-          </div>
-          <ul
-            className="teams-chat-messages"
-            ref={chatMessagesRef}
-            onScroll={() => onConversationScroll()}
-          >
-            {conversationMessages.map((message) => {
-              const isOutgoing = message.from_actor_id === chatActors.fromActorId;
-              const payload =
-                typeof message.payload === "object" &&
-                message.payload !== null &&
-                "type" in message.payload &&
-                (message.payload as { type?: unknown }).type === "chat_message" &&
-                "text" in message.payload
-                  ? String((message.payload as { text?: unknown }).text ?? "")
-                  : toPrettyJson(message.payload);
-              return (
-                <li
-                  key={message.message_id}
-                  className={isOutgoing ? "teams-chat-bubble outgoing" : "teams-chat-bubble incoming"}
-                >
-                  <div className="teams-message-head">
-                    <span className="mono">#{message.message_id}</span>
-                    <span>
-                      {message.from_actor_id} → {message.to_actor_id}
-                    </span>
-                    <span>{message.status}</span>
-                    <span>{formatTs(message.created_at)}</span>
-                  </div>
-                  <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
-                  {message.status !== "delivered" && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => {
-                          void onAckMessage(message);
-                        }}
-                        disabled={busy === `ack-${message.message_id}`}
-                        className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                      >
-                        Ack
-                      </button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-            {conversationMessages.length === 0 && (
-              <li className={MAILBOX_CONVERSATION_EMPTY_CLASS}>
-                No conversation records yet for this pair.
-              </li>
-            )}
-          </ul>
-          <div className="teams-chat-compose">
-            <textarea
-              className={TEAM_PANEL_TEXTAREA_CLASS}
-              rows={3}
-              placeholder="Type a message to selected agent"
-              value={chatDraft}
-              onChange={(event) => onChatDraftChange(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                  event.preventDefault();
-                  void onSendChatMessage();
-                }
-              }}
-            />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="teams-chat-head">
+              <div>
+                <strong>
+                  {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
+                </strong>
+              </div>
+              <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
+              <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
               <button
-                className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-                onClick={onSendChatMessage}
-                disabled={busy === "send-chat"}
+                type="button"
+                className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
+                onClick={onJumpToBottom}
+                disabled={conversationMessages.length === 0}
+                title="Jump to latest message"
               >
-                Send Chat
+                Jump to bottom
               </button>
             </div>
-          </div>
+            <ul
+              className="teams-chat-messages"
+              ref={chatMessagesRef}
+              onScroll={() => onConversationScroll()}
+            >
+              {conversationMessages.map((message) => {
+                const isOutgoing = message.from_actor_id === chatActors.fromActorId;
+                const payload =
+                  typeof message.payload === "object" &&
+                  message.payload !== null &&
+                  "type" in message.payload &&
+                  (message.payload as { type?: unknown }).type === "chat_message" &&
+                  "text" in message.payload
+                    ? String((message.payload as { text?: unknown }).text ?? "")
+                    : toPrettyJson(message.payload);
+                return (
+                  <li
+                    key={message.message_id}
+                    className={isOutgoing ? "teams-chat-bubble outgoing" : "teams-chat-bubble incoming"}
+                  >
+                    <div className="teams-message-head">
+                      <span className="mono">#{message.message_id}</span>
+                      <span>
+                        {message.from_actor_id} → {message.to_actor_id}
+                      </span>
+                      <span>{message.status}</span>
+                      <span>{formatTs(message.created_at)}</span>
+                    </div>
+                    <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
+                    {message.status !== "delivered" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => {
+                            void onAckMessage(message);
+                          }}
+                          disabled={busy === `ack-${message.message_id}`}
+                          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                        >
+                          Ack
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+              {conversationMessages.length === 0 && (
+                <li className={MAILBOX_CONVERSATION_EMPTY_CLASS}>
+                  No conversation records yet for this pair.
+                </li>
+              )}
+            </ul>
+            <div className="teams-chat-compose">
+              <textarea
+                className={TEAM_PANEL_TEXTAREA_CLASS}
+                rows={3}
+                placeholder="Type a message to selected agent"
+                value={chatDraft}
+                onChange={(event) => onChatDraftChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void onSendChatMessage();
+                  }
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                  onClick={onSendChatMessage}
+                  disabled={busy === "send-chat"}
+                >
+                  Send Chat
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {showConversation && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className={MAILBOX_ADVANCED_HINT_CLASS}>
           Advanced mailbox tools were moved to <strong>Debug -&gt; Mailbox Raw</strong>.
         </div>
       )}
 
       {showAdvancedControls && (
         <div className="teams-message-advanced mt-3">
-          <h4 className="mb-2 text-sm font-semibold text-slate-900">Advanced mailbox controls</h4>
+          <h4 className={`mb-2 ${MAILBOX_SECTION_TITLE_CLASS}`}>Advanced mailbox controls</h4>
           {advancedControls}
         </div>
       )}
