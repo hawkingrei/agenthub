@@ -57,8 +57,19 @@ const MAIN_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const MAIN_TASK_MESSAGE_EMPTY_CLASS =
   "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
 const MAIN_TASK_SUBSECTION_TITLE_CLASS = "mt-3 text-ui-sm font-semibold text-ui-text-primary";
-const MAIN_TASK_WATERFALL_CLASS =
-  "acp-conversation mt-2 max-h-[420px] rounded-xl border border-ui-border bg-ui-surface-soft/40 px-2 py-2";
+const MAIN_TASK_ACTIVITY_LIST_CLASS =
+  "mt-2 max-h-[420px] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
+const MAIN_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
+const MAIN_TASK_ACTIVITY_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface px-3 py-2 shadow-sm";
+const MAIN_TASK_ACTIVITY_META_ROW_CLASS =
+  "mono mb-1 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
+const MAIN_TASK_ACTIVITY_BADGE_CLASS = "rounded-full border border-ui-border bg-ui-surface px-2 py-0.5";
+const MAIN_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS =
+  "rounded-full border border-brand-primary/30 bg-brand-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-primary";
+const MAIN_TASK_ACTIVITY_STREAM_MAILBOX_CLASS =
+  "rounded-full border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--status-active-ink)]";
+const MAIN_TASK_ACTIVITY_BODY_CLASS =
+  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm leading-6 text-ui-text-primary";
 
 type WaterfallItem = {
   key: string;
@@ -282,6 +293,67 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         </div>
       )}
 
+      <div className={MAIN_TASK_SUBSECTION_TITLE_CLASS}>Conversation Stream</div>
+      <div className={MAIN_TASK_ACTIVITY_LIST_CLASS}>
+        <div className={MAIN_TASK_ACTIVITY_STACK_CLASS}>
+          {waterfallItems.map((item) => {
+            const state = liveStateByMemberId.get(item.fromActorId);
+            const workStatus = state ? normalizeTeamMemberWorkStatus(state) : "unknown";
+            const lifecycle = state ? normalizeTeamMemberLifecycle(state) : "unknown";
+            const streamBadgeClassName =
+              item.stream === "conversation"
+                ? MAIN_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS
+                : MAIN_TASK_ACTIVITY_STREAM_MAILBOX_CLASS;
+            const streamLabel = item.stream === "conversation" ? "conversation" : "agent_mailbox";
+            return (
+              <div key={item.key} className={MAIN_TASK_ACTIVITY_ITEM_CLASS}>
+                <div className={MAIN_TASK_ACTIVITY_META_ROW_CLASS}>
+                  <span className={streamBadgeClassName}>{streamLabel}</span>
+                  <span className={MAIN_TASK_ACTIVITY_BADGE_CLASS}>
+                    seq={item.sequence}
+                  </span>
+                  <span className={MAIN_TASK_ACTIVITY_BADGE_CLASS}>
+                    {item.fromActorId} -&gt; {item.toActorId ?? "-"}
+                  </span>
+                  <span className={MAIN_TASK_ACTIVITY_BADGE_CLASS}>{item.routeOrStatus}</span>
+                  <span>{formatTs(item.createdAt)}</span>
+                </div>
+                {state && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={`work:${workStatus}`}
+                      tone={resolveWorkTone(workStatus)}
+                      className="team-status"
+                      title={`work status: run=${state.run_status} step=${state.step_status}`}
+                    />
+                    <StatusBadge
+                      label={`agent:${lifecycle}`}
+                      tone={resolveLifecycleTone(lifecycle)}
+                      className="team-status"
+                      title={`agent status: ${state.lifecycle_status}`}
+                    />
+                  </div>
+                )}
+                <div
+                  className={MAIN_TASK_ACTIVITY_BODY_CLASS}
+                  dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
+                />
+              </div>
+            );
+          })}
+          {messagesLoading && (
+            <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
+              Loading conversation...
+            </div>
+          )}
+          {!messagesLoading && waterfallItems.length === 0 && (
+            <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
+              No conversation or agent messages yet.
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className={MAIN_TASK_COMPOSER_PANEL_CLASS}>
         <p className={`mb-2 ${TEAM_MUTED_TEXT_CLASS}`}>
           Message is broadcast to team. Mention one or more members with @member_id.
@@ -311,70 +383,6 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
             Send Message
           </button>
           <span className={MAIN_TASK_SHORTCUT_CLASS}>shortcut: Ctrl/Cmd + Enter</span>
-        </div>
-      </div>
-
-      <div className={MAIN_TASK_SUBSECTION_TITLE_CLASS}>Conversation</div>
-      <div className={MAIN_TASK_WATERFALL_CLASS}>
-        <div className="acp-conversation-inner flex w-full flex-col gap-3">
-        {waterfallItems.map((item) => {
-          const state = liveStateByMemberId.get(item.fromActorId);
-          const workStatus = state ? normalizeTeamMemberWorkStatus(state) : "unknown";
-          const lifecycle = state ? normalizeTeamMemberLifecycle(state) : "unknown";
-          const isHuman = item.fromActorId === "user";
-          const bubbleClassName = isHuman
-            ? "acp-bubble user_message rounded-xl border px-3 py-2 shadow-sm"
-            : "acp-bubble agent_message rounded-xl border px-3 py-2 shadow-sm";
-          return (
-            <div key={item.key} className="acp-conversation-item">
-              <div className={bubbleClassName}>
-                <div className="mono mb-1 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-                  <span className="mono">#{item.sequence}</span>
-                  <span>
-                    {item.fromActorId} -&gt; {item.toActorId ?? "-"}
-                  </span>
-                  <span className="rounded-full border border-ui-border px-2 py-0.5">
-                    {item.stream}
-                  </span>
-                  <span className="rounded-full border border-ui-border px-2 py-0.5">
-                    {item.routeOrStatus}
-                  </span>
-                  <span>{formatTs(item.createdAt)}</span>
-                </div>
-                {state && (
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      label={`work:${workStatus}`}
-                      tone={resolveWorkTone(workStatus)}
-                      className="team-status"
-                      title={`work status: run=${state.run_status} step=${state.step_status}`}
-                    />
-                    <StatusBadge
-                      label={`agent:${lifecycle}`}
-                      tone={resolveLifecycleTone(lifecycle)}
-                      className="team-status"
-                      title={`agent status: ${state.lifecycle_status}`}
-                    />
-                  </div>
-                )}
-                <div
-                  className="acp-text text-sm leading-6"
-                  dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
-                />
-              </div>
-            </div>
-          );
-        })}
-        {messagesLoading && (
-          <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
-            Loading conversation...
-          </div>
-        )}
-        {!messagesLoading && waterfallItems.length === 0 && (
-          <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
-            No conversation or agent messages yet.
-          </div>
-        )}
         </div>
       </div>
     </div>
