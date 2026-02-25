@@ -48,7 +48,17 @@ terminology and operating expectations drift.
 - `consensus formation`
 - `result integration`
 
-### 4) Cold-Start Workflow
+### 4) Team Surface Lanes
+
+- Communication lane:
+  - `Conversation` is the human-facing lane and remains available without an active run.
+  - Human goals/constraints and `@member` coordination requests are authored here.
+- Execution lane:
+  - `Runs` is the entry lane for run browsing, `Start Team`, and active-run selection.
+  - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
+- Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
+
+### 5) Cold-Start Workflow
 
 - Inject shared Team AGENTS index (`team-agents-index`) to both leader and worker at startup.
 - Inject role-specific AGENTS index:
@@ -59,7 +69,7 @@ terminology and operating expectations drift.
 - Load only required skills for current phase.
 - Keep decisions/errors in workspace-local context files.
 
-### 5) Team AGENTS Injection Matrix
+### 6) Team AGENTS Injection Matrix
 
 - Shared baseline for both roles:
   - file: `skills/team/AGENTS.md`
@@ -108,6 +118,12 @@ Constraint:
 - Cross-member sharing goes through Team channels (events/mailbox/pointers), not direct filesystem writes.
 - Leader workspace should remain an empty coordination workspace by default.
 
+### 5) Team Surface Contract
+
+- `Conversation` does not require an active run.
+- `Runs` tab is the only primary entry for run selection/start.
+- Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+
 ## Validation Matrix
 
 - `cargo test -p agenthub-team-domain`
@@ -117,7 +133,9 @@ Constraint:
 
 ## Operational Notes
 
-- Keep Team UX conversation-first; keep run/step internals in Debug surfaces.
+- Keep Team UX conversation-first; keep run/step internals in debug-oriented surfaces.
+- Keep run browsing and start/select operations in the `Runs` tab.
+- Keep a shared active-run context header for run-scoped tabs to avoid duplicated controls.
 - Team startup should require explicit operator action to begin execution.
 - Maintain deterministic run isolation and replay boundaries via `run_id`.
 
@@ -132,3 +150,4 @@ Constraint:
 - `docs/journal/2026-02-24-team-role-skill-runtime-spec.md`
 - `docs/journal/2026-02-20-team-role-workflow-policy.md`
 - `docs/journal/2026-02-18-agent-actor-local-distributed-architecture.md`
+- `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`

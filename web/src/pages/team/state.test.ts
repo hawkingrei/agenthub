@@ -5,7 +5,9 @@ import {
   DEFAULT_TEAM_MAILBOX_STATE,
   DEFAULT_TEAM_UI_STATE,
   MAILBOX_TEMPLATE_OPTIONS,
+  TEAM_TAB_ITEMS,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
+  tabRequiresActiveRun,
   createInitialTeamCreateState,
   reduceTeamControlState,
   reduceTeamCreateState,
@@ -25,6 +27,12 @@ describe("team state reducers", () => {
       tab: "mailbox",
     });
     expect(nextTab.tab).toBe("mailbox");
+
+    const nextRunsTab = reduceTeamUiState(DEFAULT_TEAM_UI_STATE, {
+      type: "set_tab",
+      tab: "runs",
+    });
+    expect(nextRunsTab.tab).toBe("runs");
 
     const nextLookup = reduceTeamUiState(DEFAULT_TEAM_UI_STATE, {
       type: "set_run_lookup_id",
@@ -155,6 +163,21 @@ describe("team state defaults and constants", () => {
   });
 
   it("exposes stable option constants for UI controls", () => {
+    expect(TEAM_TAB_ITEMS.map((tab) => tab.value)).toEqual([
+      "runs",
+      "conversation",
+      "agent_acp",
+      "overview",
+      "events",
+      "steps",
+      "mailbox",
+      "member_console",
+      "debug",
+    ]);
+    expect(tabRequiresActiveRun("runs")).toBe(false);
+    expect(tabRequiresActiveRun("conversation")).toBe(false);
+    expect(tabRequiresActiveRun("events")).toBe(true);
+
     expect(CREATE_TEAM_STAGE_TITLES).toEqual([
       "Mission Brief",
       "Leader Forge",

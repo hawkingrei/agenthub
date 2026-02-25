@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
-import { TeamMemberAgentStatus } from "./team/member_helpers";
+import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
@@ -8,10 +8,18 @@ import {
 } from "../ui/tailwind_classes";
 
 type TeamMemberStatusStripProps = {
-  members: TeamMemberAgentStatus[];
+  members: TeamMemberLiveState[];
 };
 
 type TeamMemberLifecycle = "working" | "idle" | "stopped" | "missing" | "unknown";
+type TeamMemberWorkStatus =
+  | "working"
+  | "pending"
+  | "blocked"
+  | "done"
+  | "idle"
+  | "no_run"
+  | "unknown";
 
 type TeamMemberLifecycleSummary = {
   working: number;
@@ -46,12 +54,21 @@ const TEAM_MEMBER_CARD_CLASS =
   "flex min-w-0 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface-soft/60 px-3 py-2";
 const TEAM_MEMBER_NAME_CLASS = "min-w-0 flex-1 truncate text-ui-sm font-semibold text-ui-text-primary";
 const TEAM_MEMBER_META_CLASS = "mono truncate text-ui-xs text-ui-text-muted";
+const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-2";
 
-export function normalizeTeamMemberLifecycle(member: TeamMemberAgentStatus): TeamMemberLifecycle {
-  if (member.missing_agent) {
+function normalizeStatusValue(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (!normalized || normalized === "-") {
+    return "";
+  }
+  return normalized;
+}
+
+export function normalizeTeamMemberLifecycle(member: TeamMemberLiveState): TeamMemberLifecycle {
+  if (member.lifecycle_tone === "missing") {
     return "missing";
   }
-  const normalized = member.status.trim().toLowerCase();
+  const normalized = normalizeStatusValue(member.lifecycle_status);
   if (normalized === "running" || normalized === "working") {
     return "working";
   }
@@ -69,6 +86,52 @@ export function normalizeTeamMemberLifecycle(member: TeamMemberAgentStatus): Tea
   return "unknown";
 }
 
+export function normalizeTeamMemberWorkStatus(member: TeamMemberLiveState): TeamMemberWorkStatus {
+  const stepStatus = normalizeStatusValue(member.step_status);
+  const runStatus = normalizeStatusValue(member.run_status);
+  const normalized = stepStatus || runStatus;
+  if (!normalized) {
+    return "no_run";
+  }
+  if (
+    normalized === "running" ||
+    normalized === "working" ||
+    normalized === "in_progress"
+  ) {
+    return "working";
+  }
+  if (
+    normalized === "submitted" ||
+    normalized === "pending" ||
+    normalized === "input_required" ||
+    normalized === "queued" ||
+    normalized === "waiting"
+  ) {
+    return "pending";
+  }
+  if (normalized === "failed" || normalized === "blocked" || normalized === "error") {
+    return "blocked";
+  }
+  if (
+    normalized === "completed" ||
+    normalized === "done" ||
+    normalized === "succeeded" ||
+    normalized === "success"
+  ) {
+    return "done";
+  }
+  if (
+    normalized === "idle" ||
+    normalized === "canceled" ||
+    normalized === "cancelled" ||
+    normalized === "stopped" ||
+    normalized === "skipped"
+  ) {
+    return "idle";
+  }
+  return "unknown";
+}
+
 function resolveLifecycleTone(lifecycle: TeamMemberLifecycle): StatusTone {
   if (lifecycle === "working") return "active";
   if (lifecycle === "idle") return "warning";
@@ -77,7 +140,16 @@ function resolveLifecycleTone(lifecycle: TeamMemberLifecycle): StatusTone {
   return "neutral";
 }
 
-function createLifecycleSummary(members: TeamMemberAgentStatus[]): TeamMemberLifecycleSummary {
+function resolveWorkStatusTone(status: TeamMemberWorkStatus): StatusTone {
+  if (status === "working") return "active";
+  if (status === "pending") return "warning";
+  if (status === "blocked") return "danger";
+  if (status === "done") return "active";
+  if (status === "idle") return "inactive";
+  return "neutral";
+}
+
+function createLifecycleSummary(members: TeamMemberLiveState[]): TeamMemberLifecycleSummary {
   const summary: TeamMemberLifecycleSummary = {
     working: 0,
     idle: 0,
@@ -116,24 +188,38 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {members.map((member) => {
             const lifecycle = normalizeTeamMemberLifecycle(member);
+            const workStatus = normalizeTeamMemberWorkStatus(member);
+            const pendingInbox =
+              member.pending_inbox_count == null ? "-" : String(member.pending_inbox_count);
             return (
               <div
                 key={member.member_id}
                 className={TEAM_MEMBER_CARD_CLASS}
               >
-                <div className="flex min-w-0 items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <span className={TEAM_MEMBER_NAME_CLASS}>
                     {member.member_id}
                   </span>
+                </div>
+                <div className={TEAM_MEMBER_STATUS_ROW_CLASS}>
                   <StatusBadge
-                    label={lifecycle}
+                    label={`work:${workStatus}`}
+                    tone={resolveWorkStatusTone(workStatus)}
+                    className="team-status"
+                    title={`work status: run=${member.run_status} step=${member.step_status}`}
+                  />
+                  <StatusBadge
+                    label={`agent:${lifecycle}`}
                     tone={resolveLifecycleTone(lifecycle)}
                     className="team-status"
-                    title={`member status: ${member.status}`}
+                    title={`agent status: ${member.lifecycle_status}`}
                   />
                 </div>
                 <div className={TEAM_MEMBER_META_CLASS}>
-                  role={member.role} agent={member.agent_name ?? "-"}
+                  role={member.role} agent={member.agent_name ?? "-"} pending_inbox={pendingInbox}
+                </div>
+                <div className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
+                  current={member.current_work}
                 </div>
               </div>
             );

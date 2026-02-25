@@ -1,59 +1,133 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TeamMemberAgentStatus } from "./team/member_helpers";
+import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   TeamMemberStatusStrip,
   normalizeTeamMemberLifecycle,
+  normalizeTeamMemberWorkStatus,
 } from "./team_member_status_strip";
 
 function buildMember(
-  patch: Partial<TeamMemberAgentStatus> = {}
-): TeamMemberAgentStatus {
+  patch: Partial<TeamMemberLiveState> = {}
+): TeamMemberLiveState {
   return {
     member_id: "agent-1",
     role: "worker",
     agent_name: "agent-1",
-    status: "running",
-    missing_agent: false,
+    lifecycle_status: "running",
+    lifecycle_tone: "active",
+    run_status: "working",
+    step_status: "working",
+    pending_inbox_count: 0,
+    current_work: "plan",
     ...patch,
   };
 }
 
 describe("TeamMemberStatusStrip", () => {
   it("normalizes lifecycle status for top-bar display labels", () => {
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "running" }))).toBe("working");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "working" }))).toBe("working");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "idle" }))).toBe("idle");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "  IDLE  " }))).toBe("idle");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "stopped" }))).toBe("stopped");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "failed" }))).toBe("stopped");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "exited" }))).toBe("stopped");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "completed" }))).toBe(
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "running" }))).toBe(
+      "working"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "working" }))).toBe(
+      "working"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "idle" }))).toBe("idle");
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "  IDLE  " }))).toBe(
+      "idle"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "stopped" }))).toBe(
       "stopped"
     );
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "weird" }))).toBe("unknown");
-    expect(normalizeTeamMemberLifecycle(buildMember({ status: "   " }))).toBe("unknown");
-    expect(normalizeTeamMemberLifecycle(buildMember({ missing_agent: true }))).toBe("missing");
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "failed" }))).toBe(
+      "stopped"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "exited" }))).toBe(
+      "stopped"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "completed" }))).toBe(
+      "stopped"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "weird" }))).toBe(
+      "unknown"
+    );
+    expect(normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "   " }))).toBe(
+      "unknown"
+    );
+    expect(
+      normalizeTeamMemberLifecycle(buildMember({ lifecycle_status: "running", lifecycle_tone: "missing" }))
+    ).toBe("missing");
   });
 
-  it("renders top summary and per-member badges", () => {
+  it("normalizes work status from step_status first then run_status", () => {
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "working", step_status: "working" }))
+    ).toBe("working");
+    expect(
+      normalizeTeamMemberWorkStatus(
+        buildMember({ run_status: "working", step_status: "input_required" })
+      )
+    ).toBe("pending");
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "working", step_status: "blocked" }))
+    ).toBe("blocked");
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "working", step_status: "done" }))
+    ).toBe("done");
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "idle", step_status: "-" }))
+    ).toBe("idle");
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "-", step_status: "-" }))
+    ).toBe("no_run");
+    expect(
+      normalizeTeamMemberWorkStatus(buildMember({ run_status: "weird", step_status: "-" }))
+    ).toBe("unknown");
+  });
+
+  it("renders top summary and per-member work/agent badges", () => {
     const html = renderToStaticMarkup(
       <TeamMemberStatusStrip
         members={[
-          buildMember({ member_id: "leader-1", role: "leader", status: "running" }),
-          buildMember({ member_id: "worker-1", status: "idle" }),
-          buildMember({ member_id: "worker-2", status: "stopped" }),
-          buildMember({ member_id: "worker-3", status: "failed" }),
+          buildMember({
+            member_id: "leader-1",
+            role: "leader",
+            lifecycle_status: "running",
+            run_status: "working",
+            step_status: "working",
+          }),
+          buildMember({
+            member_id: "worker-1",
+            lifecycle_status: "idle",
+            run_status: "submitted",
+            step_status: "input_required",
+          }),
+          buildMember({
+            member_id: "worker-2",
+            lifecycle_status: "stopped",
+            run_status: "working",
+            step_status: "done",
+          }),
+          buildMember({
+            member_id: "worker-3",
+            lifecycle_status: "failed",
+            run_status: "working",
+            step_status: "blocked",
+          }),
           buildMember({
             member_id: "worker-4",
-            status: "missing",
-            missing_agent: true,
+            lifecycle_status: "missing",
+            lifecycle_tone: "missing",
             agent_name: undefined,
+            run_status: "-",
+            step_status: "-",
           }),
           buildMember({
             member_id: "worker-5",
-            status: "unknown_state",
+            lifecycle_status: "unknown_state",
+            run_status: "unknown_state",
+            step_status: "-",
           }),
         ]}
       />
@@ -68,6 +142,13 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("worker-4");
     expect(html).toContain("role=leader");
     expect(html).toContain("agent=-");
+    expect(html).toContain("work:working");
+    expect(html).toContain("work:pending");
+    expect(html).toContain("work:done");
+    expect(html).toContain("work:blocked");
+    expect(html).toContain("work:no_run");
+    expect(html).toContain("agent:working");
+    expect(html).toContain("agent:missing");
   });
 
   it("renders empty hint when team has no members", () => {

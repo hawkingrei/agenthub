@@ -1,14 +1,20 @@
 import React from "react";
 import {
+  TeamActorMessageRecord,
   TeamConversationMessageRecord,
   TeamMainTaskRecord,
 } from "../api";
+import { StatusBadge, type StatusTone } from "../components/status_badge";
+import { renderMarkdown } from "../markdown";
+import { TeamMemberLiveState } from "./team/member_helpers";
+import {
+  normalizeTeamMemberLifecycle,
+  normalizeTeamMemberWorkStatus,
+} from "./team_member_status_strip";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
-  TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -17,13 +23,6 @@ import {
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
-
-export type TeamMainTaskConversationMode = "to_leader" | "to_member" | "group_chat";
-
-type TeamMemberOption = {
-  member_id: string;
-  role: string;
-};
 
 type TeamMainTaskPanelProps = {
   tasks: TeamMainTaskRecord[];
@@ -35,48 +34,81 @@ type TeamMainTaskPanelProps = {
   onNewTaskTitleChange: (value: string) => void;
   newTaskTopic: string;
   onNewTaskTopicChange: (value: string) => void;
-  newTaskConversationMode: TeamMainTaskConversationMode;
-  onNewTaskConversationModeChange: (value: TeamMainTaskConversationMode) => void;
   onCreateTask: () => Promise<void> | void;
-  messageRoute: TeamMainTaskConversationMode;
-  onMessageRouteChange: (value: TeamMainTaskConversationMode) => void;
-  messageTargetMemberId: string;
-  onMessageTargetMemberIdChange: (value: string) => void;
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: () => Promise<void> | void;
   onRefreshMessages: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
+  agentMessages?: TeamActorMessageRecord[];
+  memberLiveStates?: TeamMemberLiveState[];
   messagesLoading: boolean;
   busy: string | null;
-  memberOptions: TeamMemberOption[];
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
 };
-
-const MAIN_TASK_MODE_OPTIONS: Array<{
-  value: TeamMainTaskConversationMode;
-  label: string;
-}> = [
-  { value: "to_leader", label: "to_leader" },
-  { value: "to_member", label: "to_member" },
-  { value: "group_chat", label: "group_chat" },
-];
 
 const MAIN_TASK_HINT_TEXT_CLASS = "mono text-ui-xs text-ui-text-muted";
 const MAIN_TASK_STATUS_META_CLASS =
   "mono mt-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-ui-xs text-ui-text-secondary";
 const MAIN_TASK_COMPOSER_PANEL_CLASS =
   "mt-3 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
-const MAIN_TASK_TARGET_INFO_CLASS =
-  "rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
 const MAIN_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
-const MAIN_TASK_MESSAGE_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
 const MAIN_TASK_MESSAGE_EMPTY_CLASS =
   "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
+const MAIN_TASK_SUBSECTION_TITLE_CLASS = "mt-3 text-ui-sm font-semibold text-ui-text-primary";
+const MAIN_TASK_WATERFALL_CLASS =
+  "acp-conversation mt-2 max-h-[420px] rounded-xl border border-ui-border bg-ui-surface-soft/40 px-2 py-2";
+
+type WaterfallItem = {
+  key: string;
+  stream: "conversation" | "mailbox";
+  sequence: number;
+  createdAt: number;
+  fromActorId: string;
+  toActorId: string | null;
+  routeOrStatus: string;
+  markdownText: string;
+  renderedHtml: string;
+};
+
+function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
+  if (status === "working") return "active";
+  if (status === "pending") return "warning";
+  if (status === "blocked") return "danger";
+  if (status === "done") return "active";
+  if (status === "idle") return "inactive";
+  return "neutral";
+}
+
+function resolveLifecycleTone(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
+): StatusTone {
+  if (lifecycle === "working") return "active";
+  if (lifecycle === "idle") return "warning";
+  if (lifecycle === "stopped") return "inactive";
+  if (lifecycle === "missing") return "danger";
+  return "neutral";
+}
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
+  toPrettyJson: (value: unknown) => string
+): string {
+  if (
+    typeof message.payload === "object" &&
+    message.payload !== null &&
+    "type" in message.payload &&
+    (message.payload as { type?: unknown }).type === "chat_message" &&
+    "text" in message.payload
+  ) {
+    return String((message.payload as { text?: unknown }).text ?? "");
+  }
+  return toPrettyJson(message.payload);
+}
+
+function resolveAgentMessageText(
+  message: TeamActorMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
   if (
@@ -102,21 +134,16 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
     onNewTaskTitleChange,
     newTaskTopic,
     onNewTaskTopicChange,
-    newTaskConversationMode,
-    onNewTaskConversationModeChange,
     onCreateTask,
-    messageRoute,
-    onMessageRouteChange,
-    messageTargetMemberId,
-    onMessageTargetMemberIdChange,
     messageDraft,
     onMessageDraftChange,
     onSendMessage,
     onRefreshMessages,
     messages,
+    agentMessages = [],
+    memberLiveStates = [],
     messagesLoading,
     busy,
-    memberOptions,
     formatTs,
     toPrettyJson,
   } = props;
@@ -127,8 +154,49 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
   const canSendMessage =
     selectedMainTaskId.trim().length > 0 &&
     messageDraft.trim().length > 0 &&
-    (messageRoute !== "to_member" || messageTargetMemberId.trim().length > 0) &&
     busy !== "send-main-task-message";
+  const liveStateByMemberId = React.useMemo(
+    () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
+    [memberLiveStates]
+  );
+  const waterfallItems = React.useMemo(() => {
+    const conversationItems: WaterfallItem[] = messages.map((message) => ({
+      key: `conversation-${message.message_id}`,
+      stream: "conversation",
+      sequence: message.message_id,
+      createdAt: message.created_at,
+      fromActorId: message.from_actor_id,
+      toActorId: message.to_actor_id ?? null,
+      routeOrStatus: message.route,
+      markdownText: resolveMessageText(message, toPrettyJson),
+      renderedHtml: "",
+    }));
+    const mailboxItems: WaterfallItem[] = agentMessages.map((message) => ({
+      key: `mailbox-${message.message_id}`,
+      stream: "mailbox",
+      sequence: message.message_id,
+      createdAt: message.created_at,
+      fromActorId: message.from_actor_id,
+      toActorId: message.to_actor_id,
+      routeOrStatus: message.status,
+      markdownText: resolveAgentMessageText(message, toPrettyJson),
+      renderedHtml: "",
+    }));
+    return [...conversationItems, ...mailboxItems]
+      .sort((left, right) => {
+        if (left.createdAt !== right.createdAt) {
+          return left.createdAt - right.createdAt;
+        }
+        if (left.sequence !== right.sequence) {
+          return left.sequence - right.sequence;
+        }
+        return left.key.localeCompare(right.key);
+      })
+      .map((item) => ({
+        ...item,
+        renderedHtml: renderMarkdown(item.markdownText),
+      }));
+  }, [agentMessages, messages, toPrettyJson]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -152,10 +220,10 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
       </div>
 
       <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-        Use conversation planning to sync with the leader before compiling a run.
+        Human messages go to the whole team conversation. Use @member_id to mention specific agents.
       </p>
 
-      <div className="grid gap-2 lg:grid-cols-3">
+      <div className="grid gap-2 lg:grid-cols-2">
         <input
           className={TEAM_PANEL_INPUT_CLASS}
           placeholder="new conversation title"
@@ -168,21 +236,6 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
           value={newTaskTopic}
           onChange={(event) => onNewTaskTopicChange(event.target.value)}
         />
-        <select
-          className={TEAM_PANEL_INPUT_CLASS}
-          value={newTaskConversationMode}
-          onChange={(event) =>
-            onNewTaskConversationModeChange(
-              event.target.value as TeamMainTaskConversationMode
-            )
-          }
-        >
-          {MAIN_TASK_MODE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              create_mode={option.label}
-            </option>
-          ))}
-        </select>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
@@ -195,9 +248,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         >
           Create Conversation
         </button>
-        <span className={MAIN_TASK_HINT_TEXT_CLASS}>
-          creator=user route defaults are enforced by backend contract
-        </span>
+        <span className={MAIN_TASK_HINT_TEXT_CLASS}>Default mode is group chat for all team members.</span>
       </div>
 
       <div className="mt-3 grid gap-2 lg:grid-cols-2">
@@ -232,55 +283,13 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
       )}
 
       <div className={MAIN_TASK_COMPOSER_PANEL_CLASS}>
-        <div className="mb-2 grid gap-2 lg:grid-cols-3">
-          <select
-            className={TEAM_PANEL_INPUT_CLASS}
-            value={messageRoute}
-            onChange={(event) =>
-              onMessageRouteChange(event.target.value as TeamMainTaskConversationMode)
-            }
-          >
-            {MAIN_TASK_MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                route={option.label}
-              </option>
-            ))}
-          </select>
-          {messageRoute === "to_member" ? (
-            <select
-              className={TEAM_PANEL_INPUT_CLASS}
-              value={messageTargetMemberId}
-              onChange={(event) => onMessageTargetMemberIdChange(event.target.value)}
-            >
-              <option value="">Select member target</option>
-              {memberOptions.map((member) => (
-                <option key={member.member_id} value={member.member_id}>
-                  {member.member_id} ({member.role})
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className={MAIN_TASK_TARGET_INFO_CLASS}>
-              {messageRoute === "to_leader"
-                ? "Target is resolved to leader automatically."
-                : "Message goes to group channel with no direct target."}
-            </div>
-          )}
-          <button
-            type="button"
-            className={TEAM_PANEL_GHOST_BUTTON_CLASS}
-            onClick={() => {
-              onMessageRouteChange("to_leader");
-              onMessageTargetMemberIdChange("");
-            }}
-          >
-            Reset Route
-          </button>
-        </div>
+        <p className={`mb-2 ${TEAM_MUTED_TEXT_CLASS}`}>
+          Message is broadcast to team. Mention one or more members with @member_id.
+        </p>
         <textarea
           className={TEAM_PANEL_TEXTAREA_CLASS}
           rows={3}
-          placeholder="Type planning message for leader/teammates"
+          placeholder="Type planning message for the team (e.g. @worker-1 @worker-2 please verify)"
           value={messageDraft}
           onChange={(event) => onMessageDraftChange(event.target.value)}
           onKeyDown={(event) => {
@@ -305,34 +314,69 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         </div>
       </div>
 
-      <ul className="teams-message-list mt-3">
-        {messages.map((message) => (
-          <li
-            key={message.message_id}
-            className={MAIN_TASK_MESSAGE_ITEM_CLASS}
-          >
-            <div className="teams-message-head">
-              <span className="mono">#{message.message_id}</span>
-              <span>
-                {message.from_actor_id} -&gt; {message.to_actor_id ?? "-"}
-              </span>
-              <span>{message.route}</span>
-              <span>{formatTs(message.created_at)}</span>
+      <div className={MAIN_TASK_SUBSECTION_TITLE_CLASS}>Conversation</div>
+      <div className={MAIN_TASK_WATERFALL_CLASS}>
+        <div className="acp-conversation-inner flex w-full flex-col gap-3">
+        {waterfallItems.map((item) => {
+          const state = liveStateByMemberId.get(item.fromActorId);
+          const workStatus = state ? normalizeTeamMemberWorkStatus(state) : "unknown";
+          const lifecycle = state ? normalizeTeamMemberLifecycle(state) : "unknown";
+          const isHuman = item.fromActorId === "user";
+          const bubbleClassName = isHuman
+            ? "acp-bubble user_message rounded-xl border px-3 py-2 shadow-sm"
+            : "acp-bubble agent_message rounded-xl border px-3 py-2 shadow-sm";
+          return (
+            <div key={item.key} className="acp-conversation-item">
+              <div className={bubbleClassName}>
+                <div className="mono mb-1 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
+                  <span className="mono">#{item.sequence}</span>
+                  <span>
+                    {item.fromActorId} -&gt; {item.toActorId ?? "-"}
+                  </span>
+                  <span className="rounded-full border border-ui-border px-2 py-0.5">
+                    {item.stream}
+                  </span>
+                  <span className="rounded-full border border-ui-border px-2 py-0.5">
+                    {item.routeOrStatus}
+                  </span>
+                  <span>{formatTs(item.createdAt)}</span>
+                </div>
+                {state && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={`work:${workStatus}`}
+                      tone={resolveWorkTone(workStatus)}
+                      className="team-status"
+                      title={`work status: run=${state.run_status} step=${state.step_status}`}
+                    />
+                    <StatusBadge
+                      label={`agent:${lifecycle}`}
+                      tone={resolveLifecycleTone(lifecycle)}
+                      className="team-status"
+                      title={`agent status: ${state.lifecycle_status}`}
+                    />
+                  </div>
+                )}
+                <div
+                  className="acp-text text-sm leading-6"
+                  dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
+                />
+              </div>
             </div>
-            <pre className={TEAM_PANEL_PRE_CLASS}>{resolveMessageText(message, toPrettyJson)}</pre>
-          </li>
-        ))}
-        {!messagesLoading && messages.length === 0 && (
-          <li className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
-            No conversation messages yet.
-          </li>
-        )}
+          );
+        })}
         {messagesLoading && (
-          <li className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
-            Loading conversation messages...
-          </li>
+          <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
+            Loading conversation...
+          </div>
         )}
-      </ul>
+        {!messagesLoading && waterfallItems.length === 0 && (
+          <div className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
+            No conversation or agent messages yet.
+          </div>
+        )}
+        </div>
+      </div>
     </div>
   );
 }

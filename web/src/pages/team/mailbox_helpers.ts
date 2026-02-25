@@ -14,6 +14,8 @@ export type TeamMailboxChatActors = {
   inboxActorId: string;
 };
 
+const MENTION_TOKEN_REGEX = /@([A-Za-z0-9._:-]+)/g;
+
 export function resolveMailboxChatActors(
   leaderMemberId: string | null | undefined,
   memberIds: string[],
@@ -69,16 +71,58 @@ export function selectMailboxConversation(
   );
 }
 
+export function extractMentionedActorIds(text: string, memberIds: string[]): string[] {
+  const normalizedMembers = new Set(
+    memberIds.map((memberId) => memberId.trim()).filter((memberId) => memberId.length > 0)
+  );
+  if (normalizedMembers.size === 0) {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
+    const actorId = (match[1] ?? "").trim();
+    if (!actorId || !normalizedMembers.has(actorId) || seen.has(actorId)) {
+      continue;
+    }
+    seen.add(actorId);
+    out.push(actorId);
+  }
+  return out;
+}
+
 export function buildMailboxChatPayload(text: string): {
   type: "chat_message";
   text: string;
   source: "team_workbench";
+  mention_actor_ids?: string[];
+};
+export function buildMailboxChatPayload(
+  text: string,
+  options?: { mention_actor_ids?: string[] }
+): {
+  type: "chat_message";
+  text: string;
+  source: "team_workbench";
+  mention_actor_ids?: string[];
 } {
-  return {
+  const mentionActorIds = (options?.mention_actor_ids ?? [])
+    .map((actorId) => actorId.trim())
+    .filter((actorId, index, list) => actorId.length > 0 && list.indexOf(actorId) === index);
+  const payload: {
+    type: "chat_message";
+    text: string;
+    source: "team_workbench";
+    mention_actor_ids?: string[];
+  } = {
     type: "chat_message",
     text,
     source: "team_workbench",
   };
+  if (mentionActorIds.length > 0) {
+    payload.mention_actor_ids = mentionActorIds;
+  }
+  return payload;
 }
 
 export function buildMailboxConversationKey(actorA: string, actorB: string): string {
