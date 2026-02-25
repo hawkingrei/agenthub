@@ -9,6 +9,7 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -38,20 +39,24 @@ type TeamMemberConsolePanelProps = {
 };
 
 const MEMBER_CONSOLE_DETAIL_CLASS =
-  "teams-step-body mono rounded-xl border border-slate-200 bg-slate-50/70 p-3";
+  "teams-step-body mono rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
 const MEMBER_CONSOLE_DETAIL_GRID_CLASS = "grid gap-2 md:grid-cols-2";
-const MEMBER_CONSOLE_DETAIL_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
-const MEMBER_CONSOLE_DETAIL_LABEL_CLASS = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+const MEMBER_CONSOLE_DETAIL_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const MEMBER_CONSOLE_DETAIL_LABEL_CLASS =
+  "text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
 const MEMBER_CONSOLE_DETAIL_VALUE_CLASS =
-  "mono mt-1 block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-slate-800";
+  "mono mt-1 block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ui-text-primary";
 const MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS =
-  "mono mt-1 block min-w-0 whitespace-pre-wrap break-words text-slate-800";
-const MEMBER_CONSOLE_DISCOVERY_CLASS = "mt-2 rounded-lg border border-slate-200 bg-white p-2";
-const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-slate-200 bg-slate-50/50 p-3";
-const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-slate-200 bg-white p-2";
+  "mono mt-1 block min-w-0 whitespace-pre-wrap break-words text-ui-text-primary";
+const MEMBER_CONSOLE_DISCOVERY_CLASS = "mt-2 rounded-lg border border-ui-border bg-ui-surface p-2";
+const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
 const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
-  "teams-event-head mb-1 flex items-center gap-2 text-xs text-slate-600";
-const MEMBER_CONSOLE_EMPTY_TEXT_CLASS = "muted text-sm text-slate-600";
+  "teams-event-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+const MEMBER_CONSOLE_EMPTY_TEXT_CLASS = TEAM_MUTED_TEXT_CLASS;
+const MEMBER_CONSOLE_PROMPT_DETAILS_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS =
+  "cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
 
 export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   const {
@@ -187,8 +192,8 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               </span>
             </div>
           </div>
-          <details className="rounded-lg border border-slate-200 bg-white p-2">
-            <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <details className={MEMBER_CONSOLE_PROMPT_DETAILS_CLASS}>
+            <summary className={MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS}>
               prompt
             </summary>
             <pre className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
@@ -198,7 +203,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
           <div className={MEMBER_CONSOLE_DISCOVERY_CLASS}>
             <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>a2a_discovery_card</div>
             {memberDiscoveryCardLoading && (
-              <p className="mt-1 text-sm text-slate-600">Loading discovery card...</p>
+              <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>Loading discovery card...</p>
             )}
             {!memberDiscoveryCardLoading && memberDiscoveryCard && (
               <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
@@ -249,7 +254,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               </div>
             )}
             {!memberDiscoveryCardLoading && !memberDiscoveryCard && (
-              <p className="mt-1 text-sm text-slate-600">
+              <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>
                 Discovery card unavailable for this member.
               </p>
             )}

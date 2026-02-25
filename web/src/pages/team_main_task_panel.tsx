@@ -4,6 +4,7 @@ import {
   TeamMainTaskRecord,
 } from "../api";
 import {
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
@@ -61,6 +62,18 @@ const MAIN_TASK_MODE_OPTIONS: Array<{
   { value: "to_member", label: "to_member" },
   { value: "group_chat", label: "group_chat" },
 ];
+
+const MAIN_TASK_HINT_TEXT_CLASS = "mono text-ui-xs text-ui-text-muted";
+const MAIN_TASK_STATUS_META_CLASS =
+  "mono mt-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-ui-xs text-ui-text-secondary";
+const MAIN_TASK_COMPOSER_PANEL_CLASS =
+  "mt-3 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MAIN_TASK_TARGET_INFO_CLASS =
+  "rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
+const MAIN_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
+const MAIN_TASK_MESSAGE_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+const MAIN_TASK_MESSAGE_EMPTY_CLASS =
+  "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
@@ -138,7 +151,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         </div>
       </div>
 
-      <p className="mb-3 text-sm text-slate-600">
+      <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
         Use conversation planning to sync with the leader before compiling a run.
       </p>
 
@@ -182,7 +195,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         >
           Create Conversation
         </button>
-        <span className="mono text-xs text-slate-500">
+        <span className={MAIN_TASK_HINT_TEXT_CLASS}>
           creator=user route defaults are enforced by backend contract
         </span>
       </div>
@@ -213,12 +226,12 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
       </div>
 
       {selectedTask && (
-        <div className="mono mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+        <div className={MAIN_TASK_STATUS_META_CLASS}>
           status={selectedTask.status} created_by={selectedTask.created_by_actor_id}
         </div>
       )}
 
-      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+      <div className={MAIN_TASK_COMPOSER_PANEL_CLASS}>
         <div className="mb-2 grid gap-2 lg:grid-cols-3">
           <select
             className={TEAM_PANEL_INPUT_CLASS}
@@ -247,7 +260,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
               ))}
             </select>
           ) : (
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
+            <div className={MAIN_TASK_TARGET_INFO_CLASS}>
               {messageRoute === "to_leader"
                 ? "Target is resolved to leader automatically."
                 : "Message goes to group channel with no direct target."}
@@ -288,7 +301,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
           >
             Send Message
           </button>
-          <span className="text-xs text-slate-500">shortcut: Ctrl/Cmd + Enter</span>
+          <span className={MAIN_TASK_SHORTCUT_CLASS}>shortcut: Ctrl/Cmd + Enter</span>
         </div>
       </div>
 
@@ -296,7 +309,7 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
         {messages.map((message) => (
           <li
             key={message.message_id}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+            className={MAIN_TASK_MESSAGE_ITEM_CLASS}
           >
             <div className="teams-message-head">
               <span className="mono">#{message.message_id}</span>
@@ -310,12 +323,12 @@ export function TeamMainTaskPanel(props: TeamMainTaskPanelProps) {
           </li>
         ))}
         {!messagesLoading && messages.length === 0 && (
-          <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
+          <li className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
             No conversation messages yet.
           </li>
         )}
         {messagesLoading && (
-          <li className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
+          <li className={MAIN_TASK_MESSAGE_EMPTY_CLASS}>
             Loading conversation messages...
           </li>
         )}

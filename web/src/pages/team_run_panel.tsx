@@ -6,6 +6,7 @@ import {
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -20,13 +21,16 @@ type TeamRunStatusFilterOption = {
 };
 
 const RUN_PANEL_DELETE_BUTTON_CLASS =
-  "rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60";
+  "rounded-md border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-1 text-sm text-[color:var(--status-danger-ink)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_LIST_CLASS =
-  "teams-run-list flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4";
+  "teams-run-list flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
   "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
-const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-slate-500";
+const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-ui-text-muted";
+const RUN_PANEL_HINT_TEXT_CLASS = "text-sm text-ui-text-muted";
+const RUN_PANEL_LIST_TITLE_CLASS = "text-sm font-semibold text-ui-text-primary";
+const RUN_PANEL_FOOT_META_CLASS = "mono text-ui-xs text-ui-text-muted";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -92,12 +96,12 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       </div>
       <div className={RUN_PANEL_LIST_CLASS}>
         <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
-        <p className="muted text-sm">
+        <p className={TEAM_MUTED_TEXT_CLASS}>
           Team execution is agent-driven. You can quick-start here, or use <code>Debug → Run Ops</code>{" "}
           for manual run debugging.
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-slate-600">Quick start a new run for this team.</span>
+          <span className={RUN_PANEL_HINT_TEXT_CLASS}>Quick start a new run for this team.</span>
           <button
             onClick={() => {
               void onStartTeam();
@@ -111,7 +115,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </button>
         </div>
         <div className={RUN_PANEL_LIST_HEAD_CLASS}>
-          <h3>Runs</h3>
+          <h3 className={RUN_PANEL_LIST_TITLE_CLASS}>Runs</h3>
           <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
             <select
               className={`${TEAM_PANEL_INPUT_CLASS} min-w-0 sm:min-w-[164px]`}
@@ -141,10 +145,12 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         </div>
         <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
-            <p className="muted">No runs loaded yet. Use Debug → Run Ops to create or load runs.</p>
+            <p className={TEAM_MUTED_TEXT_CLASS}>
+              No runs loaded yet. Use Debug → Run Ops to create or load runs.
+            </p>
           )}
           {isActiveRunHiddenByFilter && activeRun && (
-            <p className="muted">
+            <p className={TEAM_MUTED_TEXT_CLASS}>
               Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
             </p>
           )}
@@ -169,7 +175,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           ))}
         </div>
         <div className="teams-run-list-foot flex flex-wrap items-center justify-between gap-2">
-          <span className="mono">
+          <span className={RUN_PANEL_FOOT_META_CLASS}>
             showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
           </span>
           <button

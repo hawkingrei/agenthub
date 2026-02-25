@@ -6,6 +6,7 @@ import {
   TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
+  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -21,20 +22,20 @@ type TeamOverviewPanelProps = {
 };
 
 const OVERVIEW_META_CLASS =
-  "teams-overview-meta mb-3 grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-3";
+  "teams-overview-meta mb-3 grid min-w-0 gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3 text-ui-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const OVERVIEW_PLAYBOOK_CLASS =
-  "teams-overview-playbook mb-3 rounded-xl border border-slate-200 bg-white p-3";
+  "teams-overview-playbook mb-3 rounded-xl border border-ui-border bg-ui-surface p-3";
 const OVERVIEW_PLAYBOOK_GRID_CLASS = "grid gap-3 md:grid-cols-2";
-const OVERVIEW_PLAYBOOK_CARD_CLASS = "rounded-lg border border-slate-200 bg-slate-50/70 p-3";
-const OVERVIEW_PLAYBOOK_TITLE_CLASS = "text-xs font-semibold uppercase tracking-wide text-slate-500";
-const OVERVIEW_PLAYBOOK_LIST_CLASS = "mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700";
+const OVERVIEW_PLAYBOOK_CARD_CLASS = "rounded-lg border border-ui-border bg-ui-surface-soft/70 p-3";
+const OVERVIEW_PLAYBOOK_TITLE_CLASS =
+  "text-ui-xs font-semibold uppercase tracking-wide text-ui-text-muted";
+const OVERVIEW_PLAYBOOK_LIST_CLASS = "mt-2 list-decimal space-y-1 pl-5 text-ui-sm text-ui-text-secondary";
 const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2";
-const OVERVIEW_MEMBER_BUTTON_BASE_CLASS =
-  `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS} border-slate-200`;
+const OVERVIEW_MEMBER_BUTTON_BASE_CLASS = `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS}`;
 const OVERVIEW_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-slate-300 ring-1 ring-slate-200`;
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} border-ui-border-strong bg-ui-surface-soft ring-1 ring-ui-border`;
 const OVERVIEW_MEMBER_BUTTON_IDLE_CLASS =
-  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} hover:border-slate-300`;
+  `${OVERVIEW_MEMBER_BUTTON_BASE_CLASS} hover:border-ui-border-strong`;
 
 export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
   const {
@@ -66,8 +67,8 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
       </div>
 
       <div className={OVERVIEW_PLAYBOOK_CLASS}>
-        <h4 className="text-sm font-semibold text-slate-900">Cold Start Playbook</h4>
-        <p className="muted mt-1 text-sm text-slate-600">
+        <h4 className="text-ui-sm font-semibold text-ui-text-primary">Cold Start Playbook</h4>
+        <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>
           On each process start, both roles should check unfinished TODO items before consuming new
           mailbox tasks.
         </p>
@@ -93,7 +94,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
         </div>
       </div>
 
-      {!snapshot && <p className="muted text-sm text-slate-600">No snapshot yet.</p>}
+      {!snapshot && <p className={TEAM_MUTED_TEXT_CLASS}>No snapshot yet.</p>}
 
       {snapshot && (
         <>

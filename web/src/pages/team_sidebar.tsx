@@ -94,7 +94,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
       </div>
 
       <div className={TEAM_SIDEBAR_FORGE_CARD_CLASS}>
-        <h3 className="text-base font-semibold text-slate-900">Team Forge</h3>
+        <h3 className="text-base font-semibold text-ui-text-primary">Team Forge</h3>
         <p className={TEAM_MUTED_TEXT_CLASS}>Choose a creation entry: guided wizard or direct manual spec.</p>
         <div className={TEAM_SIDEBAR_INFO_CARD_CLASS}>
           <p className={TEAM_SIDEBAR_INFO_LABEL_CLASS}>

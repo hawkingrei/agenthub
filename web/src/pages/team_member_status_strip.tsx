@@ -1,7 +1,11 @@
 import React, { useMemo } from "react";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberAgentStatus } from "./team/member_helpers";
-import { TEAM_PANEL_CARD_CLASS, TEAM_PANEL_TITLE_CLASS } from "../ui/tailwind_classes";
+import {
+  TEAM_MUTED_TEXT_CLASS,
+  TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_TITLE_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamMemberStatusStripProps = {
   members: TeamMemberAgentStatus[];
@@ -25,12 +29,22 @@ const TEAM_MEMBER_SUMMARY_STATUSES: TeamMemberLifecycle[] = [
 ];
 
 const TEAM_MEMBER_SUMMARY_BADGE_CLASS: Record<TeamMemberLifecycle, string> = {
-  working: "border-emerald-200 bg-emerald-50",
-  idle: "border-amber-200 bg-amber-50",
-  stopped: "border-slate-200 bg-slate-50",
-  missing: "border-rose-200 bg-rose-50",
-  unknown: "border-slate-200 bg-slate-50",
+  working:
+    "border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]",
+  idle: "border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-ink)]",
+  stopped:
+    "border-[color:var(--status-inactive-border)] bg-[color:var(--status-inactive-bg)] text-[color:var(--status-inactive-ink)]",
+  missing:
+    "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger-ink)]",
+  unknown:
+    "border-[color:var(--status-neutral-border)] bg-[color:var(--status-neutral-bg)] text-[color:var(--status-neutral-ink)]",
 };
+
+const TEAM_MEMBER_SUMMARY_CLASS = "mono flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+const TEAM_MEMBER_CARD_CLASS =
+  "flex min-w-0 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface-soft/60 px-3 py-2";
+const TEAM_MEMBER_NAME_CLASS = "min-w-0 flex-1 truncate text-ui-sm font-semibold text-ui-text-primary";
+const TEAM_MEMBER_META_CLASS = "mono truncate text-ui-xs text-ui-text-muted";
 
 export function normalizeTeamMemberLifecycle(member: TeamMemberAgentStatus): TeamMemberLifecycle {
   if (member.missing_agent) {
@@ -84,7 +98,7 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Status</h3>
-        <div className="mono flex flex-wrap items-center gap-2 text-xs text-slate-600">
+        <div className={TEAM_MEMBER_SUMMARY_CLASS}>
           {TEAM_MEMBER_SUMMARY_STATUSES.map((status) => (
             <span
               key={status}
@@ -96,7 +110,7 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
         </div>
       </div>
       {members.length === 0 ? (
-        <p className="text-sm text-slate-600">No team members found in current team spec.</p>
+        <p className={TEAM_MUTED_TEXT_CLASS}>No team members found in current team spec.</p>
       ) : (
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {members.map((member) => {
@@ -104,10 +118,10 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
             return (
               <div
                 key={member.member_id}
-                className="flex min-w-0 flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2"
+                className={TEAM_MEMBER_CARD_CLASS}
               >
                 <div className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+                  <span className={TEAM_MEMBER_NAME_CLASS}>
                     {member.member_id}
                   </span>
                   <StatusBadge
@@ -117,7 +131,7 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
                     title={`member status: ${member.status}`}
                   />
                 </div>
-                <div className="mono truncate text-xs text-slate-600">
+                <div className={TEAM_MEMBER_META_CLASS}>
                   role={member.role} agent={member.agent_name ?? "-"}
                 </div>
               </div>
