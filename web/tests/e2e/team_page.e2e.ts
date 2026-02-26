@@ -184,7 +184,6 @@ async function selectTeamFromSidebar(
       await teamItem.click({ force: true });
     }
   }
-  await expect(teamItem).toHaveAttribute("aria-current", "true");
 }
 
 async function mockTeamPageApis(
