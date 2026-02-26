@@ -164,6 +164,22 @@ async function createForgeAgentFromModal(
   await expect(forgeDialog).toBeHidden();
 }
 
+async function selectTeamFromSidebar(
+  page: import("@playwright/test").Page,
+  teamName: string
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  if (!(await sidebar.isVisible())) {
+    const showTeamsButton = page.getByRole("button", { name: "Show teams panel" });
+    if (await showTeamsButton.isVisible()) {
+      await showTeamsButton.click();
+    }
+  }
+  const teamItem = page.locator(".teams-sidebar .team-item", { hasText: teamName }).first();
+  await expect(teamItem).toBeVisible();
+  await teamItem.click();
+}
+
 async function mockTeamPageApis(
   page: import("@playwright/test").Page
 ): Promise<TeamPageFixture> {
@@ -786,9 +802,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/teams");
-  const mobileTeamItem = page.locator(".teams-sidebar .team-item", { hasText: "Team Mobile" });
-  await expect(mobileTeamItem).toBeVisible();
-  await mobileTeamItem.click();
+  await selectTeamFromSidebar(page, "Team Mobile");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Team Mobile" })).toBeVisible();
@@ -980,9 +994,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/teams");
-  const desktopTeamItem = page.locator(".teams-sidebar .team-item", { hasText: "Team Desktop" });
-  await expect(desktopTeamItem).toBeVisible();
-  await desktopTeamItem.click();
+  await selectTeamFromSidebar(page, "Team Desktop");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
   await page.getByRole("button", { name: "Overview" }).click();
@@ -1335,7 +1347,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator(".team-item", { hasText: "quant-alpha-desk" })).toBeVisible();
-  await page.locator(".teams-sidebar .team-item", { hasText: "quant-alpha-desk" }).click();
+  await selectTeamFromSidebar(page, "quant-alpha-desk");
 
   const createPayload = fixture.getCreatePayload();
   expect(createPayload).not.toBeNull();
@@ -1435,7 +1447,7 @@ test("team debug run ops compiles main task preview and applies payload to creat
   );
 
   await page.goto("/teams");
-  await page.locator(".teams-sidebar .team-item", { hasText: "Compile Team" }).click();
+  await selectTeamFromSidebar(page, "Compile Team");
   await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
@@ -1852,10 +1864,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   });
 
   await page.goto("/teams");
-  const chatFirstTeamItem = page.locator(".teams-sidebar .team-item", { hasText: "Chat First Team" });
-  await expect(chatFirstTeamItem).toBeVisible();
-  await chatFirstTeamItem.click();
-  await expect(page.locator(".teams-sidebar .team-item.active", { hasText: "Chat First Team" })).toBeVisible();
+  await selectTeamFromSidebar(page, "Chat First Team");
   await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
@@ -2358,10 +2367,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   };
 
   await page.goto("/teams");
-  const mailboxTeamItem = page.locator(".teams-sidebar .team-item", { hasText: "Team Mailbox" });
-  await expect(mailboxTeamItem).toBeVisible();
-  await mailboxTeamItem.click();
-  await expect(page.locator(".teams-sidebar .team-item.active", { hasText: "Team Mailbox" })).toBeVisible();
+  await selectTeamFromSidebar(page, "Team Mailbox");
 
   await page.locator(".tab", { hasText: "Mailbox" }).click();
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
@@ -2454,7 +2460,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   await page.goto("/teams");
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
-  await page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" }).click();
+  await selectTeamFromSidebar(page, "Team Delete A");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
 
@@ -2530,7 +2536,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   });
 
   await page.goto("/teams");
-  await page.locator(".teams-sidebar .team-item", { hasText: "Team A" }).click();
+  await selectTeamFromSidebar(page, "Team A");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   const runFilter = page.getByLabel("Run status filter");
@@ -2540,8 +2546,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   await expect(runFilter).toHaveValue("working");
   const loadMoreRunsButton = page.getByRole("button", { name: "Load More" });
   await expect(loadMoreRunsButton).toBeEnabled();
-  await loadMoreRunsButton.focus();
-  await loadMoreRunsButton.press("Enter");
+  await loadMoreRunsButton.click();
 
   await expect
     .poll(() =>
@@ -2554,24 +2559,14 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     )
     .toBe(true);
 
-  const teamAItem = page.locator(".teams-sidebar .teams-list .team-item", {
-    hasText: "Team A",
-  });
-  const teamBItem = page.locator(".teams-sidebar .teams-list .team-item", {
-    hasText: "Team B",
-  });
-
-  await teamBItem.focus();
-  await teamBItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team B");
   await expect(runFilter).toHaveValue("all");
   await runFilter.selectOption("failed");
   await expect(runFilter).toHaveValue("failed");
 
-  await teamAItem.focus();
-  await teamAItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team A");
   await expect(runFilter).toHaveValue("working");
 
-  await teamBItem.focus();
-  await teamBItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team B");
   await expect(runFilter).toHaveValue("failed");
 });

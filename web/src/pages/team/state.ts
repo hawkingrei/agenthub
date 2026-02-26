@@ -27,7 +27,7 @@ export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = 
   { value: "debug", label: "Debug" },
 ];
 
-const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>(["runs", "conversation"]);
+const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>(["runs", "conversation", "debug"]);
 
 export function tabRequiresActiveRun(tab: TeamTab): boolean {
   return !TEAM_TABS_WITHOUT_ACTIVE_RUN.has(tab);

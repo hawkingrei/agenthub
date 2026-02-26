@@ -176,6 +176,7 @@ describe("team state defaults and constants", () => {
     ]);
     expect(tabRequiresActiveRun("runs")).toBe(false);
     expect(tabRequiresActiveRun("conversation")).toBe(false);
+    expect(tabRequiresActiveRun("debug")).toBe(false);
     expect(tabRequiresActiveRun("events")).toBe(true);
 
     expect(CREATE_TEAM_STAGE_TITLES).toEqual([
