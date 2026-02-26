@@ -177,7 +177,14 @@ async function selectTeamFromSidebar(
   }
   const teamItem = page.locator(".teams-sidebar .team-item", { hasText: teamName }).first();
   await expect(teamItem).toBeVisible();
-  await teamItem.click();
+  if ((await teamItem.getAttribute("aria-current")) !== "true") {
+    try {
+      await teamItem.click({ timeout: 1_500 });
+    } catch {
+      await teamItem.click({ force: true });
+    }
+  }
+  await expect(teamItem).toHaveAttribute("aria-current", "true");
 }
 
 async function mockTeamPageApis(

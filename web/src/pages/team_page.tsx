@@ -2708,7 +2708,7 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   )}
 
-                  {tab === "debug" && activeRunForSelectedTeam && (
+                  {tab === "debug" && (
                     <>
                       <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2750,7 +2750,26 @@ export function TeamPage(props: TeamPageProps) {
 
                       {teamDebugTag === "run_ops" && runOpsPanel}
 
-                      {teamDebugTag === "step_ops" && (
+                      {teamDebugTag === "step_ops" && !activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <h4 className={teamSectionHeadingClassName}>Step Ops</h4>
+                          <p className={teamSectionBodyTextClassName}>
+                            Step operations require an active run. Start or select one in the Runs
+                            tab first.
+                          </p>
+                          <div className="mt-3">
+                            <button
+                              className={panelSecondaryButtonClassName}
+                              type="button"
+                              onClick={() => setTab("runs")}
+                            >
+                              Go to Runs
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
                         <TeamStepsPanel
                           mode="controls_only"
                           steps={steps}
@@ -2787,7 +2806,26 @@ export function TeamPage(props: TeamPageProps) {
                         />
                       )}
 
-                      {teamDebugTag === "mailbox_raw" && (
+                      {teamDebugTag === "mailbox_raw" && !activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <h4 className={teamSectionHeadingClassName}>Mailbox Raw</h4>
+                          <p className={teamSectionBodyTextClassName}>
+                            Mailbox raw operations require an active run. Start or select one in
+                            the Runs tab first.
+                          </p>
+                          <div className="mt-3">
+                            <button
+                              className={panelSecondaryButtonClassName}
+                              type="button"
+                              onClick={() => setTab("runs")}
+                            >
+                              Go to Runs
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
                         <TeamMailboxPanel
                           mode="advanced_only"
                           snapshot={snapshot}
