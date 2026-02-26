@@ -1088,7 +1088,7 @@ mod tests {
                 seq TEXT NOT NULL,
                 ts INTEGER NOT NULL,
                 stream TEXT NOT NULL,
-                message TEXT NOT NULL,
+                message BLOB NOT NULL,
                 FOREIGN KEY(agent_id) REFERENCES agents(id),
                 FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
             )

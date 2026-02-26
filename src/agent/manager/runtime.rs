@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::codec::{is_acp_message, is_dir_empty, stream_to_str};
 use super::{AgentHandle, AgentManager, normalize_path};
+use crate::agent::event_message_codec::encode_message_for_storage;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
 use crate::push::PushService;
 
@@ -151,6 +152,7 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
+        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
         let seq = Uuid::now_v7().to_string();
         let ts = Utc::now().timestamp();
         let result = sqlx::query(
@@ -164,7 +166,7 @@ impl AgentManager {
         .bind(&seq)
         .bind(ts)
         .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message.clone())
+        .bind(message_for_db)
         .execute(&self.db)
         .await;
         let result = match result {
@@ -227,7 +229,7 @@ impl AgentManager {
                 .bind(&seq)
                 .bind(ts)
                 .bind(stream_name)
-                .bind(&line)
+                .bind(encode_message_for_storage(&stream, &line))
                 .execute(&db)
                 .await;
                 let result = match result {
@@ -383,6 +385,7 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
+        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
         let result = sqlx::query(
             r#"
             INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
@@ -394,7 +397,7 @@ impl AgentManager {
         .bind(&seq)
         .bind(ts)
         .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message.clone())
+        .bind(message_for_db)
         .execute(db)
         .await;
 

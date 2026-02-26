@@ -31,6 +31,7 @@ use super::{
     TeamMainTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
     TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
+use crate::agent::event_message_codec::decode_message_from_storage;
 
 #[derive(Clone)]
 pub struct TeamManager {
@@ -2540,7 +2541,7 @@ fn normalize_memory_flush_max_events(raw: Option<i64>) -> i64 {
 fn build_memory_flush_observation(row: &sqlx::sqlite::SqliteRow) -> Value {
     let event_id = row.get::<i64, _>("id");
     let stream = row.get::<String, _>("stream");
-    let message = row.get::<String, _>("message");
+    let message = decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice());
     if let Ok(message_json) = serde_json::from_str::<Value>(&message) {
         let redacted = redact_sensitive_json(&message_json);
         let observation_type = message_json

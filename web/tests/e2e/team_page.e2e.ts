@@ -177,13 +177,23 @@ async function selectTeamFromSidebar(
   }
   const teamItem = page.locator(".teams-sidebar .team-item", { hasText: teamName }).first();
   await expect(teamItem).toBeVisible();
-  if ((await teamItem.getAttribute("aria-current")) !== "true") {
+  const isSelected = async (): Promise<boolean> =>
+    (await teamItem.getAttribute("aria-current")) === "true";
+  if (await isSelected()) {
+    return;
+  }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await teamItem.scrollIntoViewIfNeeded();
     try {
-      await teamItem.click({ timeout: 1_500 });
+      await teamItem.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
       await teamItem.click({ force: true });
     }
+    if (await isSelected()) {
+      return;
+    }
   }
+  await expect(teamItem).toHaveAttribute("aria-current", "true");
 }
 
 async function mockTeamPageApis(

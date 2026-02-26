@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use sqlx::{
-    SqlitePool,
+    Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
@@ -191,7 +191,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             seq TEXT NOT NULL,
             ts INTEGER NOT NULL,
             stream TEXT NOT NULL,
-            message TEXT NOT NULL,
+            message BLOB NOT NULL,
             FOREIGN KEY(agent_id) REFERENCES agents(id),
             FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
         );
@@ -199,6 +199,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .execute(&pool)
     .await?;
+
+    migrate_agent_events_message_column_to_blob(&pool).await?;
 
     sqlx::query(
         r#"
@@ -945,6 +947,74 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn migrate_agent_events_message_column_to_blob(pool: &SqlitePool) -> anyhow::Result<()> {
+    let columns = sqlx::query("PRAGMA table_info(agent_events)")
+        .fetch_all(pool)
+        .await?;
+    if columns.is_empty() {
+        return Ok(());
+    }
+
+    let message_type = columns.iter().find_map(|row| {
+        let name = row.get::<String, _>("name");
+        if name.eq_ignore_ascii_case("message") {
+            Some(row.get::<String, _>("type"))
+        } else {
+            None
+        }
+    });
+
+    if message_type
+        .as_deref()
+        .map(|ty| ty.eq_ignore_ascii_case("BLOB"))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    tracing::info!(
+        from = ?message_type,
+        "db init: migrating agent_events.message column to BLOB"
+    );
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_events_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            seq TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            stream TEXT NOT NULL,
+            message BLOB NOT NULL,
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+        );
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events_migrated (id, agent_id, session_id, seq, ts, stream, message)
+        SELECT id, agent_id, session_id, seq, ts, stream, CAST(message AS BLOB)
+        FROM agent_events
+        ORDER BY id ASC
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DROP TABLE agent_events")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("ALTER TABLE agent_events_migrated RENAME TO agent_events")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{cleanup_agent_event_history, create_parent_dir, init_db_at_path, try_connect};
@@ -1013,6 +1083,170 @@ mod tests {
         assert!(
             fk_err.to_string().contains("FOREIGN KEY constraint failed"),
             "unexpected fk error: {fk_err}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_migrates_agent_events_message_column_to_blob() {
+        let dir = unique_temp_dir("db-migrate-agent-events");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'manual',
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create agents");
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create agent_sessions");
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                seq TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                stream TEXT NOT NULL,
+                message TEXT NOT NULL,
+                FOREIGN KEY(agent_id) REFERENCES agents(id),
+                FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy agent_events");
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind("agent-migrate")
+        .bind("migrate-agent")
+        .bind("/tmp")
+        .bind("echo")
+        .bind("[]")
+        .bind("reuse_worktree")
+        .bind(None::<String>)
+        .bind(None::<String>)
+        .bind(0_i64)
+        .bind("manual")
+        .bind("running")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert agent");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-migrate")
+        .bind("agent-migrate")
+        .bind("running")
+        .bind(now)
+        .bind(None::<i64>)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("agent-migrate")
+        .bind("session-migrate")
+        .bind("seq-legacy")
+        .bind(now)
+        .bind("acp")
+        .bind("{\"type\":\"agent_message\",\"text\":\"legacy\"}")
+        .execute(&pool)
+        .await
+        .expect("insert legacy agent_event row");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with migration");
+
+        let message_column_type: String = sqlx::query_scalar(
+            r#"
+            SELECT type
+            FROM pragma_table_info('agent_events')
+            WHERE name = 'message'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read message column type");
+        assert!(
+            message_column_type.eq_ignore_ascii_case("BLOB"),
+            "expected message column type to migrate to BLOB, got {message_column_type}"
+        );
+
+        let message_storage_type: String =
+            sqlx::query_scalar("SELECT typeof(message) FROM agent_events WHERE seq = 'seq-legacy'")
+                .fetch_one(&pool)
+                .await
+                .expect("read message storage type");
+        assert_eq!(
+            message_storage_type, "blob",
+            "expected migrated row storage type to be blob"
+        );
+
+        let stored_message: Vec<u8> =
+            sqlx::query_scalar("SELECT message FROM agent_events WHERE seq = 'seq-legacy'")
+                .fetch_one(&pool)
+                .await
+                .expect("read migrated message bytes");
+        assert_eq!(
+            stored_message,
+            b"{\"type\":\"agent_message\",\"text\":\"legacy\"}".to_vec()
         );
 
         pool.close().await;

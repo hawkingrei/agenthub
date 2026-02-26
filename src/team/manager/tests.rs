@@ -290,7 +290,7 @@ async fn setup_test_db() -> SqlitePool {
             seq TEXT NOT NULL,
             ts INTEGER NOT NULL,
             stream TEXT NOT NULL,
-            message TEXT NOT NULL,
+            message BLOB NOT NULL,
             FOREIGN KEY(agent_id) REFERENCES agents(id)
         );
         "#,
@@ -1359,7 +1359,10 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .expect("list pending after ack");
     assert_eq!(pending_after_ack.len(), 1);
     assert_eq!(pending_after_ack[0].message_id, human_sent.message_id);
-    assert_eq!(pending_after_ack[0].from_actor_kind, ActorIdentityKind::Human);
+    assert_eq!(
+        pending_after_ack[0].from_actor_kind,
+        ActorIdentityKind::Human
+    );
 
     let inbox_with_delivered = manager
         .list_actor_inbox(&run.id, "reviewer", 100, None, true)

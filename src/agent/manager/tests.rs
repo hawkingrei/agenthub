@@ -165,7 +165,7 @@ fn build_agent_record_for_policy(
 }
 
 #[test]
-fn runtime_start_policy_rejects_non_empty_leader_workdir() {
+fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() {
     let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
@@ -179,12 +179,23 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir() {
         member_role: Some("leader".to_string()),
         continuity: None,
     };
+    let session_id = "session-leader-1";
 
-    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
-        .expect_err("leader should require empty workdir");
+    let policy =
+        build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, Some(session_id))
+            .expect("leader should derive a session-isolated workdir");
     assert!(
-        err.to_string()
-            .contains("team leader policy requires empty workdir")
+        policy.workdir.starts_with(&agent.workdir),
+        "workdir={} base={}",
+        policy.workdir,
+        agent.workdir
+    );
+    assert!(
+        policy
+            .workdir
+            .contains(".agenthub-team-leader/leader-1-run-leader-session-leader-1"),
+        "workdir={}",
+        policy.workdir
     );
 }
 
@@ -203,7 +214,7 @@ fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
         continuity: None,
     };
 
-    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None)
+    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
         .expect_err("worker must use create_worktree");
     assert!(
         err.to_string()
@@ -231,8 +242,9 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         continuity: None,
     };
 
-    let policy = build_runtime_start_policy(&agent, Some(&ctx), &workdir_str, Some(&repo_str))
-        .expect("build worker runtime policy");
+    let policy =
+        build_runtime_start_policy(&agent, Some(&ctx), &workdir_str, Some(&repo_str), None)
+            .expect("build worker runtime policy");
     assert!(matches!(policy.worktree_mode, WorktreeMode::CreateWorktree));
     assert_eq!(policy.worktree_ref.as_deref(), Some("HEAD"));
     assert_eq!(policy.worktree_repo.as_deref(), Some(repo_str.as_str()));
@@ -245,6 +257,30 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
     assert!(
         branch.starts_with("worker-worker-alpha-"),
         "branch={branch}"
+    );
+}
+
+#[test]
+fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
+    let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
+    let agent =
+        build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
+    let ctx = AcpActorSkillContext {
+        run_id: "run-leader".to_string(),
+        actor_id: "leader-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("leader".to_string()),
+        continuity: None,
+    };
+
+    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
+        .expect_err("leader should require a start session id for non-empty workdir");
+    assert!(
+        err.to_string()
+            .contains("leader role policy requires start session id")
     );
 }
 
@@ -269,8 +305,7 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
 
 #[test]
 fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
-    let path =
-        std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
         run_id: "run-worker".to_string(),

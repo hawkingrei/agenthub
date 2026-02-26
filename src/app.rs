@@ -1,6 +1,9 @@
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::{fs::OpenOptions, io::Write as IoWrite};
 
 use axum::{Router, routing::get};
+use chrono::{DateTime, TimeZone, Utc};
 use tower_http::compression::CompressionLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
@@ -8,6 +11,113 @@ use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 type LogSpec = (std::path::PathBuf, String);
+
+struct LogGuards {
+    _writer: tracing_appender::non_blocking::WorkerGuard,
+}
+
+struct ActiveHourlyLogWriter {
+    directory: PathBuf,
+    file_name: String,
+    current_path: PathBuf,
+    current_hour_slot: i64,
+    file: std::fs::File,
+    now_utc: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+}
+
+impl ActiveHourlyLogWriter {
+    fn new(directory: PathBuf, file_name: String) -> std::io::Result<Self> {
+        Self::new_with_clock(directory, file_name, Box::new(Utc::now))
+    }
+
+    fn new_with_clock(
+        directory: PathBuf,
+        file_name: String,
+        now_utc: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    ) -> std::io::Result<Self> {
+        std::fs::create_dir_all(&directory)?;
+        let now = now_utc();
+        let current_hour_slot = Self::hour_slot(now);
+        let current_path = directory.join(&file_name);
+        let file = Self::open_append_file(&current_path)?;
+        Ok(Self {
+            directory,
+            file_name,
+            current_path,
+            current_hour_slot,
+            file,
+            now_utc,
+        })
+    }
+
+    fn open_append_file(path: &Path) -> std::io::Result<std::fs::File> {
+        OpenOptions::new().create(true).append(true).open(path)
+    }
+
+    fn hour_slot(now: DateTime<Utc>) -> i64 {
+        now.timestamp().div_euclid(3600)
+    }
+
+    fn slot_to_suffix(hour_slot: i64) -> String {
+        let slot_epoch = hour_slot.saturating_mul(3600);
+        let ts = Utc
+            .timestamp_opt(slot_epoch, 0)
+            .single()
+            .unwrap_or_else(Utc::now);
+        ts.format("%Y-%m-%d-%H").to_string()
+    }
+
+    fn rotate_destination(&self, hour_slot: i64) -> PathBuf {
+        let suffix = Self::slot_to_suffix(hour_slot);
+        let base = self
+            .directory
+            .join(format!("{}.{}", self.file_name, suffix));
+        if !base.exists() {
+            return base;
+        }
+        for idx in 1.. {
+            let candidate = self
+                .directory
+                .join(format!("{}.{}.{}", self.file_name, suffix, idx));
+            if !candidate.exists() {
+                return candidate;
+            }
+        }
+        unreachable!("rotation candidate search should always find an available path")
+    }
+
+    fn rotate_if_needed(&mut self) -> std::io::Result<()> {
+        let now_slot = Self::hour_slot((self.now_utc)());
+        if now_slot == self.current_hour_slot {
+            return Ok(());
+        }
+
+        self.file.flush()?;
+        let replacement = Self::open_append_file(&self.current_path)?;
+        let previous_file = std::mem::replace(&mut self.file, replacement);
+        drop(previous_file);
+
+        if self.current_path.exists() {
+            let rotated_path = self.rotate_destination(self.current_hour_slot);
+            std::fs::rename(&self.current_path, rotated_path)?;
+        }
+
+        self.file = Self::open_append_file(&self.current_path)?;
+        self.current_hour_slot = now_slot;
+        Ok(())
+    }
+}
+
+impl std::io::Write for ActiveHourlyLogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.rotate_if_needed()?;
+        self.file.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
 
 fn split_log_path(path: &str) -> LogSpec {
     let path_buf = std::path::Path::new(path);
@@ -28,18 +138,17 @@ fn split_log_path(path: &str) -> LogSpec {
 fn init_tracing(
     filter: EnvFilter,
     log_spec: Option<&LogSpec>,
-) -> anyhow::Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
+) -> anyhow::Result<Option<LogGuards>> {
     if let Some((dir, file_name)) = log_spec {
-        std::fs::create_dir_all(dir)?;
-        let file_appender = tracing_appender::rolling::hourly(dir, file_name.as_str());
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        let appender = ActiveHourlyLogWriter::new(dir.clone(), file_name.clone())?;
+        let (writer, guard) = tracing_appender::non_blocking(appender);
         let _ = tracing_subscriber::fmt()
             .with_env_filter(filter)
-            .with_writer(non_blocking)
+            .with_writer(writer)
             .with_ansi(false)
             .with_target(true)
             .try_init();
-        return Ok(Some(guard));
+        return Ok(Some(LogGuards { _writer: guard }));
     }
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -190,10 +299,17 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicI64, Ordering},
+    };
+
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
+    use chrono::{TimeZone, Utc};
     use tower::util::ServiceExt;
     use tracing_subscriber::EnvFilter;
 
@@ -255,6 +371,60 @@ mod tests {
             .expect("init tracing for file");
         assert!(file_guard.is_some());
         assert!(dir.exists());
+        assert!(dir.join("agenthub.log").exists());
+    }
+
+    #[test]
+    fn active_log_writer_keeps_latest_plain_and_rotates_with_suffix() {
+        let unique = format!(
+            "agenthub-log-rotate-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration since epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&dir).expect("create temp log dir");
+
+        let hour_slot = Arc::new(AtomicI64::new(48_000));
+        let hour_slot_for_clock = Arc::clone(&hour_slot);
+        let clock = Box::new(move || {
+            let slot = hour_slot_for_clock.load(Ordering::Relaxed);
+            Utc.timestamp_opt(slot.saturating_mul(3600), 0)
+                .single()
+                .expect("valid slot timestamp")
+        });
+        let mut writer = super::ActiveHourlyLogWriter::new_with_clock(
+            dir.clone(),
+            "agenthub.log".to_string(),
+            clock,
+        )
+        .expect("create writer");
+
+        writer.write_all(b"line-1\n").expect("write first log line");
+
+        let current_log = dir.join("agenthub.log");
+        assert!(current_log.exists());
+        let first_content = std::fs::read_to_string(&current_log).expect("read current log");
+        assert_eq!(first_content, "line-1\n");
+
+        let old_slot = hour_slot.load(Ordering::Relaxed);
+        hour_slot.store(old_slot + 1, Ordering::Relaxed);
+        writer
+            .write_all(b"line-2\n")
+            .expect("write second log line with rotation");
+
+        let rotated = dir.join(format!(
+            "agenthub.log.{}",
+            super::ActiveHourlyLogWriter::slot_to_suffix(old_slot)
+        ));
+        assert!(rotated.exists());
+        let rotated_content = std::fs::read_to_string(rotated).expect("read rotated log");
+        assert_eq!(rotated_content, "line-1\n");
+
+        let current_content = std::fs::read_to_string(current_log).expect("read current log");
+        assert_eq!(current_content, "line-2\n");
     }
 
     #[tokio::test]
