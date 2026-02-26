@@ -55,6 +55,11 @@ const TEAM_MEMBER_CARD_CLASS =
 const TEAM_MEMBER_NAME_CLASS = "min-w-0 flex-1 truncate text-ui-sm font-semibold text-ui-text-primary";
 const TEAM_MEMBER_META_CLASS = "mono truncate text-ui-xs text-ui-text-muted";
 const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-2";
+const WORKING_STATUSES = new Set(["running", "working", "in_progress"]);
+const PENDING_STATUSES = new Set(["submitted", "pending", "input_required", "queued", "waiting"]);
+const BLOCKED_STATUSES = new Set(["failed", "blocked", "error"]);
+const DONE_STATUSES = new Set(["completed", "done", "succeeded", "success"]);
+const IDLE_STATUSES = new Set(["idle", "canceled", "cancelled", "stopped", "skipped"]);
 
 function normalizeStatusValue(status: string): string {
   const normalized = status.trim().toLowerCase();
@@ -93,40 +98,19 @@ export function normalizeTeamMemberWorkStatus(member: TeamMemberLiveState): Team
   if (!normalized) {
     return "no_run";
   }
-  if (
-    normalized === "running" ||
-    normalized === "working" ||
-    normalized === "in_progress"
-  ) {
+  if (WORKING_STATUSES.has(normalized)) {
     return "working";
   }
-  if (
-    normalized === "submitted" ||
-    normalized === "pending" ||
-    normalized === "input_required" ||
-    normalized === "queued" ||
-    normalized === "waiting"
-  ) {
+  if (PENDING_STATUSES.has(normalized)) {
     return "pending";
   }
-  if (normalized === "failed" || normalized === "blocked" || normalized === "error") {
+  if (BLOCKED_STATUSES.has(normalized)) {
     return "blocked";
   }
-  if (
-    normalized === "completed" ||
-    normalized === "done" ||
-    normalized === "succeeded" ||
-    normalized === "success"
-  ) {
+  if (DONE_STATUSES.has(normalized)) {
     return "done";
   }
-  if (
-    normalized === "idle" ||
-    normalized === "canceled" ||
-    normalized === "cancelled" ||
-    normalized === "stopped" ||
-    normalized === "skipped"
-  ) {
+  if (IDLE_STATUSES.has(normalized)) {
     return "idle";
   }
   return "unknown";

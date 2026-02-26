@@ -2539,18 +2539,19 @@ export function TeamPage(props: TeamPageProps) {
 
               {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
                 <div className="flex min-w-0 flex-col gap-3">
-                  {tab === "conversation" && !activeRunForSelectedTeam && (
-                    <div className={teamSectionCardClassName}>
-                      <h3 className={teamSectionTitleClassName}>Conversation</h3>
-                      <p className={teamSectionBodyTextClassName}>
-                        No active run is selected. Start with conversation planning before launching
-                        a run.
-                      </p>
-                      <div className="mt-3">{conversationPanel}</div>
-                    </div>
+                  {tab === "conversation" && (
+                    <>
+                      {!activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <p className={teamSectionBodyTextClassName}>
+                            No active run is selected. Start with conversation planning before
+                            launching a run.
+                          </p>
+                        </div>
+                      )}
+                      {conversationPanel}
+                    </>
                   )}
-
-                  {tab === "conversation" && activeRunForSelectedTeam && conversationPanel}
 
                   {tab === "agent_acp" && activeRunForSelectedTeam && (
                     <TeamMemberAcpPanel

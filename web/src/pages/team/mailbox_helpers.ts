@@ -91,30 +91,21 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
   return out;
 }
 
-export function buildMailboxChatPayload(text: string): {
+type MailboxChatPayload = {
   type: "chat_message";
   text: string;
   source: "team_workbench";
   mention_actor_ids?: string[];
 };
+
 export function buildMailboxChatPayload(
   text: string,
   options?: { mention_actor_ids?: string[] }
-): {
-  type: "chat_message";
-  text: string;
-  source: "team_workbench";
-  mention_actor_ids?: string[];
-} {
+): MailboxChatPayload {
   const mentionActorIds = (options?.mention_actor_ids ?? [])
     .map((actorId) => actorId.trim())
     .filter((actorId, index, list) => actorId.length > 0 && list.indexOf(actorId) === index);
-  const payload: {
-    type: "chat_message";
-    text: string;
-    source: "team_workbench";
-    mention_actor_ids?: string[];
-  } = {
+  const payload: MailboxChatPayload = {
     type: "chat_message",
     text,
     source: "team_workbench",
