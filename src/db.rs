@@ -9,6 +9,7 @@ use sqlx::{
 pub struct AgentEventCleanupResult {
     pub cutoff_ts: i64,
     pub deleted_rows: u64,
+    pub delete_batches: u64,
     pub vacuum_ran: bool,
 }
 
@@ -815,32 +816,51 @@ pub async fn cleanup_agent_event_history(
     pool: &SqlitePool,
     retention_days: u32,
     vacuum_on_cleanup: bool,
+    delete_batch_size: u32,
 ) -> anyhow::Result<AgentEventCleanupResult> {
     const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
     let retention_seconds = i64::from(retention_days).saturating_mul(SECONDS_PER_DAY);
     let cutoff_ts = chrono::Utc::now()
         .timestamp()
         .saturating_sub(retention_seconds);
-
-    let deleted_rows = sqlx::query(
-        r#"
-        DELETE FROM agent_events
-        WHERE ts < ?1
-        "#,
-    )
-    .bind(cutoff_ts)
-    .execute(pool)
-    .await
-    .map_err(|err| {
-        tracing::error!(
-            cutoff_ts,
-            retention_days,
-            error = %err,
-            "db cleanup failed to delete expired agent_events rows"
-        );
-        err
-    })?
-    .rows_affected();
+    let batch_size = i64::from(delete_batch_size.max(1));
+    let mut deleted_rows = 0_u64;
+    let mut delete_batches = 0_u64;
+    loop {
+        let deleted = sqlx::query(
+            r#"
+            DELETE FROM agent_events
+            WHERE id IN (
+                SELECT id
+                FROM agent_events
+                WHERE ts < ?1
+                ORDER BY id
+                LIMIT ?2
+            )
+            "#,
+        )
+        .bind(cutoff_ts)
+        .bind(batch_size)
+        .execute(pool)
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                cutoff_ts,
+                retention_days,
+                batch_size,
+                delete_batches,
+                error = %err,
+                "db cleanup failed during batched agent_events delete"
+            );
+            err
+        })?
+        .rows_affected();
+        if deleted == 0 {
+            break;
+        }
+        deleted_rows = deleted_rows.saturating_add(deleted);
+        delete_batches = delete_batches.saturating_add(1);
+    }
 
     if let Err(err) = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
         .execute(pool)
@@ -861,6 +881,7 @@ pub async fn cleanup_agent_event_history(
     Ok(AgentEventCleanupResult {
         cutoff_ts,
         deleted_rows,
+        delete_batches,
         vacuum_ran,
     })
 }
@@ -1089,7 +1110,7 @@ mod tests {
             .await
             .expect("connect scratch sqlite");
 
-        let err = cleanup_agent_event_history(&pool, 5, false)
+        let err = cleanup_agent_event_history(&pool, 5, false, 1_000)
             .await
             .expect_err("cleanup should fail without agent_events table");
         assert!(
@@ -1184,10 +1205,11 @@ mod tests {
         .await
         .expect("insert new event");
 
-        let result = cleanup_agent_event_history(&pool, 5, false)
+        let result = cleanup_agent_event_history(&pool, 5, false, 1)
             .await
             .expect("cleanup history");
         assert_eq!(result.deleted_rows, 1);
+        assert_eq!(result.delete_batches, 1);
         assert!(!result.vacuum_ran);
         assert!(result.cutoff_ts > old_ts);
         assert!(result.cutoff_ts < new_ts);
@@ -1198,6 +1220,122 @@ mod tests {
             .expect("count remaining events")
             .get("cnt");
         assert_eq!(remaining, 1);
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cleanup_agent_event_history_deletes_in_multiple_batches() {
+        let dir = unique_temp_dir("db-cleanup-batch");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("cleanup-batch.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let now = chrono::Utc::now().timestamp();
+        let old_ts = now - (10 * 24 * 60 * 60);
+        let new_ts = now - (2 * 24 * 60 * 60);
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind("agent-cleanup-batch")
+        .bind("cleanup-batch-agent")
+        .bind("/tmp")
+        .bind("echo")
+        .bind("[]")
+        .bind("reuse_worktree")
+        .bind(None::<String>)
+        .bind(None::<String>)
+        .bind(0_i64)
+        .bind("manual")
+        .bind("stopped")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-cleanup-batch")
+        .bind("agent-cleanup-batch")
+        .bind("running")
+        .bind(now)
+        .bind(None::<i64>)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        for seq in ["seq-old-1", "seq-old-2", "seq-old-3"] {
+            sqlx::query(
+                r#"
+                INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+            )
+            .bind("agent-cleanup-batch")
+            .bind("session-cleanup-batch")
+            .bind(seq)
+            .bind(old_ts)
+            .bind("acp")
+            .bind("old")
+            .execute(&pool)
+            .await
+            .expect("insert old event");
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("agent-cleanup-batch")
+        .bind("session-cleanup-batch")
+        .bind("seq-new")
+        .bind(new_ts)
+        .bind("acp")
+        .bind("new")
+        .execute(&pool)
+        .await
+        .expect("insert new event");
+
+        let result = cleanup_agent_event_history(&pool, 5, false, 1)
+            .await
+            .expect("cleanup history");
+        assert_eq!(result.deleted_rows, 3);
+        assert_eq!(result.delete_batches, 3);
+        assert!(!result.vacuum_ran);
+
+        let remaining_old: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM agent_events WHERE session_id = ?1 AND ts < ?2",
+        )
+        .bind("session-cleanup-batch")
+        .bind(result.cutoff_ts)
+        .fetch_one(&pool)
+        .await
+        .expect("count remaining old events");
+        assert_eq!(remaining_old, 0);
+
+        let remaining_total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id = ?1")
+                .bind("session-cleanup-batch")
+                .fetch_one(&pool)
+                .await
+                .expect("count remaining session events");
+        assert_eq!(remaining_total, 1);
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
