@@ -2447,6 +2447,9 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeamId={selectedTeamId}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             onSelectTeam={(teamId) => {
+              if (teamId !== selectedTeamId) {
+                setActiveRunId(null);
+              }
               setSelectedTeamId(teamId);
               setRunLookupId("");
             }}

@@ -160,6 +160,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
           return (
             <button
               key={team.id}
+              type="button"
               className={
                 team.id === selectedTeamId
                   ? TEAM_LIST_ITEM_ACTIVE_CLASS
@@ -167,6 +168,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
               }
               onClick={() => onSelectTeam(team.id)}
               aria-current={team.id === selectedTeamId ? "true" : undefined}
+              data-team-selected={team.id === selectedTeamId ? "true" : "false"}
               title={team.id}
             >
               <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>

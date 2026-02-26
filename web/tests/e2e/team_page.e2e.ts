@@ -178,7 +178,8 @@ async function selectTeamFromSidebar(
   const teamItem = page.locator(".teams-sidebar .team-item", { hasText: teamName }).first();
   await expect(teamItem).toBeVisible();
   const isSelected = async (): Promise<boolean> =>
-    (await teamItem.getAttribute("aria-current")) === "true";
+    (await teamItem.getAttribute("aria-current")) === "true" ||
+    (await teamItem.getAttribute("data-team-selected")) === "true";
   if (await isSelected()) {
     return;
   }
@@ -193,7 +194,13 @@ async function selectTeamFromSidebar(
       return;
     }
   }
-  await expect(teamItem).toHaveAttribute("aria-current", "true");
+  await teamItem.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  if (await isSelected()) {
+    return;
+  }
+  await expect(teamItem).toHaveAttribute("data-team-selected", "true");
 }
 
 async function mockTeamPageApis(
