@@ -786,6 +786,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/teams");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Team Mobile" })).toBeVisible();
 
@@ -976,6 +977,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/teams");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
   await page.getByRole("button", { name: "Overview" }).click();
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
@@ -1332,6 +1334,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   expect(createPayload).not.toBeNull();
   expect((createPayload as CreateTeamPayload).spec).toEqual(quantSpec);
 
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
   await page
     .getByPlaceholder("context_id (optional, auto-generated when empty)")
     .fill("quant-run-ctx");
@@ -1340,6 +1343,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
   await page.getByRole("button", { name: "Create Run", exact: true }).click();
 
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "quant-run-1"
   );
@@ -1424,8 +1428,8 @@ test("team debug run ops compiles main task preview and applies payload to creat
   );
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
@@ -1840,15 +1844,16 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   });
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Chat First Team" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
+  await expect(page.locator(".teams-sidebar .team-item.active", { hasText: "Chat First Team" })).toBeVisible();
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation_id: conversation-chat-1")).toBeVisible();
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
   expect(createRunRequests).toHaveLength(1);
   expect(createRunRequests[0]).toMatchObject({
@@ -2342,7 +2347,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   };
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Team Mailbox" })).toBeVisible();
+  await expect(page.locator(".teams-sidebar .team-item.active", { hasText: "Team Mailbox" })).toBeVisible();
 
   await page.locator(".tab", { hasText: "Mailbox" }).click();
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
@@ -2435,6 +2440,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   await page.goto("/teams");
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
@@ -2509,6 +2515,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   });
 
   await page.goto("/teams");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   const runFilter = page.getByLabel("Run status filter");
   await expect(runFilter).toHaveValue("all");
