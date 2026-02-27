@@ -2830,4 +2830,5 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
 
   await selectTeamFromSidebar(page, "Team B");
   await expect(runFilter).toHaveValue("failed");
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

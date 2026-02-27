@@ -1760,8 +1760,15 @@ export function TeamPage(props: TeamPageProps) {
       setMainTaskMessages([]);
       return;
     }
+    const matchesSelectedTeam = mainTasks.some(
+      (task) => task.id === mainTaskId && task.team_id === selectedTeamId
+    );
+    if (!matchesSelectedTeam) {
+      setMainTaskMessages([]);
+      return;
+    }
     void refreshMainTaskMessages(mainTaskId);
-  }, [refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
+  }, [mainTasks, refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
 
   const onCreateMainTask = useCallback(async () => {
     if (!selectedTeamId) {
