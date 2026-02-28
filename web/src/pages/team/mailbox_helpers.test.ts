@@ -6,6 +6,7 @@ import {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
+  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -82,6 +83,29 @@ describe("mailbox helpers", () => {
     });
     expect(buildMailboxConversationKey("worker", "leader")).toBe("leader::worker");
     expect(buildMailboxConversationKey("leader", "   ")).toBe("");
+  });
+
+  it("extracts unique mentions that match known team members", () => {
+    expect(
+      extractMentionedActorIds(
+        "please check @worker-1 and @worker-2, cc @worker-1 and @unknown",
+        ["leader", "worker-1", "worker-2"]
+      )
+    ).toEqual(["worker-1", "worker-2"]);
+    expect(extractMentionedActorIds("plain text", ["worker-1"])).toEqual([]);
+  });
+
+  it("builds chat payload with normalized mention ids", () => {
+    expect(
+      buildMailboxChatPayload("hello @worker-1", {
+        mention_actor_ids: ["worker-1", "worker-1", " ", "worker-2"],
+      })
+    ).toEqual({
+      type: "chat_message",
+      text: "hello @worker-1",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1", "worker-2"],
+    });
   });
 
   it("resolves max message id and unread counts for peer and self conversations", () => {

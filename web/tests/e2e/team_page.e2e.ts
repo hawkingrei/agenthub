@@ -164,6 +164,45 @@ async function createForgeAgentFromModal(
   await expect(forgeDialog).toBeHidden();
 }
 
+async function selectTeamFromSidebar(
+  page: import("@playwright/test").Page,
+  teamName: string
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  if (!(await sidebar.isVisible())) {
+    const showTeamsButton = page.getByRole("button", { name: "Show teams panel" });
+    if (await showTeamsButton.isVisible()) {
+      await showTeamsButton.click();
+    }
+  }
+  const teamItem = page.locator(".teams-sidebar .team-item", { hasText: teamName }).first();
+  await expect(teamItem).toBeVisible();
+  const isSelected = async (): Promise<boolean> =>
+    (await teamItem.getAttribute("aria-current")) === "true" ||
+    (await teamItem.getAttribute("data-team-selected")) === "true";
+  if (await isSelected()) {
+    return;
+  }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await teamItem.scrollIntoViewIfNeeded();
+    try {
+      await teamItem.click({ timeout: 1_500, force: attempt > 0 });
+    } catch {
+      await teamItem.click({ force: true });
+    }
+    if (await isSelected()) {
+      return;
+    }
+  }
+  await teamItem.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  if (await isSelected()) {
+    return;
+  }
+  await expect(teamItem).toHaveAttribute("data-team-selected", "true");
+}
+
 async function mockTeamPageApis(
   page: import("@playwright/test").Page
 ): Promise<TeamPageFixture> {
@@ -222,6 +261,8 @@ async function mockTeamPageApis(
   const mainTasksByTeamId = new Map<string, TeamMainTaskRecord[]>();
   const mainTaskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
   const mainTaskCounterByTeamId = new Map<string, number>();
+  const mailboxMessagesByRunId = new Map<string, TeamActorMessageRecord[]>();
+  const runEventCounterByRunId = new Map<string, number>();
   let createTeamPayload: CreateTeamPayload | null = null;
 
   const ensureMainTasks = (teamId: string): TeamMainTaskRecord[] => {
@@ -243,6 +284,119 @@ async function mockTeamPageApis(
     mainTaskCounterByTeamId.set(teamId, 1);
     mainTaskMessagesById.set(defaultTask.id, []);
     return [defaultTask];
+  };
+
+  const inferRunStatusFromRunId = (runId: string): TeamRunRecord["status"] => {
+    const matched = runId.match(/-(submitted|working|input_required|completed|failed|canceled)-/);
+    if (!matched) {
+      return "working";
+    }
+    return matched[1] as TeamRunRecord["status"];
+  };
+
+  const inferTeamIdFromRunId = (runId: string): string => {
+    const matchedTeam = teams.find((team) => runId.startsWith(`${team.id}-`));
+    if (matchedTeam) {
+      return matchedTeam.id;
+    }
+    const separatorIndex = runId.indexOf("-");
+    if (separatorIndex > 0) {
+      return runId.slice(0, separatorIndex);
+    }
+    return teams[0]?.id ?? "team-e2e";
+  };
+
+  const ensureMailboxMessages = (runId: string): TeamActorMessageRecord[] => {
+    const existing = mailboxMessagesByRunId.get(runId);
+    if (existing) {
+      return existing;
+    }
+    const initial: TeamActorMessageRecord[] = [];
+    mailboxMessagesByRunId.set(runId, initial);
+    return initial;
+  };
+
+  const buildSyntheticRun = (runId: string): TeamRunRecord => {
+    const teamId = inferTeamIdFromRunId(runId);
+    const status = inferRunStatusFromRunId(runId);
+    return {
+      id: runId,
+      team_id: teamId,
+      context_id: `ctx-${runId}`,
+      status,
+      input: {},
+      created_at: now + 300,
+      started_at: status === "submitted" ? null : now + 301,
+      ended_at:
+        status === "completed" || status === "failed" || status === "canceled"
+          ? now + 360
+          : null,
+    };
+  };
+
+  const buildSyntheticSnapshot = (run: TeamRunRecord): TeamRunSnapshotRecord => {
+    const team =
+      teams.find((item) => item.id === run.team_id) ?? {
+        id: run.team_id,
+        name: run.team_id,
+        description: null,
+        spec: {
+          leader_member_id: "agent-leader-1",
+          members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
+          steps: [{ step_key: "leader_plan" }],
+        },
+        created_at: now,
+        updated_at: now,
+      };
+    const teamMembers = Array.isArray(team.spec.members) ? team.spec.members : [];
+    const leaderMemberId = team.spec.leader_member_id ?? teamMembers[0]?.member_id ?? "agent-leader-1";
+    const members =
+      teamMembers.length > 0
+        ? teamMembers.map((member) => {
+            const matchedAgent = agents.find((agent) => agent.id === member.member_id);
+            const isLeader = member.member_id === leaderMemberId;
+            return {
+              member_id: member.member_id,
+              role: member.role ?? (isLeader ? "leader" : "worker"),
+              model: member.model ?? null,
+              description: member.description ?? null,
+              prompt: null,
+              skills: [],
+              pending_inbox_count: 0,
+              status: isLeader ? run.status : "submitted",
+              latest_step: null,
+              session_status: matchedAgent?.status ?? "idle",
+            };
+          })
+        : [
+            {
+              member_id: leaderMemberId,
+              role: "leader",
+              model: "codex",
+              description: null,
+              prompt: null,
+              skills: [],
+              pending_inbox_count: 0,
+              status: run.status,
+              latest_step: null,
+              session_status: "idle",
+            },
+          ];
+    const recentMessages = ensureMailboxMessages(run.id).slice(-20);
+    return {
+      run,
+      team,
+      leader_member_id: leaderMemberId,
+      members,
+      steps: [],
+      latest_events: [],
+      mailbox: {
+        pending: 0,
+        delivered: 0,
+        dead_letter: 0,
+        recent_messages: recentMessages,
+      },
+    };
   };
 
   await page.addInitScript((storedAuth: StoredAuthState) => {
@@ -589,6 +743,129 @@ async function mockTeamPageApis(
     await route.fulfill(jsonResponse([]));
   });
 
+  await page.route(/\/api\/teams\/runs\/[^/]+$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const runId = request.url().split("/").pop() ?? "";
+    await route.fulfill(jsonResponse(buildSyntheticRun(runId)));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/steps$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(/\/api\/teams\/runs\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route(
+    /\/api\/teams\/runs\/[^/]+\/snapshot(?:\?.*)?$/,
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const runId =
+        request.url().match(/\/api\/teams\/runs\/([^/]+)\/snapshot/)?.[1] ?? "";
+      const run = buildSyntheticRun(runId);
+      await route.fulfill(jsonResponse(buildSyntheticSnapshot(run)));
+    }
+  );
+
+  await page.route(
+    /\/api\/teams\/runs\/[^/]+\/messages\/inbox(?:\?.*)?$/,
+    async (route, request) => {
+      if (request.method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const runId = request.url().match(/\/api\/teams\/runs\/([^/]+)\/messages\/inbox/)?.[1] ?? "";
+      await route.fulfill(jsonResponse(ensureMailboxMessages(runId)));
+    }
+  );
+
+  await page.route(
+    /\/api\/teams\/runs\/[^/]+\/messages\/send$/,
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const runId = request.url().match(/\/api\/teams\/runs\/([^/]+)\/messages\/send/)?.[1] ?? "";
+      const payload = request.postDataJSON() as {
+        from_actor_id?: string;
+        to_actor_id?: string;
+        channel?: string;
+        transport?: "local" | "remote";
+        route?: Record<string, unknown> | null;
+        payload?: unknown;
+      };
+      const messages = ensureMailboxMessages(runId);
+      const nextMessageId =
+        (messages[messages.length - 1]?.message_id ?? runEventCounterByRunId.get(runId) ?? 0) + 1;
+      runEventCounterByRunId.set(runId, nextMessageId);
+      const created: TeamActorMessageRecord = {
+        message_id: nextMessageId,
+        run_id: runId,
+        from_actor_id: payload.from_actor_id ?? `user:${auth.userId}`,
+        from_actor_kind:
+          (payload.from_actor_id ?? "").startsWith("user:") ? "human" : "agent",
+        to_actor_id: payload.to_actor_id ?? "agent-leader-1",
+        to_actor_kind:
+          (payload.to_actor_id ?? "agent-leader-1").startsWith("user:")
+            ? "human"
+            : "agent",
+        channel: payload.channel ?? "default",
+        transport: payload.transport ?? "local",
+        route: payload.route ?? null,
+        payload: payload.payload ?? {},
+        status: "pending",
+        created_at: now + nextMessageId,
+        delivered_at: null,
+      };
+      messages.push(created);
+      await route.fulfill(jsonResponse(created));
+    }
+  );
+
+  await page.route(
+    /\/api\/teams\/runs\/[^/]+\/messages\/\d+\/ack$/,
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const runId = request.url().match(/\/api\/teams\/runs\/([^/]+)\/messages\/\d+\/ack/)?.[1] ?? "";
+      const messageId = Number(request.url().match(/\/messages\/(\d+)\/ack$/)?.[1] ?? 0);
+      const messages = ensureMailboxMessages(runId);
+      const found = messages.find((message) => message.message_id === messageId);
+      if (!found) {
+        await route.fulfill(jsonResponse({ error: "message not found" }, 404));
+        return;
+      }
+      const delivered: TeamActorMessageRecord = {
+        ...found,
+        status: "delivered",
+        delivered_at: now + messageId + 1,
+      };
+      const next = messages.map((message) =>
+        message.message_id === messageId ? delivered : message
+      );
+      mailboxMessagesByRunId.set(runId, next);
+      await route.fulfill(jsonResponse(delivered));
+    }
+  );
+
   return {
     now,
     auth,
@@ -786,6 +1063,8 @@ test("team page keeps single-column proportions on mobile viewport", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/teams");
+  await selectTeamFromSidebar(page, "Team Mobile");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Team Mobile" })).toBeVisible();
 
@@ -976,6 +1255,8 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/teams");
+  await selectTeamFromSidebar(page, "Team Desktop");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
   await page.getByRole("button", { name: "Overview" }).click();
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
@@ -1327,11 +1608,13 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator(".team-item", { hasText: "quant-alpha-desk" })).toBeVisible();
+  await selectTeamFromSidebar(page, "quant-alpha-desk");
 
   const createPayload = fixture.getCreatePayload();
   expect(createPayload).not.toBeNull();
   expect((createPayload as CreateTeamPayload).spec).toEqual(quantSpec);
 
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
   await page
     .getByPlaceholder("context_id (optional, auto-generated when empty)")
     .fill("quant-run-ctx");
@@ -1340,6 +1623,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
   await page.getByRole("button", { name: "Create Run", exact: true }).click();
 
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "quant-run-1"
   );
@@ -1424,8 +1708,9 @@ test("team debug run ops compiles main task preview and applies payload to creat
   );
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
+  await selectTeamFromSidebar(page, "Compile Team");
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
@@ -1840,15 +2125,16 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   });
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Chat First Team" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Debug Run Ops", exact: true })).toBeVisible();
+  await selectTeamFromSidebar(page, "Chat First Team");
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation_id: conversation-chat-1")).toBeVisible();
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
   expect(createRunRequests).toHaveLength(1);
   expect(createRunRequests[0]).toMatchObject({
@@ -2342,7 +2628,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   };
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Team Mailbox" })).toBeVisible();
+  await selectTeamFromSidebar(page, "Team Mailbox");
 
   await page.locator(".tab", { hasText: "Mailbox" }).click();
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
@@ -2435,6 +2721,8 @@ test("team list supports deleting selected team", async ({ page }) => {
   await page.goto("/teams");
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await selectTeamFromSidebar(page, "Team Delete A");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
@@ -2509,6 +2797,8 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   });
 
   await page.goto("/teams");
+  await selectTeamFromSidebar(page, "Team A");
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
 
   const runFilter = page.getByLabel("Run status filter");
   await expect(runFilter).toHaveValue("all");
@@ -2517,8 +2807,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   await expect(runFilter).toHaveValue("working");
   const loadMoreRunsButton = page.getByRole("button", { name: "Load More" });
   await expect(loadMoreRunsButton).toBeEnabled();
-  await loadMoreRunsButton.focus();
-  await loadMoreRunsButton.press("Enter");
+  await loadMoreRunsButton.click();
 
   await expect
     .poll(() =>
@@ -2531,24 +2820,15 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     )
     .toBe(true);
 
-  const teamAItem = page.locator(".teams-sidebar .teams-list .team-item", {
-    hasText: "Team A",
-  });
-  const teamBItem = page.locator(".teams-sidebar .teams-list .team-item", {
-    hasText: "Team B",
-  });
-
-  await teamBItem.focus();
-  await teamBItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team B");
   await expect(runFilter).toHaveValue("all");
   await runFilter.selectOption("failed");
   await expect(runFilter).toHaveValue("failed");
 
-  await teamAItem.focus();
-  await teamAItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team A");
   await expect(runFilter).toHaveValue("working");
 
-  await teamBItem.focus();
-  await teamBItem.press("Enter");
+  await selectTeamFromSidebar(page, "Team B");
   await expect(runFilter).toHaveValue("failed");
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

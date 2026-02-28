@@ -3,6 +3,8 @@ use std::collections::HashSet;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
+const DEFAULT_HISTORY_CLEANUP_INTERVAL_SECONDS: u64 = 300;
+const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -66,6 +68,8 @@ pub struct PushConfig {
 pub struct HistoryConfig {
     pub event_retention_days: Option<u32>,
     pub vacuum_on_cleanup: Option<bool>,
+    pub cleanup_interval_seconds: Option<u64>,
+    pub delete_batch_size: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -231,6 +235,24 @@ impl AppConfig {
             .as_ref()
             .and_then(|history| history.vacuum_on_cleanup)
             .unwrap_or(false)
+    }
+
+    pub fn history_cleanup_interval_seconds(&self) -> u64 {
+        let configured = self
+            .history
+            .as_ref()
+            .and_then(|history| history.cleanup_interval_seconds)
+            .unwrap_or(DEFAULT_HISTORY_CLEANUP_INTERVAL_SECONDS);
+        configured.clamp(10, 24 * 60 * 60)
+    }
+
+    pub fn history_delete_batch_size(&self) -> u32 {
+        let configured = self
+            .history
+            .as_ref()
+            .and_then(|history| history.delete_batch_size)
+            .unwrap_or(DEFAULT_HISTORY_DELETE_BATCH_SIZE);
+        configured.clamp(100, 200_000)
     }
 
     pub fn internal_grpc_enabled(&self) -> bool {
@@ -481,6 +503,8 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.history_event_retention_days(), Some(5));
         assert!(!config.history_vacuum_on_cleanup());
+        assert_eq!(config.history_cleanup_interval_seconds(), 300);
+        assert_eq!(config.history_delete_batch_size(), 10_000);
     }
 
     #[test]
@@ -489,11 +513,15 @@ mod tests {
             history: Some(HistoryConfig {
                 event_retention_days: Some(14),
                 vacuum_on_cleanup: Some(true),
+                cleanup_interval_seconds: Some(45),
+                delete_batch_size: Some(5000),
             }),
             ..Default::default()
         };
         assert_eq!(config.history_event_retention_days(), Some(14));
         assert!(config.history_vacuum_on_cleanup());
+        assert_eq!(config.history_cleanup_interval_seconds(), 45);
+        assert_eq!(config.history_delete_batch_size(), 5000);
     }
 
     #[test]
@@ -502,9 +530,13 @@ mod tests {
             history: Some(HistoryConfig {
                 event_retention_days: Some(0),
                 vacuum_on_cleanup: Some(false),
+                cleanup_interval_seconds: Some(0),
+                delete_batch_size: Some(1),
             }),
             ..Default::default()
         };
         assert_eq!(config.history_event_retention_days(), None);
+        assert_eq!(config.history_cleanup_interval_seconds(), 10);
+        assert_eq!(config.history_delete_batch_size(), 100);
     }
 }

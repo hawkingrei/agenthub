@@ -19,10 +19,6 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "../agent_presets";
-import {
-  StatusBadge,
-  resolveTeamRunStatusTone,
-} from "../components/status_badge";
 import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
@@ -33,16 +29,16 @@ import {
 } from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
+import { TeamMemberAcpPanel } from "./team_member_acp_panel";
+import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamMemberStatusStrip } from "./team_member_status_strip";
-import {
-  TeamMainTaskConversationMode,
-  TeamMainTaskPanel,
-} from "./team_main_task_panel";
+import { TeamMainTaskPanel } from "./team_main_task_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
+import { TeamTabsBar } from "./team_tabs_bar";
 import {
   buildTeamForgeCleanupWarning,
   buildLeaderForgeDefaultWorkdir,
@@ -67,6 +63,7 @@ import {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
+  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -78,6 +75,7 @@ import {
   TEAM_SKILL_OPTIONS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
+  buildTeamMemberLiveStates,
   buildDefaultWorkerDraft,
   createInitialTeamDraftState,
   parseTeamSpecMembers,
@@ -116,6 +114,7 @@ import {
   MAILBOX_TEMPLATE_OPTIONS,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
   TEAM_RUN_PAGE_LIMIT,
+  tabRequiresActiveRun,
   createInitialTeamCreateState,
   reduceTeamControlState,
   reduceTeamCreateState,
@@ -148,12 +147,8 @@ import {
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_TAB_BAR_CLASS,
-  TEAM_TAB_BUTTON_ACTIVE_CLASS,
-  TEAM_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -161,6 +156,7 @@ export {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
+  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -513,11 +509,6 @@ export function TeamPage(props: TeamPageProps) {
   const [mainTaskMessagesLoading, setMainTaskMessagesLoading] = useState(false);
   const [newMainTaskTitle, setNewMainTaskTitle] = useState("");
   const [newMainTaskTopic, setNewMainTaskTopic] = useState("");
-  const [newMainTaskConversationMode, setNewMainTaskConversationMode] =
-    useState<TeamMainTaskConversationMode>("to_leader");
-  const [mainTaskMessageRoute, setMainTaskMessageRoute] =
-    useState<TeamMainTaskConversationMode>("to_leader");
-  const [mainTaskMessageTargetMemberId, setMainTaskMessageTargetMemberId] = useState("");
   const [mainTaskMessageDraft, setMainTaskMessageDraft] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
@@ -633,6 +624,12 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  const selectedTeamMemberIds = useMemo(() => {
+    if (!selectedTeam) {
+      return [];
+    }
+    return parseTeamSpecMembers(selectedTeam.spec).map((member) => member.member_id);
+  }, [selectedTeam]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -643,8 +640,6 @@ export function TeamPage(props: TeamPageProps) {
     setMainTaskMessagesLoading(false);
     setNewMainTaskTitle("");
     setNewMainTaskTopic("");
-    setMainTaskMessageRoute("to_leader");
-    setMainTaskMessageTargetMemberId("");
     setMainTaskMessageDraft("");
   }, [selectedTeamId]);
   const teamSpecMemberIds = useMemo(() => {
@@ -687,6 +682,20 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberStatusByTeamId.get(selectedTeam.id) ?? [];
   }, [selectedTeam, teamMemberStatusByTeamId]);
+  const selectedTeamSnapshotMembers = useMemo(() => {
+    if (!selectedTeam || !snapshot) {
+      return undefined;
+    }
+    if (snapshot.team.id !== selectedTeam.id) {
+      return undefined;
+    }
+    return snapshot.members;
+  }, [selectedTeam, snapshot]);
+  const selectedTeamMemberLiveStates = useMemo(
+    () =>
+      buildTeamMemberLiveStates(selectedTeamMemberStatuses, selectedTeamSnapshotMembers),
+    [selectedTeamMemberStatuses, selectedTeamSnapshotMembers]
+  );
   const teamForgeAgents = useMemo(
     () => selectTeamForgeAgents(agents, teamForgeAgentIds),
     [agents, teamForgeAgentIds]
@@ -1691,10 +1700,6 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
-  const mainTaskMemberOptions = useMemo(
-    () => (selectedTeam ? parseTeamSpecMembers(selectedTeam.spec) : []),
-    [selectedTeam]
-  );
   const selectedConversation = useMemo(
     () => mainTasks.find((task) => task.id === selectedMainTaskId) ?? null,
     [mainTasks, selectedMainTaskId]
@@ -1761,8 +1766,15 @@ export function TeamPage(props: TeamPageProps) {
       setMainTaskMessages([]);
       return;
     }
+    const matchesSelectedTeam = mainTasks.some(
+      (task) => task.id === mainTaskId && task.team_id === selectedTeamId
+    );
+    if (!matchesSelectedTeam) {
+      setMainTaskMessages([]);
+      return;
+    }
     void refreshMainTaskMessages(mainTaskId);
-  }, [refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
+  }, [mainTasks, refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
 
   const onCreateMainTask = useCallback(async () => {
     if (!selectedTeamId) {
@@ -1780,7 +1792,7 @@ export function TeamPage(props: TeamPageProps) {
       const created = await api.createTeamMainTask(props.token, selectedTeamId, {
         title,
         created_by_actor_id: "user",
-        conversation_mode: newMainTaskConversationMode,
+        conversation_mode: "group_chat",
         topic: newMainTaskTopic.trim() || undefined,
         context: { source: "team_workbench" },
       });
@@ -1792,8 +1804,6 @@ export function TeamPage(props: TeamPageProps) {
       setMainTaskMessages([]);
       setNewMainTaskTitle("");
       setNewMainTaskTopic("");
-      setMainTaskMessageRoute("to_leader");
-      setMainTaskMessageTargetMemberId("");
       setMainTaskMessageDraft("");
       await refreshMainTaskMessages(created.task.id);
     } catch (err) {
@@ -1802,7 +1812,6 @@ export function TeamPage(props: TeamPageProps) {
       setBusy(null);
     }
   }, [
-    newMainTaskConversationMode,
     newMainTaskTitle,
     newMainTaskTopic,
     props.token,
@@ -1825,19 +1834,16 @@ export function TeamPage(props: TeamPageProps) {
       setError("Conversation message is required");
       return;
     }
-    const targetMemberId = mainTaskMessageTargetMemberId.trim();
-    if (mainTaskMessageRoute === "to_member" && !targetMemberId) {
-      setError("Select a member target for route=to_member");
-      return;
-    }
     setBusy("send-main-task-message");
     setError(null);
     try {
+      const mentionActorIds = extractMentionedActorIds(text, selectedTeamMemberIds);
       const message = await api.sendTeamMainTaskMessage(props.token, selectedTeamId, mainTaskId, {
         from_actor_id: "user",
-        to_actor_id: mainTaskMessageRoute === "to_member" ? targetMemberId : undefined,
-        route: mainTaskMessageRoute,
-        payload: buildMailboxChatPayload(text),
+        route: "group_chat",
+        payload: buildMailboxChatPayload(text, {
+          mention_actor_ids: mentionActorIds,
+        }),
       });
       setMainTaskMessages((prev) =>
         [...prev, message].sort((left, right) => left.message_id - right.message_id)
@@ -1850,10 +1856,9 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [
     mainTaskMessageDraft,
-    mainTaskMessageRoute,
-    mainTaskMessageTargetMemberId,
     props.token,
     selectedMainTaskId,
+    selectedTeamMemberIds,
     selectedTeamId,
   ]);
 
@@ -2008,7 +2013,6 @@ export function TeamPage(props: TeamPageProps) {
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
   const canCompileMainTask = busy !== "compile-main-task" && selectedConversation !== null;
-  const panelRefreshButtonClassName = TEAM_PANEL_REFRESH_BUTTON_CLASS;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const teamSectionCardClassName =
     "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
@@ -2018,8 +2022,6 @@ export function TeamPage(props: TeamPageProps) {
   const teamSectionTitleClassName = "text-base font-semibold text-ui-text-primary";
   const teamSectionBodyTextClassName = "mt-2 text-sm text-ui-text-muted";
   const teamSectionHintTextClassName = "mt-2 text-xs text-ui-text-muted";
-  const teamRunMetaItemClassName =
-    "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
   const teamDebugTabsClassName =
     "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
   const teamDebugTabBaseClassName =
@@ -2057,6 +2059,15 @@ export function TeamPage(props: TeamPageProps) {
   const modalFieldClassName =
     "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+  const teamRunMetaItemClassName =
+    "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
+  const tabNeedsActiveRun = tabRequiresActiveRun(tab);
+  const showRunContextLoading = tab !== "runs" && tabNeedsActiveRun && runsLoading && !activeRunForSelectedTeam;
+  const showNoActiveRunNotice = tab !== "runs" && tabNeedsActiveRun && !runsLoading && !activeRunForSelectedTeam;
+  const onRefreshActiveRun = useCallback(() => {
+    if (!activeRunIdForSelectedTeam) return;
+    void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
+  }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onRefreshMainTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
@@ -2149,89 +2160,87 @@ export function TeamPage(props: TeamPageProps) {
         onNewTaskTitleChange={setNewMainTaskTitle}
         newTaskTopic={newMainTaskTopic}
         onNewTaskTopicChange={setNewMainTaskTopic}
-        newTaskConversationMode={newMainTaskConversationMode}
-        onNewTaskConversationModeChange={setNewMainTaskConversationMode}
         onCreateTask={onCreateMainTask}
-        messageRoute={mainTaskMessageRoute}
-        onMessageRouteChange={setMainTaskMessageRoute}
-        messageTargetMemberId={mainTaskMessageTargetMemberId}
-        onMessageTargetMemberIdChange={setMainTaskMessageTargetMemberId}
         messageDraft={mainTaskMessageDraft}
         onMessageDraftChange={setMainTaskMessageDraft}
         onSendMessage={onSendMainTaskMessage}
         onRefreshMessages={refreshMainTaskMessages}
         messages={mainTaskMessages}
+        agentMessages={mergedMailboxMessages}
+        memberLiveStates={selectedTeamMemberLiveStates}
         messagesLoading={mainTaskMessagesLoading}
         busy={busy}
-        memberOptions={mainTaskMemberOptions}
         formatTs={formatTs}
         toPrettyJson={toPrettyJson}
       />
-      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-        <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
-        <p className={teamSectionBodyTextClassName}>
-          Compile chat-approved conversation into a deterministic run payload preview.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            className={panelPrimaryButtonClassName}
-            onClick={onCompileMainTaskRunPreview}
-            disabled={!canCompileMainTask}
-          >
-            Compile Preview
-          </button>
-          <span className="mono text-xs text-ui-text-muted">
-            {selectedConversation
-              ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
-              : "selected_conversation=-"}
-          </span>
-        </div>
-        <input
-          className={`${panelInputClassName} mt-2`}
-          placeholder="context_id override (optional)"
-          value={compilePreviewContextId}
-          onChange={(event) => setCompilePreviewContextId(event.target.value)}
-        />
-        {compiledRunPreview ? (
-          <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
-            <div className="mono text-xs text-ui-text-secondary">
-              <div>
-                <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
-              </div>
-              <div>
-                <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={panelSecondaryButtonClassName}
-                onClick={onUseCompiledRunPayload}
-              >
-                Use Payload in Create Run
-              </button>
-              <button
-                type="button"
-                className={panelPrimaryButtonClassName}
-                onClick={onCreateRunFromCompiledPreview}
-                disabled={busy === "create-run"}
-              >
-                Create Run from Preview
-              </button>
-            </div>
-            <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
-              {toPrettyJson({
-                conversation_id: compiledRunPreview.conversation_id,
-                run_payload: compiledRunPreview.run_payload,
-              })}
-            </pre>
-          </div>
-        ) : (
-          <p className={teamSectionHintTextClassName}>
-            Select a conversation to preview compiled run payload.
-          </p>
-        )}
+    </div>
+  );
+
+  const compilePreviewPanel = (
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+      <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
+      <p className={teamSectionBodyTextClassName}>
+        Internal debug entry for compiling conversation into deterministic run payload preview.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          className={panelPrimaryButtonClassName}
+          onClick={onCompileMainTaskRunPreview}
+          disabled={!canCompileMainTask}
+        >
+          Compile Preview
+        </button>
+        <span className="mono text-xs text-ui-text-muted">
+          {selectedConversation
+            ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
+            : "selected_conversation=-"}
+        </span>
       </div>
+      <input
+        className={`${panelInputClassName} mt-2`}
+        placeholder="context_id override (optional)"
+        value={compilePreviewContextId}
+        onChange={(event) => setCompilePreviewContextId(event.target.value)}
+      />
+      {compiledRunPreview ? (
+        <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
+          <div className="mono text-xs text-ui-text-secondary">
+            <div>
+              <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
+            </div>
+            <div>
+              <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={panelSecondaryButtonClassName}
+              onClick={onUseCompiledRunPayload}
+            >
+              Use Payload in Create Run
+            </button>
+            <button
+              type="button"
+              className={panelPrimaryButtonClassName}
+              onClick={onCreateRunFromCompiledPreview}
+              disabled={busy === "create-run"}
+            >
+              Create Run from Preview
+            </button>
+          </div>
+          <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
+            {toPrettyJson({
+              conversation_id: compiledRunPreview.conversation_id,
+              run_payload: compiledRunPreview.run_payload,
+            })}
+          </pre>
+        </div>
+      ) : (
+        <p className={teamSectionHintTextClassName}>
+          Select a conversation to preview compiled run payload.
+        </p>
+      )}
     </div>
   );
 
@@ -2364,6 +2373,7 @@ export function TeamPage(props: TeamPageProps) {
           </button>
         </div>
       </div>
+      {compilePreviewPanel}
     </div>
   );
 
@@ -2447,6 +2457,9 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeamId={selectedTeamId}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             onSelectTeam={(teamId) => {
+              if (teamId !== selectedTeamId) {
+                setActiveRunId(null);
+              }
               setSelectedTeamId(teamId);
               setRunLookupId("");
             }}
@@ -2467,31 +2480,51 @@ export function TeamPage(props: TeamPageProps) {
 
           {selectedTeam && (
             <>
-              <TeamMemberStatusStrip members={selectedTeamMemberStatuses} />
+              <TeamMemberStatusStrip members={selectedTeamMemberLiveStates} />
+              <TeamTabsBar tab={tab} onTabChange={setTab} />
 
-              <TeamRunPanel
-                selectedTeam={selectedTeam}
-                busy={busy}
-                onDeleteTeam={onDeleteTeam}
-                onStartTeam={onCreateRun}
-                runStatusFilter={runStatusFilter}
-                runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
-                onRunStatusFilterChange={onRunStatusFilterChange}
-                onRefreshRuns={onRefreshRuns}
-                runsLoading={runsLoading}
-                visibleRuns={visibleRuns}
-                activeRunId={activeRunIdForSelectedTeam}
-                onActiveRunChange={setActiveRunId}
-                isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
-                activeRun={activeRunForSelectedTeam}
-                totalLoadedRunsForTeam={totalLoadedRunsForTeam}
-                pageLimit={TEAM_RUN_PAGE_LIMIT}
-                runsHasMore={runsHasMore}
-                selectedTeamId={selectedTeamId}
-                onLoadMoreRuns={onLoadMoreRuns}
-              />
+              {tab === "runs" && (
+                <TeamRunPanel
+                  selectedTeam={selectedTeam}
+                  busy={busy}
+                  onDeleteTeam={onDeleteTeam}
+                  onStartTeam={onCreateRun}
+                  runStatusFilter={runStatusFilter}
+                  runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
+                  onRunStatusFilterChange={onRunStatusFilterChange}
+                  onRefreshRuns={onRefreshRuns}
+                  runsLoading={runsLoading}
+                  visibleRuns={visibleRuns}
+                  activeRunId={activeRunIdForSelectedTeam}
+                  onActiveRunChange={setActiveRunId}
+                  isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
+                  activeRun={activeRunForSelectedTeam}
+                  totalLoadedRunsForTeam={totalLoadedRunsForTeam}
+                  pageLimit={TEAM_RUN_PAGE_LIMIT}
+                  runsHasMore={runsHasMore}
+                  selectedTeamId={selectedTeamId}
+                  onLoadMoreRuns={onLoadMoreRuns}
+                />
+              )}
 
-              {runsLoading && !activeRunForSelectedTeam && (
+              {tab !== "runs" && activeRunForSelectedTeam && !runsLoading && (
+                <TeamActiveRunPanel
+                  run={activeRunForSelectedTeam}
+                  busy={busy}
+                  canResumeRun={canResumeActiveRun}
+                  canRestartRun={canRestartActiveRun}
+                  onRefresh={onRefreshActiveRun}
+                  onCancel={onCancelRun}
+                  onResume={onResumeRun}
+                  onRestart={onRestartRun}
+                  formatTs={formatTs}
+                  cardClassName={teamSectionCardClassName}
+                  titleClassName={teamSectionTitleClassName}
+                  metaItemClassName={teamRunMetaItemClassName}
+                />
+              )}
+
+              {showRunContextLoading && (
                 <div className={teamSectionCardClassName}>
                   <p className="text-sm text-ui-text-muted">
                     Loading run context for selected team...
@@ -2499,438 +2532,367 @@ export function TeamPage(props: TeamPageProps) {
                 </div>
               )}
 
-              {!activeRunForSelectedTeam && !runsLoading && (
-                <>
-                  <div className={teamSectionCardClassName}>
-                    <h3 className={teamSectionTitleClassName}>Conversation</h3>
-                    <p className={teamSectionBodyTextClassName}>
-                      No active run is selected. Start with conversation planning before launching
-                      a run.
-                    </p>
-                    <div className="mt-3">{conversationPanel}</div>
+              {showNoActiveRunNotice && (
+                <div className={teamSectionCardClassName}>
+                  <h3 className={teamSectionTitleClassName}>No Active Run</h3>
+                  <p className={teamSectionBodyTextClassName}>
+                    Select an existing run or start one in the Runs tab before opening this panel.
+                  </p>
+                  <div className="mt-3">
+                    <button
+                      className={panelSecondaryButtonClassName}
+                      type="button"
+                      onClick={() => setTab("runs")}
+                    >
+                      Go to Runs
+                    </button>
                   </div>
-                  <div className={teamSectionCardClassName}>
-                    <h3 className={teamSectionTitleClassName}>Debug Run Ops</h3>
-                    <p className={teamSectionBodyTextClassName}>
-                      Internal operations for manually creating or loading runs.
-                    </p>
-                    <div className="mt-3">{runOpsPanel}</div>
-                  </div>
-                </>
+                </div>
               )}
 
-              {activeRunForSelectedTeam && !runsLoading && (
-                <>
-                  <div className={teamSectionCardClassName}>
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <h3 className={teamSectionTitleClassName}>Active Run</h3>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          className={panelRefreshButtonClassName}
-                          title="Refresh active run"
-                          aria-label="Refresh active run"
-                          onClick={() => {
-                            if (!activeRunIdForSelectedTeam) return;
-                            void refreshRun(activeRunIdForSelectedTeam).catch((err) =>
-                              setError(parseErrorMessage(err))
-                            );
-                          }}
-                        >
-                          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                          <span>Refresh</span>
-                        </button>
-                        <button
-                          className={panelSecondaryButtonClassName}
-                          onClick={onCancelRun}
-                          disabled={
-                            busy === "cancel-run" ||
-                            activeRunForSelectedTeam.status === "canceled"
-                          }
-                        >
-                          Cancel Run
-                        </button>
-                        <button
-                          className={panelSecondaryButtonClassName}
-                          onClick={onResumeRun}
-                          disabled={busy === "resume-run" || !canResumeActiveRun}
-                          title={
-                            canResumeActiveRun
-                              ? "Resume a failed/canceled run"
-                              : "Resume is available for failed/canceled runs"
-                          }
-                        >
-                          Resume Run
-                        </button>
-                        <button
-                          className={panelSecondaryButtonClassName}
-                          onClick={onRestartRun}
-                          disabled={busy === "restart-run" || !canRestartActiveRun}
-                          title={
-                            canRestartActiveRun
-                              ? "Create a fresh run from the same context/input"
-                              : "Restart is available for completed/failed/canceled runs"
-                          }
-                        >
-                          Restart Run
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid min-w-0 gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>ID:</strong> <code>{activeRunForSelectedTeam.id}</code>
-                      </span>
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>Status:</strong>{" "}
-                        <StatusBadge
-                          label={activeRunForSelectedTeam.status}
-                          tone={resolveTeamRunStatusTone(activeRunForSelectedTeam.status)}
-                          className="team-status"
-                          title={`run status: ${activeRunForSelectedTeam.status}`}
-                        />
-                      </span>
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>Context:</strong> {activeRunForSelectedTeam.context_id}
-                      </span>
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>Created:</strong> {formatTs(activeRunForSelectedTeam.created_at)}
-                      </span>
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>Started:</strong> {formatTs(activeRunForSelectedTeam.started_at)}
-                      </span>
-                      <span className={teamRunMetaItemClassName}>
-                        <strong>Ended:</strong> {formatTs(activeRunForSelectedTeam.ended_at)}
-                      </span>
-                    </div>
-                  </div>
+              {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
+                <div className="flex min-w-0 flex-col gap-3">
+                  {tab === "conversation" && (
+                    <>
+                      {!activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <p className={teamSectionBodyTextClassName}>
+                            No active run is selected. Start with conversation planning before
+                            launching a run.
+                          </p>
+                        </div>
+                      )}
+                      {conversationPanel}
+                    </>
+                  )}
 
-                  <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`}>
-                    <button
-                      className={
-                        tab === "conversation" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS
+                  {tab === "agent_acp" && activeRunForSelectedTeam && (
+                    <TeamMemberAcpPanel
+                      snapshot={snapshot}
+                      selectedMemberId={selectedMemberId}
+                      onSelectedMemberIdChange={setSelectedMemberId}
+                      selectedMemberSnapshot={selectedMemberSnapshot}
+                      memberEvents={memberEvents}
+                      memberEventsHasMore={memberEventsHasMore}
+                      memberEventsLoading={memberEventsLoading}
+                      eventsLoading={eventsLoading}
+                      oldestMemberEventId={oldestMemberEventId}
+                      onRefresh={onRefreshMemberConsole}
+                      onLoadOlder={onLoadOlderMemberConsole}
+                    />
+                  )}
+
+                  {tab === "overview" && activeRunForSelectedTeam && (
+                    <TeamOverviewPanel
+                      snapshot={snapshot}
+                      snapshotLoading={snapshotLoading}
+                      onRefreshSnapshot={onRefreshOverviewSnapshot}
+                      selectedMemberId={selectedMemberId}
+                      onOpenMailboxForMember={onOpenMailboxForMember}
+                    />
+                  )}
+
+                  {tab === "events" && activeRunForSelectedTeam && (
+                    <TeamEventsPanel
+                      eventsAutoRefresh={eventsAutoRefresh}
+                      onEventsAutoRefreshChange={setEventsAutoRefresh}
+                      onRefreshEvents={onRefreshEventsPanel}
+                      onLoadOlderEvents={onLoadOlderEventsPanel}
+                      eventsLoading={eventsLoading}
+                      previewMode={previewMode}
+                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                      eventsHasMore={eventsHasMore}
+                      oldestEventId={oldestEventId}
+                      displayedRunEvents={displayedRunEvents}
+                      formatTs={formatTs}
+                      toPrettyJson={toPrettyJson}
+                    />
+                  )}
+
+                  {tab === "steps" && activeRunForSelectedTeam && (
+                    <TeamStepsPanel
+                      mode="list_only"
+                      steps={steps}
+                      onRefreshSteps={async () => {
+                        await refreshSteps(activeRunForSelectedTeam.id);
+                      }}
+                      stepKey={stepKey}
+                      onStepKeyChange={setStepKey}
+                      stepMemberId={stepMemberId}
+                      onStepMemberIdChange={setStepMemberId}
+                      stepDependsOn={stepDependsOn}
+                      onStepDependsOnChange={setStepDependsOn}
+                      stepInput={stepInput}
+                      onStepInputChange={setStepInput}
+                      onSubmitStep={onSubmitStep}
+                      busy={busy}
+                      selectedStepId={selectedStepId}
+                      onSelectedStepIdChange={setSelectedStepId}
+                      stepAction={stepAction}
+                      onStepActionChange={setStepAction}
+                      stepRemoteTaskId={stepRemoteTaskId}
+                      onStepRemoteTaskIdChange={setStepRemoteTaskId}
+                      stepOutput={stepOutput}
+                      onStepOutputChange={setStepOutput}
+                      stepFailText={stepFailText}
+                      onStepFailTextChange={setStepFailText}
+                      stepInputReason={stepInputReason}
+                      onStepInputReasonChange={setStepInputReason}
+                      stepInputRequiredPayload={stepInputRequiredPayload}
+                      onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+                      stepResumePayload={stepResumePayload}
+                      onStepResumePayloadChange={setStepResumePayload}
+                      onApplyStepAction={onApplyStepAction}
+                    />
+                  )}
+
+                  {tab === "mailbox" && activeRunForSelectedTeam && (
+                    <TeamMailboxPanel
+                      mode="full"
+                      snapshot={snapshot}
+                      selectedMemberId={selectedMemberId}
+                      unreadByMemberId={unreadByMemberId}
+                      onSelectMember={setSelectedMemberId}
+                      chatActors={chatActors}
+                      chatStickToBottom={chatStickToBottom}
+                      chatMessagesRef={chatMessagesRef}
+                      onConversationScroll={onConversationScroll}
+                      onJumpToBottom={onJumpConversationToBottom}
+                      conversationMessages={conversationMessages}
+                      toPrettyJson={toPrettyJson}
+                      formatTs={formatTs}
+                      busy={busy}
+                      onAckMessage={onAckMessage}
+                      chatDraft={chatDraft}
+                      onChatDraftChange={setChatDraft}
+                      onSendChatMessage={onSendChatMessage}
+                      msgFromActorId={msgFromActorId}
+                      onMsgFromActorIdChange={setMsgFromActorId}
+                      msgToActorId={msgToActorId}
+                      onMsgToActorIdChange={setMsgToActorId}
+                      msgChannel={msgChannel}
+                      onMsgChannelChange={setMsgChannel}
+                      msgTransport={msgTransport}
+                      onMsgTransportChange={setMsgTransport}
+                      msgRoute={msgRoute}
+                      onMsgRouteChange={setMsgRoute}
+                      mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+                      msgTemplate={msgTemplate}
+                      onMsgTemplateChange={(value) =>
+                        setMsgTemplate(value as MailboxTemplateKey)
                       }
-                      onClick={() => setTab("conversation")}
-                    >
-                      Conversation
-                    </button>
-                    <button
-                      className={tab === "overview" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
-                      onClick={() => setTab("overview")}
-                    >
-                      Overview
-                    </button>
-                    <button
-                      className={tab === "events" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
-                      onClick={() => setTab("events")}
-                    >
-                      Events
-                    </button>
-                    <button
-                      className={tab === "steps" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
-                      onClick={() => setTab("steps")}
-                    >
-                      Steps
-                    </button>
-                    <button
-                      className={tab === "mailbox" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
-                      onClick={() => setTab("mailbox")}
-                    >
-                      Mailbox
-                    </button>
-                    <button
-                      className={
-                        tab === "member_console"
-                          ? TEAM_TAB_BUTTON_ACTIVE_CLASS
-                          : TEAM_TAB_BUTTON_IDLE_CLASS
-                      }
-                      onClick={() => setTab("member_console")}
-                    >
-                      Member Console
-                    </button>
-                    <button
-                      className={tab === "debug" ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
-                      onClick={() => setTab("debug")}
-                    >
-                      Debug
-                    </button>
-                  </div>
+                      onApplyMessageTemplate={onApplyMessageTemplate}
+                      msgPayload={msgPayload}
+                      onMsgPayloadChange={setMsgPayload}
+                      msgIdempotencyKey={msgIdempotencyKey}
+                      onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+                      onSendMessage={onSendMessage}
+                      inboxActorId={inboxActorId}
+                      onInboxActorIdChange={setInboxActorId}
+                      inboxLimit={inboxLimit}
+                      onInboxLimitChange={setInboxLimit}
+                      inboxAfterId={inboxAfterId}
+                      onInboxAfterIdChange={setInboxAfterId}
+                      inboxIncludeDelivered={inboxIncludeDelivered}
+                      onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+                      onRefreshInbox={onRefreshInbox}
+                    />
+                  )}
 
-                  <div className="flex min-w-0 flex-col gap-3">
-                    {tab === "conversation" && conversationPanel}
+                  {tab === "member_console" && activeRunForSelectedTeam && (
+                    <TeamMemberConsolePanel
+                      snapshot={snapshot}
+                      selectedMemberId={selectedMemberId}
+                      onSelectedMemberIdChange={setSelectedMemberId}
+                      selectedMemberSnapshot={selectedMemberSnapshot}
+                      memberEvents={memberEvents}
+                      memberEventsHasMore={memberEventsHasMore}
+                      memberEventsLoading={memberEventsLoading}
+                      eventsLoading={eventsLoading}
+                      oldestMemberEventId={oldestMemberEventId}
+                      displayedRunEvents={displayedRunEvents}
+                      previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
+                      memberDiscoveryCard={selectedMemberDiscoveryCard}
+                      memberDiscoveryCardLoading={selectedMemberDiscoveryCardLoading}
+                      onRefresh={onRefreshMemberConsole}
+                      onLoadOlder={onLoadOlderMemberConsole}
+                      toPrettyJson={toPrettyJson}
+                      formatTs={formatTs}
+                    />
+                  )}
 
-                    {tab === "overview" && (
-                      <TeamOverviewPanel
-                        snapshot={snapshot}
-                        snapshotLoading={snapshotLoading}
-                        onRefreshSnapshot={onRefreshOverviewSnapshot}
-                        selectedMemberId={selectedMemberId}
-                        onOpenMailboxForMember={onOpenMailboxForMember}
-                      />
-                    )}
-
-                    {tab === "events" && (
-                      <TeamEventsPanel
-                        eventsAutoRefresh={eventsAutoRefresh}
-                        onEventsAutoRefreshChange={setEventsAutoRefresh}
-                        onRefreshEvents={onRefreshEventsPanel}
-                        onLoadOlderEvents={onLoadOlderEventsPanel}
-                        eventsLoading={eventsLoading}
-                        previewMode={previewMode}
-                        previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
-                        eventsHasMore={eventsHasMore}
-                        oldestEventId={oldestEventId}
-                        displayedRunEvents={displayedRunEvents}
-                        formatTs={formatTs}
-                        toPrettyJson={toPrettyJson}
-                      />
-                    )}
-
-                    {tab === "steps" && (
-                      <TeamStepsPanel
-                        mode="list_only"
-                        steps={steps}
-                        onRefreshSteps={async () => {
-                          await refreshSteps(activeRunForSelectedTeam.id);
-                        }}
-                        stepKey={stepKey}
-                        onStepKeyChange={setStepKey}
-                        stepMemberId={stepMemberId}
-                        onStepMemberIdChange={setStepMemberId}
-                        stepDependsOn={stepDependsOn}
-                        onStepDependsOnChange={setStepDependsOn}
-                        stepInput={stepInput}
-                        onStepInputChange={setStepInput}
-                        onSubmitStep={onSubmitStep}
-                        busy={busy}
-                        selectedStepId={selectedStepId}
-                        onSelectedStepIdChange={setSelectedStepId}
-                        stepAction={stepAction}
-                        onStepActionChange={setStepAction}
-                        stepRemoteTaskId={stepRemoteTaskId}
-                        onStepRemoteTaskIdChange={setStepRemoteTaskId}
-                        stepOutput={stepOutput}
-                        onStepOutputChange={setStepOutput}
-                        stepFailText={stepFailText}
-                        onStepFailTextChange={setStepFailText}
-                        stepInputReason={stepInputReason}
-                        onStepInputReasonChange={setStepInputReason}
-                        stepInputRequiredPayload={stepInputRequiredPayload}
-                        onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
-                        stepResumePayload={stepResumePayload}
-                        onStepResumePayloadChange={setStepResumePayload}
-                        onApplyStepAction={onApplyStepAction}
-                      />
-                    )}
-
-                    {tab === "mailbox" && (
-                      <TeamMailboxPanel
-                        mode="full"
-                        snapshot={snapshot}
-                        selectedMemberId={selectedMemberId}
-                        unreadByMemberId={unreadByMemberId}
-                        onSelectMember={setSelectedMemberId}
-                        chatActors={chatActors}
-                        chatStickToBottom={chatStickToBottom}
-                        chatMessagesRef={chatMessagesRef}
-                        onConversationScroll={onConversationScroll}
-                        onJumpToBottom={onJumpConversationToBottom}
-                        conversationMessages={conversationMessages}
-                        toPrettyJson={toPrettyJson}
-                        formatTs={formatTs}
-                        busy={busy}
-                        onAckMessage={onAckMessage}
-                        chatDraft={chatDraft}
-                        onChatDraftChange={setChatDraft}
-                        onSendChatMessage={onSendChatMessage}
-                        msgFromActorId={msgFromActorId}
-                        onMsgFromActorIdChange={setMsgFromActorId}
-                        msgToActorId={msgToActorId}
-                        onMsgToActorIdChange={setMsgToActorId}
-                        msgChannel={msgChannel}
-                        onMsgChannelChange={setMsgChannel}
-                        msgTransport={msgTransport}
-                        onMsgTransportChange={setMsgTransport}
-                        msgRoute={msgRoute}
-                        onMsgRouteChange={setMsgRoute}
-                        mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
-                        msgTemplate={msgTemplate}
-                        onMsgTemplateChange={(value) =>
-                          setMsgTemplate(value as MailboxTemplateKey)
-                        }
-                        onApplyMessageTemplate={onApplyMessageTemplate}
-                        msgPayload={msgPayload}
-                        onMsgPayloadChange={setMsgPayload}
-                        msgIdempotencyKey={msgIdempotencyKey}
-                        onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
-                        onSendMessage={onSendMessage}
-                        inboxActorId={inboxActorId}
-                        onInboxActorIdChange={setInboxActorId}
-                        inboxLimit={inboxLimit}
-                        onInboxLimitChange={setInboxLimit}
-                        inboxAfterId={inboxAfterId}
-                        onInboxAfterIdChange={setInboxAfterId}
-                        inboxIncludeDelivered={inboxIncludeDelivered}
-                        onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
-                        onRefreshInbox={onRefreshInbox}
-                      />
-                    )}
-
-                    {tab === "member_console" && (
-                      <TeamMemberConsolePanel
-                        snapshot={snapshot}
-                        selectedMemberId={selectedMemberId}
-                        onSelectedMemberIdChange={setSelectedMemberId}
-                        selectedMemberSnapshot={selectedMemberSnapshot}
-                        memberEvents={memberEvents}
-                        memberEventsHasMore={memberEventsHasMore}
-                        memberEventsLoading={memberEventsLoading}
-                        eventsLoading={eventsLoading}
-                        oldestMemberEventId={oldestMemberEventId}
-                        displayedRunEvents={displayedRunEvents}
-                        previewLimit={TEAM_EVENT_PREVIEW_LIMIT}
-                        memberDiscoveryCard={selectedMemberDiscoveryCard}
-                        memberDiscoveryCardLoading={selectedMemberDiscoveryCardLoading}
-                        onRefresh={onRefreshMemberConsole}
-                        onLoadOlder={onLoadOlderMemberConsole}
-                        toPrettyJson={toPrettyJson}
-                        formatTs={formatTs}
-                      />
-                    )}
-
-                    {tab === "debug" && (
-                      <>
-                        <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <h3 className={teamSectionHeadingClassName}>Debug Tools</h3>
-                            <div className={teamDebugTabsClassName}>
-                              <button
-                                className={
-                                  teamDebugTag === "run_ops"
-                                    ? teamDebugTabActiveClassName
-                                    : teamDebugTabIdleClassName
-                                }
-                                onClick={() => setTeamDebugTag("run_ops")}
-                              >
-                                Run Ops
-                              </button>
-                              <button
-                                className={
-                                  teamDebugTag === "step_ops"
-                                    ? teamDebugTabActiveClassName
-                                    : teamDebugTabIdleClassName
-                                }
-                                onClick={() => setTeamDebugTag("step_ops")}
-                              >
-                                Step Ops
-                              </button>
-                              <button
-                                className={
-                                  teamDebugTag === "mailbox_raw"
-                                    ? teamDebugTabActiveClassName
-                                    : teamDebugTabIdleClassName
-                                }
-                                onClick={() => setTeamDebugTag("mailbox_raw")}
-                              >
-                                Mailbox Raw
-                              </button>
-                            </div>
+                  {tab === "debug" && (
+                    <>
+                      <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className={teamSectionHeadingClassName}>Debug Tools</h3>
+                          <div className={teamDebugTabsClassName}>
+                            <button
+                              className={
+                                teamDebugTag === "run_ops"
+                                  ? teamDebugTabActiveClassName
+                                  : teamDebugTabIdleClassName
+                              }
+                              onClick={() => setTeamDebugTag("run_ops")}
+                            >
+                              Run Ops
+                            </button>
+                            <button
+                              className={
+                                teamDebugTag === "step_ops"
+                                  ? teamDebugTabActiveClassName
+                                  : teamDebugTabIdleClassName
+                              }
+                              onClick={() => setTeamDebugTag("step_ops")}
+                            >
+                              Step Ops
+                            </button>
+                            <button
+                              className={
+                                teamDebugTag === "mailbox_raw"
+                                  ? teamDebugTabActiveClassName
+                                  : teamDebugTabIdleClassName
+                              }
+                              onClick={() => setTeamDebugTag("mailbox_raw")}
+                            >
+                              Mailbox Raw
+                            </button>
                           </div>
                         </div>
+                      </div>
 
-                        {teamDebugTag === "run_ops" && runOpsPanel}
+                      {teamDebugTag === "run_ops" && runOpsPanel}
 
-                        {teamDebugTag === "step_ops" && (
-                          <TeamStepsPanel
-                            mode="controls_only"
-                            steps={steps}
-                            onRefreshSteps={async () => {
-                              await refreshSteps(activeRunForSelectedTeam.id);
-                            }}
-                            stepKey={stepKey}
-                            onStepKeyChange={setStepKey}
-                            stepMemberId={stepMemberId}
-                            onStepMemberIdChange={setStepMemberId}
-                            stepDependsOn={stepDependsOn}
-                            onStepDependsOnChange={setStepDependsOn}
-                            stepInput={stepInput}
-                            onStepInputChange={setStepInput}
-                            onSubmitStep={onSubmitStep}
-                            busy={busy}
-                            selectedStepId={selectedStepId}
-                            onSelectedStepIdChange={setSelectedStepId}
-                            stepAction={stepAction}
-                            onStepActionChange={setStepAction}
-                            stepRemoteTaskId={stepRemoteTaskId}
-                            onStepRemoteTaskIdChange={setStepRemoteTaskId}
-                            stepOutput={stepOutput}
-                            onStepOutputChange={setStepOutput}
-                            stepFailText={stepFailText}
-                            onStepFailTextChange={setStepFailText}
-                            stepInputReason={stepInputReason}
-                            onStepInputReasonChange={setStepInputReason}
-                            stepInputRequiredPayload={stepInputRequiredPayload}
-                            onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
-                            stepResumePayload={stepResumePayload}
-                            onStepResumePayloadChange={setStepResumePayload}
-                            onApplyStepAction={onApplyStepAction}
-                          />
-                        )}
+                      {teamDebugTag === "step_ops" && !activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <h4 className={teamSectionHeadingClassName}>Step Ops</h4>
+                          <p className={teamSectionBodyTextClassName}>
+                            Step operations require an active run. Start or select one in the Runs
+                            tab first.
+                          </p>
+                          <div className="mt-3">
+                            <button
+                              className={panelSecondaryButtonClassName}
+                              type="button"
+                              onClick={() => setTab("runs")}
+                            >
+                              Go to Runs
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-                        {teamDebugTag === "mailbox_raw" && (
-                          <TeamMailboxPanel
-                            mode="advanced_only"
-                            snapshot={snapshot}
-                            selectedMemberId={selectedMemberId}
-                            unreadByMemberId={unreadByMemberId}
-                            onSelectMember={setSelectedMemberId}
-                            chatActors={chatActors}
-                            chatStickToBottom={chatStickToBottom}
-                            chatMessagesRef={chatMessagesRef}
-                            onConversationScroll={onConversationScroll}
-                            onJumpToBottom={onJumpConversationToBottom}
-                            conversationMessages={conversationMessages}
-                            toPrettyJson={toPrettyJson}
-                            formatTs={formatTs}
-                            busy={busy}
-                            onAckMessage={onAckMessage}
-                            chatDraft={chatDraft}
-                            onChatDraftChange={setChatDraft}
-                            onSendChatMessage={onSendChatMessage}
-                            msgFromActorId={msgFromActorId}
-                            onMsgFromActorIdChange={setMsgFromActorId}
-                            msgToActorId={msgToActorId}
-                            onMsgToActorIdChange={setMsgToActorId}
-                            msgChannel={msgChannel}
-                            onMsgChannelChange={setMsgChannel}
-                            msgTransport={msgTransport}
-                            onMsgTransportChange={setMsgTransport}
-                            msgRoute={msgRoute}
-                            onMsgRouteChange={setMsgRoute}
-                            mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
-                            msgTemplate={msgTemplate}
-                            onMsgTemplateChange={(value) =>
-                              setMsgTemplate(value as MailboxTemplateKey)
-                            }
-                            onApplyMessageTemplate={onApplyMessageTemplate}
-                            msgPayload={msgPayload}
-                            onMsgPayloadChange={setMsgPayload}
-                            msgIdempotencyKey={msgIdempotencyKey}
-                            onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
-                            onSendMessage={onSendMessage}
-                            inboxActorId={inboxActorId}
-                            onInboxActorIdChange={setInboxActorId}
-                            inboxLimit={inboxLimit}
-                            onInboxLimitChange={setInboxLimit}
-                            inboxAfterId={inboxAfterId}
-                            onInboxAfterIdChange={setInboxAfterId}
-                            inboxIncludeDelivered={inboxIncludeDelivered}
-                            onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
-                            onRefreshInbox={onRefreshInbox}
-                          />
-                        )}
-                      </>
-                    )}
-                  </div>
-                </>
+                      {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
+                        <TeamStepsPanel
+                          mode="controls_only"
+                          steps={steps}
+                          onRefreshSteps={async () => {
+                            await refreshSteps(activeRunForSelectedTeam.id);
+                          }}
+                          stepKey={stepKey}
+                          onStepKeyChange={setStepKey}
+                          stepMemberId={stepMemberId}
+                          onStepMemberIdChange={setStepMemberId}
+                          stepDependsOn={stepDependsOn}
+                          onStepDependsOnChange={setStepDependsOn}
+                          stepInput={stepInput}
+                          onStepInputChange={setStepInput}
+                          onSubmitStep={onSubmitStep}
+                          busy={busy}
+                          selectedStepId={selectedStepId}
+                          onSelectedStepIdChange={setSelectedStepId}
+                          stepAction={stepAction}
+                          onStepActionChange={setStepAction}
+                          stepRemoteTaskId={stepRemoteTaskId}
+                          onStepRemoteTaskIdChange={setStepRemoteTaskId}
+                          stepOutput={stepOutput}
+                          onStepOutputChange={setStepOutput}
+                          stepFailText={stepFailText}
+                          onStepFailTextChange={setStepFailText}
+                          stepInputReason={stepInputReason}
+                          onStepInputReasonChange={setStepInputReason}
+                          stepInputRequiredPayload={stepInputRequiredPayload}
+                          onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+                          stepResumePayload={stepResumePayload}
+                          onStepResumePayloadChange={setStepResumePayload}
+                          onApplyStepAction={onApplyStepAction}
+                        />
+                      )}
+
+                      {teamDebugTag === "mailbox_raw" && !activeRunForSelectedTeam && (
+                        <div className={teamSectionCardClassName}>
+                          <h4 className={teamSectionHeadingClassName}>Mailbox Raw</h4>
+                          <p className={teamSectionBodyTextClassName}>
+                            Mailbox raw operations require an active run. Start or select one in
+                            the Runs tab first.
+                          </p>
+                          <div className="mt-3">
+                            <button
+                              className={panelSecondaryButtonClassName}
+                              type="button"
+                              onClick={() => setTab("runs")}
+                            >
+                              Go to Runs
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
+                        <TeamMailboxPanel
+                          mode="advanced_only"
+                          snapshot={snapshot}
+                          selectedMemberId={selectedMemberId}
+                          unreadByMemberId={unreadByMemberId}
+                          onSelectMember={setSelectedMemberId}
+                          chatActors={chatActors}
+                          chatStickToBottom={chatStickToBottom}
+                          chatMessagesRef={chatMessagesRef}
+                          onConversationScroll={onConversationScroll}
+                          onJumpToBottom={onJumpConversationToBottom}
+                          conversationMessages={conversationMessages}
+                          toPrettyJson={toPrettyJson}
+                          formatTs={formatTs}
+                          busy={busy}
+                          onAckMessage={onAckMessage}
+                          chatDraft={chatDraft}
+                          onChatDraftChange={setChatDraft}
+                          onSendChatMessage={onSendChatMessage}
+                          msgFromActorId={msgFromActorId}
+                          onMsgFromActorIdChange={setMsgFromActorId}
+                          msgToActorId={msgToActorId}
+                          onMsgToActorIdChange={setMsgToActorId}
+                          msgChannel={msgChannel}
+                          onMsgChannelChange={setMsgChannel}
+                          msgTransport={msgTransport}
+                          onMsgTransportChange={setMsgTransport}
+                          msgRoute={msgRoute}
+                          onMsgRouteChange={setMsgRoute}
+                          mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+                          msgTemplate={msgTemplate}
+                          onMsgTemplateChange={(value) =>
+                            setMsgTemplate(value as MailboxTemplateKey)
+                          }
+                          onApplyMessageTemplate={onApplyMessageTemplate}
+                          msgPayload={msgPayload}
+                          onMsgPayloadChange={setMsgPayload}
+                          msgIdempotencyKey={msgIdempotencyKey}
+                          onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+                          onSendMessage={onSendMessage}
+                          inboxActorId={inboxActorId}
+                          onInboxActorIdChange={setInboxActorId}
+                          inboxLimit={inboxLimit}
+                          onInboxLimitChange={setInboxLimit}
+                          inboxAfterId={inboxAfterId}
+                          onInboxAfterIdChange={setInboxAfterId}
+                          inboxIncludeDelivered={inboxIncludeDelivered}
+                          onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+                          onRefreshInbox={onRefreshInbox}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </>
           )}

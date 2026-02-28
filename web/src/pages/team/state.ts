@@ -5,13 +5,33 @@ import { createInitialTeamDraftState, type TeamCreateDraftState } from "./member
 import type { TeamRunStatusFilter } from "./run_helpers";
 
 export type TeamTab =
+  | "runs"
   | "conversation"
+  | "agent_acp"
   | "overview"
   | "events"
   | "steps"
   | "mailbox"
   | "member_console"
   | "debug";
+
+export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
+  { value: "runs", label: "Runs" },
+  { value: "conversation", label: "Conversation" },
+  { value: "agent_acp", label: "Agent ACP" },
+  { value: "overview", label: "Overview" },
+  { value: "events", label: "Events" },
+  { value: "steps", label: "Steps" },
+  { value: "mailbox", label: "Mailbox" },
+  { value: "member_console", label: "Member Console" },
+  { value: "debug", label: "Debug" },
+];
+
+const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>(["runs", "conversation", "debug"]);
+
+export function tabRequiresActiveRun(tab: TeamTab): boolean {
+  return !TEAM_TABS_WITHOUT_ACTIVE_RUN.has(tab);
+}
 export type CreateTeamStage = 0 | 1 | 2 | 3;
 export type TeamForgeRoleTag = "leader" | "worker";
 

@@ -17,13 +17,13 @@ use codex_core::{
         types::{McpServerConfig, McpServerTransportConfig},
     },
     find_thread_path_by_id_str, parse_cursor,
-    protocol::{InitialHistory, SessionSource},
+    protocol::{InitialHistory, ResumedHistory, SessionSource},
 };
 use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
-use codex_protocol::ThreadId;
+use codex_protocol::{ThreadId, models::ResponseItem, protocol::RolloutItem};
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -387,12 +387,15 @@ impl Agent for CodexAgent {
         let history = RolloutRecorder::get_rollout_history(&rollout_path)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
-
-        let rollout_items = match &history {
-            InitialHistory::Resumed(resumed) => resumed.history.clone(),
-            InitialHistory::Forked(items) => items.clone(),
-            InitialHistory::New => Vec::new(),
-        };
+        let (initial_history, rollout_items, repaired_custom_tool_calls) =
+            repair_custom_tool_call_outputs(history);
+        if repaired_custom_tool_calls > 0 {
+            tracing::warn!(
+                session_id = %session_id,
+                repaired_custom_tool_calls,
+                "load_session repaired rollout history with synthetic CustomToolCallOutput items"
+            );
+        }
 
         let config = self.build_session_config(&cwd, mcp_servers)?;
 
@@ -400,10 +403,11 @@ impl Agent for CodexAgent {
             thread_id: _,
             thread,
             session_configured: _,
-        } = Box::pin(self.thread_manager.resume_thread_from_rollout(
+        } = Box::pin(self.thread_manager.resume_thread_with_history(
             config.clone(),
-            rollout_path,
+            initial_history,
             self.auth_manager.clone(),
+            false,
         ))
         .await
         .map_err(|e| Error::internal_error().data(e.to_string()))?;
@@ -555,6 +559,68 @@ impl Agent for CodexAgent {
     }
 }
 
+fn repair_custom_tool_call_outputs(
+    history: InitialHistory,
+) -> (InitialHistory, Vec<RolloutItem>, usize) {
+    match history {
+        InitialHistory::Resumed(resumed) => {
+            let (history, inserted) = fill_missing_custom_tool_call_outputs(resumed.history);
+            let replay_items = history.clone();
+            (
+                InitialHistory::Resumed(ResumedHistory {
+                    conversation_id: resumed.conversation_id,
+                    history,
+                    rollout_path: resumed.rollout_path,
+                }),
+                replay_items,
+                inserted,
+            )
+        }
+        InitialHistory::Forked(items) => {
+            let (items, inserted) = fill_missing_custom_tool_call_outputs(items);
+            let replay_items = items.clone();
+            (InitialHistory::Forked(items), replay_items, inserted)
+        }
+        InitialHistory::New => (InitialHistory::New, Vec::new(), 0),
+    }
+}
+
+fn fill_missing_custom_tool_call_outputs(items: Vec<RolloutItem>) -> (Vec<RolloutItem>, usize) {
+    let mut output_call_ids = HashSet::new();
+    for item in &items {
+        if let RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, .. }) = item
+        {
+            output_call_ids.insert(call_id.clone());
+        }
+    }
+
+    let mut inserted = 0;
+    let mut normalized = Vec::with_capacity(items.len());
+    for item in items {
+        let missing_call_id = match &item {
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. })
+                if !output_call_ids.contains(call_id) =>
+            {
+                Some(call_id.clone())
+            }
+            _ => None,
+        };
+        normalized.push(item);
+        if let Some(call_id) = missing_call_id {
+            output_call_ids.insert(call_id.clone());
+            inserted += 1;
+            normalized.push(RolloutItem::ResponseItem(
+                ResponseItem::CustomToolCallOutput {
+                    call_id,
+                    output: "aborted".to_string(),
+                },
+            ));
+        }
+    }
+
+    (normalized, inserted)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CodexAuthMethod {
     ChatGpt,
@@ -633,5 +699,54 @@ fn format_session_title(message: &str) -> Option<String> {
         None
     } else {
         Some(truncate_graphemes(trimmed, SESSION_TITLE_MAX_GRAPHEMES))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fill_missing_custom_tool_call_outputs;
+    use codex_protocol::{models::ResponseItem, protocol::RolloutItem};
+
+    #[test]
+    fn fill_missing_custom_tool_call_outputs_inserts_synthetic_output() {
+        let call_id = "call_1".to_string();
+        let items = vec![RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
+            id: None,
+            status: None,
+            call_id: call_id.clone(),
+            input: "{}".to_string(),
+            name: "apply_patch".to_string(),
+        })];
+
+        let (repaired, inserted) = fill_missing_custom_tool_call_outputs(items);
+        assert_eq!(inserted, 1);
+        assert_eq!(repaired.len(), 2);
+        assert!(matches!(
+            repaired[1],
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { ref call_id, ref output })
+            if call_id == "call_1" && output == "aborted"
+        ));
+    }
+
+    #[test]
+    fn fill_missing_custom_tool_call_outputs_keeps_existing_output() {
+        let call_id = "call_2".to_string();
+        let items = vec![
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
+                id: None,
+                status: None,
+                call_id: call_id.clone(),
+                input: "{}".to_string(),
+                name: "apply_patch".to_string(),
+            }),
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                call_id: call_id.clone(),
+                output: "ok".to_string(),
+            }),
+        ];
+
+        let (repaired, inserted) = fill_missing_custom_tool_call_outputs(items);
+        assert_eq!(inserted, 0);
+        assert_eq!(repaired.len(), 2);
     }
 }

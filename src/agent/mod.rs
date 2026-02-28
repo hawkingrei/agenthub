@@ -1,3 +1,4 @@
+pub(crate) mod event_message_codec;
 mod manager;
 
 use serde::{Deserialize, Serialize};

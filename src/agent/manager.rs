@@ -22,6 +22,7 @@ use self::codec::{
     expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
     stream_to_str, worktree_mode_from_opt, worktree_mode_to_str,
 };
+use super::event_message_codec::{decode_message_from_storage, encode_message_for_storage};
 use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
@@ -132,11 +133,27 @@ fn derive_worker_runtime_root(workdir: &str) -> String {
         .unwrap_or_else(|| workdir.to_string())
 }
 
+fn derive_leader_runtime_workdir(
+    workdir: &str,
+    actor_context: &AcpActorSkillContext,
+    session_id: &str,
+) -> String {
+    let actor_token = compact_token(&actor_context.actor_id, "leader", 24);
+    let run_token = compact_token(&actor_context.run_id, "run", 24);
+    let session_token = compact_token(session_id, "session", 24);
+    Path::new(workdir)
+        .join(".agenthub-team-leader")
+        .join(format!("{actor_token}-{run_token}-{session_token}"))
+        .to_string_lossy()
+        .to_string()
+}
+
 fn build_runtime_start_policy(
     agent: &AgentRecord,
     actor_context: Option<&AcpActorSkillContext>,
     expanded_workdir: &str,
     expanded_worktree_repo: Option<&str>,
+    start_session_id: Option<&str>,
 ) -> anyhow::Result<RuntimeStartPolicy> {
     let mut policy = RuntimeStartPolicy {
         workdir: expanded_workdir.to_string(),
@@ -159,10 +176,19 @@ fn build_runtime_start_policy(
                 );
             }
             if !is_empty_or_missing_dir(expanded_workdir)? {
+                let context = actor_context
+                    .ok_or_else(|| anyhow::anyhow!("leader role policy requires actor context"))?;
+                let session_id = start_session_id.ok_or_else(|| {
+                    anyhow::anyhow!("leader role policy requires start session id")
+                })?;
+                policy.workdir =
+                    derive_leader_runtime_workdir(expanded_workdir, context, session_id);
+            }
+            if !is_empty_or_missing_dir(&policy.workdir)? {
                 anyhow::bail!(
                     "team leader policy requires empty workdir (agent_id={} workdir={})",
                     agent.id,
-                    expanded_workdir
+                    policy.workdir
                 );
             }
         }
@@ -623,7 +649,8 @@ impl AgentManager {
                 seq: row.get("seq"),
                 ts: row.get("ts"),
                 stream: stream_from_str(&stream_str),
-                message: row.get("message"),
+                // Decode compressed ACP rows while keeping legacy plain rows untouched.
+                message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
             });
         }
         events.reverse();
@@ -680,7 +707,8 @@ impl AgentManager {
                 seq: row.get("seq"),
                 ts: row.get("ts"),
                 stream: stream_from_str(&stream_str),
-                message: row.get("message"),
+                // Decode compressed ACP rows while keeping legacy plain rows untouched.
+                message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
             });
         }
         events.reverse();
@@ -889,6 +917,7 @@ impl AgentManager {
             actor_context.as_ref(),
             &persisted_workdir,
             persisted_worktree_repo.as_deref(),
+            Some(&session_id),
         )?;
         let mut runtime_agent = agent.clone();
         runtime_agent.worktree_mode = start_policy.worktree_mode.clone();
@@ -1458,7 +1487,10 @@ impl AgentManager {
         .bind(seq)
         .bind(now)
         .bind(stream_to_str(&OutputStream::System))
-        .bind(format!("start failed: {}", message))
+        .bind({
+            let failure_message = format!("start failed: {}", message);
+            encode_message_for_storage(&OutputStream::System, failure_message.as_str())
+        })
         .execute(&self.db)
         .await
         {
@@ -1602,6 +1634,7 @@ impl AgentManager {
             "message_id": message_id
         })
         .to_string();
+        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
         let ts = Utc::now().timestamp();
         let result = sqlx::query(
             r#"
@@ -1614,7 +1647,7 @@ impl AgentManager {
         .bind(&seq)
         .bind(ts)
         .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message.clone())
+        .bind(message_for_db)
         .execute(&self.db)
         .await?;
         let output = AgentOutput {

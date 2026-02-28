@@ -16,12 +16,15 @@ import {
 } from "../api";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
+import { TeamMemberAcpPanel } from "./team_member_acp_panel";
+import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamMainTaskPanel } from "./team_main_task_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
+import { TeamTabsBar } from "./team_tabs_bar";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -508,6 +511,58 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Start Team");
     expect(container.textContent).not.toContain("Create Run");
     expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
+  });
+
+  it("TeamTabsBar renders product tabs and switches selected tab", () => {
+    const onTabChange = vi.fn();
+    act(() => {
+      root.render(<TeamTabsBar tab="runs" onTabChange={onTabChange} />);
+    });
+
+    expect(container.textContent).toContain("Runs");
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).toContain("Debug");
+
+    clickElement(findButtonByText(container, "Events"));
+    expect(onTabChange).toHaveBeenCalledWith("events");
+  });
+
+  it("TeamActiveRunPanel exposes run actions and metadata", () => {
+    const onRefresh = vi.fn();
+    const onCancel = vi.fn();
+    const onResume = vi.fn();
+    const onRestart = vi.fn();
+    act(() => {
+      root.render(
+        <TeamActiveRunPanel
+          run={buildRun({ status: "failed" })}
+          busy={null}
+          canResumeRun={true}
+          canRestartRun={true}
+          onRefresh={onRefresh}
+          onCancel={onCancel}
+          onResume={onResume}
+          onRestart={onRestart}
+          formatTs={(value) => (value == null ? "-" : String(value))}
+          cardClassName="card"
+          titleClassName="title"
+          metaItemClassName="meta"
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("Active Run");
+    expect(container.textContent).toContain("run-1");
+    expect(container.textContent).toContain("ctx-1");
+    clickElement(findButtonByAriaLabel(container, "Refresh active run"));
+    clickElement(findButtonByText(container, "Cancel Run"));
+    clickElement(findButtonByText(container, "Resume Run"));
+    clickElement(findButtonByText(container, "Restart Run"));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onRestart).toHaveBeenCalledTimes(1);
   });
 
   it("TeamStepsPanel covers submit and all step action payload editors", () => {
@@ -1047,10 +1102,7 @@ describe("team panels interactions", () => {
     const onRefreshTasks = vi.fn();
     const onNewTaskTitleChange = vi.fn();
     const onNewTaskTopicChange = vi.fn();
-    const onNewTaskConversationModeChange = vi.fn();
     const onCreateTask = vi.fn();
-    const onMessageRouteChange = vi.fn();
-    const onMessageTargetMemberIdChange = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
     const onRefreshMessages = vi.fn();
@@ -1075,13 +1127,7 @@ describe("team panels interactions", () => {
           onNewTaskTitleChange={onNewTaskTitleChange}
           newTaskTopic="topic-x"
           onNewTaskTopicChange={onNewTaskTopicChange}
-          newTaskConversationMode="to_leader"
-          onNewTaskConversationModeChange={onNewTaskConversationModeChange}
           onCreateTask={onCreateTask}
-          messageRoute="to_member"
-          onMessageRouteChange={onMessageRouteChange}
-          messageTargetMemberId="worker-agent"
-          onMessageTargetMemberIdChange={onMessageTargetMemberIdChange}
           messageDraft="hello leader"
           onMessageDraftChange={onMessageDraftChange}
           onSendMessage={onSendMessage}
@@ -1095,12 +1141,40 @@ describe("team panels interactions", () => {
               payload: { type: "status_update", done: true },
             }),
           ]}
+          agentMessages={[
+            buildMailboxMessage(9, {
+              from_actor_id: "worker-agent",
+              to_actor_id: "leader-agent",
+              payload: { type: "chat_message", text: "worker update" },
+              status: "delivered",
+            }),
+          ]}
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "leader-agent",
+              lifecycle_status: "running",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "planning",
+            },
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "worker-agent",
+              lifecycle_status: "running",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "blocked",
+              pending_inbox_count: 1,
+              current_work: "blocked on dependency",
+            },
+          ]}
           messagesLoading={false}
           busy={null}
-          memberOptions={[
-            { member_id: "leader-agent", role: "leader" },
-            { member_id: "worker-agent", role: "worker" },
-          ]}
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={toPrettyJson}
         />
@@ -1110,12 +1184,11 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Refresh Conversations"));
     clickElement(findButtonByText(container, "Create Conversation"));
     clickElement(findButtonByText(container, "Refresh Messages"));
-    clickElement(findButtonByText(container, "Reset Route"));
     clickElement(findButtonByText(container, "Send Message"));
 
     const selects = container.querySelectorAll("select");
     changeSelectValue(
-      required(selects[1] as HTMLSelectElement | undefined, "task select missing"),
+      required(selects[0] as HTMLSelectElement | undefined, "task select missing"),
       "task-2"
     );
     changeInputValue(
@@ -1132,14 +1205,10 @@ describe("team panels interactions", () => {
       ),
       "topic-y"
     );
-    changeSelectValue(
-      required(selects[0] as HTMLSelectElement | undefined, "create mode select missing"),
-      "group_chat"
-    );
     changeInputValue(
       required(
         container.querySelector(
-          'textarea[placeholder="Type planning message for leader/teammates"]'
+          'textarea[placeholder="Type planning message for the team (e.g. @worker-1 @worker-2 please verify)"]'
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),
@@ -1150,16 +1219,80 @@ describe("team panels interactions", () => {
     expect(onCreateTask).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onMessageRouteChange).toHaveBeenCalledWith("to_leader");
-    expect(onMessageTargetMemberIdChange).toHaveBeenCalledWith("");
     expect(onSelectedMainTaskIdChange).toHaveBeenCalledWith("task-2");
     expect(onNewTaskTitleChange).toHaveBeenCalledWith("new title");
     expect(onNewTaskTopicChange).toHaveBeenCalledWith("topic-y");
-    expect(onNewTaskConversationModeChange).toHaveBeenCalledWith("group_chat");
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("worker update");
+    expect(container.textContent).toContain("work:blocked");
+    expect(container.textContent).toContain("agent:working");
+  });
+
+  it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
+    const onSelectedMemberIdChange = vi.fn();
+    const onRefresh = vi.fn();
+    const onLoadOlder = vi.fn();
+    const acpEvents: AgentEvent[] = [
+      {
+        event_id: 21,
+        agent_id: "worker-agent",
+        session_id: "task-77",
+        seq: "21",
+        ts: 1_700_000_201,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "Please investigate this issue.",
+        }),
+      },
+      {
+        event_id: 22,
+        agent_id: "worker-agent",
+        session_id: "task-77",
+        seq: "22",
+        ts: 1_700_000_202,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Acknowledged. I am checking logs now.",
+        }),
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          snapshot={buildSnapshot()}
+          selectedMemberId="worker-agent"
+          onSelectedMemberIdChange={onSelectedMemberIdChange}
+          selectedMemberSnapshot={buildMemberSnapshot({
+            member_id: "worker-agent",
+            role: "worker",
+            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+          })}
+          memberEvents={acpEvents}
+          memberEventsHasMore={true}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={20}
+          onRefresh={onRefresh}
+          onLoadOlder={onLoadOlder}
+        />
+      );
+    });
+
+    clickElement(findButtonByText(container, "Refresh"));
+    clickElement(findButtonByText(container, "Load Older"));
+    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).toContain("Please investigate this issue.");
+    expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
+    expect(container.textContent).toContain("session=task-77");
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
   });
 
   it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {

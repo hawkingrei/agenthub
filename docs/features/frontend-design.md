@@ -31,10 +31,20 @@ state labels, and panel behaviors diverged.
 ### 2) Primary Team UX
 
 - Team surface is conversation-first for human interaction.
+- `Conversation` remains available even when no active run exists.
+- `Runs` is the dedicated run-entry tab (run browser + `Start Team` + run selection).
 - Internal execution controls (`Run Ops`, `Step Ops`, raw mailbox tools) remain in Debug sections.
 - `Start Team` stays visible as explicit operator action.
 
-### 3) Team Status Visibility
+### 3) Team Navigation Composition
+
+- Team tab routing should be driven by shared state metadata instead of duplicated inline conditionals.
+- Shared composition primitives:
+  - `TeamTabsBar` for top-level tab rendering.
+  - `TeamActiveRunPanel` for active-run context/actions across run-scoped tabs.
+- Run-required tabs should share one gate policy and one fallback card (`No Active Run` + `Go to Runs`).
+
+### 4) Team Status Visibility
 
 - Team main view should expose member lifecycle summary and per-member status.
 - User-facing lifecycle buckets:
@@ -43,7 +53,7 @@ state labels, and panel behaviors diverged.
   - `stopped`
   - `missing`
 
-### 4) Accessibility And Mobile Guardrails
+### 5) Accessibility And Mobile Guardrails
 
 - Keep high-frequency controls reachable on narrow viewports.
 - Preserve keyboard/touch parity for input, send, interrupt, and jump-to-bottom actions.
@@ -61,7 +71,13 @@ state labels, and panel behaviors diverged.
 - Human-facing Team terminology should prioritize `Conversation` instead of exposing internal `main_task` wording.
 - Debug-only operations keep internal runtime concepts and IDs.
 
-### 3) Status Presentation Contract
+### 3) Team Tab Routing Contract
+
+- Tab definitions (`value`, `label`) should be centralized in Team state metadata.
+- Active-run requirement policy should be centralized and reusable by page/panel composition.
+- Conversation lane must not be blocked by run-loading or run-selection requirements.
+
+### 4) Status Presentation Contract
 
 - Rendering layers should map runtime statuses into stable user buckets.
 - `unknown` should be treated as diagnostic state and not the default user-facing label.
@@ -120,3 +136,4 @@ state labels, and panel behaviors diverged.
 - `docs/journal/2026-02-21-team-usability-polish-and-scroll-hardening.md`
 - `docs/journal/2026-02-24-team-main-task-human-conversation-ui.md`
 - `docs/journal/2026-02-23-team-top-member-status-strip.md`
+- `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`

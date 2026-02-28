@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use agenthub_acp::{AcpEventSink, AcpStream};
 
+use crate::agent::event_message_codec::encode_message_for_storage;
 use crate::agent::{AgentOutput, OutputStream};
 
 #[derive(Clone)]
@@ -51,7 +52,8 @@ impl AcpEventSink for AgenthubAcpEventSink {
         let agent_id = self.agent_id.clone();
         let session_id = self.session_id.clone();
         let stream_name = stream_to_str(&output_stream).to_string();
-        let message_for_db = message.clone();
+        // Persist ACP rows with compact binary encoding; in-memory broadcast remains raw JSON.
+        let message_for_db = encode_message_for_storage(&output_stream, &message);
         let seq_for_db = seq.clone();
         let result = self
             .runtime_handle
