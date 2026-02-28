@@ -624,6 +624,12 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  const selectedTeamMemberIds = useMemo(() => {
+    if (!selectedTeam) {
+      return [];
+    }
+    return parseTeamSpecMembers(selectedTeam.spec).map((member) => member.member_id);
+  }, [selectedTeam]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -1831,10 +1837,7 @@ export function TeamPage(props: TeamPageProps) {
     setBusy("send-main-task-message");
     setError(null);
     try {
-      const memberIds = selectedTeam
-        ? parseTeamSpecMembers(selectedTeam.spec).map((member) => member.member_id)
-        : [];
-      const mentionActorIds = extractMentionedActorIds(text, memberIds);
+      const mentionActorIds = extractMentionedActorIds(text, selectedTeamMemberIds);
       const message = await api.sendTeamMainTaskMessage(props.token, selectedTeamId, mainTaskId, {
         from_actor_id: "user",
         route: "group_chat",
@@ -1855,7 +1858,7 @@ export function TeamPage(props: TeamPageProps) {
     mainTaskMessageDraft,
     props.token,
     selectedMainTaskId,
-    selectedTeam,
+    selectedTeamMemberIds,
     selectedTeamId,
   ]);
 

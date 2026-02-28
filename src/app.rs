@@ -26,6 +26,8 @@ struct ActiveHourlyLogWriter {
 }
 
 impl ActiveHourlyLogWriter {
+    const ROTATION_CANDIDATE_MAX_ATTEMPTS: usize = 1_000;
+
     fn new(directory: PathBuf, file_name: String) -> std::io::Result<Self> {
         Self::new_with_clock(directory, file_name, Box::new(Utc::now))
     }
@@ -67,23 +69,38 @@ impl ActiveHourlyLogWriter {
         ts.format("%Y-%m-%d-%H").to_string()
     }
 
-    fn rotate_destination(&self, hour_slot: i64) -> PathBuf {
+    fn rotate_destination_with_limit(
+        &self,
+        hour_slot: i64,
+        max_attempts: usize,
+    ) -> std::io::Result<PathBuf> {
         let suffix = Self::slot_to_suffix(hour_slot);
         let base = self
             .directory
             .join(format!("{}.{}", self.file_name, suffix));
         if !base.exists() {
-            return base;
+            return Ok(base);
         }
-        for idx in 1.. {
+        for idx in 1..=max_attempts {
             let candidate = self
                 .directory
                 .join(format!("{}.{}.{}", self.file_name, suffix, idx));
             if !candidate.exists() {
-                return candidate;
+                return Ok(candidate);
             }
         }
-        unreachable!("rotation candidate search should always find an available path")
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "failed to allocate rotated log path under {} after {} attempts",
+                self.directory.display(),
+                max_attempts
+            ),
+        ))
+    }
+
+    fn rotate_destination(&self, hour_slot: i64) -> std::io::Result<PathBuf> {
+        self.rotate_destination_with_limit(hour_slot, Self::ROTATION_CANDIDATE_MAX_ATTEMPTS)
     }
 
     fn rotate_if_needed(&mut self) -> std::io::Result<()> {
@@ -98,7 +115,7 @@ impl ActiveHourlyLogWriter {
         drop(previous_file);
 
         if self.current_path.exists() {
-            let rotated_path = self.rotate_destination(self.current_hour_slot);
+            let rotated_path = self.rotate_destination(self.current_hour_slot)?;
             std::fs::rename(&self.current_path, rotated_path)?;
         }
 
@@ -425,6 +442,39 @@ mod tests {
 
         let current_content = std::fs::read_to_string(current_log).expect("read current log");
         assert_eq!(current_content, "line-2\n");
+    }
+
+    #[test]
+    fn rotate_destination_with_limit_returns_error_after_exhaustion() {
+        let unique = format!(
+            "agenthub-log-rotate-limit-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration since epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&dir).expect("create temp log dir");
+
+        let hour_slot = 48_001;
+        let suffix = super::ActiveHourlyLogWriter::slot_to_suffix(hour_slot);
+        let base = dir.join(format!("agenthub.log.{}", suffix));
+        std::fs::write(&base, "x").expect("write base collision file");
+        std::fs::write(dir.join(format!("agenthub.log.{}.1", suffix)), "x")
+            .expect("write first collision file");
+        std::fs::write(dir.join(format!("agenthub.log.{}.2", suffix)), "x")
+            .expect("write second collision file");
+
+        let writer = super::ActiveHourlyLogWriter::new(
+            dir.clone(),
+            "agenthub.log".to_string(),
+        )
+        .expect("create writer");
+        let err = writer
+            .rotate_destination_with_limit(hour_slot, 2)
+            .expect_err("rotate destination should fail after hitting max attempts");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
     }
 
     #[tokio::test]
