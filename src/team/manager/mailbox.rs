@@ -184,7 +184,7 @@ impl TeamManager {
         run_id: &str,
         actor_id: &str,
         payload_type: &str,
-        exclude_message_id: Option<i64>,
+        current_message_id: Option<i64>,
     ) -> anyhow::Result<bool> {
         let payload_type = payload_type.trim();
         if payload_type.is_empty() {
@@ -203,8 +203,8 @@ impl TeamManager {
         builder.push(" AND status = 'pending'");
         builder.push(" AND json_extract(payload_json, '$.type') = ");
         builder.push_bind(payload_type);
-        if let Some(message_id) = exclude_message_id {
-            builder.push(" AND id != ");
+        if let Some(message_id) = current_message_id {
+            builder.push(" AND id < ");
             builder.push_bind(message_id);
         }
         builder.push(" LIMIT 1");

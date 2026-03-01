@@ -1217,7 +1217,7 @@ async fn maybe_notify_actor_new_mailbox_message_type(
                 "skip mailbox type hint push because agent input is unavailable: {}",
                 err
             );
-            ("send_failed", Some(err.to_string()))
+            ("send_failed", Some("agent_input_unavailable"))
         }
     };
     append_actor_mailbox_type_hint_event(
@@ -1228,7 +1228,7 @@ async fn maybe_notify_actor_new_mailbox_message_type(
             "message_id": message.message_id,
             "to_actor_id": message.to_actor_id,
             "payload_type": payload_type,
-            "error": send_status.1,
+            "error_code": send_status.1,
         }),
     )
     .await;

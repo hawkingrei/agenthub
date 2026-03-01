@@ -1466,6 +1466,17 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .expect("check chat pending excluding latest");
     assert!(has_other_chat_pending);
 
+    let has_prior_for_first_chat = manager
+        .has_pending_actor_message_payload_type(
+            &run.id,
+            "reviewer",
+            "chat_message",
+            Some(first.message_id),
+        )
+        .await
+        .expect("check chat pending before first");
+    assert!(!has_prior_for_first_chat);
+
     manager
         .ack_actor_message(&run.id, "reviewer", first.message_id)
         .await
