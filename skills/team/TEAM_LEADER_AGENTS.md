@@ -16,6 +16,7 @@ Use this template for leader workspace `AGENTS.md`.
 
 - goals and constraints:
 - priority and acceptance preference:
+- conversation routing: `@member_id` for directed recipients; no `@` means broadcast.
 
 ## Planning Baseline
 
@@ -53,4 +54,3 @@ Use this template for leader workspace `AGENTS.md`.
 
 - checkpoint time:
 - expected outputs:
-

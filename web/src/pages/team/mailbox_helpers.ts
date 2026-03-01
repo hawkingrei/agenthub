@@ -14,7 +14,26 @@ export type TeamMailboxChatActors = {
   inboxActorId: string;
 };
 
+export type MainTaskMailboxRoutePlan = {
+  fromActorId: string;
+  toActorIds: string[];
+};
+
 const MENTION_TOKEN_REGEX = /@([A-Za-z0-9._:-]+)/g;
+
+function normalizeActorIds(actorIds: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const rawActorId of actorIds) {
+    const actorId = rawActorId.trim();
+    if (!actorId || seen.has(actorId)) {
+      continue;
+    }
+    seen.add(actorId);
+    normalized.push(actorId);
+  }
+  return normalized;
+}
 
 export function resolveMailboxChatActors(
   leaderMemberId: string | null | undefined,
@@ -89,6 +108,51 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
     out.push(actorId);
   }
   return out;
+}
+
+export function resolveMainTaskMailboxRoutePlan(
+  memberIds: string[],
+  mentionActorIds: string[],
+  leaderMemberId?: string | null
+): MainTaskMailboxRoutePlan {
+  const normalizedMembers = normalizeActorIds(memberIds);
+  if (normalizedMembers.length === 0) {
+    return {
+      fromActorId: "",
+      toActorIds: [],
+    };
+  }
+
+  const memberSet = new Set(normalizedMembers);
+  const normalizedMentions = normalizeActorIds(mentionActorIds).filter((actorId) =>
+    memberSet.has(actorId)
+  );
+  const normalizedLeaderId = (leaderMemberId ?? "").trim();
+  const fromActorId =
+    normalizedLeaderId && memberSet.has(normalizedLeaderId)
+      ? normalizedLeaderId
+      : (normalizedMembers[0] ?? "");
+
+  if (!fromActorId) {
+    return {
+      fromActorId: "",
+      toActorIds: [],
+    };
+  }
+  if (normalizedMentions.length > 0) {
+    return {
+      fromActorId,
+      toActorIds: normalizedMentions,
+    };
+  }
+
+  return {
+    fromActorId,
+    toActorIds: [
+      fromActorId,
+      ...normalizedMembers.filter((memberId) => memberId !== fromActorId),
+    ],
+  };
 }
 
 type MailboxChatPayload = {

@@ -124,6 +124,9 @@ agenthub/
   - Leader code review path should prefer `gh` (or explicit clone-only review workspaces)
   - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
   - Human inputs are goals/constraints via conversation; internal Team `task` objects are created by leader planning, not directly by human users
+  - Team conversation delivery path: persist the message once in conversation, then forward via Team actor mailbox; mailbox transport reaches ACP upstream and MCP tools.
+  - Mention routing contract: `@member_id` means explicit recipients only; no `@` means broadcast to all team members.
+  - Reply contract: agent replies in team conversation should include `@member_id` when targeting specific recipients; replies without `@` are treated as broadcast.
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
   - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work

@@ -2316,12 +2316,8 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   await expect(page.locator(".team-item", { hasText: "virtual-tool-team" })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await page.getByPlaceholder("new conversation title").fill("Build tiny JSON CLI");
-  await page.getByPlaceholder("topic (optional)").fill("tooling");
-  await page.getByRole("button", { name: "Create Conversation" }).click();
-
   await page
-    .getByPlaceholder("Type planning message for leader/teammates")
+    .getByPlaceholder("Type planning message for the team (e.g. @worker-1 @worker-2 please verify)")
     .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
   await page.getByRole("button", { name: "Send Message" }).click();
   await expect(page.locator(".teams-message-list")).toContainText(

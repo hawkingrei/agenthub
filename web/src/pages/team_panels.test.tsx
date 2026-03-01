@@ -1100,9 +1100,6 @@ describe("team panels interactions", () => {
   it("TeamMainTaskPanel supports create/select/send workflow", () => {
     const onSelectedMainTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
-    const onNewTaskTitleChange = vi.fn();
-    const onNewTaskTopicChange = vi.fn();
-    const onCreateTask = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
     const onRefreshMessages = vi.fn();
@@ -1123,11 +1120,6 @@ describe("team panels interactions", () => {
           selectedMainTaskId="task-1"
           onSelectedMainTaskIdChange={onSelectedMainTaskIdChange}
           onRefreshTasks={onRefreshTasks}
-          newTaskTitle="new task"
-          onNewTaskTitleChange={onNewTaskTitleChange}
-          newTaskTopic="topic-x"
-          onNewTaskTopicChange={onNewTaskTopicChange}
-          onCreateTask={onCreateTask}
           messageDraft="hello leader"
           onMessageDraftChange={onMessageDraftChange}
           onSendMessage={onSendMessage}
@@ -1139,14 +1131,6 @@ describe("team panels interactions", () => {
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "status_update", done: true },
-            }),
-          ]}
-          agentMessages={[
-            buildMailboxMessage(9, {
-              from_actor_id: "worker-agent",
-              to_actor_id: "leader-agent",
-              payload: { type: "chat_message", text: "worker update" },
-              status: "delivered",
             }),
           ]}
           memberLiveStates={[
@@ -1182,7 +1166,6 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByText(container, "Refresh Conversations"));
-    clickElement(findButtonByText(container, "Create Conversation"));
     clickElement(findButtonByText(container, "Refresh Messages"));
     clickElement(findButtonByText(container, "Send Message"));
 
@@ -1190,20 +1173,6 @@ describe("team panels interactions", () => {
     changeSelectValue(
       required(selects[0] as HTMLSelectElement | undefined, "task select missing"),
       "task-2"
-    );
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="new conversation title"]') as HTMLInputElement | null,
-        "title input missing"
-      ),
-      "new title"
-    );
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="topic (optional)"]') as HTMLInputElement | null,
-        "topic input missing"
-      ),
-      "topic-y"
     );
     changeInputValue(
       required(
@@ -1216,19 +1185,17 @@ describe("team panels interactions", () => {
     );
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
-    expect(onCreateTask).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     expect(onSelectedMainTaskIdChange).toHaveBeenCalledWith("task-2");
-    expect(onNewTaskTitleChange).toHaveBeenCalledWith("new title");
-    expect(onNewTaskTopicChange).toHaveBeenCalledWith("topic-y");
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
     expect(container.textContent).toContain("Conversation");
-    expect(container.textContent).toContain("worker update");
-    expect(container.textContent).toContain("work:blocked");
+    expect(container.textContent).not.toContain("worker update");
+    expect(container.textContent).toContain("work:working");
+    expect(container.textContent).not.toContain("work:blocked");
     expect(container.textContent).toContain("agent:working");
   });
 

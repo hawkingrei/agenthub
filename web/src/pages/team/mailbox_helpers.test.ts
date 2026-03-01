@@ -8,6 +8,7 @@ import {
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  resolveMainTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -105,6 +106,35 @@ describe("mailbox helpers", () => {
       text: "hello @worker-1",
       source: "team_workbench",
       mention_actor_ids: ["worker-1", "worker-2"],
+    });
+  });
+
+  it("resolves main-task mailbox route plan for mention and broadcast modes", () => {
+    expect(
+      resolveMainTaskMailboxRoutePlan(
+        ["leader", "worker-1", "worker-2"],
+        ["worker-2", "worker-1", "worker-2", "unknown"],
+        "leader"
+      )
+    ).toEqual({
+      fromActorId: "leader",
+      toActorIds: ["worker-2", "worker-1"],
+    });
+
+    expect(
+      resolveMainTaskMailboxRoutePlan(
+        ["worker-1", "leader", "worker-2"],
+        [],
+        "leader"
+      )
+    ).toEqual({
+      fromActorId: "leader",
+      toActorIds: ["leader", "worker-1", "worker-2"],
+    });
+
+    expect(resolveMainTaskMailboxRoutePlan(["worker-1"], [], "missing")).toEqual({
+      fromActorId: "worker-1",
+      toActorIds: ["worker-1"],
     });
   });
 
