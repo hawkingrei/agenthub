@@ -1395,6 +1395,100 @@ async fn actor_messages_support_inbox_and_ack_flow() {
 }
 
 #[tokio::test]
+async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-message-payload-type-team".to_string(),
+            description: Some("team for payload type pending lookup".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-msg-type"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    let first = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"first"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send first message");
+    let second = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"second"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send second message");
+    let _other_type = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            to_actor_id: "reviewer",
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"worker_status","status":"done"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send other type message");
+
+    let has_other_chat_pending = manager
+        .has_pending_actor_message_payload_type(
+            &run.id,
+            "reviewer",
+            "chat_message",
+            Some(second.message_id),
+        )
+        .await
+        .expect("check chat pending excluding latest");
+    assert!(has_other_chat_pending);
+
+    manager
+        .ack_actor_message(&run.id, "reviewer", first.message_id)
+        .await
+        .expect("ack first");
+    let still_has_other_chat_pending = manager
+        .has_pending_actor_message_payload_type(
+            &run.id,
+            "reviewer",
+            "chat_message",
+            Some(second.message_id),
+        )
+        .await
+        .expect("check chat pending after ack");
+    assert!(!still_has_other_chat_pending);
+
+    let has_worker_status_pending = manager
+        .has_pending_actor_message_payload_type(&run.id, "reviewer", "worker_status", None)
+        .await
+        .expect("check worker_status pending");
+    assert!(has_worker_status_pending);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_returns_contract_responses() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

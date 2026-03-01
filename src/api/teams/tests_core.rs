@@ -2360,6 +2360,169 @@ async fn team_run_messages_api_supports_idempotency_key() {
 }
 
 #[tokio::test]
+async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pending() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-type-hint-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-type-hint-api".to_string()),
+            input: Some(json!({"prompt":"mailbox type hint flow"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(first_chat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"first chat"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send first chat message");
+
+    let Json(second_chat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"second chat"}),
+            idempotency_key: Some("chat-msg-2".to_string()),
+        }),
+    )
+    .await
+    .expect("send second chat message");
+
+    let Json(second_chat_retry) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"second chat"}),
+            idempotency_key: Some("chat-msg-2".to_string()),
+        }),
+    )
+    .await
+    .expect("retry second chat message");
+    assert_eq!(second_chat_retry.message_id, second_chat.message_id);
+
+    let Json(worker_status) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"worker_status","status":"done"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send worker status message");
+
+    let Json(events) = list_team_run_events(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(200),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+
+    let hint_events = events
+        .iter()
+        .filter(|event| event.event_type == "actor_mailbox_type_hint")
+        .collect::<Vec<_>>();
+    assert_eq!(hint_events.len(), 3);
+
+    let first_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(first_chat.message_id))
+        .expect("first chat hint event");
+    let first_status = first_hint.payload["status"]
+        .as_str()
+        .expect("first status");
+    assert_ne!(first_status, "suppressed");
+    assert_eq!(first_hint.payload["payload_type"], json!("chat_message"));
+
+    let second_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
+        .expect("second chat hint event");
+    assert_eq!(second_hint.payload["status"], json!("suppressed"));
+    assert_eq!(
+        second_hint.payload["reason"],
+        json!("pending_same_type_exists")
+    );
+    assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
+
+    let worker_status_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(worker_status.message_id))
+        .expect("worker status hint event");
+    let worker_status_state = worker_status_hint.payload["status"]
+        .as_str()
+        .expect("worker status state");
+    assert_ne!(worker_status_state, "suppressed");
+    assert_eq!(
+        worker_status_hint.payload["payload_type"],
+        json!("worker_status")
+    );
+
+    let second_hint_count = hint_events
+        .iter()
+        .filter(|event| event.payload["message_id"] == json!(second_chat.message_id))
+        .count();
+    assert_eq!(second_hint_count, 1);
+}
+
+#[tokio::test]
 async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idempotent() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -3438,4 +3601,34 @@ async fn team_main_task_compile_preview_sanitizes_plan_updates() {
         .acceptance_criteria
         .iter()
         .all(|item| !item.contains('{') && !item.contains('`')));
+}
+
+#[test]
+fn mailbox_type_hint_helpers_extract_payload_type() {
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"chat_message","text":"hello"})),
+        Some("chat_message".to_string())
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"  worker_status  "})),
+        Some("worker_status".to_string())
+    );
+    assert_eq!(super::extract_mailbox_payload_type(&json!({"type":""})), None);
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"   "})),
+        None
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":true})),
+        None
+    );
+    assert_eq!(super::extract_mailbox_payload_type(&json!({})), None);
+}
+
+#[test]
+fn mailbox_type_hint_helpers_build_prompt_contains_context() {
+    let prompt = super::build_actor_mailbox_type_hint_prompt("run-42", "chat_message");
+    assert!(prompt.contains("run-42"));
+    assert!(prompt.contains("chat_message"));
+    assert!(prompt.contains("actor_inbox"));
 }

@@ -7,8 +7,8 @@ use self::errors::{
     map_submit_step_error, map_team_internal_error,
 };
 use agenthub_team_actor::{
-    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
-    parse_actor_transport,
+    ActorAckRequest, ActorIdentityKind, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
+    ActorSendRequest, parse_actor_transport,
 };
 use agenthub_team_prompts::default_team_prompt_for_role;
 use axum::{
@@ -1133,6 +1133,15 @@ async fn send_team_run_message(
         })
         .await
         .map_err(map_actor_service_api_error)?;
+    if let Err(err) = maybe_notify_actor_new_mailbox_message_type(&state, &run.id, &message).await {
+        tracing::warn!(
+            run_id = %run.id,
+            to_actor_id = %message.message.to_actor_id,
+            message_id = message.message_id,
+            "team mailbox type hint notify failed: {}",
+            err
+        );
+    }
     if !message.deduped
         && let Some(proposal) = patch_proposal
     {
@@ -1147,6 +1156,113 @@ async fn send_team_run_message(
         .await?;
     }
     Ok(Json(message.message))
+}
+
+async fn maybe_notify_actor_new_mailbox_message_type(
+    state: &AppState,
+    run_id: &str,
+    send_result: &agenthub_team_actor::ActorSendResponse,
+) -> anyhow::Result<()> {
+    if send_result.deduped {
+        return Ok(());
+    }
+    let message = &send_result.message;
+    if message.transport != TeamActorMessageTransport::Local {
+        return Ok(());
+    }
+    if message.to_actor_kind != ActorIdentityKind::Agent {
+        return Ok(());
+    }
+    let Some(payload_type) = extract_mailbox_payload_type(&message.payload) else {
+        return Ok(());
+    };
+
+    let has_pending_same_type = state
+        .teams
+        .has_pending_actor_message_payload_type(
+            run_id,
+            &message.to_actor_id,
+            payload_type.as_str(),
+            Some(message.message_id),
+        )
+        .await?;
+    if has_pending_same_type {
+        append_actor_mailbox_type_hint_event(
+            state,
+            run_id,
+            serde_json::json!({
+                "status": "suppressed",
+                "reason": "pending_same_type_exists",
+                "message_id": message.message_id,
+                "to_actor_id": message.to_actor_id,
+                "payload_type": payload_type,
+            }),
+        )
+        .await;
+        return Ok(());
+    }
+
+    let hint = build_actor_mailbox_type_hint_prompt(run_id, payload_type.as_str());
+    let send_status = match state
+        .agents
+        .send_input(&message.to_actor_id, &hint, None, None)
+        .await
+    {
+        Ok(()) => ("sent", None),
+        Err(err) => {
+            tracing::debug!(
+                run_id = %run_id,
+                actor_id = %message.to_actor_id,
+                payload_type = %payload_type,
+                "skip mailbox type hint push because agent input is unavailable: {}",
+                err
+            );
+            ("send_failed", Some(err.to_string()))
+        }
+    };
+    append_actor_mailbox_type_hint_event(
+        state,
+        run_id,
+        serde_json::json!({
+            "status": send_status.0,
+            "message_id": message.message_id,
+            "to_actor_id": message.to_actor_id,
+            "payload_type": payload_type,
+            "error": send_status.1,
+        }),
+    )
+    .await;
+    Ok(())
+}
+
+async fn append_actor_mailbox_type_hint_event(state: &AppState, run_id: &str, payload: Value) {
+    if let Err(err) = state
+        .teams
+        .append_run_event(run_id, "actor_mailbox_type_hint", payload)
+        .await
+    {
+        tracing::warn!(
+            run_id = %run_id,
+            "failed to append actor_mailbox_type_hint event: {}",
+            err
+        );
+    }
+}
+
+fn extract_mailbox_payload_type(payload: &Value) -> Option<String> {
+    let payload_type = payload
+        .as_object()
+        .and_then(|obj| obj.get("type"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    Some(payload_type.to_string())
+}
+
+fn build_actor_mailbox_type_hint_prompt(run_id: &str, payload_type: &str) -> String {
+    format!(
+        "New mailbox message type '{payload_type}' is pending in run '{run_id}'. Use actor_inbox to inspect pending messages and batch-handle this type before ack."
+    )
 }
 
 async fn list_team_run_inbox(

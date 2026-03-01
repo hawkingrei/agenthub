@@ -18,7 +18,7 @@ use reqwest::{Method, Url, header};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Sha256;
-use sqlx::{Error as SqlxError, Row, Sqlite, SqlitePool};
+use sqlx::{Error as SqlxError, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
 
 use super::TeamManager;
@@ -177,6 +177,40 @@ impl TeamManager {
             .await
             .map_err(map_actor_mailbox_store_error)?;
         Ok(message)
+    }
+
+    pub async fn has_pending_actor_message_payload_type(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        payload_type: &str,
+        exclude_message_id: Option<i64>,
+    ) -> anyhow::Result<bool> {
+        let payload_type = payload_type.trim();
+        if payload_type.is_empty() {
+            return Ok(false);
+        }
+
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            SELECT id
+            FROM team_actor_messages
+            WHERE run_id = "#,
+        );
+        builder.push_bind(run_id);
+        builder.push(" AND to_actor_id = ");
+        builder.push_bind(actor_id);
+        builder.push(" AND status = 'pending'");
+        builder.push(" AND json_extract(payload_json, '$.type') = ");
+        builder.push_bind(payload_type);
+        if let Some(message_id) = exclude_message_id {
+            builder.push(" AND id != ");
+            builder.push_bind(message_id);
+        }
+        builder.push(" LIMIT 1");
+
+        let row = builder.build().fetch_optional(&self.db).await?;
+        Ok(row.is_some())
     }
 
     pub async fn relay_remote_messages_once(
