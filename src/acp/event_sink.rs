@@ -1,17 +1,18 @@
 use chrono::Utc;
-use sqlx::SqlitePool;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use agenthub_acp::{AcpEventSink, AcpStream};
 
-use crate::agent::event_message_codec::encode_message_for_storage;
+use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, OutputStream};
+use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
 pub struct AgenthubAcpEventSink {
-    db: SqlitePool,
+    event_dbs: AgentEventDbRouter,
+    idle_gc: Option<AgentEventIdleGc>,
     output_tx: broadcast::Sender<AgentOutput>,
     agent_id: String,
     session_id: String,
@@ -20,13 +21,15 @@ pub struct AgenthubAcpEventSink {
 
 impl AgenthubAcpEventSink {
     pub fn new(
-        db: SqlitePool,
+        event_dbs: AgentEventDbRouter,
+        idle_gc: Option<AgentEventIdleGc>,
         output_tx: broadcast::Sender<AgentOutput>,
         agent_id: String,
         session_id: String,
     ) -> Self {
         Self {
-            db,
+            event_dbs,
+            idle_gc,
             output_tx,
             agent_id,
             session_id,
@@ -48,34 +51,31 @@ impl AcpEventSink for AgenthubAcpEventSink {
         let seq = Uuid::now_v7().to_string();
         let ts = Utc::now().timestamp();
         let output_stream = Self::map_stream(stream);
-        let db = self.db.clone();
+        let event_dbs = self.event_dbs.clone();
+        let idle_gc = self.idle_gc.clone();
         let agent_id = self.agent_id.clone();
         let session_id = self.session_id.clone();
-        let stream_name = stream_to_str(&output_stream).to_string();
-        // Persist ACP rows with compact binary encoding; in-memory broadcast remains raw JSON.
-        let message_for_db = encode_message_for_storage(&output_stream, &message);
+        let stream_for_db = output_stream.clone();
+        let message_for_db = message.clone();
         let seq_for_db = seq.clone();
         let result = self
             .runtime_handle
             .spawn(async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    "#,
+                persist_agent_event(
+                    &event_dbs,
+                    idle_gc.as_ref(),
+                    &agent_id,
+                    &session_id,
+                    &seq_for_db,
+                    ts,
+                    &stream_for_db,
+                    &message_for_db,
                 )
-                .bind(agent_id)
-                .bind(session_id)
-                .bind(seq_for_db)
-                .bind(ts)
-                .bind(stream_name)
-                .bind(message_for_db)
-                .execute(&db)
                 .await
             })
             .await;
-        let result = match result {
-            Ok(Ok(result)) => result,
+        let event_id = match result {
+            Ok(Ok(event_id)) => event_id,
             Ok(Err(err)) => {
                 tracing::error!(
                     "acp emit_raw: failed to persist event: agent_id={} session_id={} error={}",
@@ -96,7 +96,7 @@ impl AcpEventSink for AgenthubAcpEventSink {
             }
         };
         let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
+            event_id,
             agent_id: self.agent_id.clone(),
             session_id: self.session_id.clone(),
             seq,
@@ -105,14 +105,5 @@ impl AcpEventSink for AgenthubAcpEventSink {
             message,
         };
         let _ = self.output_tx.send(output);
-    }
-}
-
-fn stream_to_str(stream: &OutputStream) -> &'static str {
-    match stream {
-        OutputStream::Stdout => "stdout",
-        OutputStream::Stderr => "stderr",
-        OutputStream::System => "system",
-        OutputStream::Acp => "acp",
     }
 }

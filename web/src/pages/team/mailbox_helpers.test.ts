@@ -4,11 +4,12 @@ import type { TeamActorMessageRecord } from "../../api";
 import {
   buildMailboxChatPayload,
   buildMailboxConversationKey,
+  buildMailboxForwardChatPayload,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
-  resolveMainTaskMailboxRoutePlan,
+  resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -109,9 +110,46 @@ describe("mailbox helpers", () => {
     });
   });
 
-  it("resolves main-task mailbox route plan for mention and broadcast modes", () => {
+  it("translates mailbox address into @ mention when forwarding without explicit mentions", () => {
+    const broadcastPayload = buildMailboxChatPayload("please check logs");
+    expect(buildMailboxForwardChatPayload(broadcastPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-1 please check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    const explicitMentionPayload = buildMailboxChatPayload("@worker-2 @worker-1 check logs", {
+      mention_actor_ids: ["worker-2", "worker-1", "worker-2"],
+    });
+    expect(buildMailboxForwardChatPayload(explicitMentionPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-2 @worker-1 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    const mismatchedMentionPayload = buildMailboxChatPayload("@worker-2 check logs", {
+      mention_actor_ids: ["worker-2"],
+    });
+    expect(buildMailboxForwardChatPayload(mismatchedMentionPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-1 @worker-2 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    expect(buildMailboxForwardChatPayload(explicitMentionPayload, " ")).toEqual({
+      type: "chat_message",
+      text: "@worker-2 @worker-1 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-2", "worker-1"],
+    });
+  });
+
+  it("resolves task mailbox route plan for mention and broadcast modes", () => {
     expect(
-      resolveMainTaskMailboxRoutePlan(
+      resolveTaskMailboxRoutePlan(
         ["leader", "worker-1", "worker-2"],
         ["worker-2", "worker-1", "worker-2", "unknown"],
         "leader"
@@ -122,7 +160,7 @@ describe("mailbox helpers", () => {
     });
 
     expect(
-      resolveMainTaskMailboxRoutePlan(
+      resolveTaskMailboxRoutePlan(
         ["worker-1", "leader", "worker-2"],
         [],
         "leader"
@@ -132,7 +170,7 @@ describe("mailbox helpers", () => {
       toActorIds: ["leader", "worker-1", "worker-2"],
     });
 
-    expect(resolveMainTaskMailboxRoutePlan(["worker-1"], [], "missing")).toEqual({
+    expect(resolveTaskMailboxRoutePlan(["worker-1"], [], "missing")).toEqual({
       fromActorId: "worker-1",
       toActorIds: ["worker-1"],
     });

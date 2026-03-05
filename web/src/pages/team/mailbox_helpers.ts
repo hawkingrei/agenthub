@@ -14,7 +14,7 @@ export type TeamMailboxChatActors = {
   inboxActorId: string;
 };
 
-export type MainTaskMailboxRoutePlan = {
+export type TaskMailboxRoutePlan = {
   fromActorId: string;
   toActorIds: string[];
 };
@@ -110,11 +110,11 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
   return out;
 }
 
-export function resolveMainTaskMailboxRoutePlan(
+export function resolveTaskMailboxRoutePlan(
   memberIds: string[],
   mentionActorIds: string[],
   leaderMemberId?: string | null
-): MainTaskMailboxRoutePlan {
+): TaskMailboxRoutePlan {
   const normalizedMembers = normalizeActorIds(memberIds);
   if (normalizedMembers.length === 0) {
     return {
@@ -178,6 +178,37 @@ export function buildMailboxChatPayload(
     payload.mention_actor_ids = mentionActorIds;
   }
   return payload;
+}
+
+export function buildMailboxForwardChatPayload(
+  basePayload: MailboxChatPayload,
+  toActorId: string
+): MailboxChatPayload {
+  const targetActorId = toActorId.trim();
+  const explicitMentions = normalizeActorIds(basePayload.mention_actor_ids ?? []);
+  const normalizedText = basePayload.text.trim();
+  if (!targetActorId) {
+    if (explicitMentions.length > 0) {
+      return { ...basePayload, mention_actor_ids: explicitMentions };
+    }
+    return basePayload;
+  }
+  const mentionToken = `@${targetActorId}`;
+  const textWithMention = normalizedText.includes(mentionToken)
+    ? normalizedText
+    : `${mentionToken} ${normalizedText}`.trim();
+  if (explicitMentions.length > 0) {
+    return {
+      ...basePayload,
+      text: textWithMention,
+      mention_actor_ids: [targetActorId],
+    };
+  }
+  return {
+    ...basePayload,
+    text: textWithMention,
+    mention_actor_ids: [targetActorId],
+  };
 }
 
 export function buildMailboxConversationKey(actorA: string, actorB: string): string {

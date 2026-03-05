@@ -21,21 +21,24 @@ pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
-    parse_team_conversation_row, parse_team_definition_row, parse_team_main_task_row,
+    parse_team_conversation_row, parse_team_definition_row, parse_team_task_row,
     parse_team_member_continuity_state_row, parse_team_run_row, parse_team_step_row,
-    team_main_task_status_to_str, team_run_status_to_str, team_step_status_to_str,
+    team_task_status_to_str, team_run_status_to_str, team_step_status_to_str,
 };
 use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
-    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamMainTaskRecord,
-    TeamMainTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
+    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamTaskRecord,
+    TeamTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
     TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
+use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 use crate::agent::event_message_codec::decode_message_from_storage;
+use crate::db::AgentEventDbRouter;
 
 #[derive(Clone)]
 pub struct TeamManager {
     db: SqlitePool,
+    event_dbs: AgentEventDbRouter,
 }
 
 const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
@@ -74,7 +77,11 @@ pub struct TeamMemoryFlushResult {
 
 impl TeamManager {
     pub fn new(db: SqlitePool) -> Self {
-        Self { db }
+        Self::new_with_event_dbs(db, AgentEventDbRouter::with_default_base_dir())
+    }
+
+    pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
+        Self { db, event_dbs }
     }
 
     #[cfg(test)]
@@ -183,10 +190,6 @@ impl TeamManager {
                 .bind(member_id)
                 .execute(&mut *tx)
                 .await?;
-            sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
-                .bind(member_id)
-                .execute(&mut *tx)
-                .await?;
             sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
                 .bind(member_id)
                 .execute(&mut *tx)
@@ -222,7 +225,7 @@ impl TeamManager {
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query("DELETE FROM team_main_tasks WHERE team_id = ?1")
+        sqlx::query("DELETE FROM team_tasks WHERE team_id = ?1")
             .bind(team_id)
             .execute(&mut *tx)
             .await?;
@@ -277,10 +280,13 @@ impl TeamManager {
             .await?;
 
         tx.commit().await?;
+        for member_id in member_ids {
+            self.event_dbs.remove_agent_db(member_id).await?;
+        }
         Ok(team)
     }
 
-    pub async fn create_main_task(
+    pub async fn create_task(
         &self,
         team_id: &str,
         title: &str,
@@ -288,18 +294,18 @@ impl TeamManager {
         context: Value,
         conversation_mode: &str,
         topic: Option<&str>,
-    ) -> anyhow::Result<(TeamMainTaskRecord, TeamConversationRecord)> {
+    ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
         let now = Utc::now().timestamp();
         let task_id = Uuid::new_v4().to_string();
         let conversation_id = Uuid::new_v4().to_string();
-        let status = TeamMainTaskStatus::Open;
+        let status = TeamTaskStatus::Open;
         let context_json = redact_sensitive_json(&context).to_string();
         let topic = topic.map(str::trim).filter(|value| !value.is_empty());
 
         let mut tx = self.db.begin().await?;
         sqlx::query(
             r#"
-            INSERT INTO team_main_tasks (
+            INSERT INTO team_tasks (
                 id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -308,7 +314,7 @@ impl TeamManager {
         .bind(&task_id)
         .bind(team_id)
         .bind(title)
-        .bind(team_main_task_status_to_str(&status))
+        .bind(team_task_status_to_str(&status))
         .bind(created_by_actor_id)
         .bind(context_json)
         .bind(now)
@@ -319,7 +325,7 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_conversations (
-                id, team_id, main_task_id, mode, topic, created_at, updated_at
+                id, team_id, task_id, mode, topic, created_at, updated_at
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
@@ -335,16 +341,16 @@ impl TeamManager {
         .await?;
         tx.commit().await?;
 
-        let task = self.get_main_task(&task_id).await?;
-        let conversation = self.get_main_task_conversation(&task_id).await?;
+        let task = self.get_task(&task_id).await?;
+        let conversation = self.get_task_conversation(&task_id).await?;
         Ok((task, conversation))
     }
 
-    pub async fn list_main_tasks(
+    pub async fn list_tasks(
         &self,
         team_id: &str,
         limit: i64,
-    ) -> anyhow::Result<Vec<TeamMainTaskRecord>> {
+    ) -> anyhow::Result<Vec<TeamTaskRecord>> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -356,7 +362,7 @@ impl TeamManager {
                 context_json,
                 created_at,
                 updated_at
-            FROM team_main_tasks
+            FROM team_tasks
             WHERE team_id = ?1
             ORDER BY updated_at DESC, id DESC
             LIMIT ?2
@@ -368,12 +374,12 @@ impl TeamManager {
         .await?;
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
-            tasks.push(parse_team_main_task_row(&row)?);
+            tasks.push(parse_team_task_row(&row)?);
         }
         Ok(tasks)
     }
 
-    pub async fn get_main_task(&self, main_task_id: &str) -> anyhow::Result<TeamMainTaskRecord> {
+    pub async fn get_task(&self, task_id: &str) -> anyhow::Result<TeamTaskRecord> {
         let row = sqlx::query(
             r#"
             SELECT
@@ -385,50 +391,50 @@ impl TeamManager {
                 context_json,
                 created_at,
                 updated_at
-            FROM team_main_tasks
+            FROM team_tasks
             WHERE id = ?1
             "#,
         )
-        .bind(main_task_id)
+        .bind(task_id)
         .fetch_one(&self.db)
         .await?;
-        parse_team_main_task_row(&row)
+        parse_team_task_row(&row)
     }
 
-    pub async fn get_main_task_conversation(
+    pub async fn get_task_conversation(
         &self,
-        main_task_id: &str,
+        task_id: &str,
     ) -> anyhow::Result<TeamConversationRecord> {
         let row = sqlx::query(
             r#"
             SELECT
                 id,
                 team_id,
-                main_task_id,
+                task_id,
                 mode,
                 topic,
                 created_at,
                 updated_at
             FROM team_conversations
-            WHERE main_task_id = ?1
+            WHERE task_id = ?1
             "#,
         )
-        .bind(main_task_id)
+        .bind(task_id)
         .fetch_one(&self.db)
         .await?;
         parse_team_conversation_row(&row)
     }
 
-    pub async fn append_main_task_conversation_message(
+    pub async fn append_task_conversation_message(
         &self,
-        main_task_id: &str,
+        task_id: &str,
         from_actor_id: &str,
         to_actor_id: Option<&str>,
         route: &str,
         payload: Value,
     ) -> anyhow::Result<TeamConversationMessageRecord> {
         let now = Utc::now().timestamp();
-        let conversation = self.get_main_task_conversation(main_task_id).await?;
+        let conversation = self.get_task_conversation(task_id).await?;
         let redacted_payload = redact_sensitive_json(&payload);
         let payload_json = redacted_payload.to_string();
         let to_actor_id = to_actor_id
@@ -439,7 +445,7 @@ impl TeamManager {
             r#"
             INSERT INTO team_conversation_messages (
                 conversation_id,
-                main_task_id,
+                task_id,
                 from_actor_id,
                 to_actor_id,
                 route,
@@ -450,7 +456,7 @@ impl TeamManager {
             "#,
         )
         .bind(&conversation.id)
-        .bind(main_task_id)
+        .bind(task_id)
         .bind(from_actor_id)
         .bind(to_actor_id.as_deref())
         .bind(route)
@@ -462,7 +468,7 @@ impl TeamManager {
         Ok(TeamConversationMessageRecord {
             message_id: result.last_insert_rowid(),
             conversation_id: conversation.id,
-            main_task_id: main_task_id.to_string(),
+            task_id: task_id.to_string(),
             from_actor_id: from_actor_id.to_string(),
             to_actor_id,
             route: route.to_string(),
@@ -471,19 +477,19 @@ impl TeamManager {
         })
     }
 
-    pub async fn list_main_task_conversation_messages(
+    pub async fn list_task_conversation_messages(
         &self,
-        main_task_id: &str,
+        task_id: &str,
         limit: i64,
         before_id: Option<i64>,
     ) -> anyhow::Result<Vec<TeamConversationMessageRecord>> {
-        let conversation = self.get_main_task_conversation(main_task_id).await?;
+        let conversation = self.get_task_conversation(task_id).await?;
         let mut builder = QueryBuilder::<sqlx::Sqlite>::new(
             r#"
             SELECT
                 id,
                 conversation_id,
-                main_task_id,
+                task_id,
                 from_actor_id,
                 to_actor_id,
                 route,
@@ -1936,7 +1942,9 @@ impl TeamManager {
                 id,
                 run_id,
                 from_actor_id,
+                from_peer_id,
                 to_actor_id,
+                to_peer_id,
                 channel,
                 transport,
                 route_json,
@@ -2050,8 +2058,8 @@ impl TeamManager {
             session_id.as_str(),
         )
         .await?;
-        let event_rows = load_memory_flush_event_rows_tx(
-            &mut tx,
+        let event_rows = load_memory_flush_event_rows(
+            &self.event_dbs,
             normalized.member_id.as_str(),
             session_id.as_str(),
             checkpoint_event_id,
@@ -2077,14 +2085,8 @@ impl TeamManager {
             .iter()
             .map(build_memory_flush_observation)
             .collect::<Vec<_>>();
-        let event_id_from = event_rows
-            .first()
-            .map(|row| row.get::<i64, _>("id"))
-            .unwrap_or(0);
-        let event_id_to = event_rows
-            .last()
-            .map(|row| row.get::<i64, _>("id"))
-            .unwrap_or(0);
+        let event_id_from = event_rows.first().map(|row| row.id).unwrap_or(0);
+        let event_id_to = event_rows.last().map(|row| row.id).unwrap_or(0);
         let flushed_events = safe_i64_len(event_rows.len());
         let summary_text = build_memory_flush_summary(observations.as_slice());
         let flush_payload = serde_json::json!({
@@ -2222,10 +2224,12 @@ impl TeamManager {
             FROM team_actor_messages
             WHERE run_id = ?1
               AND status = 'pending'
+              AND to_peer_id = ?2
             GROUP BY to_actor_id
             "#,
         )
         .bind(run_id)
+        .bind(ACTOR_MAIN_PEER_ID)
         .fetch_all(&self.db)
         .await?;
 
@@ -2255,6 +2259,13 @@ struct MemoryFlushFinalizeContext<'a> {
     session_id: Option<&'a str>,
     trigger: &'a str,
     now: i64,
+}
+
+#[derive(Debug, Clone)]
+struct MemoryFlushEventRow {
+    id: i64,
+    stream: String,
+    message: Vec<u8>,
 }
 
 fn normalize_memory_flush_request(
@@ -2326,31 +2337,37 @@ async fn load_memory_flush_checkpoint_event_id_tx(
     Ok(checkpoint_event_id)
 }
 
-async fn load_memory_flush_event_rows_tx(
-    tx: &mut sqlx::Transaction<'_, Sqlite>,
+async fn load_memory_flush_event_rows(
+    event_dbs: &AgentEventDbRouter,
     member_id: &str,
     session_id: &str,
     checkpoint_event_id: i64,
     max_events: i64,
-) -> anyhow::Result<Vec<sqlx::sqlite::SqliteRow>> {
+) -> anyhow::Result<Vec<MemoryFlushEventRow>> {
+    let event_db = event_dbs.pool_for_agent(member_id).await?;
     let rows = sqlx::query(
         r#"
         SELECT id, stream, message
         FROM agent_events
-        WHERE agent_id = ?1
-          AND session_id = ?2
-          AND id > ?3
+        WHERE session_id = ?1
+          AND id > ?2
         ORDER BY id ASC
-        LIMIT ?4
+        LIMIT ?3
         "#,
     )
-    .bind(member_id)
     .bind(session_id)
     .bind(checkpoint_event_id)
     .bind(max_events)
-    .fetch_all(&mut **tx)
+    .fetch_all(&event_db)
     .await?;
-    Ok(rows)
+    Ok(rows
+        .into_iter()
+        .map(|row| MemoryFlushEventRow {
+            id: row.get("id"),
+            stream: row.get("stream"),
+            message: row.get("message"),
+        })
+        .collect())
 }
 
 async fn upsert_memory_flush_checkpoint_tx(
@@ -2538,10 +2555,10 @@ fn normalize_memory_flush_max_events(raw: Option<i64>) -> i64 {
         .clamp(1, MEMORY_FLUSH_MAX_EVENTS_MAX)
 }
 
-fn build_memory_flush_observation(row: &sqlx::sqlite::SqliteRow) -> Value {
-    let event_id = row.get::<i64, _>("id");
-    let stream = row.get::<String, _>("stream");
-    let message = decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice());
+fn build_memory_flush_observation(row: &MemoryFlushEventRow) -> Value {
+    let event_id = row.id;
+    let stream = row.stream.as_str();
+    let message = decode_message_from_storage(row.message.as_slice());
     if let Ok(message_json) = serde_json::from_str::<Value>(&message) {
         let redacted = redact_sensitive_json(&message_json);
         let observation_type = message_json

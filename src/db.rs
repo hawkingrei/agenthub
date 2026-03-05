@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
@@ -11,6 +12,190 @@ pub struct AgentEventCleanupResult {
     pub deleted_rows: u64,
     pub delete_batches: u64,
     pub vacuum_ran: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AgentEventIdleGcState {
+    generation: u64,
+    checked_for_generation: bool,
+}
+
+#[derive(Clone)]
+pub struct AgentEventIdleGc {
+    event_dbs: AgentEventDbRouter,
+    retention_days: u32,
+    vacuum_on_cleanup: bool,
+    delete_batch_size: u32,
+    idle_timeout: Duration,
+    states: Arc<Mutex<HashMap<String, AgentEventIdleGcState>>>,
+}
+
+impl AgentEventIdleGc {
+    pub fn new(
+        event_dbs: AgentEventDbRouter,
+        retention_days: u32,
+        vacuum_on_cleanup: bool,
+        delete_batch_size: u32,
+        idle_timeout: Duration,
+    ) -> Self {
+        Self {
+            event_dbs,
+            retention_days,
+            vacuum_on_cleanup,
+            delete_batch_size,
+            idle_timeout,
+            states: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub async fn record_activity(&self, agent_id: &str) {
+        let generation = {
+            let mut states = self.states.lock().await;
+            let state = states
+                .entry(agent_id.to_string())
+                .or_insert(AgentEventIdleGcState {
+                    generation: 0,
+                    checked_for_generation: false,
+                });
+            state.generation = state.generation.wrapping_add(1);
+            state.checked_for_generation = false;
+            state.generation
+        };
+
+        let agent_id = agent_id.to_string();
+        let states = self.states.clone();
+        let event_dbs = self.event_dbs.clone();
+        let retention_days = self.retention_days;
+        let vacuum_on_cleanup = self.vacuum_on_cleanup;
+        let delete_batch_size = self.delete_batch_size;
+        let idle_timeout = self.idle_timeout;
+        tokio::spawn(async move {
+            tokio::time::sleep(idle_timeout).await;
+            let should_run = {
+                let mut states = states.lock().await;
+                match states.get_mut(&agent_id) {
+                    Some(state)
+                        if state.generation == generation && !state.checked_for_generation =>
+                    {
+                        state.checked_for_generation = true;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if !should_run {
+                return;
+            }
+            let event_db = match event_dbs.pool_for_agent(&agent_id).await {
+                Ok(pool) => pool,
+                Err(err) => {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %err,
+                        "idle gc skipped: failed to open per-agent event db"
+                    );
+                    return;
+                }
+            };
+            match cleanup_agent_event_history(
+                &event_db,
+                retention_days,
+                vacuum_on_cleanup,
+                delete_batch_size,
+            )
+            .await
+            {
+                Ok(result) => {
+                    tracing::debug!(
+                        agent_id = %agent_id,
+                        retention_days,
+                        deleted_rows = result.deleted_rows,
+                        delete_batches = result.delete_batches,
+                        vacuum_ran = result.vacuum_ran,
+                        "idle gc check completed"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        retention_days,
+                        error = %err,
+                        "idle gc check failed"
+                    );
+                }
+            }
+        });
+    }
+
+    pub async fn remove_agent(&self, agent_id: &str) {
+        let mut states = self.states.lock().await;
+        states.remove(agent_id);
+    }
+}
+
+#[derive(Clone)]
+pub struct AgentEventDbRouter {
+    base_dir: PathBuf,
+    pools: Arc<Mutex<HashMap<String, SqlitePool>>>,
+}
+
+impl AgentEventDbRouter {
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self {
+            base_dir,
+            pools: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn with_default_base_dir() -> Self {
+        Self::new(default_agent_event_db_dir())
+    }
+
+    pub async fn pool_for_agent(&self, agent_id: &str) -> anyhow::Result<SqlitePool> {
+        let existing = {
+            let pools = self.pools.lock().await;
+            pools.get(agent_id).cloned()
+        };
+        if let Some(pool) = existing {
+            return Ok(pool);
+        }
+        let db_path = self.db_path_for_agent(agent_id);
+        ensure_sqlite_path(&db_path)?;
+        let pool = connect_sqlite_with_defaults(&db_path, 2).await?;
+        init_agent_event_db_schema(&pool).await?;
+        let mut pools = self.pools.lock().await;
+        let pool = pools
+            .entry(agent_id.to_string())
+            .or_insert_with(|| pool)
+            .clone();
+        Ok(pool)
+    }
+
+    pub async fn remove_agent_db(&self, agent_id: &str) -> anyhow::Result<()> {
+        if let Some(pool) = {
+            let mut pools = self.pools.lock().await;
+            pools.remove(agent_id)
+        } {
+            pool.close().await;
+        }
+        let db_path = self.db_path_for_agent(agent_id);
+        if db_path.exists() {
+            std::fs::remove_file(&db_path)?;
+        }
+        let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
+        if wal_path.exists() {
+            std::fs::remove_file(wal_path)?;
+        }
+        let shm_path = PathBuf::from(format!("{}-shm", db_path.display()));
+        if shm_path.exists() {
+            std::fs::remove_file(shm_path)?;
+        }
+        Ok(())
+    }
+
+    pub fn db_path_for_agent(&self, agent_id: &str) -> PathBuf {
+        self.base_dir.join(format!("{agent_id}.db"))
+    }
 }
 
 pub async fn init_db() -> anyhow::Result<SqlitePool> {
@@ -279,7 +464,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS team_main_tasks (
+        CREATE TABLE IF NOT EXISTS team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
             title TEXT NOT NULL,
@@ -300,13 +485,13 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         CREATE TABLE IF NOT EXISTS team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL UNIQUE,
+            task_id TEXT NOT NULL UNIQUE,
             mode TEXT NOT NULL,
             topic TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY(team_id) REFERENCES team_definitions(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -318,14 +503,14 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         CREATE TABLE IF NOT EXISTS team_conversation_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             conversation_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -338,7 +523,9 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
+            from_peer_id TEXT NOT NULL DEFAULT 'main',
             to_actor_id TEXT NOT NULL,
+            to_peer_id TEXT NOT NULL DEFAULT 'main',
             channel TEXT NOT NULL,
             transport TEXT NOT NULL,
             route_json TEXT,
@@ -532,15 +719,15 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     if let Err(err) = sqlx::query(
         r#"
-        CREATE INDEX IF NOT EXISTS idx_team_main_tasks_team_updated
-        ON team_main_tasks(team_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_team_tasks_team_updated
+        ON team_tasks(team_id, updated_at DESC);
         "#,
     )
     .execute(&pool)
     .await
     {
         tracing::warn!(
-            "db init: failed to create idx_team_main_tasks_team_updated: {}",
+            "db init: failed to create idx_team_tasks_team_updated: {}",
             err
         );
     }
@@ -548,7 +735,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_team_conversations_team_task
-        ON team_conversations(team_id, main_task_id);
+        ON team_conversations(team_id, task_id);
         "#,
     )
     .execute(&pool)
@@ -577,15 +764,15 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     if let Err(err) = sqlx::query(
         r#"
-        CREATE INDEX IF NOT EXISTS idx_team_actor_messages_run_to_id
-        ON team_actor_messages(run_id, to_actor_id, id);
+        CREATE INDEX IF NOT EXISTS idx_team_actor_messages_run_peer_to_id
+        ON team_actor_messages(run_id, to_peer_id, to_actor_id, id);
         "#,
     )
     .execute(&pool)
     .await
     {
         tracing::warn!(
-            "db init: failed to create idx_team_actor_messages_run_to_id: {}",
+            "db init: failed to create idx_team_actor_messages_run_peer_to_id: {}",
             err
         );
     }
@@ -767,6 +954,18 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await;
     add_column_if_missing(
         &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",
+        "team_actor_messages.from_peer_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN to_peer_id TEXT NOT NULL DEFAULT 'main'",
+        "team_actor_messages.to_peer_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN relay_attempt INTEGER NOT NULL DEFAULT 0",
         "team_actor_messages.relay_attempt",
     )
@@ -795,10 +994,19 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_actor_messages.idempotency_key",
     )
     .await;
+    if let Err(err) = sqlx::query("DROP INDEX IF EXISTS idx_team_actor_messages_idempotency")
+        .execute(&pool)
+        .await
+    {
+        tracing::warn!(
+            "db init: failed to drop idx_team_actor_messages_idempotency: {}",
+            err
+        );
+    }
     if let Err(err) = sqlx::query(
         r#"
         CREATE UNIQUE INDEX IF NOT EXISTS idx_team_actor_messages_idempotency
-        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        ON team_actor_messages(run_id, from_actor_id, from_peer_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
         "#,
     )
@@ -836,7 +1044,7 @@ pub async fn cleanup_agent_event_history(
                 SELECT id
                 FROM agent_events
                 WHERE ts < ?1
-                ORDER BY id
+                ORDER BY ts, id
                 LIMIT ?2
             )
             "#,
@@ -899,6 +1107,24 @@ async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
 
 async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     ensure_sqlite_path(db_path)?;
+    let pool = connect_sqlite_with_defaults(db_path, 5).await?;
+    Ok(pool)
+}
+
+fn default_db_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::Path::new(&home).join(".agenthub/agenthub.db")
+}
+
+fn default_agent_event_db_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::Path::new(&home).join(".agenthub/agent-events")
+}
+
+async fn connect_sqlite_with_defaults(
+    db_path: &std::path::Path,
+    max_connections: u32,
+) -> anyhow::Result<SqlitePool> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
         .create_if_missing(true)
@@ -907,7 +1133,7 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
         .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_connections)
         .connect_with(options)
         .await
         .map_err(|err| {
@@ -919,11 +1145,6 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
             err
         })?;
     Ok(pool)
-}
-
-fn default_db_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    std::path::Path::new(&home).join(".agenthub/agenthub.db")
 }
 
 fn ensure_sqlite_path(db_path: &std::path::Path) -> anyhow::Result<()> {
@@ -944,6 +1165,48 @@ fn create_parent_dir(path: &std::path::Path) -> anyhow::Result<()> {
             err
         })?;
     }
+    Ok(())
+}
+
+async fn init_agent_event_db_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            seq TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            stream TEXT NOT NULL,
+            message BLOB NOT NULL
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_session_id
+        ON agent_events(session_id, id);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_session_seq
+        ON agent_events(session_id, seq);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_ts
+        ON agent_events(ts);
+        "#,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -1017,9 +1280,13 @@ async fn migrate_agent_events_message_column_to_blob(pool: &SqlitePool) -> anyho
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_agent_event_history, create_parent_dir, init_db_at_path, try_connect};
+    use super::{
+        AgentEventDbRouter, AgentEventIdleGc, cleanup_agent_event_history, create_parent_dir,
+        init_db_at_path, try_connect,
+    };
     use sqlx::Row;
     use sqlx::sqlite::SqlitePoolOptions;
+    use std::time::Duration;
     use uuid::Uuid;
 
     fn unique_temp_dir(name: &str) -> std::path::PathBuf {
@@ -1044,7 +1311,7 @@ mod tests {
                 'team_runs',
                 'team_steps',
                 'team_run_events',
-                'team_main_tasks',
+                'team_tasks',
                 'team_conversations',
                 'team_conversation_messages',
                 'team_actor_messages',
@@ -1457,6 +1724,123 @@ mod tests {
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cleanup_agent_event_history_uses_ts_index_for_batch_selection() {
+        let dir = unique_temp_dir("db-cleanup-plan");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("cleanup-plan.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let now = chrono::Utc::now().timestamp();
+        let cutoff_ts = now - (5 * 24 * 60 * 60);
+        let rows = sqlx::query(
+            r#"
+            EXPLAIN QUERY PLAN
+            SELECT id
+            FROM agent_events
+            WHERE ts < ?1
+            ORDER BY ts, id
+            LIMIT ?2
+            "#,
+        )
+        .bind(cutoff_ts)
+        .bind(1000_i64)
+        .fetch_all(&pool)
+        .await
+        .expect("explain cleanup subquery");
+        let details: Vec<String> = rows.iter().map(|row| row.get("detail")).collect();
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("idx_agent_events_ts")),
+            "expected cleanup plan to use idx_agent_events_ts, got: {details:?}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn idle_gc_checks_only_once_per_idle_window() {
+        let dir = unique_temp_dir("db-idle-gc-once");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let event_dbs = AgentEventDbRouter::new(dir.clone());
+        let idle_gc =
+            AgentEventIdleGc::new(event_dbs.clone(), 5, false, 100, Duration::from_millis(60));
+        let pool = event_dbs
+            .pool_for_agent("agent-idle-gc")
+            .await
+            .expect("open per-agent db");
+        let old_ts = chrono::Utc::now().timestamp() - (10 * 24 * 60 * 60);
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-idle")
+        .bind("seq-1")
+        .bind(old_ts)
+        .bind("stdout")
+        .bind("first-old")
+        .execute(&pool)
+        .await
+        .expect("insert first old event");
+
+        idle_gc.record_activity("agent-idle-gc").await;
+        tokio::time::sleep(Duration::from_millis(180)).await;
+
+        let remaining_after_first_check: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
+                .bind(old_ts + 1)
+                .fetch_one(&pool)
+                .await
+                .expect("count after first idle gc");
+        assert_eq!(remaining_after_first_check, 0);
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-idle")
+        .bind("seq-2")
+        .bind(old_ts)
+        .bind("stdout")
+        .bind("second-old")
+        .execute(&pool)
+        .await
+        .expect("insert second old event");
+
+        tokio::time::sleep(Duration::from_millis(180)).await;
+        let remaining_without_new_activity: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
+                .bind(old_ts + 1)
+                .fetch_one(&pool)
+                .await
+                .expect("count without new activity");
+        assert_eq!(
+            remaining_without_new_activity, 1,
+            "idle gc should not re-run without new activity"
+        );
+
+        idle_gc.record_activity("agent-idle-gc").await;
+        tokio::time::sleep(Duration::from_millis(180)).await;
+        let remaining_after_second_idle_window: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
+                .bind(old_ts + 1)
+                .fetch_one(&pool)
+                .await
+                .expect("count after second idle window");
+        assert_eq!(remaining_after_second_idle_window, 0);
+
+        pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
     }
 

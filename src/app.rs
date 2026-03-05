@@ -466,11 +466,8 @@ mod tests {
         std::fs::write(dir.join(format!("agenthub.log.{}.2", suffix)), "x")
             .expect("write second collision file");
 
-        let writer = super::ActiveHourlyLogWriter::new(
-            dir.clone(),
-            "agenthub.log".to_string(),
-        )
-        .expect("create writer");
+        let writer = super::ActiveHourlyLogWriter::new(dir.clone(), "agenthub.log".to_string())
+            .expect("create writer");
         let err = writer
             .rotate_destination_with_limit(hour_slot, 2)
             .expect_err("rotate destination should fail after hitting max attempts");

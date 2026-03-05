@@ -1,12 +1,12 @@
 use serde_json::Value;
 use sqlx::Row;
 
-use agenthub_team_actor::infer_actor_identity_kind;
+use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, infer_actor_identity_kind};
 
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
-    TeamMainTaskRecord, TeamMainTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord,
+    TeamTaskRecord, TeamTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord,
     TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
 };
 
@@ -42,17 +42,17 @@ pub(super) fn parse_team_run_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resul
     })
 }
 
-pub(super) fn parse_team_main_task_row(
+pub(super) fn parse_team_task_row(
     row: &sqlx::sqlite::SqliteRow,
-) -> anyhow::Result<TeamMainTaskRecord> {
+) -> anyhow::Result<TeamTaskRecord> {
     let context_json: String = row.get("context_json");
     let context: Value = serde_json::from_str(&context_json)?;
     let status_raw: String = row.get("status");
-    Ok(TeamMainTaskRecord {
+    Ok(TeamTaskRecord {
         id: row.get("id"),
         team_id: row.get("team_id"),
         title: row.get("title"),
-        status: team_main_task_status_from_str(&status_raw),
+        status: team_task_status_from_str(&status_raw),
         created_by_actor_id: row.get("created_by_actor_id"),
         context,
         created_at: row.get("created_at"),
@@ -66,7 +66,7 @@ pub(super) fn parse_team_conversation_row(
     Ok(TeamConversationRecord {
         id: row.get("id"),
         team_id: row.get("team_id"),
-        main_task_id: row.get("main_task_id"),
+        task_id: row.get("task_id"),
         mode: row.get("mode"),
         topic: row.try_get("topic")?,
         created_at: row.get("created_at"),
@@ -82,7 +82,7 @@ pub(super) fn parse_team_conversation_message_row(
     Ok(TeamConversationMessageRecord {
         message_id: row.get("id"),
         conversation_id: row.get("conversation_id"),
-        main_task_id: row.get("main_task_id"),
+        task_id: row.get("task_id"),
         from_actor_id: row.get("from_actor_id"),
         to_actor_id: row.try_get("to_actor_id")?,
         route: row.get("route"),
@@ -118,13 +118,21 @@ pub(super) fn parse_team_actor_message_row(
     let transport_raw: String = row.get("transport");
     let status_raw: String = row.get("status");
     let from_actor_id: String = row.get("from_actor_id");
+    let from_peer_id: String = row
+        .try_get("from_peer_id")
+        .unwrap_or_else(|_| ACTOR_MAIN_PEER_ID.to_string());
     let to_actor_id: String = row.get("to_actor_id");
+    let to_peer_id: String = row
+        .try_get("to_peer_id")
+        .unwrap_or_else(|_| ACTOR_MAIN_PEER_ID.to_string());
     Ok(TeamActorMessageRecord {
         message_id: row.get("id"),
         run_id: row.get("run_id"),
         from_actor_id: from_actor_id.clone(),
+        from_peer_id,
         from_actor_kind: infer_actor_identity_kind(from_actor_id.as_str()),
         to_actor_id: to_actor_id.clone(),
+        to_peer_id,
         to_actor_kind: infer_actor_identity_kind(to_actor_id.as_str()),
         channel: row.get("channel"),
         transport: team_actor_message_transport_from_str(&transport_raw),
@@ -193,21 +201,21 @@ pub(super) fn team_run_status_to_str(status: &TeamRunStatus) -> &'static str {
     }
 }
 
-pub(super) fn team_main_task_status_to_str(status: &TeamMainTaskStatus) -> &'static str {
+pub(super) fn team_task_status_to_str(status: &TeamTaskStatus) -> &'static str {
     match status {
-        TeamMainTaskStatus::Open => "open",
-        TeamMainTaskStatus::InProgress => "in_progress",
-        TeamMainTaskStatus::Completed => "completed",
-        TeamMainTaskStatus::Canceled => "canceled",
+        TeamTaskStatus::Open => "open",
+        TeamTaskStatus::InProgress => "in_progress",
+        TeamTaskStatus::Completed => "completed",
+        TeamTaskStatus::Canceled => "canceled",
     }
 }
 
-pub(super) fn team_main_task_status_from_str(raw: &str) -> TeamMainTaskStatus {
+pub(super) fn team_task_status_from_str(raw: &str) -> TeamTaskStatus {
     match raw {
-        "in_progress" => TeamMainTaskStatus::InProgress,
-        "completed" => TeamMainTaskStatus::Completed,
-        "canceled" => TeamMainTaskStatus::Canceled,
-        _ => TeamMainTaskStatus::Open,
+        "in_progress" => TeamTaskStatus::InProgress,
+        "completed" => TeamTaskStatus::Completed,
+        "canceled" => TeamTaskStatus::Canceled,
+        _ => TeamTaskStatus::Open,
     }
 }
 

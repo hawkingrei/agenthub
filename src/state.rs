@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -23,34 +23,37 @@ pub struct AppState {
     pub default_worktree_root: String,
 }
 
+const IDLE_GC_TIMEOUT_SECONDS: u64 = 5 * 60;
+
 impl AppState {
     pub async fn init(config: crate::config::AppConfig) -> anyhow::Result<Self> {
         let db = crate::db::init_db().await?;
-        if let Some(retention_days) = config.history_event_retention_days() {
+        let event_dbs = crate::db::AgentEventDbRouter::with_default_base_dir();
+        let idle_gc = config.history_event_retention_days().map(|retention_days| {
             let vacuum_on_cleanup = config.history_vacuum_on_cleanup();
-            let cleanup_interval_seconds = config.history_cleanup_interval_seconds();
             let delete_batch_size = config.history_delete_batch_size();
-            Self::run_history_cleanup_once(
-                &db,
+            tracing::info!(
+                "history gc configured with idle trigger: retention_days={} idle_timeout_seconds={} batch_size={} vacuum_on_cleanup={}",
                 retention_days,
-                vacuum_on_cleanup,
+                IDLE_GC_TIMEOUT_SECONDS,
                 delete_batch_size,
-                "startup",
-            )
-            .await;
-            Self::spawn_history_cleanup_worker(
-                db.clone(),
-                retention_days,
                 vacuum_on_cleanup,
-                cleanup_interval_seconds,
-                delete_batch_size,
             );
-        }
+            crate::db::AgentEventIdleGc::new(
+                event_dbs.clone(),
+                retention_days,
+                vacuum_on_cleanup,
+                delete_batch_size,
+                std::time::Duration::from_secs(IDLE_GC_TIMEOUT_SECONDS),
+            )
+        });
         let push = Arc::new(PushService::new(db.clone(), &config)?);
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), &config).await?);
         let agents = Arc::new(AgentManager::new(
             db.clone(),
+            event_dbs.clone(),
+            idle_gc,
             push.clone(),
             config.proxy_env(),
             config.codex_acp_binary(),
@@ -58,7 +61,10 @@ impl AppState {
             acp_permissions.clone(),
             auth.clone(),
         ));
-        let teams = Arc::new(TeamManager::new(db.clone()));
+        let teams = Arc::new(TeamManager::new_with_event_dbs(
+            db.clone(),
+            event_dbs.clone(),
+        ));
         teams
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
@@ -86,86 +92,6 @@ impl AppState {
             acp_permissions,
             default_worktree_root,
         })
-    }
-
-    async fn run_history_cleanup_once(
-        db: &SqlitePool,
-        retention_days: u32,
-        vacuum_on_cleanup: bool,
-        delete_batch_size: u32,
-        trigger: &'static str,
-    ) {
-        match crate::db::cleanup_agent_event_history(
-            db,
-            retention_days,
-            vacuum_on_cleanup,
-            delete_batch_size,
-        )
-        .await
-        {
-            Ok(result) => {
-                if result.deleted_rows > 0 || result.vacuum_ran {
-                    tracing::info!(
-                        "history cleanup applied: trigger={} retention_days={} cutoff_ts={} deleted_rows={} delete_batches={} batch_size={} vacuum_ran={}",
-                        trigger,
-                        retention_days,
-                        result.cutoff_ts,
-                        result.deleted_rows,
-                        result.delete_batches,
-                        delete_batch_size,
-                        result.vacuum_ran
-                    );
-                } else {
-                    tracing::debug!(
-                        "history cleanup no-op: trigger={} retention_days={} batch_size={}",
-                        trigger,
-                        retention_days,
-                        delete_batch_size
-                    );
-                }
-            }
-            Err(err) => {
-                tracing::warn!(
-                    "history cleanup skipped due to error: trigger={} retention_days={} batch_size={} error={}",
-                    trigger,
-                    retention_days,
-                    delete_batch_size,
-                    err
-                );
-            }
-        }
-    }
-
-    fn spawn_history_cleanup_worker(
-        db: SqlitePool,
-        retention_days: u32,
-        vacuum_on_cleanup: bool,
-        cleanup_interval_seconds: u64,
-        delete_batch_size: u32,
-    ) {
-        tracing::info!(
-            "history cleanup worker started: retention_days={} interval_seconds={} batch_size={} vacuum_on_cleanup={}",
-            retention_days,
-            cleanup_interval_seconds,
-            delete_batch_size,
-            vacuum_on_cleanup
-        );
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(cleanup_interval_seconds));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
-                Self::run_history_cleanup_once(
-                    &db,
-                    retention_days,
-                    vacuum_on_cleanup,
-                    delete_batch_size,
-                    "interval",
-                )
-                .await;
-            }
-        });
     }
 
     async fn ensure_root(db: &SqlitePool) -> anyhow::Result<()> {

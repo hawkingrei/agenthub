@@ -1,4 +1,5 @@
 use crate::agent::OutputStream;
+use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
 
 // Marker for binary-compressed ACP rows: prefix + zstd(payload).
 // Using a binary prefix keeps detection cheap and avoids text re-encoding.
@@ -61,6 +62,46 @@ pub(crate) fn decode_message_from_storage(message: &[u8]) -> String {
             );
             String::from_utf8_lossy(utf8_err.as_bytes()).to_string()
         }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn persist_agent_event(
+    event_dbs: &AgentEventDbRouter,
+    idle_gc: Option<&AgentEventIdleGc>,
+    agent_id: &str,
+    session_id: &str,
+    seq: &str,
+    ts: i64,
+    stream: &OutputStream,
+    message: &str,
+) -> anyhow::Result<i64> {
+    let event_db = event_dbs.pool_for_agent(agent_id).await?;
+    let result = sqlx::query(
+        r#"
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+    )
+    .bind(session_id)
+    .bind(seq)
+    .bind(ts)
+    .bind(stream_to_str(stream))
+    .bind(encode_message_for_storage(stream, message))
+    .execute(&event_db)
+    .await?;
+    if let Some(idle_gc) = idle_gc {
+        idle_gc.record_activity(agent_id).await;
+    }
+    Ok(result.last_insert_rowid())
+}
+
+fn stream_to_str(stream: &OutputStream) -> &'static str {
+    match stream {
+        OutputStream::Stdout => "stdout",
+        OutputStream::Stderr => "stderr",
+        OutputStream::System => "system",
+        OutputStream::Acp => "acp",
     }
 }
 

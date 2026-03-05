@@ -24,6 +24,7 @@ pub(super) fn status_from_str(status: &str) -> AgentStatus {
     }
 }
 
+#[cfg(test)]
 pub(super) fn stream_to_str(stream: &OutputStream) -> &'static str {
     match stream {
         OutputStream::Stdout => "stdout",

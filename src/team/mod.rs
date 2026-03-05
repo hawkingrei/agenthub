@@ -8,7 +8,7 @@ pub use agenthub_team_actor::{
 pub use agenthub_team_domain::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamMainTaskRecord, TeamMainTaskStatus, TeamMemberContinuityStateRecord,
+    TeamDefinitionRecord, TeamTaskRecord, TeamTaskStatus, TeamMemberContinuityStateRecord,
     TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
     TeamStepStatus,
 };

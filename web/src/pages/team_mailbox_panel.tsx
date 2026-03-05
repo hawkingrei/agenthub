@@ -31,6 +31,7 @@ type MailboxTemplateOption = {
 type TeamMailboxPanelProps = {
   mode?: "full" | "advanced_only";
   snapshot: TeamRunSnapshotRecord | null;
+  humanActorId?: string;
   selectedMemberId: string;
   unreadByMemberId: Record<string, number>;
   onSelectMember: (memberId: string) => void;
@@ -104,6 +105,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
     snapshot,
+    humanActorId = "",
     selectedMemberId,
     unreadByMemberId,
     onSelectMember,
@@ -151,6 +153,28 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   } = props;
   const showConversation = mode === "full";
   const showAdvancedControls = mode === "advanced_only";
+  const normalizedHumanActorId = humanActorId.trim();
+  const humanPendingCount =
+    snapshot?.mailbox.recent_messages.filter(
+      (message) =>
+        message.to_actor_id === normalizedHumanActorId &&
+        message.status === "pending"
+    ).length ?? 0;
+  const mailboxMembers = snapshot?.members ?? [];
+  const mailboxActors = [
+    ...mailboxMembers,
+    ...(normalizedHumanActorId &&
+    !mailboxMembers.some((member) => member.member_id === normalizedHumanActorId)
+      ? [
+          {
+            member_id: normalizedHumanActorId,
+            role: "human",
+            pending_inbox_count: humanPendingCount,
+            status: "human",
+          },
+        ]
+      : []),
+  ];
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
@@ -299,8 +323,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         <div className="teams-chat-shell">
           <div className={MAILBOX_MEMBER_LIST_CLASS}>
             <h4 className={MAILBOX_SECTION_TITLE_CLASS}>Agents</h4>
-            {snapshot?.members.map((member) => {
+            {mailboxActors.map((member) => {
               const unread = unreadByMemberId[member.member_id] ?? 0;
+              const isHuman = member.role === "human";
               return (
                 <button
                   key={member.member_id}
@@ -314,12 +339,16 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
                     {member.member_id} ({member.role})
                   </span>
-                  <StatusBadge
-                    label={member.status}
-                    tone={resolveTeamRunStatusTone(member.status)}
-                    className="team-status"
-                    title={`member status: ${member.status}`}
-                  />
+                  {isHuman ? (
+                    <span className={TEAM_LIST_ITEM_META_CLASS}>human actor</span>
+                  ) : (
+                    <StatusBadge
+                      label={member.status}
+                      tone={resolveTeamRunStatusTone(member.status)}
+                      className="team-status"
+                      title={`member status: ${member.status}`}
+                    />
+                  )}
                   <span className={TEAM_LIST_ITEM_META_CLASS}>pending={member.pending_inbox_count}</span>
                   <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
                     unread={unread}
@@ -327,7 +356,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 </button>
               );
             })}
-            {(!snapshot || snapshot.members.length === 0) && (
+            {mailboxActors.length === 0 && (
               <p className={TEAM_MUTED_TEXT_CLASS}>No members available.</p>
             )}
           </div>

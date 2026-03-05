@@ -6,6 +6,7 @@ import type { TeamTab } from "./state";
 type UseTeamMailboxEffectsParams = {
   snapshot: TeamRunSnapshotRecord | null;
   selectedMemberId: string;
+  mailboxActorIds?: string[];
   activeRunId: string | null;
   chatInboxActorId: string;
   tab: TeamTab;
@@ -29,6 +30,7 @@ type UseTeamMailboxEffectsParams = {
 export function useTeamMailboxEffects({
   snapshot,
   selectedMemberId,
+  mailboxActorIds = [],
   activeRunId,
   chatInboxActorId,
   tab,
@@ -54,14 +56,17 @@ export function useTeamMailboxEffects({
       setMemberEvents([]);
       return;
     }
+    const selectableActorIds = mailboxActorIds.length > 0
+      ? mailboxActorIds
+      : snapshot.members.map((member) => member.member_id);
     if (
       selectedMemberId &&
-      snapshot.members.some((member) => member.member_id === selectedMemberId)
+      selectableActorIds.includes(selectedMemberId)
     ) {
       return;
     }
-    setSelectedMemberId(snapshot.members[0]?.member_id ?? "");
-  }, [selectedMemberId, setMemberEvents, setSelectedMemberId, snapshot]);
+    setSelectedMemberId(selectableActorIds[0] ?? "");
+  }, [mailboxActorIds, selectedMemberId, setMemberEvents, setSelectedMemberId, snapshot]);
 
   useEffect(() => {
     const actorId = chatInboxActorId.trim();
