@@ -18,11 +18,13 @@ use uuid::Uuid;
 
 #[cfg(test)]
 use self::codec::acp_provider_for_agent_with_binary;
+#[cfg(test)]
+use self::codec::stream_to_str;
 use self::codec::{
     expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
-    stream_to_str, worktree_mode_from_opt, worktree_mode_to_str,
+    worktree_mode_from_opt, worktree_mode_to_str,
 };
-use super::event_message_codec::{decode_message_from_storage, encode_message_for_storage};
+use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
@@ -31,12 +33,15 @@ use crate::acp::{
     SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context, spawn_acp_session,
 };
 use crate::auth::AuthService;
+use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 
 #[derive(Clone)]
 pub struct AgentManager {
     db: SqlitePool,
+    event_dbs: AgentEventDbRouter,
+    idle_gc: Option<AgentEventIdleGc>,
     push: Arc<PushService>,
     auth: Arc<AuthService>,
     proxy_env: Vec<(String, String)>,
@@ -261,8 +266,11 @@ pub enum AgentInput {
 }
 
 impl AgentManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: SqlitePool,
+        event_dbs: AgentEventDbRouter,
+        idle_gc: Option<AgentEventIdleGc>,
         push: Arc<PushService>,
         proxy_env: Vec<(String, String)>,
         codex_acp_binary: String,
@@ -272,6 +280,8 @@ impl AgentManager {
     ) -> Self {
         Self {
             db,
+            event_dbs,
+            idle_gc,
             push,
             auth,
             proxy_env,
@@ -608,34 +618,32 @@ impl AgentManager {
         limit: i64,
         before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
+        let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
         let rows = if let Some(before_id) = before_id {
             sqlx::query(
                 r#"
-                SELECT id, agent_id, session_id, seq, ts, stream, message
+                SELECT id, session_id, seq, ts, stream, message
                 FROM agent_events
-                WHERE agent_id = ?1 AND id < ?2
-                ORDER BY id DESC
-                LIMIT ?3
-                "#,
-            )
-            .bind(agent_id)
-            .bind(before_id)
-            .bind(limit)
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, agent_id, session_id, seq, ts, stream, message
-                FROM agent_events
-                WHERE agent_id = ?1
+                WHERE id < ?1
                 ORDER BY id DESC
                 LIMIT ?2
                 "#,
             )
-            .bind(agent_id)
+            .bind(before_id)
             .bind(limit)
-            .fetch_all(&self.db)
+            .fetch_all(&event_db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, session_id, seq, ts, stream, message
+                FROM agent_events
+                ORDER BY id DESC
+                LIMIT ?1
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(&event_db)
             .await?
         };
 
@@ -644,7 +652,7 @@ impl AgentManager {
             let stream_str: String = row.get("stream");
             events.push(AgentEvent {
                 event_id: row.get("id"),
-                agent_id: row.get("agent_id"),
+                agent_id: agent_id.to_string(),
                 session_id: row.get("session_id"),
                 seq: row.get("seq"),
                 ts: row.get("ts"),
@@ -657,6 +665,20 @@ impl AgentManager {
         Ok(events)
     }
 
+    #[cfg(test)]
+    pub(crate) async fn test_event_pool_for_agent(
+        &self,
+        agent_id: &str,
+    ) -> anyhow::Result<SqlitePool> {
+        self.event_dbs.pool_for_agent(agent_id).await
+    }
+
+    async fn record_agent_activity(&self, agent_id: &str) {
+        if let Some(idle_gc) = &self.idle_gc {
+            idle_gc.record_activity(agent_id).await;
+        }
+    }
+
     pub async fn list_events_for_session(
         &self,
         agent_id: &str,
@@ -664,36 +686,35 @@ impl AgentManager {
         limit: i64,
         before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
+        let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
         let rows = if let Some(before_id) = before_id {
             sqlx::query(
                 r#"
-                SELECT id, agent_id, session_id, seq, ts, stream, message
+                SELECT id, session_id, seq, ts, stream, message
                 FROM agent_events
-                WHERE agent_id = ?1 AND session_id = ?2 AND id < ?3
-                ORDER BY id DESC
-                LIMIT ?4
-                "#,
-            )
-            .bind(agent_id)
-            .bind(session_id)
-            .bind(before_id)
-            .bind(limit)
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, agent_id, session_id, seq, ts, stream, message
-                FROM agent_events
-                WHERE agent_id = ?1 AND session_id = ?2
+                WHERE session_id = ?1 AND id < ?2
                 ORDER BY id DESC
                 LIMIT ?3
                 "#,
             )
-            .bind(agent_id)
+            .bind(session_id)
+            .bind(before_id)
+            .bind(limit)
+            .fetch_all(&event_db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, session_id, seq, ts, stream, message
+                FROM agent_events
+                WHERE session_id = ?1
+                ORDER BY id DESC
+                LIMIT ?2
+                "#,
+            )
             .bind(session_id)
             .bind(limit)
-            .fetch_all(&self.db)
+            .fetch_all(&event_db)
             .await?
         };
 
@@ -702,7 +723,7 @@ impl AgentManager {
             let stream_str: String = row.get("stream");
             events.push(AgentEvent {
                 event_id: row.get("id"),
-                agent_id: row.get("agent_id"),
+                agent_id: agent_id.to_string(),
                 session_id: row.get("session_id"),
                 seq: row.get("seq"),
                 ts: row.get("ts"),
@@ -794,6 +815,8 @@ impl AgentManager {
             Ok(Some(status)) => {
                 Self::finalize_process_exit(
                     &self.db,
+                    &self.event_dbs,
+                    self.idle_gc.clone(),
                     &self.inner,
                     &self.push,
                     agent_id,
@@ -811,6 +834,8 @@ impl AgentManager {
                 );
                 Self::finalize_process_exit(
                     &self.db,
+                    &self.event_dbs,
+                    self.idle_gc.clone(),
                     &self.inner,
                     &self.push,
                     agent_id,
@@ -1205,7 +1230,8 @@ impl AgentManager {
                 }
             };
             let event_sink = Arc::new(AgenthubAcpEventSink::new(
-                self.db.clone(),
+                self.event_dbs.clone(),
+                self.idle_gc.clone(),
                 output_tx.clone(),
                 agent.id.clone(),
                 session_id.clone(),
@@ -1476,22 +1502,17 @@ impl AgentManager {
             );
         }
 
-        if let Err(err) = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
+        let failure_message = format!("start failed: {}", message);
+        if let Err(err) = persist_agent_event(
+            &self.event_dbs,
+            None,
+            agent_id,
+            session_id,
+            &seq,
+            now,
+            &OutputStream::System,
+            failure_message.as_str(),
         )
-        .bind(agent_id)
-        .bind(session_id)
-        .bind(seq)
-        .bind(now)
-        .bind(stream_to_str(&OutputStream::System))
-        .bind({
-            let failure_message = format!("start failed: {}", message);
-            encode_message_for_storage(&OutputStream::System, failure_message.as_str())
-        })
-        .execute(&self.db)
         .await
         {
             tracing::warn!(
@@ -1615,6 +1636,7 @@ impl AgentManager {
             if let Some(stdin) = stdin_guard.as_mut() {
                 stdin.write_all(format!("{}\n", input).as_bytes()).await?;
                 stdin.flush().await?;
+                self.record_agent_activity(agent_id).await;
                 return Ok(());
             }
             return Err(anyhow::anyhow!("agent stdin closed"));
@@ -1634,24 +1656,20 @@ impl AgentManager {
             "message_id": message_id
         })
         .to_string();
-        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
         let ts = Utc::now().timestamp();
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
+        let event_id = persist_agent_event(
+            &self.event_dbs,
+            self.idle_gc.as_ref(),
+            agent_id,
+            &session_id,
+            &seq,
+            ts,
+            &OutputStream::Acp,
+            &message,
         )
-        .bind(agent_id)
-        .bind(&session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message_for_db)
-        .execute(&self.db)
         .await?;
         let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
+            event_id,
             agent_id: agent_id.to_string(),
             session_id: session_id.clone(),
             seq: seq.clone(),

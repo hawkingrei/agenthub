@@ -9,10 +9,11 @@ use tokio::process::Command;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
-use super::codec::{is_acp_message, is_dir_empty, stream_to_str};
+use super::codec::{is_acp_message, is_dir_empty};
 use super::{AgentHandle, AgentManager, normalize_path};
-use crate::agent::event_message_codec::encode_message_for_storage;
+use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
+use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
 use crate::push::PushService;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,25 +153,21 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
-        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
         let seq = Uuid::now_v7().to_string();
         let ts = Utc::now().timestamp();
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
+        let event_id = match persist_agent_event(
+            &self.event_dbs,
+            self.idle_gc.as_ref(),
+            &agent_id,
+            &session_id,
+            &seq,
+            ts,
+            &OutputStream::Acp,
+            &message,
         )
-        .bind(&agent_id)
-        .bind(&session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message_for_db)
-        .execute(&self.db)
-        .await;
-        let result = match result {
-            Ok(result) => result,
+        .await
+        {
+            Ok(event_id) => event_id,
             Err(err) => {
                 tracing::error!(
                     agent_id = %agent_id,
@@ -183,7 +180,7 @@ impl AgentManager {
             }
         };
         let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
+            event_id,
             agent_id: agent_id.clone(),
             session_id: session_id.clone(),
             seq: seq.clone(),
@@ -205,7 +202,8 @@ impl AgentManager {
     ) where
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
-        let db = self.db.clone();
+        let event_dbs = self.event_dbs.clone();
+        let idle_gc = self.idle_gc.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(reader).lines();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -217,28 +215,24 @@ impl AgentManager {
                 };
                 let seq = Uuid::now_v7().to_string();
                 let ts = Utc::now().timestamp();
-                let stream_name = stream_to_str(&stream);
-                let result = sqlx::query(
-                    r#"
-                    INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    "#,
+                let event_id = match persist_agent_event(
+                    &event_dbs,
+                    idle_gc.as_ref(),
+                    &agent_id,
+                    &session_id,
+                    &seq,
+                    ts,
+                    &stream,
+                    &line,
                 )
-                .bind(&agent_id)
-                .bind(&session_id)
-                .bind(&seq)
-                .bind(ts)
-                .bind(stream_name)
-                .bind(encode_message_for_storage(&stream, &line))
-                .execute(&db)
-                .await;
-                let result = match result {
-                    Ok(result) => result,
+                .await
+                {
+                    Ok(event_id) => event_id,
                     Err(err) => {
                         tracing::error!(
                             agent_id = %agent_id,
                             session_id = %session_id,
-                            stream = %stream_name,
+                            stream = ?stream,
                             error = %err,
                             "spawn_output_reader failed to persist event"
                         );
@@ -246,7 +240,7 @@ impl AgentManager {
                     }
                 };
                 let output = AgentOutput {
-                    event_id: result.last_insert_rowid(),
+                    event_id,
                     agent_id: agent_id.clone(),
                     session_id: session_id.clone(),
                     seq: seq.clone(),
@@ -261,6 +255,8 @@ impl AgentManager {
 
     pub(super) async fn spawn_exit_watcher(&self, agent_id: String, session_id: String) {
         let db = self.db.clone();
+        let event_dbs = self.event_dbs.clone();
+        let idle_gc = self.idle_gc.clone();
         let inner = self.inner.clone();
         let push = self.push.clone();
         let agent_id_clone = agent_id.clone();
@@ -284,6 +280,8 @@ impl AgentManager {
                 };
                 Self::finalize_process_exit(
                     &db,
+                    &event_dbs,
+                    idle_gc,
                     &inner,
                     &push,
                     &agent_id_clone,
@@ -295,8 +293,11 @@ impl AgentManager {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn finalize_process_exit(
         db: &SqlitePool,
+        event_dbs: &AgentEventDbRouter,
+        idle_gc: Option<AgentEventIdleGc>,
         inner: &Arc<RwLock<HashMap<String, AgentHandle>>>,
         push: &Arc<PushService>,
         agent_id: &str,
@@ -327,6 +328,9 @@ impl AgentManager {
         if ended_at.is_some() {
             let mut guard = inner.write().await;
             guard.remove(agent_id);
+            if let Some(idle_gc) = &idle_gc {
+                idle_gc.remove_agent(agent_id).await;
+            }
             return;
         }
 
@@ -385,24 +389,19 @@ impl AgentManager {
             "session_id": session_id,
         })
         .to_string();
-        let message_for_db = encode_message_for_storage(&OutputStream::Acp, &message);
-        let result = sqlx::query(
-            r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
+        let event_id = match persist_agent_event(
+            event_dbs,
+            None,
+            agent_id,
+            session_id,
+            &seq,
+            ts,
+            &OutputStream::Acp,
+            &message,
         )
-        .bind(agent_id)
-        .bind(session_id)
-        .bind(&seq)
-        .bind(ts)
-        .bind(stream_to_str(&OutputStream::Acp))
-        .bind(message_for_db)
-        .execute(db)
-        .await;
-
-        let result = match result {
-            Ok(result) => result,
+        .await
+        {
+            Ok(event_id) => event_id,
             Err(err) => {
                 tracing::error!(
                     agent_id = %agent_id,
@@ -413,11 +412,14 @@ impl AgentManager {
                 );
                 let mut guard = inner.write().await;
                 guard.remove(agent_id);
+                if let Some(idle_gc) = &idle_gc {
+                    idle_gc.remove_agent(agent_id).await;
+                }
                 return;
             }
         };
         let output = AgentOutput {
-            event_id: result.last_insert_rowid(),
+            event_id,
             agent_id: agent_id.to_string(),
             session_id: session_id.to_string(),
             seq,
@@ -439,6 +441,9 @@ impl AgentManager {
         }
         let mut guard = inner.write().await;
         guard.remove(agent_id);
+        if let Some(idle_gc) = &idle_gc {
+            idle_gc.remove_agent(agent_id).await;
+        }
     }
 
     #[tracing::instrument(
@@ -806,10 +811,6 @@ impl AgentManager {
             .bind(agent_id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM agent_events WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
         sqlx::query("DELETE FROM agent_sessions WHERE agent_id = ?1")
             .bind(agent_id)
             .execute(&mut *tx)
@@ -823,6 +824,10 @@ impl AgentManager {
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
+        if let Some(idle_gc) = &self.idle_gc {
+            idle_gc.remove_agent(agent_id).await;
+        }
+        self.event_dbs.remove_agent_db(agent_id).await?;
         Ok(())
     }
 }
@@ -907,17 +912,22 @@ mod tests {
                 .expect("timed out waiting for output reader to broadcast event")
                 .expect("broadcast channel closed unexpectedly");
         }
+        let event_db = state
+            .agents
+            .event_dbs
+            .pool_for_agent(&agent_id)
+            .await
+            .expect("open per-agent event db");
         sqlx::query(
             r#"
             SELECT stream
             FROM agent_events
-            WHERE agent_id = ?1 AND session_id = ?2
+            WHERE session_id = ?1
             ORDER BY id ASC
             "#,
         )
-        .bind(agent_id)
         .bind(session_id)
-        .fetch_all(&state.db)
+        .fetch_all(&event_db)
         .await
         .expect("list persisted streams")
         .into_iter()
@@ -1216,21 +1226,27 @@ branch refs/heads/agent-a
         .await
         .expect("ensure agent_persistent_sessions table");
 
+        let event_db = state
+            .agents
+            .event_dbs
+            .pool_for_agent(&agent_id)
+            .await
+            .expect("open per-agent event db");
         sqlx::query(
             r#"
-            INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
             "#,
         )
-        .bind(&agent_id)
         .bind(&session_id)
         .bind("seq-delete")
         .bind(now)
         .bind("system")
         .bind("event")
-        .execute(&state.db)
+        .execute(&event_db)
         .await
         .expect("insert agent event");
+        drop(event_db);
 
         sqlx::query(
             r#"
@@ -1265,13 +1281,6 @@ branch refs/heads/agent-a
                 .await
                 .expect("count sessions")
                 .get("cnt");
-        let remaining_events: i64 =
-            sqlx::query("SELECT COUNT(*) AS cnt FROM agent_events WHERE agent_id = ?1")
-                .bind(&agent_id)
-                .fetch_one(&state.db)
-                .await
-                .expect("count events")
-                .get("cnt");
         let remaining_persistent: i64 = sqlx::query(
             "SELECT COUNT(*) AS cnt FROM agent_persistent_sessions WHERE agent_id = ?1",
         )
@@ -1281,10 +1290,14 @@ branch refs/heads/agent-a
         .expect("count persistent sessions")
         .get("cnt");
 
+        let event_db_path = state.agents.event_dbs.db_path_for_agent(&agent_id);
         assert_eq!(remaining_agents, 0);
         assert_eq!(remaining_sessions, 0);
-        assert_eq!(remaining_events, 0);
         assert_eq!(remaining_persistent, 0);
+        assert!(
+            !event_db_path.exists(),
+            "agent event db should be deleted for removed agent"
+        );
     }
 
     #[tokio::test]
@@ -1311,6 +1324,8 @@ branch refs/heads/agent-a
 
         super::AgentManager::finalize_process_exit(
             &state.db,
+            &state.agents.event_dbs,
+            state.agents.idle_gc.clone(),
             &state.agents.inner,
             &state.push,
             &agent_id,

@@ -33,6 +33,8 @@ Use MCP native actor mailbox tools (do not shell out to CLI):
 Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
+- In each turn, the first mailbox action must be `actor_inbox` before planning/coding.
+- If inbox has pending items, process and `actor_ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
 - Use `channel` only when a non-default channel is required.
@@ -91,6 +93,7 @@ mod tests {
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
             continuity: None,
         });
         assert_eq!(skill.name, "agenthub-actor-runtime");

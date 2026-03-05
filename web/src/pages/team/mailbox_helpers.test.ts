@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import type { TeamActorMessageRecord } from "../../api";
 import {
+  applyMentionAtTag,
   buildMailboxChatPayload,
   buildMailboxConversationKey,
+  buildMailboxForwardChatPayload,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  renderMarkdownWithMentions,
+  renderPlainTextWithMentions,
+  resolveMentionDraftQuery,
+  resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -85,14 +91,48 @@ describe("mailbox helpers", () => {
     expect(buildMailboxConversationKey("leader", "   ")).toBe("");
   });
 
-  it("extracts unique mentions that match known team members", () => {
+  it("extracts unique <at> mentions that match known team members", () => {
     expect(
       extractMentionedActorIds(
-        "please check @worker-1 and @worker-2, cc @worker-1 and @unknown",
+        "please check <at>worker-1</at> and <at>worker-2</at>, cc <at>worker-1</at>",
         ["leader", "worker-1", "worker-2"]
       )
     ).toEqual(["worker-1", "worker-2"]);
     expect(extractMentionedActorIds("plain text", ["worker-1"])).toEqual([]);
+    expect(
+      extractMentionedActorIds(
+        "assign <at>worker-2</at> and mail worker@company.com @worker-1",
+        ["worker-1", "worker-2"]
+      )
+    ).toEqual(["worker-2"]);
+  });
+
+  it("resolves mention query around cursor and avoids email-like cases", () => {
+    expect(resolveMentionDraftQuery("ping @work", 10)).toEqual({
+      start: 5,
+      end: 10,
+      keyword: "work",
+    });
+    expect(resolveMentionDraftQuery("mail user@corp.com", 15)).toBeNull();
+    expect(resolveMentionDraftQuery("plain text", 5)).toBeNull();
+  });
+
+  it("applies selected member as @ mention token", () => {
+    const mention = resolveMentionDraftQuery("please check @work soon", 18);
+    expect(mention).not.toBeNull();
+    const applied = applyMentionAtTag("please check @work soon", mention!, "worker-1");
+    expect(applied.text).toBe("please check @worker-1 soon");
+    expect(applied.cursor).toBe("please check @worker-1".length);
+  });
+
+  it("renders <at> mention as visual chip in markdown/plain text output", () => {
+    const markdown = renderMarkdownWithMentions("hello <at>worker-1</at>");
+    expect(markdown).toContain("team-mention");
+    expect(markdown).toContain("@worker-1");
+
+    const plain = renderPlainTextWithMentions("hello <at>worker-1</at>");
+    expect(plain).toContain("team-mention");
+    expect(plain).toContain("@worker-1");
   });
 
   it("builds chat payload with normalized mention ids", () => {
@@ -105,6 +145,72 @@ describe("mailbox helpers", () => {
       text: "hello @worker-1",
       source: "team_workbench",
       mention_actor_ids: ["worker-1", "worker-2"],
+    });
+  });
+
+  it("translates mailbox address into @ mention when forwarding without explicit mentions", () => {
+    const broadcastPayload = buildMailboxChatPayload("please check logs");
+    expect(buildMailboxForwardChatPayload(broadcastPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-1 please check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    const explicitMentionPayload = buildMailboxChatPayload("@worker-2 @worker-1 check logs", {
+      mention_actor_ids: ["worker-2", "worker-1", "worker-2"],
+    });
+    expect(buildMailboxForwardChatPayload(explicitMentionPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-2 @worker-1 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    const mismatchedMentionPayload = buildMailboxChatPayload("@worker-2 check logs", {
+      mention_actor_ids: ["worker-2"],
+    });
+    expect(buildMailboxForwardChatPayload(mismatchedMentionPayload, "worker-1")).toEqual({
+      type: "chat_message",
+      text: "@worker-1 @worker-2 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-1"],
+    });
+
+    expect(buildMailboxForwardChatPayload(explicitMentionPayload, " ")).toEqual({
+      type: "chat_message",
+      text: "@worker-2 @worker-1 check logs",
+      source: "team_workbench",
+      mention_actor_ids: ["worker-2", "worker-1"],
+    });
+  });
+
+  it("resolves task mailbox route plan for mention and broadcast modes", () => {
+    expect(
+      resolveTaskMailboxRoutePlan(
+        ["leader", "worker-1", "worker-2"],
+        ["worker-2", "worker-1", "worker-2", "unknown"],
+        "leader"
+      )
+    ).toEqual({
+      fromActorId: "leader",
+      toActorIds: ["worker-2", "worker-1"],
+    });
+
+    expect(
+      resolveTaskMailboxRoutePlan(
+        ["worker-1", "leader", "worker-2"],
+        [],
+        "leader"
+      )
+    ).toEqual({
+      fromActorId: "leader",
+      toActorIds: ["leader", "worker-1", "worker-2"],
+    });
+
+    expect(resolveTaskMailboxRoutePlan(["worker-1"], [], "missing")).toEqual({
+      fromActorId: "worker-1",
+      toActorIds: ["worker-1"],
     });
   });
 

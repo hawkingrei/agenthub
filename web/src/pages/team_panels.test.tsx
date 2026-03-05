@@ -7,7 +7,7 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
-  TeamMainTaskRecord,
+  TeamTaskRecord,
   TeamMemberSnapshot,
   TeamRunEventRecord,
   TeamRunRecord,
@@ -20,7 +20,7 @@ import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
-import { TeamMainTaskPanel } from "./team_main_task_panel";
+import { TeamTaskPanel } from "./team_task_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
@@ -175,7 +175,7 @@ function buildMailboxMessage(
   };
 }
 
-function buildMainTask(overrides: Partial<TeamMainTaskRecord> = {}): TeamMainTaskRecord {
+function buildTask(overrides: Partial<TeamTaskRecord> = {}): TeamTaskRecord {
   return {
     id: "task-1",
     team_id: "team-1",
@@ -189,14 +189,14 @@ function buildMainTask(overrides: Partial<TeamMainTaskRecord> = {}): TeamMainTas
   };
 }
 
-function buildMainTaskMessage(
+function buildTaskMessage(
   messageId: number,
   overrides: Partial<TeamConversationMessageRecord> = {}
 ): TeamConversationMessageRecord {
   return {
     message_id: messageId,
     conversation_id: "conv-1",
-    main_task_id: "task-1",
+    task_id: "task-1",
     from_actor_id: "user:u-1",
     to_actor_id: "leader-agent",
     route: "to_leader",
@@ -1097,12 +1097,9 @@ describe("team panels interactions", () => {
     expect(onLoadOlder).toHaveBeenCalledTimes(1);
   });
 
-  it("TeamMainTaskPanel supports create/select/send workflow", () => {
-    const onSelectedMainTaskIdChange = vi.fn();
+  it("TeamTaskPanel supports create/select/send workflow", () => {
+    const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
-    const onNewTaskTitleChange = vi.fn();
-    const onNewTaskTopicChange = vi.fn();
-    const onCreateTask = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
     const onRefreshMessages = vi.fn();
@@ -1110,43 +1107,30 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMainTaskPanel
+        <TeamTaskPanel
           tasks={[
-            buildMainTask(),
-            buildMainTask({
+            buildTask(),
+            buildTask({
               id: "task-2",
               title: "Ship patch",
               status: "in_progress",
             }),
           ]}
           tasksLoading={false}
-          selectedMainTaskId="task-1"
-          onSelectedMainTaskIdChange={onSelectedMainTaskIdChange}
+          selectedTaskId="task-1"
+          onSelectedTaskIdChange={onSelectedTaskIdChange}
           onRefreshTasks={onRefreshTasks}
-          newTaskTitle="new task"
-          onNewTaskTitleChange={onNewTaskTitleChange}
-          newTaskTopic="topic-x"
-          onNewTaskTopicChange={onNewTaskTopicChange}
-          onCreateTask={onCreateTask}
           messageDraft="hello leader"
           onMessageDraftChange={onMessageDraftChange}
           onSendMessage={onSendMessage}
           onRefreshMessages={onRefreshMessages}
           messages={[
-            buildMainTaskMessage(1),
-            buildMainTaskMessage(2, {
+            buildTaskMessage(1),
+            buildTaskMessage(2, {
               from_actor_id: "leader-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "status_update", done: true },
-            }),
-          ]}
-          agentMessages={[
-            buildMailboxMessage(9, {
-              from_actor_id: "worker-agent",
-              to_actor_id: "leader-agent",
-              payload: { type: "chat_message", text: "worker update" },
-              status: "delivered",
             }),
           ]}
           memberLiveStates={[
@@ -1181,8 +1165,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh Conversations"));
-    clickElement(findButtonByText(container, "Create Conversation"));
+    clickElement(findButtonByText(container, "Refresh Tasks"));
     clickElement(findButtonByText(container, "Refresh Messages"));
     clickElement(findButtonByText(container, "Send Message"));
 
@@ -1193,22 +1176,8 @@ describe("team panels interactions", () => {
     );
     changeInputValue(
       required(
-        container.querySelector('input[placeholder="new conversation title"]') as HTMLInputElement | null,
-        "title input missing"
-      ),
-      "new title"
-    );
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="topic (optional)"]') as HTMLInputElement | null,
-        "topic input missing"
-      ),
-      "topic-y"
-    );
-    changeInputValue(
-      required(
         container.querySelector(
-          'textarea[placeholder="Type planning message for the team (e.g. @worker-1 @worker-2 please verify)"]'
+          'textarea[placeholder="Type planning message (use @ to pick teammate mention)"]'
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),
@@ -1216,19 +1185,17 @@ describe("team panels interactions", () => {
     );
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
-    expect(onCreateTask).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onSelectedMainTaskIdChange).toHaveBeenCalledWith("task-2");
-    expect(onNewTaskTitleChange).toHaveBeenCalledWith("new title");
-    expect(onNewTaskTopicChange).toHaveBeenCalledWith("topic-y");
+    expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-2");
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
     expect(container.textContent).toContain("Conversation");
-    expect(container.textContent).toContain("worker update");
-    expect(container.textContent).toContain("work:blocked");
+    expect(container.textContent).not.toContain("worker update");
+    expect(container.textContent).toContain("work:working");
+    expect(container.textContent).not.toContain("work:blocked");
     expect(container.textContent).toContain("agent:working");
   });
 
@@ -1332,8 +1299,9 @@ describe("team panels interactions", () => {
       root.render(
         <TeamMailboxPanel
           snapshot={buildSnapshot()}
+          humanActorId="user"
           selectedMemberId="worker-agent"
-          unreadByMemberId={{ "worker-agent": 2 }}
+          unreadByMemberId={{ "worker-agent": 2, user: 1 }}
           onSelectMember={onSelectMember}
           chatActors={{
             fromActorId: "leader-agent",
@@ -1416,8 +1384,10 @@ describe("team panels interactions", () => {
       );
     });
     clickElement(findButtonByText(container, "Send Chat"));
+    clickElement(findButtonByText(container, "user (human)"));
 
     expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
+    expect(onSelectMember).toHaveBeenCalledWith("user");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
     expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);

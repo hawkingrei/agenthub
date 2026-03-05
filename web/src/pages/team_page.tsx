@@ -7,8 +7,8 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
-  TeamMainTaskRecord,
-  TeamMainTaskRunCompilePreviewRecord,
+  TeamTaskRecord,
+  TeamTaskRunCompilePreviewRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
@@ -33,7 +33,7 @@ import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamMemberStatusStrip } from "./team_member_status_strip";
-import { TeamMainTaskPanel } from "./team_main_task_panel";
+import { TeamTaskPanel } from "./team_task_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -63,7 +63,6 @@ import {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
-  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -152,12 +151,14 @@ import {
 } from "../ui/tailwind_classes";
 
 export {
+  buildMailboxForwardChatPayload,
   buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -206,6 +207,7 @@ type TeamPageProps = {
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
+const HUMAN_MAILBOX_ACTOR_ID = "user";
 
 type RunInputValidation = {
   parsed: unknown | undefined;
@@ -223,6 +225,18 @@ function validateRunInputJson(raw: string): RunInputValidation {
     const message = err instanceof Error ? err.message : "unknown parse error";
     return { parsed: undefined, error: `Run input must be valid JSON (${message})` };
   }
+}
+
+function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
+  return [...tasks].sort((left, right) => {
+    if (right.updated_at !== left.updated_at) {
+      return right.updated_at - left.updated_at;
+    }
+    if (right.created_at !== left.created_at) {
+      return right.created_at - left.created_at;
+    }
+    return right.id.localeCompare(left.id);
+  });
 }
 
 export function TeamPage(props: TeamPageProps) {
@@ -502,17 +516,15 @@ export function TeamPage(props: TeamPageProps) {
   const [memberDiscoveryCardLoadingById, setMemberDiscoveryCardLoadingById] = useState<
     Record<string, boolean>
   >({});
-  const [mainTasks, setMainTasks] = useState<TeamMainTaskRecord[]>([]);
-  const [mainTasksLoading, setMainTasksLoading] = useState(false);
-  const [selectedMainTaskId, setSelectedMainTaskId] = useState("");
-  const [mainTaskMessages, setMainTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
-  const [mainTaskMessagesLoading, setMainTaskMessagesLoading] = useState(false);
-  const [newMainTaskTitle, setNewMainTaskTitle] = useState("");
-  const [newMainTaskTopic, setNewMainTaskTopic] = useState("");
-  const [mainTaskMessageDraft, setMainTaskMessageDraft] = useState("");
+  const [taskList, setTaskList] = useState<TeamTaskRecord[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
+  const [taskMessagesLoading, setTaskMessagesLoading] = useState(false);
+  const [taskMessageDraft, setTaskMessageDraft] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
-    useState<TeamMainTaskRunCompilePreviewRecord | null>(null);
+    useState<TeamTaskRunCompilePreviewRecord | null>(null);
 
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
@@ -624,23 +636,15 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
-  const selectedTeamMemberIds = useMemo(() => {
-    if (!selectedTeam) {
-      return [];
-    }
-    return parseTeamSpecMembers(selectedTeam.spec).map((member) => member.member_id);
-  }, [selectedTeam]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
-    setMainTasks([]);
-    setMainTasksLoading(false);
-    setSelectedMainTaskId("");
-    setMainTaskMessages([]);
-    setMainTaskMessagesLoading(false);
-    setNewMainTaskTitle("");
-    setNewMainTaskTopic("");
-    setMainTaskMessageDraft("");
+    setTaskList([]);
+    setTasksLoading(false);
+    setSelectedTaskId("");
+    setTaskMessages([]);
+    setTaskMessagesLoading(false);
+    setTaskMessageDraft("");
   }, [selectedTeamId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
@@ -848,9 +852,16 @@ export function TeamPage(props: TeamPageProps) {
     props.token,
     selectedMemberId,
   ]);
-  const chatMemberIds = useMemo(
+  const chatMemberIds = useMemo(() => {
+    const memberIds = snapshot?.members.map((member) => member.member_id) ?? [];
+    if (!memberIds.includes(HUMAN_MAILBOX_ACTOR_ID)) {
+      memberIds.push(HUMAN_MAILBOX_ACTOR_ID);
+    }
+    return memberIds;
+  }, [snapshot]);
+  const taskConversationMemberIds = useMemo(
     () => snapshot?.members.map((member) => member.member_id) ?? [],
-    [snapshot]
+    [snapshot?.members]
   );
   const chatActors = useMemo(
     () =>
@@ -887,15 +898,15 @@ export function TeamPage(props: TeamPageProps) {
       return {} as Record<string, number>;
     }
     const counts: Record<string, number> = {};
-    for (const member of snapshot.members) {
+    for (const actorId of chatMemberIds) {
       const actors = resolveMailboxChatActors(
         snapshot.leader_member_id,
         chatMemberIds,
-        member.member_id
+        actorId
       );
       const key = buildMailboxConversationKey(actors.fromActorId, actors.toActorId);
       const seenMessageId = key ? chatSeenByConversation[key] ?? 0 : 0;
-      counts[member.member_id] = countUnreadConversationMessages(
+      counts[actorId] = countUnreadConversationMessages(
         mergedMailboxMessages,
         actors.fromActorId,
         actors.toActorId,
@@ -1340,6 +1351,7 @@ export function TeamPage(props: TeamPageProps) {
   useTeamMailboxLifecycleEffects({
     snapshot,
     selectedMemberId,
+    mailboxActorIds: chatMemberIds,
     activeRunIdForSelectedTeam,
     chatInboxActorId: chatActors.inboxActorId,
     tab,
@@ -1701,165 +1713,154 @@ export function TeamPage(props: TeamPageProps) {
   };
 
   const selectedConversation = useMemo(
-    () => mainTasks.find((task) => task.id === selectedMainTaskId) ?? null,
-    [mainTasks, selectedMainTaskId]
+    () => taskList.find((task) => task.id === selectedTaskId) ?? null,
+    [taskList, selectedTaskId]
   );
 
-  const refreshMainTasks = useCallback(
+  const refreshTasks = useCallback(
     async (teamId: string) => {
-      setMainTasksLoading(true);
+      setTasksLoading(true);
       try {
-        const list = await api.listTeamMainTasks(props.token, teamId, 100);
-        setMainTasks(list);
-        setSelectedMainTaskId((prev) => {
+        const list = await api.listTeamTasks(props.token, teamId, 100);
+        const sorted = sortTasksByActivity(list);
+        setTaskList(sorted);
+        setSelectedTaskId((prev) => {
           const selectedId = prev.trim();
           const hasSelected =
-            selectedId.length > 0 && list.some((task) => task.id === selectedId);
-          const nextSelectedId = hasSelected ? selectedId : list[0]?.id ?? "";
+            selectedId.length > 0 && sorted.some((task) => task.id === selectedId);
+          const nextSelectedId = hasSelected ? selectedId : sorted[0]?.id ?? "";
           return nextSelectedId;
         });
       } catch (err) {
         setError(parseErrorMessage(err));
       } finally {
-        setMainTasksLoading(false);
+        setTasksLoading(false);
       }
     },
     [props.token]
   );
 
-  const refreshMainTaskMessages = useCallback(
-    async (mainTaskIdOverride?: string) => {
+  const refreshTaskMessages = useCallback(
+    async (taskIdOverride?: string) => {
       const teamId = selectedTeamId;
-      const mainTaskId = (mainTaskIdOverride ?? selectedMainTaskId).trim();
-      if (!teamId || !mainTaskId) {
-        setMainTaskMessages([]);
+      const taskId = (taskIdOverride ?? selectedTaskId).trim();
+      if (!teamId || !taskId) {
+        setTaskMessages([]);
         return;
       }
-      setMainTaskMessagesLoading(true);
+      setTaskMessagesLoading(true);
       try {
-        const messages = await api.listTeamMainTaskMessages(props.token, teamId, mainTaskId, {
+        const messages = await api.listTeamTaskMessages(props.token, teamId, taskId, {
           limit: 200,
         });
-        setMainTaskMessages(messages);
+        setTaskMessages(messages);
       } catch (err) {
         setError(parseErrorMessage(err));
       } finally {
-        setMainTaskMessagesLoading(false);
+        setTaskMessagesLoading(false);
       }
     },
-    [props.token, selectedMainTaskId, selectedTeamId]
+    [props.token, selectedTaskId, selectedTeamId]
   );
 
   useEffect(() => {
     if (!selectedTeamId) {
       return;
     }
-    void refreshMainTasks(selectedTeamId);
-  }, [refreshMainTasks, selectedTeamId]);
+    void refreshTasks(selectedTeamId);
+  }, [refreshTasks, selectedTeamId]);
 
   useEffect(() => {
     if (!selectedTeamId) {
       return;
     }
-    const mainTaskId = selectedMainTaskId.trim();
-    if (!mainTaskId) {
-      setMainTaskMessages([]);
+    const taskId = selectedTaskId.trim();
+    if (!taskId) {
+      setTaskMessages([]);
       return;
     }
-    const matchesSelectedTeam = mainTasks.some(
-      (task) => task.id === mainTaskId && task.team_id === selectedTeamId
+    const matchesSelectedTeam = taskList.some(
+      (task) => task.id === taskId && task.team_id === selectedTeamId
     );
     if (!matchesSelectedTeam) {
-      setMainTaskMessages([]);
+      setTaskMessages([]);
       return;
     }
-    void refreshMainTaskMessages(mainTaskId);
-  }, [mainTasks, refreshMainTaskMessages, selectedMainTaskId, selectedTeamId]);
+    void refreshTaskMessages(taskId);
+  }, [taskList, refreshTaskMessages, selectedTaskId, selectedTeamId]);
 
-  const onCreateMainTask = useCallback(async () => {
+  const resolveConversationForMessage = useCallback(() => {
+    if (!selectedTeamId) {
+      return null;
+    }
+    const selectedId = selectedTaskId.trim();
+    if (selectedId) {
+      const selected = taskList.find(
+        (task) => task.id === selectedId && task.team_id === selectedTeamId
+      );
+      if (selected) {
+        return selected;
+      }
+    }
+    const latest = sortTasksByActivity(taskList).find(
+      (task) => task.team_id === selectedTeamId
+    );
+    if (latest) {
+      setSelectedTaskId(latest.id);
+      return latest;
+    }
+    return null;
+  }, [taskList, selectedTaskId, selectedTeamId]);
+
+  const onSendTaskMessage = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
       return;
     }
-    const title = newMainTaskTitle.trim();
-    if (!title) {
-      setError("Conversation title is required");
-      return;
-    }
-    setBusy("create-main-task");
-    setError(null);
-    try {
-      const created = await api.createTeamMainTask(props.token, selectedTeamId, {
-        title,
-        created_by_actor_id: "user",
-        conversation_mode: "group_chat",
-        topic: newMainTaskTopic.trim() || undefined,
-        context: { source: "team_workbench" },
-      });
-      setMainTasks((prev) => {
-        const next = [created.task, ...prev.filter((task) => task.id !== created.task.id)];
-        return next.sort((left, right) => right.created_at - left.created_at);
-      });
-      setSelectedMainTaskId(created.task.id);
-      setMainTaskMessages([]);
-      setNewMainTaskTitle("");
-      setNewMainTaskTopic("");
-      setMainTaskMessageDraft("");
-      await refreshMainTaskMessages(created.task.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    newMainTaskTitle,
-    newMainTaskTopic,
-    props.token,
-    refreshMainTaskMessages,
-    selectedTeamId,
-  ]);
-
-  const onSendMainTaskMessage = useCallback(async () => {
-    if (!selectedTeamId) {
-      setError("Select a team first");
-      return;
-    }
-    const mainTaskId = selectedMainTaskId.trim();
-    if (!mainTaskId) {
-      setError("Select a conversation first");
-      return;
-    }
-    const text = mainTaskMessageDraft.trim();
+    const text = taskMessageDraft.trim();
     if (!text) {
       setError("Conversation message is required");
       return;
     }
-    setBusy("send-main-task-message");
+    setBusy("send-task-message");
     setError(null);
+    setWarning(null);
     try {
-      const mentionActorIds = extractMentionedActorIds(text, selectedTeamMemberIds);
-      const message = await api.sendTeamMainTaskMessage(props.token, selectedTeamId, mainTaskId, {
-        from_actor_id: "user",
-        route: "group_chat",
-        payload: buildMailboxChatPayload(text, {
-          mention_actor_ids: mentionActorIds,
-        }),
-      });
-      setMainTaskMessages((prev) =>
-        [...prev, message].sort((left, right) => left.message_id - right.message_id)
-      );
-      setMainTaskMessageDraft("");
+      const conversation = resolveConversationForMessage();
+      const taskId = conversation?.id;
+      const chatPayload = buildMailboxChatPayload(text);
+      if (taskId) {
+        const message = await api.sendTeamTaskMessage(props.token, selectedTeamId, taskId, {
+          route: "group_chat",
+          payload: chatPayload,
+        });
+        setTaskMessages((prev) =>
+          [...prev, message].sort((left, right) => left.message_id - right.message_id)
+        );
+        if (activeRunIdForSelectedTeam) {
+          await Promise.all([
+            refreshSnapshot(activeRunIdForSelectedTeam),
+            refreshEvents(activeRunIdForSelectedTeam),
+          ]);
+        }
+      } else {
+        setWarning("No task selected. Ask leader to define a task first.");
+      }
+      setTaskMessageDraft("");
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
   }, [
-    mainTaskMessageDraft,
+    activeRunIdForSelectedTeam,
+    resolveConversationForMessage,
+    taskMessageDraft,
     props.token,
-    selectedMainTaskId,
-    selectedTeamMemberIds,
+    refreshEvents,
+    refreshSnapshot,
     selectedTeamId,
+    setWarning,
   ]);
 
   const onRefreshMemberConsole = useCallback(async () => {
@@ -2012,7 +2013,7 @@ export function TeamPage(props: TeamPageProps) {
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
-  const canCompileMainTask = busy !== "compile-main-task" && selectedConversation !== null;
+  const canCompileTask = busy !== "compile-task" && selectedConversation !== null;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const teamSectionCardClassName =
     "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
@@ -2068,31 +2069,31 @@ export function TeamPage(props: TeamPageProps) {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
-  const onRefreshMainTasks = useCallback(async () => {
+  const onRefreshTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
       return;
     }
     setError(null);
-    await refreshMainTasks(selectedTeamId);
-  }, [refreshMainTasks, selectedTeamId]);
-  const onCompileMainTaskRunPreview = useCallback(async () => {
+    await refreshTasks(selectedTeamId);
+  }, [refreshTasks, selectedTeamId]);
+  const onCompileTaskRunPreview = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
       return;
     }
-    const mainTaskId = selectedMainTaskId.trim();
-    if (!mainTaskId) {
+    const taskId = selectedTaskId.trim();
+    if (!taskId) {
       setError("Select a conversation first");
       return;
     }
-    setBusy("compile-main-task");
+    setBusy("compile-task");
     setError(null);
     try {
-      const preview = await api.compileTeamMainTaskRunPreview(
+      const preview = await api.compileTeamTaskRunPreview(
         props.token,
         selectedTeamId,
-        mainTaskId,
+        taskId,
         {
           context_id: compilePreviewContextId.trim() || undefined,
         }
@@ -2106,7 +2107,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     compilePreviewContextId,
     props.token,
-    selectedMainTaskId,
+    selectedTaskId,
     selectedTeamId,
     setBusy,
     setError,
@@ -2150,25 +2151,20 @@ export function TeamPage(props: TeamPageProps) {
   ]);
   const conversationPanel = (
     <div className="space-y-3">
-      <TeamMainTaskPanel
-        tasks={mainTasks}
-        tasksLoading={mainTasksLoading}
-        selectedMainTaskId={selectedMainTaskId}
-        onSelectedMainTaskIdChange={setSelectedMainTaskId}
-        onRefreshTasks={onRefreshMainTasks}
-        newTaskTitle={newMainTaskTitle}
-        onNewTaskTitleChange={setNewMainTaskTitle}
-        newTaskTopic={newMainTaskTopic}
-        onNewTaskTopicChange={setNewMainTaskTopic}
-        onCreateTask={onCreateMainTask}
-        messageDraft={mainTaskMessageDraft}
-        onMessageDraftChange={setMainTaskMessageDraft}
-        onSendMessage={onSendMainTaskMessage}
-        onRefreshMessages={refreshMainTaskMessages}
-        messages={mainTaskMessages}
-        agentMessages={mergedMailboxMessages}
+      <TeamTaskPanel
+        tasks={taskList}
+        tasksLoading={tasksLoading}
+        selectedTaskId={selectedTaskId}
+        onSelectedTaskIdChange={setSelectedTaskId}
+        onRefreshTasks={onRefreshTasks}
+        messageDraft={taskMessageDraft}
+        onMessageDraftChange={setTaskMessageDraft}
+        onSendMessage={onSendTaskMessage}
+        onRefreshMessages={refreshTaskMessages}
+        messages={taskMessages}
         memberLiveStates={selectedTeamMemberLiveStates}
-        messagesLoading={mainTaskMessagesLoading}
+        memberIds={taskConversationMemberIds}
+        messagesLoading={taskMessagesLoading}
         busy={busy}
         formatTs={formatTs}
         toPrettyJson={toPrettyJson}
@@ -2185,8 +2181,8 @@ export function TeamPage(props: TeamPageProps) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           className={panelPrimaryButtonClassName}
-          onClick={onCompileMainTaskRunPreview}
-          disabled={!canCompileMainTask}
+          onClick={onCompileTaskRunPreview}
+          disabled={!canCompileTask}
         >
           Compile Preview
         </button>
@@ -2473,7 +2469,7 @@ export function TeamPage(props: TeamPageProps) {
                 Team Workbench
               </h2>
               <p className={teamSectionBodyTextClassName}>
-                Select a team from the left panel to manage runs, steps, and messages.
+                Select a team from the left panel to start team conversations and supervise execution.
               </p>
             </div>
           )}
@@ -2557,8 +2553,7 @@ export function TeamPage(props: TeamPageProps) {
                       {!activeRunForSelectedTeam && (
                         <div className={teamSectionCardClassName}>
                           <p className={teamSectionBodyTextClassName}>
-                            No active run is selected. Start with conversation planning before
-                            launching a run.
+                            Conversation is available before execution starts.
                           </p>
                         </div>
                       )}
@@ -2650,6 +2645,7 @@ export function TeamPage(props: TeamPageProps) {
                     <TeamMailboxPanel
                       mode="full"
                       snapshot={snapshot}
+                      humanActorId={HUMAN_MAILBOX_ACTOR_ID}
                       selectedMemberId={selectedMemberId}
                       unreadByMemberId={unreadByMemberId}
                       onSelectMember={setSelectedMemberId}
@@ -2842,6 +2838,7 @@ export function TeamPage(props: TeamPageProps) {
                         <TeamMailboxPanel
                           mode="advanced_only"
                           snapshot={snapshot}
+                          humanActorId={HUMAN_MAILBOX_ACTOR_ID}
                           selectedMemberId={selectedMemberId}
                           unreadByMemberId={unreadByMemberId}
                           onSelectMember={setSelectedMemberId}

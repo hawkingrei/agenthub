@@ -177,6 +177,7 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
     let session_id = "session-leader-1";
@@ -211,6 +212,7 @@ fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 
@@ -239,6 +241,7 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 
@@ -273,6 +276,7 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 
@@ -294,6 +298,7 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 
@@ -313,6 +318,7 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 
@@ -339,6 +345,7 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 

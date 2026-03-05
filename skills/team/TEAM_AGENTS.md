@@ -21,6 +21,8 @@ Keep it concise and route detailed procedures to skill files.
 Note:
 - humans provide goals/constraints via conversation;
 - internal tasks are created by leader planning, not directly by human.
+- routing contract: `@member_id` means directed recipients; no `@` means broadcast.
+- delivery contract: conversation is persisted once, then forwarded through actor mailbox transport.
 
 ## Team Formation
 

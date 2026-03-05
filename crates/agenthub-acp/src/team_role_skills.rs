@@ -29,6 +29,13 @@ fn normalize_member_role(role: Option<&str>) -> Option<&str> {
     role.map(str::trim).filter(|value| !value.is_empty())
 }
 
+fn has_member_skill(context: &AcpActorSkillContext, skill_name: &str) -> bool {
+    context
+        .member_skills
+        .iter()
+        .any(|skill| skill.eq_ignore_ascii_case(skill_name))
+}
+
 pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillContext>) -> bool {
     matches!(
         context.and_then(|item| normalize_member_role(item.member_role.as_deref())),
@@ -48,6 +55,7 @@ pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
 
 pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
     let role = normalize_member_role(context.member_role.as_deref());
+    let enable_deliberation = has_member_skill(context, TEAM_DELIBERATION_SKILL_NAME);
     let mut out = Vec::new();
     match role {
         Some("leader") => {
@@ -71,11 +79,13 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-actor-mailbox".to_string(),
                 TEAM_ACTOR_MAILBOX_SKILL_TEXT,
             ));
-            out.push(build_skill(
-                TEAM_DELIBERATION_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-deliberation-rules".to_string(),
-                TEAM_DELIBERATION_SKILL_TEXT,
-            ));
+            if enable_deliberation {
+                out.push(build_skill(
+                    TEAM_DELIBERATION_SKILL_NAME.to_string(),
+                    "builtin://agenthub/team/team-deliberation-rules".to_string(),
+                    TEAM_DELIBERATION_SKILL_TEXT,
+                ));
+            }
         }
         Some("worker") => {
             out.push(build_skill(
@@ -98,11 +108,13 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-actor-mailbox".to_string(),
                 TEAM_ACTOR_MAILBOX_SKILL_TEXT,
             ));
-            out.push(build_skill(
-                TEAM_DELIBERATION_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-deliberation-rules".to_string(),
-                TEAM_DELIBERATION_SKILL_TEXT,
-            ));
+            if enable_deliberation {
+                out.push(build_skill(
+                    TEAM_DELIBERATION_SKILL_NAME.to_string(),
+                    "builtin://agenthub/team/team-deliberation-rules".to_string(),
+                    TEAM_DELIBERATION_SKILL_TEXT,
+                ));
+            }
         }
         _ => {}
     }
@@ -123,6 +135,7 @@ mod tests {
             default_channel: "default".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: role.map(str::to_string),
+            member_skills: Vec::new(),
             continuity: None,
         }
     }
@@ -140,8 +153,7 @@ mod tests {
                 "team-agents-index",
                 "team-leader-agents-index",
                 "team-leader-orchestrator",
-                "team-actor-mailbox",
-                "team-deliberation-rules"
+                "team-actor-mailbox"
             ]
         );
     }
@@ -159,10 +171,23 @@ mod tests {
                 "team-agents-index",
                 "team-worker-agents-index",
                 "team-worker-executor",
-                "team-actor-mailbox",
-                "team-deliberation-rules"
+                "team-actor-mailbox"
             ]
         );
+    }
+
+    #[test]
+    fn build_team_role_skills_enables_deliberation_when_requested() {
+        let mut context = context_with_role(Some("leader"));
+        context
+            .member_skills
+            .push("team-deliberation-rules".to_string());
+        let skills = build_team_role_skills(&context);
+        let names = skills
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"team-deliberation-rules"));
     }
 
     #[test]

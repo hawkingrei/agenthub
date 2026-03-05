@@ -164,8 +164,8 @@ describe("team state defaults and constants", () => {
 
   it("exposes stable option constants for UI controls", () => {
     expect(TEAM_TAB_ITEMS.map((tab) => tab.value)).toEqual([
-      "runs",
       "conversation",
+      "runs",
       "agent_acp",
       "overview",
       "events",

@@ -61,6 +61,7 @@ pub struct AcpActorSkillContext {
     pub default_channel: String,
     pub actor_cli_path: String,
     pub member_role: Option<String>,
+    pub member_skills: Vec<String>,
     pub continuity: Option<AcpActorContinuityEnvelope>,
 }
 
@@ -292,6 +293,15 @@ fn load_mcp_servers_from_path(
 fn load_mcp_servers(actor_context: Option<&AcpActorSkillContext>) -> Vec<McpServer> {
     let path = mcp_config_path();
     load_mcp_servers_from_path(&path, actor_context)
+}
+
+fn mcp_server_name(server: &McpServer) -> &str {
+    match server {
+        McpServer::Http(cfg) => cfg.name.as_str(),
+        McpServer::Sse(cfg) => cfg.name.as_str(),
+        McpServer::Stdio(cfg) => cfg.name.as_str(),
+        _ => "unknown",
+    }
 }
 
 fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
@@ -691,13 +701,34 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         let mcp_servers = load_mcp_servers(actor_context.as_ref());
         let mut skills = load_skills(&safe_paths);
         skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
+        let mut attached_team_role_skills = false;
         if let Some(ctx) = actor_context.as_ref() {
             if should_attach_team_role_skills(Some(ctx)) {
                 skills.extend(build_team_role_skills(ctx));
+                attached_team_role_skills = true;
             }
             skills.push(build_actor_runtime_skill(ctx));
         }
         let skills = dedupe_skills(skills);
+        if let Some(ctx) = actor_context.as_ref() {
+            let skill_names = skills
+                .iter()
+                .map(|skill| skill.name.as_str())
+                .collect::<Vec<_>>();
+            let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
+            let has_actor_mailbox_mcp =
+                mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
+            tracing::info!(
+                run_id = %ctx.run_id,
+                actor_id = %ctx.actor_id,
+                member_role = %ctx.member_role.as_deref().unwrap_or("none"),
+                attached_team_role_skills,
+                has_actor_mailbox_mcp,
+                skill_names = ?skill_names,
+                mcp_server_names = ?mcp_server_names,
+                "acp actor session bootstrap prepared runtime capabilities"
+            );
+        }
         let skill_blocks = build_skill_blocks(&skills);
         let skills_meta = build_skills_meta(&skills);
         let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -1301,6 +1332,7 @@ mod tests {
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
             continuity: None,
         }
     }

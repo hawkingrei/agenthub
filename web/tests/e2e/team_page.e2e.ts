@@ -72,7 +72,7 @@ type TeamRunRecord = {
   ended_at: number | null;
 };
 
-type TeamMainTaskRecord = {
+type TeamTaskRecord = {
   id: string;
   team_id: string;
   title: string;
@@ -86,7 +86,7 @@ type TeamMainTaskRecord = {
 type TeamConversationMessageRecord = {
   message_id: number;
   conversation_id: string;
-  main_task_id: string;
+  task_id: string;
   from_actor_id: string;
   to_actor_id: string | null;
   route: "to_leader" | "to_member" | "group_chat";
@@ -258,20 +258,20 @@ async function mockTeamPageApis(
     },
   ];
   const teams: TeamDefinitionRecord[] = [];
-  const mainTasksByTeamId = new Map<string, TeamMainTaskRecord[]>();
-  const mainTaskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
-  const mainTaskCounterByTeamId = new Map<string, number>();
+  const tasksByTeamId = new Map<string, TeamTaskRecord[]>();
+  const taskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
+  const taskCounterByTeamId = new Map<string, number>();
   const mailboxMessagesByRunId = new Map<string, TeamActorMessageRecord[]>();
   const runEventCounterByRunId = new Map<string, number>();
   let createTeamPayload: CreateTeamPayload | null = null;
 
-  const ensureMainTasks = (teamId: string): TeamMainTaskRecord[] => {
-    const existing = mainTasksByTeamId.get(teamId);
+  const ensureTasks = (teamId: string): TeamTaskRecord[] => {
+    const existing = tasksByTeamId.get(teamId);
     if (existing) {
       return existing;
     }
-    const defaultTask: TeamMainTaskRecord = {
-      id: `main-task-${teamId}-1`,
+    const defaultTask: TeamTaskRecord = {
+      id: `task-${teamId}-1`,
       team_id: teamId,
       title: "Default planning conversation",
       status: "open",
@@ -280,9 +280,9 @@ async function mockTeamPageApis(
       created_at: now + 1,
       updated_at: now + 1,
     };
-    mainTasksByTeamId.set(teamId, [defaultTask]);
-    mainTaskCounterByTeamId.set(teamId, 1);
-    mainTaskMessagesById.set(defaultTask.id, []);
+    tasksByTeamId.set(teamId, [defaultTask]);
+    taskCounterByTeamId.set(teamId, 1);
+    taskMessagesById.set(defaultTask.id, []);
     return [defaultTask];
   };
 
@@ -540,15 +540,15 @@ async function mockTeamPageApis(
     await route.fallback();
   });
 
-  await page.route(/\/api\/teams\/[^/]+\/main_tasks(?:\?.*)?$/, async (route, request) => {
+  await page.route(/\/api\/teams\/[^/]+\/tasks(?:\?.*)?$/, async (route, request) => {
     const url = new URL(request.url());
-    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/tasks/)?.[1] ?? "";
     if (!teamId) {
       await route.fulfill(jsonResponse({ error: "team id missing" }, 400));
       return;
     }
     if (request.method() === "GET") {
-      const tasks = ensureMainTasks(teamId);
+      const tasks = ensureTasks(teamId);
       await route.fulfill(jsonResponse(tasks));
       return;
     }
@@ -559,12 +559,12 @@ async function mockTeamPageApis(
         topic?: string;
         conversation_mode?: "to_leader" | "to_member" | "group_chat";
       };
-      const current = ensureMainTasks(teamId);
-      const nextIndex = (mainTaskCounterByTeamId.get(teamId) ?? current.length) + 1;
-      mainTaskCounterByTeamId.set(teamId, nextIndex);
-      const taskId = `main-task-${teamId}-${nextIndex}`;
+      const current = ensureTasks(teamId);
+      const nextIndex = (taskCounterByTeamId.get(teamId) ?? current.length) + 1;
+      taskCounterByTeamId.set(teamId, nextIndex);
+      const taskId = `task-${teamId}-${nextIndex}`;
       const createdAt = now + 100 + nextIndex;
-      const createdTask: TeamMainTaskRecord = {
+      const createdTask: TeamTaskRecord = {
         id: taskId,
         team_id: teamId,
         title: payload.title?.trim() || `Conversation ${nextIndex}`,
@@ -577,8 +577,8 @@ async function mockTeamPageApis(
         created_at: createdAt,
         updated_at: createdAt,
       };
-      mainTasksByTeamId.set(teamId, [createdTask, ...current.filter((item) => item.id !== taskId)]);
-      mainTaskMessagesById.set(taskId, []);
+      tasksByTeamId.set(teamId, [createdTask, ...current.filter((item) => item.id !== taskId)]);
+      taskMessagesById.set(taskId, []);
       await route.fulfill(jsonResponse({ task: createdTask }));
       return;
     }
@@ -586,23 +586,23 @@ async function mockTeamPageApis(
   });
 
   await page.route(
-    /\/api\/teams\/[^/]+\/main_tasks\/[^/]+\/messages(?:\?.*)?$/,
+    /\/api\/teams\/[^/]+\/tasks\/[^/]+\/messages(?:\?.*)?$/,
     async (route, request) => {
       const url = new URL(request.url());
-      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/tasks/)?.[1] ?? "";
       const taskId =
-        url.pathname.match(/\/main_tasks\/([^/]+)\/messages(?:\?.*)?$/)?.[1] ?? "";
+        url.pathname.match(/\/tasks\/([^/]+)\/messages(?:\?.*)?$/)?.[1] ?? "";
       if (!teamId || !taskId) {
         await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
         return;
       }
-      const tasks = ensureMainTasks(teamId);
+      const tasks = ensureTasks(teamId);
       const task = tasks.find((item) => item.id === taskId);
       if (!task) {
         await route.fulfill(jsonResponse({ error: "task not found" }, 404));
         return;
       }
-      const existingMessages = mainTaskMessagesById.get(taskId) ?? [];
+      const existingMessages = taskMessagesById.get(taskId) ?? [];
       if (request.method() === "GET") {
         await route.fulfill(jsonResponse(existingMessages));
         return;
@@ -621,7 +621,7 @@ async function mockTeamPageApis(
         const createdMessage: TeamConversationMessageRecord = {
           message_id: nextMessageId,
           conversation_id: `conversation-${taskId}`,
-          main_task_id: taskId,
+          task_id: taskId,
           from_actor_id: payload.from_actor_id ?? `user:${auth.userId}`,
           to_actor_id:
             payload.to_actor_id ??
@@ -631,7 +631,7 @@ async function mockTeamPageApis(
           created_at: now + 200 + nextMessageId,
         };
         const nextMessages = [...existingMessages, createdMessage];
-        mainTaskMessagesById.set(taskId, nextMessages);
+        taskMessagesById.set(taskId, nextMessages);
         await route.fulfill(jsonResponse(createdMessage));
         return;
       }
@@ -640,21 +640,21 @@ async function mockTeamPageApis(
   );
 
   await page.route(
-    /\/api\/teams\/[^/]+\/main_tasks\/[^/]+\/compile_run_preview$/,
+    /\/api\/teams\/[^/]+\/tasks\/[^/]+\/compile_run_preview$/,
     async (route, request) => {
       if (request.method() !== "POST") {
         await route.fallback();
         return;
       }
       const url = new URL(request.url());
-      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/main_tasks/)?.[1] ?? "";
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/tasks/)?.[1] ?? "";
       const taskId =
-        url.pathname.match(/\/main_tasks\/([^/]+)\/compile_run_preview$/)?.[1] ?? "";
+        url.pathname.match(/\/tasks\/([^/]+)\/compile_run_preview$/)?.[1] ?? "";
       if (!teamId || !taskId) {
         await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
         return;
       }
-      const task = ensureMainTasks(teamId).find((item) => item.id === taskId);
+      const task = ensureTasks(teamId).find((item) => item.id === taskId);
       if (!task) {
         await route.fulfill(jsonResponse({ error: "task not found" }, 404));
         return;
@@ -664,17 +664,17 @@ async function mockTeamPageApis(
       const workerMemberId =
         team?.spec.members.find((member) => member.role === "worker")?.member_id ??
         leaderMemberId;
-      const messageList = mainTaskMessagesById.get(taskId) ?? [];
+      const messageList = taskMessagesById.get(taskId) ?? [];
       const latestMessageId = messageList.length > 0 ? messageList[messageList.length - 1]?.message_id ?? 0 : 0;
       await route.fulfill(
         jsonResponse({
-          main_task_id: taskId,
+          task_id: taskId,
           conversation_id: `conversation-${taskId}`,
           run_payload: {
             context_id: `ctx-${taskId}`,
             input: {
-              main_task_compile_version: 1,
-              main_task_id: taskId,
+              task_compile_version: 1,
+              task_id: taskId,
               conversation_id: `conversation-${taskId}`,
               tool_name: "tiny-json-cli",
               objective: task.title,
@@ -1640,20 +1640,20 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("team debug run ops compiles main task preview and applies payload to create-run form", async ({
+test("team debug run ops compiles task preview and applies payload to create-run form", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
   const teamId = "team-compile";
   const teamCreatedAt = fixture.now + 120;
   const previewResponse = {
-    main_task_id: "main-task-compile-1",
+    task_id: "task-compile-1",
     conversation_id: "conversation-compile-1",
     run_payload: {
-      context_id: "ctx-main-task-compile-1",
+      context_id: "ctx-task-compile-1",
       input: {
-        main_task_compile_version: 1,
-        main_task_id: "main-task-compile-1",
+        task_compile_version: 1,
+        task_id: "task-compile-1",
         task_list: ["Implement compile preview", "Wire run ops"],
       },
     },
@@ -1695,7 +1695,7 @@ test("team debug run ops compiles main task preview and applies payload to creat
   });
 
   await page.route(
-    new RegExp(`/api/teams/${teamId}/main_tasks/[^/]+/compile_run_preview$`),
+    new RegExp(`/api/teams/${teamId}/tasks/[^/]+/compile_run_preview$`),
     async (route, request) => {
       if (request.method() !== "POST") {
         await route.fallback();
@@ -1715,15 +1715,15 @@ test("team debug run ops compiles main task preview and applies payload to creat
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
   await expect(page.getByText("conversation_id: conversation-compile-1")).toBeVisible();
-  await expect(page.getByText("context_id: ctx-main-task-compile-1")).toBeVisible();
+  await expect(page.getByText("context_id: ctx-task-compile-1")).toBeVisible();
   expect(compileRequests).toEqual([{}]);
 
   await page.getByRole("button", { name: "Use Payload in Create Run" }).click();
   await expect(
     page.getByPlaceholder("context_id (optional, auto-generated when empty)")
-  ).toHaveValue("ctx-main-task-compile-1");
+  ).toHaveValue("ctx-task-compile-1");
   await expect(page.getByLabel("Run input JSON")).toContainText(
-    '"main_task_id": "main-task-compile-1"'
+    '"task_id": "task-compile-1"'
   );
 });
 
@@ -1736,13 +1736,13 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   const teamCreatedAt = fixture.now + 180;
   const runCreatedAt = fixture.now + 260;
   const previewResponse = {
-    main_task_id: "main-task-chat-1",
+    task_id: "task-chat-1",
     conversation_id: "conversation-chat-1",
     run_payload: {
       context_id: "ctx-chat-first-1",
       input: {
-        main_task_compile_version: 1,
-        main_task_id: "main-task-chat-1",
+        task_compile_version: 1,
+        task_id: "task-chat-1",
         conversation_id: "conversation-chat-1",
         task_list: [
           "Negotiate scope with leader",
@@ -1964,7 +1964,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   };
 
   await page.route(
-    new RegExp(`/api/teams/${teamId}/main_tasks/[^/]+/compile_run_preview$`),
+    new RegExp(`/api/teams/${teamId}/tasks/[^/]+/compile_run_preview$`),
     async (route, request) => {
       if (request.method() !== "POST") {
         await route.fallback();
@@ -2141,9 +2141,9 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     context_id: "ctx-chat-first-1",
   });
   expect(
-    (createRunRequests[0]?.input as { main_task_id?: string } | undefined)
-      ?.main_task_id
-  ).toBe("main-task-chat-1");
+    (createRunRequests[0]?.input as { task_id?: string } | undefined)
+      ?.task_id
+  ).toBe("task-chat-1");
 
   await page.getByRole("button", { name: "Mailbox", exact: true }).click();
   await page
@@ -2316,12 +2316,8 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   await expect(page.locator(".team-item", { hasText: "virtual-tool-team" })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
-  await page.getByPlaceholder("new conversation title").fill("Build tiny JSON CLI");
-  await page.getByPlaceholder("topic (optional)").fill("tooling");
-  await page.getByRole("button", { name: "Create Conversation" }).click();
-
   await page
-    .getByPlaceholder("Type planning message for leader/teammates")
+    .getByPlaceholder("Type planning message for the team (e.g. @worker-1 @worker-2 please verify)")
     .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
   await page.getByRole("button", { name: "Send Message" }).click();
   await expect(page.locator(".teams-message-list")).toContainText(

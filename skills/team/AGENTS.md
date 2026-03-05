@@ -25,6 +25,13 @@ at startup.
 - Internal Team `task` objects are created by leader planning.
 - Workers execute delegated tasks and report evidence back to leader.
 
+## Conversation Routing Contract
+
+- Persist each human/team conversation message once in conversation history.
+- Deliver conversation messages through Team actor mailbox transport; mailbox delivery reaches ACP upstream and MCP tools.
+- Mention routing: `@member_id` targets only mentioned members; no `@` broadcasts to all members.
+- Reply routing: when targeting specific recipients, include `@member_id`; replies without `@` are broadcast.
+
 ## Team Workflow Phases
 
 1. team formation

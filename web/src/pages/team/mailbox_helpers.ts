@@ -1,4 +1,5 @@
 import { TeamActorMessageRecord } from "../../api";
+import { escapeHtml, renderMarkdown } from "../../markdown";
 
 export type MailboxTemplateKey =
   | "leader_task_assignment"
@@ -14,7 +15,33 @@ export type TeamMailboxChatActors = {
   inboxActorId: string;
 };
 
-const MENTION_TOKEN_REGEX = /@([A-Za-z0-9._:-]+)/g;
+export type TaskMailboxRoutePlan = {
+  fromActorId: string;
+  toActorIds: string[];
+};
+
+const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
+const MENTION_RENDER_TOKEN_REGEX = /@@AGH_AT_MENTION:([A-Za-z0-9._:-]+)@@/g;
+
+export type MentionDraftQuery = {
+  start: number;
+  end: number;
+  keyword: string;
+};
+
+function normalizeActorIds(actorIds: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const rawActorId of actorIds) {
+    const actorId = rawActorId.trim();
+    if (!actorId || seen.has(actorId)) {
+      continue;
+    }
+    seen.add(actorId);
+    normalized.push(actorId);
+  }
+  return normalized;
+}
 
 export function resolveMailboxChatActors(
   leaderMemberId: string | null | undefined,
@@ -80,7 +107,7 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
   }
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
+  for (const match of text.matchAll(MENTION_TAG_REGEX)) {
     const actorId = (match[1] ?? "").trim();
     if (!actorId || !normalizedMembers.has(actorId) || seen.has(actorId)) {
       continue;
@@ -89,6 +116,99 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
     out.push(actorId);
   }
   return out;
+}
+
+export function resolveMentionDraftQuery(
+  draft: string,
+  cursorPosition: number
+): MentionDraftQuery | null {
+  const cursor = Math.max(0, Math.min(cursorPosition, draft.length));
+  const atIndex = draft.lastIndexOf("@", Math.max(0, cursor - 1));
+  if (atIndex < 0 || atIndex >= cursor) {
+    return null;
+  }
+  const previous = atIndex > 0 ? draft.charAt(atIndex - 1) : "";
+  if (/[A-Za-z0-9._%+-]/.test(previous)) {
+    return null;
+  }
+  const keyword = draft.slice(atIndex + 1, cursor);
+  if (keyword.includes("<") || keyword.includes(">") || /\s/.test(keyword)) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._:-]*$/.test(keyword)) {
+    return null;
+  }
+  return {
+    start: atIndex,
+    end: cursor,
+    keyword,
+  };
+}
+
+export function applyMentionAtTag(
+  draft: string,
+  mention: MentionDraftQuery,
+  actorId: string
+): { text: string; cursor: number } {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) {
+    return { text: draft, cursor: mention.end };
+  }
+  const prefix = draft.slice(0, mention.start);
+  const suffix = draft.slice(mention.end);
+  const tag = `@${normalizedActorId}`;
+  const needsSpace = suffix.length === 0 || /^\s/.test(suffix) ? "" : " ";
+  const nextText = `${prefix}${tag}${needsSpace}${suffix}`;
+  const nextCursor = prefix.length + tag.length + needsSpace.length;
+  return {
+    text: nextText,
+    cursor: nextCursor,
+  };
+}
+
+export function resolveTaskMailboxRoutePlan(
+  memberIds: string[],
+  mentionActorIds: string[],
+  leaderMemberId?: string | null
+): TaskMailboxRoutePlan {
+  const normalizedMembers = normalizeActorIds(memberIds);
+  if (normalizedMembers.length === 0) {
+    return {
+      fromActorId: "",
+      toActorIds: [],
+    };
+  }
+
+  const memberSet = new Set(normalizedMembers);
+  const normalizedMentions = normalizeActorIds(mentionActorIds).filter((actorId) =>
+    memberSet.has(actorId)
+  );
+  const normalizedLeaderId = (leaderMemberId ?? "").trim();
+  const fromActorId =
+    normalizedLeaderId && memberSet.has(normalizedLeaderId)
+      ? normalizedLeaderId
+      : (normalizedMembers[0] ?? "");
+
+  if (!fromActorId) {
+    return {
+      fromActorId: "",
+      toActorIds: [],
+    };
+  }
+  if (normalizedMentions.length > 0) {
+    return {
+      fromActorId,
+      toActorIds: normalizedMentions,
+    };
+  }
+
+  return {
+    fromActorId,
+    toActorIds: [
+      fromActorId,
+      ...normalizedMembers.filter((memberId) => memberId !== fromActorId),
+    ],
+  };
 }
 
 type MailboxChatPayload = {
@@ -114,6 +234,69 @@ export function buildMailboxChatPayload(
     payload.mention_actor_ids = mentionActorIds;
   }
   return payload;
+}
+
+function mentionChipHtml(actorId: string): string {
+  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 mono text-[11px] text-brand-primary">@${escapeHtml(actorId)}</span>`;
+}
+
+function tokenizeAtMentions(text: string): string {
+  return text.replace(MENTION_TAG_REGEX, (_match, rawActorId: string) => {
+    const actorId = (rawActorId ?? "").trim();
+    if (!/^[A-Za-z0-9._:-]+$/.test(actorId)) {
+      return "";
+    }
+    return `@@AGH_AT_MENTION:${actorId}@@`;
+  });
+}
+
+function renderMentionTokensIntoHtml(text: string): string {
+  return text.replace(MENTION_RENDER_TOKEN_REGEX, (_match, actorId: string) =>
+    mentionChipHtml(actorId)
+  );
+}
+
+export function renderMarkdownWithMentions(text: string): string {
+  const tokenized = tokenizeAtMentions(text);
+  const rendered = renderMarkdown(tokenized);
+  return renderMentionTokensIntoHtml(rendered);
+}
+
+export function renderPlainTextWithMentions(text: string): string {
+  const tokenized = tokenizeAtMentions(text);
+  const escaped = escapeHtml(tokenized).replace(/\n/g, "<br/>");
+  return renderMentionTokensIntoHtml(escaped);
+}
+
+export function buildMailboxForwardChatPayload(
+  basePayload: MailboxChatPayload,
+  toActorId: string
+): MailboxChatPayload {
+  const targetActorId = toActorId.trim();
+  const explicitMentions = normalizeActorIds(basePayload.mention_actor_ids ?? []);
+  const normalizedText = basePayload.text.trim();
+  if (!targetActorId) {
+    if (explicitMentions.length > 0) {
+      return { ...basePayload, mention_actor_ids: explicitMentions };
+    }
+    return basePayload;
+  }
+  const mentionToken = `@${targetActorId}`;
+  const textWithMention = normalizedText.includes(mentionToken)
+    ? normalizedText
+    : `${mentionToken} ${normalizedText}`.trim();
+  if (explicitMentions.length > 0) {
+    return {
+      ...basePayload,
+      text: textWithMention,
+      mention_actor_ids: [targetActorId],
+    };
+  }
+  return {
+    ...basePayload,
+    text: textWithMention,
+    mention_actor_ids: [targetActorId],
+  };
 }
 
 export function buildMailboxConversationKey(actorA: string, actorB: string): string {

@@ -117,19 +117,23 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert member session");
 
+    let member_event_db = state
+        .agents
+        .test_event_pool_for_agent(member_agent_id)
+        .await
+        .expect("open member event db");
     sqlx::query(
         r#"
-        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
     )
-    .bind(member_agent_id)
     .bind(&session_id)
     .bind("1")
     .bind(now)
     .bind("stdout")
     .bind("event payload")
-    .execute(&state.db)
+    .execute(&member_event_db)
     .await
     .expect("insert member event");
 
@@ -272,13 +276,9 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert context flush checkpoint");
 
-    let Json(deleted) = delete_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("delete team");
+    let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("delete team");
     assert_eq!(deleted.id, team.id);
 
     let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
@@ -336,30 +336,31 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .expect("count context artifacts");
     assert_eq!(artifact_count, 0);
 
-    let checkpoint_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM team_context_flush_checkpoint WHERE run_id = ?1",
-    )
-    .bind(&run.id)
-    .fetch_one(&state.db)
-    .await
-    .expect("count context flush checkpoint");
+    let checkpoint_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_context_flush_checkpoint WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count context flush checkpoint");
     assert_eq!(checkpoint_count, 0);
 
-    let session_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1",
-    )
-    .bind(member_agent_id)
-    .fetch_one(&state.db)
-    .await
-    .expect("count member sessions");
-    assert_eq!(session_count, 0);
-
-    let event_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE agent_id = ?1")
+    let session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1")
             .bind(member_agent_id)
             .fetch_one(&state.db)
             .await
-            .expect("count member events");
+            .expect("count member sessions");
+    assert_eq!(session_count, 0);
+
+    let member_event_db = state
+        .agents
+        .test_event_pool_for_agent(member_agent_id)
+        .await
+        .expect("open member event db");
+    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events")
+        .fetch_one(&member_event_db)
+        .await
+        .expect("count member events");
     assert_eq!(event_count, 0);
 
     let permission_count: i64 =
@@ -429,24 +430,40 @@ async fn teams_api_enforces_required_role_skills() {
     };
 
     let leader_skills = resolve_skills("leader-agent");
-    assert!(leader_skills.iter().any(|item| item == "agenthub-actor-runtime"));
-    assert!(leader_skills
-        .iter()
-        .any(|item| item == "team-leader-orchestrator"));
+    assert!(
+        leader_skills
+            .iter()
+            .any(|item| item == "agenthub-actor-runtime")
+    );
+    assert!(
+        leader_skills
+            .iter()
+            .any(|item| item == "team-leader-orchestrator")
+    );
     assert!(leader_skills.iter().any(|item| item == "planning"));
-    assert!(!leader_skills
-        .iter()
-        .any(|item| item == "team-worker-executor"));
+    assert!(
+        !leader_skills
+            .iter()
+            .any(|item| item == "team-worker-executor")
+    );
 
     let worker_skills = resolve_skills("worker-agent");
-    assert!(worker_skills.iter().any(|item| item == "agenthub-actor-runtime"));
-    assert!(worker_skills
-        .iter()
-        .any(|item| item == "team-worker-executor"));
+    assert!(
+        worker_skills
+            .iter()
+            .any(|item| item == "agenthub-actor-runtime")
+    );
+    assert!(
+        worker_skills
+            .iter()
+            .any(|item| item == "team-worker-executor")
+    );
     assert!(worker_skills.iter().any(|item| item == "coding"));
-    assert!(!worker_skills
-        .iter()
-        .any(|item| item == "team-leader-orchestrator"));
+    assert!(
+        !worker_skills
+            .iter()
+            .any(|item| item == "team-leader-orchestrator")
+    );
 }
 
 #[tokio::test]
@@ -504,13 +521,9 @@ async fn teams_api_delete_team_returns_not_found_when_missing() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
-    let err = delete_team(
-        State(state),
-        headers,
-        Path("missing-team".to_string()),
-    )
-    .await
-    .expect_err("missing team delete should fail");
+    let err = delete_team(State(state), headers, Path("missing-team".to_string()))
+        .await
+        .expect_err("missing team delete should fail");
     assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
 }
 
@@ -922,19 +935,23 @@ async fn team_runs_api_supports_manual_context_flush() {
     .await
     .expect("insert agent session for flush");
 
+    let member_event_db = state
+        .agents
+        .test_event_pool_for_agent("executor")
+        .await
+        .expect("open executor event db");
     sqlx::query(
         r#"
-        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
     )
-    .bind("executor")
     .bind("session-flush-api")
     .bind("1")
     .bind(now)
     .bind("acp")
     .bind(r#"{"type":"agent_message","content":"flush me","token":"secret"}"#)
-    .execute(&state.db)
+    .execute(&member_event_db)
     .await
     .expect("insert agent event");
 
@@ -1303,13 +1320,10 @@ async fn team_runs_api_supports_resume_and_restart_strategy() {
         .await
         .expect("complete step");
 
-    let completed_resume_err = resume_team_run(
-        State(state),
-        headers,
-        Path(completed_run.id.clone()),
-    )
-    .await
-    .expect_err("completed run should reject resume");
+    let completed_resume_err =
+        resume_team_run(State(state), headers, Path(completed_run.id.clone()))
+            .await
+            .expect_err("completed run should reject resume");
     assert_eq!(
         completed_resume_err.into_response().status(),
         StatusCode::CONFLICT
@@ -1437,7 +1451,9 @@ async fn team_runs_api_enforces_team_owner_access() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "planner".to_string(),
+            to_peer_id: None,
             channel: None,
             transport: Some("local".to_string()),
             route: None,
@@ -1494,13 +1510,9 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
             .expect("set run created_at");
 
         if index % 4 == 0 {
-            let _ = cancel_team_run(
-                State(state.clone()),
-                headers.clone(),
-                Path(run.id.clone()),
-            )
-            .await
-            .expect("cancel run");
+            let _ = cancel_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
+                .await
+                .expect("cancel run");
             canceled_expected.push((created_at, run.id.clone()));
         }
 
@@ -1536,8 +1548,7 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
         assert!((page.len() as i64) <= PAGE_SIZE);
         if let Some(before_created_at) = cursor {
             assert!(
-                page.iter()
-                    .all(|run| run.created_at < before_created_at),
+                page.iter().all(|run| run.created_at < before_created_at),
                 "cursor filter should only return older runs"
             );
         }
@@ -1558,7 +1569,10 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
 
     assert_eq!(collected_ids.len(), TOTAL_RUNS);
     assert_eq!(
-        collected_ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        collected_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
         TOTAL_RUNS
     );
     assert_eq!(collected_ids, expected_ids);
@@ -1588,7 +1602,10 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
         if page.is_empty() {
             break;
         }
-        assert!(page.iter().all(|run| run.status == crate::team::TeamRunStatus::Canceled));
+        assert!(
+            page.iter()
+                .all(|run| run.status == crate::team::TeamRunStatus::Canceled)
+        );
         canceled_cursor = page.last().map(|run| run.created_at);
         canceled_ids.extend(page.into_iter().map(|run| run.id));
     }
@@ -2056,7 +2073,9 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2078,7 +2097,9 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "remote-reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("federation".to_string()),
             transport: Some("remote".to_string()),
             route: Some(json!({"endpoint":"https://remote.example/a2a"})),
@@ -2103,7 +2124,9 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "remote-reviewer-2".to_string(),
+            to_peer_id: None,
             channel: None,
             transport: Some("remote".to_string()),
             route: None,
@@ -2124,7 +2147,9 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "unknown-local".to_string(),
+            to_peer_id: None,
             channel: None,
             transport: Some("local".to_string()),
             route: None,
@@ -2233,6 +2258,208 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
 }
 
 #[tokio::test]
+async fn team_run_messages_api_supports_human_actor_auto_load_and_ack_fallback() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let user = crate::api::authz::require_user(&headers, &state)
+        .await
+        .expect("require auth user");
+    let canonical_user_actor_id = super::canonical_user_actor_id(&user);
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-human-alias-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-human-alias".to_string()),
+            input: Some(json!({"prompt":"human alias mailbox flow"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({"type":"chat_message","text":"hello human"}).to_string();
+    let alias_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .bind("user")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert alias human message")
+    .last_insert_rowid();
+
+    let canonical_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .bind(canonical_user_actor_id.as_str())
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now + 1)
+    .execute(&state.db)
+    .await
+    .expect("insert canonical human message")
+    .last_insert_rowid();
+
+    let Json(inbox_by_alias) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "user".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: None,
+        }),
+    )
+    .await
+    .expect("list inbox by user alias");
+    assert_eq!(inbox_by_alias.len(), 2);
+    assert_eq!(inbox_by_alias[0].message_id, alias_message_id);
+    assert_eq!(inbox_by_alias[1].message_id, canonical_message_id);
+
+    let Json(inbox_by_canonical) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: canonical_user_actor_id.clone(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(true),
+        }),
+    )
+    .await
+    .expect("list inbox by canonical user actor id");
+    assert_eq!(inbox_by_canonical.len(), 2);
+    assert!(
+        inbox_by_canonical
+            .iter()
+            .all(|message| message.status == crate::team::TeamActorMessageStatus::Delivered)
+    );
+
+    let Json(alias_acked_via_canonical) = ack_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), alias_message_id)),
+        Json(AckTeamRunMessageRequest {
+            actor_id: canonical_user_actor_id.clone(),
+        }),
+    )
+    .await
+    .expect("ack alias-targeted message via canonical actor id");
+    assert_eq!(
+        alias_acked_via_canonical.status,
+        crate::team::TeamActorMessageStatus::Delivered
+    );
+
+    let Json(canonical_acked_via_alias) = ack_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), canonical_message_id)),
+        Json(AckTeamRunMessageRequest {
+            actor_id: "user".to_string(),
+        }),
+    )
+    .await
+    .expect("ack canonical-targeted message via alias actor id");
+    assert_eq!(
+        canonical_acked_via_alias.status,
+        crate::team::TeamActorMessageStatus::Delivered
+    );
+
+    let Json(inbox_with_delivered) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "user".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(true),
+        }),
+    )
+    .await
+    .expect("list delivered by alias actor id");
+    assert_eq!(inbox_with_delivered.len(), 2);
+    assert!(
+        inbox_with_delivered
+            .iter()
+            .all(|message| message.status == crate::team::TeamActorMessageStatus::Delivered)
+    );
+
+    let invalid_user_actor_err = list_team_run_inbox(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(ListTeamRunInboxQuery {
+            actor_id: format!("user:{}", Uuid::new_v4()),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: None,
+        }),
+    )
+    .await
+    .expect_err("mismatched authenticated user actor should fail");
+    assert_eq!(
+        invalid_user_actor_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
 async fn team_run_messages_api_supports_idempotency_key() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -2270,7 +2497,9 @@ async fn team_run_messages_api_supports_idempotency_key() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2287,7 +2516,9 @@ async fn team_run_messages_api_supports_idempotency_key() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2305,7 +2536,9 @@ async fn team_run_messages_api_supports_idempotency_key() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2343,7 +2576,9 @@ async fn team_run_messages_api_supports_idempotency_key() {
         Path(run.id),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2357,6 +2592,175 @@ async fn team_run_messages_api_supports_idempotency_key() {
         invalid_idempotency_err.into_response().status(),
         StatusCode::BAD_REQUEST
     );
+}
+
+#[tokio::test]
+async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pending() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-type-hint-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-type-hint-api".to_string()),
+            input: Some(json!({"prompt":"mailbox type hint flow"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(first_chat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"first chat"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send first chat message");
+
+    let Json(second_chat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"second chat"}),
+            idempotency_key: Some("chat-msg-2".to_string()),
+        }),
+    )
+    .await
+    .expect("send second chat message");
+
+    let Json(second_chat_retry) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"chat_message","text":"second chat"}),
+            idempotency_key: Some("chat-msg-2".to_string()),
+        }),
+    )
+    .await
+    .expect("retry second chat message");
+    assert_eq!(second_chat_retry.message_id, second_chat.message_id);
+
+    let Json(worker_status) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"worker_status","status":"done"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send worker status message");
+
+    let Json(events) = list_team_run_events(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunEventsQuery {
+            limit: Some(200),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list run events");
+
+    let hint_events = events
+        .iter()
+        .filter(|event| event.event_type == "actor_mailbox_type_hint")
+        .collect::<Vec<_>>();
+    assert_eq!(hint_events.len(), 3);
+
+    let first_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(first_chat.message_id))
+        .expect("first chat hint event");
+    let first_status = first_hint.payload["status"].as_str().expect("first status");
+    assert_ne!(first_status, "suppressed");
+    assert_eq!(first_hint.payload["payload_type"], json!("chat_message"));
+
+    let second_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
+        .expect("second chat hint event");
+    assert_eq!(second_hint.payload["status"], json!("suppressed"));
+    assert_eq!(
+        second_hint.payload["reason"],
+        json!("pending_same_type_exists")
+    );
+    assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
+
+    let worker_status_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(worker_status.message_id))
+        .expect("worker status hint event");
+    let worker_status_state = worker_status_hint.payload["status"]
+        .as_str()
+        .expect("worker status state");
+    assert_ne!(worker_status_state, "suppressed");
+    assert_eq!(
+        worker_status_hint.payload["payload_type"],
+        json!("worker_status")
+    );
+
+    let second_hint_count = hint_events
+        .iter()
+        .filter(|event| event.payload["message_id"] == json!(second_chat.message_id))
+        .count();
+    assert_eq!(second_hint_count, 1);
 }
 
 #[tokio::test]
@@ -2419,7 +2823,9 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2436,7 +2842,9 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2556,7 +2964,9 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "leader-agent".to_string(),
+            from_peer_id: None,
             to_actor_id: "worker-agent".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2768,7 +3178,9 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
             from_actor_id: "leader-agent".to_string(),
+            from_peer_id: None,
             to_actor_id: "worker-agent".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some("local".to_string()),
             route: None,
@@ -2852,7 +3264,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 }
 
 #[tokio::test]
-async fn team_main_task_api_creates_lists_and_redacts_context() {
+async fn team_task_api_creates_lists_and_redacts_context() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -2860,19 +3272,19 @@ async fn team_main_task_api_creates_lists_and_redacts_context() {
         State(state.clone()),
         headers.clone(),
         Json(CreateTeamRequest {
-            name: "main-task-api-team".to_string(),
-            description: Some("main task api coverage".to_string()),
+            name: "task-api-team".to_string(),
+            description: Some("task api coverage".to_string()),
             spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
         }),
     )
     .await
     .expect("create team");
 
-    let Json(created) = create_team_main_task(
+    let Json(created) = create_team_task(
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Kickoff migration".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -2885,39 +3297,42 @@ async fn team_main_task_api_creates_lists_and_redacts_context() {
         }),
     )
     .await
-    .expect("create main task");
+    .expect("create task");
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
     assert_eq!(created.task.context["token"], json!("[redacted]"));
-    assert_eq!(created.task.context["nested"]["secret"], json!("[redacted]"));
+    assert_eq!(
+        created.task.context["nested"]["secret"],
+        json!("[redacted]")
+    );
     assert_eq!(created.conversation.mode, "group_chat");
-    assert_eq!(created.conversation.main_task_id, created.task.id);
+    assert_eq!(created.conversation.task_id, created.task.id);
 
-    let Json(listed) = list_team_main_tasks(
+    let Json(listed) = list_team_tasks(
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Query(ListTeamMainTasksQuery { limit: Some(20) }),
+        Query(ListTeamTasksQuery { limit: Some(20) }),
     )
     .await
-    .expect("list main tasks");
+    .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.task.id);
 
-    let Json(found) = get_team_main_task(
+    let Json(found) = get_team_task(
         State(state),
         headers,
         Path((team.id, created.task.id.clone())),
     )
     .await
-    .expect("get main task");
+    .expect("get task");
     assert_eq!(found.task.id, created.task.id);
     assert_eq!(found.conversation.id, created.conversation.id);
 }
 
 #[tokio::test]
-async fn team_main_task_api_enforces_team_owner_access() {
+async fn team_task_api_enforces_team_owner_access() {
     let state = build_test_state().await;
     let owner_headers = auth_headers(&state).await;
     let outsider_headers = auth_headers(&state).await;
@@ -2926,7 +3341,7 @@ async fn team_main_task_api_enforces_team_owner_access() {
         State(state.clone()),
         owner_headers.clone(),
         Json(CreateTeamRequest {
-            name: "main-task-owner-enforcement-team".to_string(),
+            name: "task-owner-enforcement-team".to_string(),
             description: Some("owner enforcement".to_string()),
             spec: json!({
                 "entrypoint":"planner",
@@ -2937,11 +3352,11 @@ async fn team_main_task_api_enforces_team_owner_access() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_main_task(
+    let Json(created) = create_team_task(
         State(state.clone()),
         owner_headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Owner only planning".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
@@ -2950,13 +3365,13 @@ async fn team_main_task_api_enforces_team_owner_access() {
         }),
     )
     .await
-    .expect("create main task");
+    .expect("create task");
 
-    let create_err = create_team_main_task(
+    let create_err = create_team_task(
         State(state.clone()),
         outsider_headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Outsider task".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
@@ -2965,29 +3380,29 @@ async fn team_main_task_api_enforces_team_owner_access() {
         }),
     )
     .await
-    .expect_err("outsider should not create main task");
+    .expect_err("outsider should not create task");
     assert_eq!(create_err.into_response().status(), StatusCode::NOT_FOUND);
 
-    let send_err = send_team_main_task_message(
+    let send_err = send_team_task_message(
         State(state.clone()),
         outsider_headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "user".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
             to_actor_id: None,
             route: Some("group_chat".to_string()),
             payload: json!({"text":"malicious broadcast"}),
         }),
     )
     .await
-    .expect_err("outsider should not send main task message");
+    .expect_err("outsider should not send task message");
     assert_eq!(send_err.into_response().status(), StatusCode::NOT_FOUND);
 
-    let compile_err = compile_team_main_task_run_preview(
+    let compile_err = compile_team_task_run_preview(
         State(state),
         outsider_headers,
         Path((team.id, created.task.id)),
-        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
     )
     .await
     .expect_err("outsider should not compile preview");
@@ -2995,7 +3410,7 @@ async fn team_main_task_api_enforces_team_owner_access() {
 }
 
 #[tokio::test]
-async fn team_main_task_messages_api_supports_route_and_redaction() {
+async fn team_task_messages_api_supports_route_and_redaction() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -3003,8 +3418,8 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
         State(state.clone()),
         headers.clone(),
         Json(CreateTeamRequest {
-            name: "main-task-msg-team".to_string(),
-            description: Some("main task message api coverage".to_string()),
+            name: "task-msg-team".to_string(),
+            description: Some("task message api coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
@@ -3017,11 +3432,11 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_main_task(
+    let Json(created) = create_team_task(
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Discuss rollout".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
@@ -3030,15 +3445,15 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
         }),
     )
     .await
-    .expect("create main task");
+    .expect("create task");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
 
-    let missing_to_member_err = send_team_main_task_message(
+    let missing_to_member_err = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "user".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
             to_actor_id: None,
             route: Some("to_member".to_string()),
             payload: json!({"text":"assign"}),
@@ -3046,14 +3461,17 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     )
     .await
     .expect_err("route=to_member should require to_actor_id");
-    assert_eq!(missing_to_member_err.into_response().status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        missing_to_member_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
 
-    let invalid_sender_err = send_team_main_task_message(
+    let invalid_sender_err = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "outsider".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("outsider".to_string()),
             to_actor_id: Some("worker-1".to_string()),
             route: Some("to_member".to_string()),
             payload: json!({"text":"assign"}),
@@ -3061,14 +3479,17 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     )
     .await
     .expect_err("unknown sender should be rejected");
-    assert_eq!(invalid_sender_err.into_response().status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        invalid_sender_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
 
-    let invalid_group_chat_target_err = send_team_main_task_message(
+    let invalid_group_chat_target_err = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "user".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
             to_actor_id: Some("planner".to_string()),
             route: Some("group_chat".to_string()),
             payload: json!({"text":"broadcast"}),
@@ -3081,12 +3502,12 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
         StatusCode::BAD_REQUEST
     );
 
-    let Json(message) = send_team_main_task_message(
+    let Json(message) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "user".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
             to_actor_id: Some("worker-1".to_string()),
             route: Some("to_member".to_string()),
             payload: json!({
@@ -3097,19 +3518,27 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
         }),
     )
     .await
-    .expect("send main task message");
+    .expect("send task message");
     assert_eq!(message.route, "to_member");
     assert!(message.from_actor_id.starts_with("user:"));
     assert_eq!(message.to_actor_id.as_deref(), Some("worker-1"));
+    assert!(
+        message
+            .payload
+            .get("correlation_id")
+            .and_then(Value::as_str)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+    );
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["api_key"], json!("[redacted]"));
 
-    let Json(to_leader_message) = send_team_main_task_message(
+    let Json(to_leader_message) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "worker-1".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("worker-1".to_string()),
             to_actor_id: None,
             route: Some("to_leader".to_string()),
             payload: json!({"text":"need clarification"}),
@@ -3120,27 +3549,34 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     assert_eq!(to_leader_message.route, "to_leader");
     assert_eq!(to_leader_message.to_actor_id.as_deref(), Some("planner"));
 
-    let Json(group_message) = send_team_main_task_message(
+    let Json(group_message) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "planner".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
             to_actor_id: None,
             route: Some("group_chat".to_string()),
-            payload: json!({"text":"status update"}),
+            payload: json!({
+                "text":"status update",
+                "correlation_id":"corr-group-status-update"
+            }),
         }),
     )
     .await
     .expect("send group chat message");
     assert_eq!(group_message.route, "group_chat");
     assert_eq!(group_message.to_actor_id, None);
+    assert_eq!(
+        group_message.payload["correlation_id"],
+        Value::from("corr-group-status-update")
+    );
 
-    let Json(messages) = list_team_main_task_messages(
+    let Json(messages) = list_team_task_messages(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Query(ListTeamMainTaskMessagesQuery {
+        Query(ListTeamTaskMessagesQuery {
             limit: Some(50),
             before_id: None,
         }),
@@ -3155,11 +3591,11 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
     assert_eq!(messages[1].route, "to_leader");
     assert_eq!(messages[2].route, "group_chat");
 
-    let Json(empty_page) = list_team_main_task_messages(
+    let Json(empty_page) = list_team_task_messages(
         State(state),
         headers,
         Path((team.id, created.task.id)),
-        Query(ListTeamMainTaskMessagesQuery {
+        Query(ListTeamTaskMessagesQuery {
             limit: Some(50),
             before_id: Some(message.message_id),
         }),
@@ -3170,7 +3606,7 @@ async fn team_main_task_messages_api_supports_route_and_redaction() {
 }
 
 #[tokio::test]
-async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload() {
+async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -3178,8 +3614,180 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
         State(state.clone()),
         headers.clone(),
         Json(CreateTeamRequest {
-            name: "main-task-compile-team".to_string(),
-            description: Some("main task compile preview coverage".to_string()),
+            name: "task-mailbox-forward-team".to_string(),
+            description: Some("task to mailbox forwarding coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(task_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Mailbox forwarding".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-task-mailbox-forward".to_string()),
+            input: Some(json!({"prompt":"forward task message to mailbox"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let Json(directed_message) = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"@worker-1 please validate api contract"
+            }),
+        }),
+    )
+    .await
+    .expect("send mention task message");
+
+    assert!(directed_message.from_actor_id.starts_with("user:"));
+    let directed_rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load directed mailbox rows");
+    assert_eq!(directed_rows.len(), 1);
+    assert_eq!(
+        directed_rows[0].get::<String, _>("from_actor_id"),
+        "planner".to_string()
+    );
+    assert_eq!(
+        directed_rows[0].get::<String, _>("to_actor_id"),
+        "worker-1".to_string()
+    );
+    let directed_payload: Value =
+        serde_json::from_str(directed_rows[0].get::<String, _>("payload_json").as_str())
+            .expect("parse directed payload json");
+    assert_eq!(directed_payload["delivery_scope"], Value::from("mention"));
+    assert_eq!(
+        directed_payload["task_id"],
+        Value::from(task_created.task.id.clone())
+    );
+    assert_eq!(
+        directed_payload["task_message_id"],
+        Value::from(directed_message.message_id)
+    );
+    assert_eq!(
+        directed_payload["task_conversation_id"],
+        Value::from(directed_message.conversation_id.clone())
+    );
+    assert_eq!(
+        directed_payload["mention_actor_ids"],
+        Value::from(vec!["worker-1"])
+    );
+    assert_eq!(
+        directed_payload["text"],
+        Value::from("<at>worker-1</at> please validate api contract")
+    );
+
+    let _ = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"status update to everyone"
+            }),
+        }),
+    )
+    .await
+    .expect("send broadcast task message");
+
+    let broadcast_rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load broadcast mailbox rows");
+    assert_eq!(broadcast_rows.len(), 4);
+    let recipients = broadcast_rows
+        .iter()
+        .skip(1)
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recipients,
+        vec![
+            "planner".to_string(),
+            "worker-1".to_string(),
+            "worker-2".to_string()
+        ]
+    );
+    for row in broadcast_rows.iter().skip(1) {
+        let payload: Value = serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+            .expect("parse broadcast payload");
+        assert_eq!(payload["delivery_scope"], Value::from("broadcast"));
+        assert!(
+            payload
+                .get("correlation_id")
+                .and_then(Value::as_str)
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+        );
+    }
+}
+
+#[tokio::test]
+async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-compile-team".to_string(),
+            description: Some("task compile preview coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
@@ -3193,11 +3801,11 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     .await
     .expect("create team");
 
-    let Json(created) = create_team_main_task(
+    let Json(created) = create_team_task(
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Implement chat-first compile".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -3209,20 +3817,20 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
         }),
     )
     .await
-    .expect("create main task");
+    .expect("create task");
 
-    let Json(plan_update_one) = send_team_main_task_message(
+    let Json(plan_update_one) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "planner".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
             to_actor_id: None,
             route: Some("group_chat".to_string()),
             payload: json!({
                 "plan_update":{
                     "task_list":["Implement compile endpoint","Add API tests"],
-                    "acceptance_criteria":["All team main-task API tests pass","Route-level contract is covered"],
+                    "acceptance_criteria":["All team task API tests pass","Route-level contract is covered"],
                     "deadline":"2026-03-05"
                 }
             }),
@@ -3231,12 +3839,12 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     .await
     .expect("send first plan update");
 
-    let _ = send_team_main_task_message(
+    let _ = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "worker-dev".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("worker-dev".to_string()),
             to_actor_id: Some("planner".to_string()),
             route: Some("to_leader".to_string()),
             payload: json!({"text":"working on compile details"}),
@@ -3245,17 +3853,17 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     .await
     .expect("send non-plan message");
 
-    let Json(plan_update_two) = send_team_main_task_message(
+    let Json(plan_update_two) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "planner".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
             to_actor_id: None,
             route: Some("group_chat".to_string()),
             payload: json!({
                 "acceptance":[
-                    "All team main-task API tests pass",
+                    "All team task API tests pass",
                     "Route-level contract is covered",
                     "Feature note and todo are updated"
                 ]
@@ -3265,33 +3873,33 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     .await
     .expect("send second plan update");
 
-    let Json(preview_a) = compile_team_main_task_run_preview(
+    let Json(preview_a) = compile_team_task_run_preview(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
     )
     .await
     .expect("compile preview first pass");
-    let Json(preview_b) = compile_team_main_task_run_preview(
+    let Json(preview_b) = compile_team_task_run_preview(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
     )
     .await
     .expect("compile preview second pass");
 
     assert_eq!(preview_a, preview_b);
-    assert_eq!(preview_a.main_task_id, created.task.id);
+    assert_eq!(preview_a.task_id, created.task.id);
     assert_eq!(preview_a.conversation_id, created.conversation.id);
     assert_eq!(preview_a.run_payload.context_id, created.task.id);
     assert_eq!(
-        preview_a.run_payload.input["main_task_compile_version"],
+        preview_a.run_payload.input["task_compile_version"],
         Value::from(1)
     );
     assert_eq!(
-        preview_a.run_payload.input["main_task_id"],
+        preview_a.run_payload.input["task_id"],
         Value::from(created.task.id.clone())
     );
     assert_eq!(
@@ -3308,13 +3916,16 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     assert_eq!(
         preview_a.plan.acceptance_criteria,
         vec![
-            "All team main-task API tests pass".to_string(),
+            "All team task API tests pass".to_string(),
             "Route-level contract is covered".to_string(),
             "Feature note and todo are updated".to_string(),
         ]
     );
     assert_eq!(preview_a.plan.deadline.as_deref(), Some("2026-03-05"));
-    assert_eq!(preview_a.plan.source_message_id, Some(plan_update_two.message_id));
+    assert_eq!(
+        preview_a.plan.source_message_id,
+        Some(plan_update_two.message_id)
+    );
     assert!(plan_update_one.message_id < plan_update_two.message_id);
     assert_eq!(preview_a.plan.step_template.len(), 4);
 
@@ -3327,10 +3938,7 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
     assert_eq!(planner_assignment.role, "leader");
     assert_eq!(
         planner_assignment.step_keys,
-        vec![
-            "leader_plan".to_string(),
-            "leader_synthesize".to_string(),
-        ]
+        vec!["leader_plan".to_string(), "leader_synthesize".to_string(),]
     );
 
     let dev_assignment = preview_a
@@ -3340,7 +3948,10 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
         .find(|item| item.member_id == "worker-dev")
         .expect("find worker-dev assignment");
     assert_eq!(dev_assignment.role, "worker");
-    assert_eq!(dev_assignment.step_keys, vec!["worker_1_worker_dev".to_string()]);
+    assert_eq!(
+        dev_assignment.step_keys,
+        vec!["worker_1_worker_dev".to_string()]
+    );
 
     let qa_assignment = preview_a
         .plan
@@ -3349,11 +3960,14 @@ async fn team_main_task_compile_preview_builds_deterministic_role_bound_payload(
         .find(|item| item.member_id == "qa-review")
         .expect("find qa-review assignment");
     assert_eq!(qa_assignment.role, "worker");
-    assert_eq!(qa_assignment.step_keys, vec!["worker_2_qa_review".to_string()]);
+    assert_eq!(
+        qa_assignment.step_keys,
+        vec!["worker_2_qa_review".to_string()]
+    );
 }
 
 #[tokio::test]
-async fn team_main_task_compile_preview_sanitizes_plan_updates() {
+async fn team_task_compile_preview_sanitizes_plan_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -3361,8 +3975,8 @@ async fn team_main_task_compile_preview_sanitizes_plan_updates() {
         State(state.clone()),
         headers.clone(),
         Json(CreateTeamRequest {
-            name: "main-task-compile-sanitize-team".to_string(),
-            description: Some("main task compile sanitize coverage".to_string()),
+            name: "task-compile-sanitize-team".to_string(),
+            description: Some("task compile sanitize coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
                 "members":[{"member_id":"planner","role":"leader"}]
@@ -3372,11 +3986,11 @@ async fn team_main_task_compile_preview_sanitizes_plan_updates() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_main_task(
+    let Json(created) = create_team_task(
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Json(CreateTeamMainTaskRequest {
+        Json(CreateTeamTaskRequest {
             title: "Sanitize compile updates".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
@@ -3385,15 +3999,15 @@ async fn team_main_task_compile_preview_sanitizes_plan_updates() {
         }),
     )
     .await
-    .expect("create main task");
+    .expect("create task");
 
     let long_text = "x".repeat(500);
-    let Json(_) = send_team_main_task_message(
+    let Json(_) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
-        Json(SendTeamMainTaskMessageRequest {
-            from_actor_id: "planner".to_string(),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
             to_actor_id: None,
             route: Some("group_chat".to_string()),
             payload: json!({
@@ -3416,26 +4030,66 @@ async fn team_main_task_compile_preview_sanitizes_plan_updates() {
     .await
     .expect("send sanitize patch");
 
-    let Json(preview) = compile_team_main_task_run_preview(
+    let Json(preview) = compile_team_task_run_preview(
         State(state),
         headers,
         Path((team.id, created.task.id)),
-        Json(CompileTeamMainTaskRunPreviewRequest { context_id: None }),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
     )
     .await
     .expect("compile sanitized preview");
 
     assert_eq!(preview.plan.deadline, None);
-    assert_eq!(preview.plan.task_list.first().map(String::as_str), Some("normalize spaces"));
-    assert!(preview
-        .plan
-        .task_list
-        .iter()
-        .all(|item| item.len() <= 280 && !item.contains('`') && !item.contains('{')));
+    assert_eq!(
+        preview.plan.task_list.first().map(String::as_str),
+        Some("normalize spaces")
+    );
+    assert!(
+        preview
+            .plan
+            .task_list
+            .iter()
+            .all(|item| item.len() <= 280 && !item.contains('`') && !item.contains('{'))
+    );
     assert_eq!(preview.plan.acceptance_criteria.len(), 2);
-    assert!(preview
-        .plan
-        .acceptance_criteria
-        .iter()
-        .all(|item| !item.contains('{') && !item.contains('`')));
+    assert!(
+        preview
+            .plan
+            .acceptance_criteria
+            .iter()
+            .all(|item| !item.contains('{') && !item.contains('`'))
+    );
+}
+
+#[test]
+fn mailbox_type_hint_helpers_extract_payload_type() {
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"chat_message","text":"hello"})),
+        Some("chat_message".to_string())
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"  worker_status  "})),
+        Some("worker_status".to_string())
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":""})),
+        None
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":"   "})),
+        None
+    );
+    assert_eq!(
+        super::extract_mailbox_payload_type(&json!({"type":true})),
+        None
+    );
+    assert_eq!(super::extract_mailbox_payload_type(&json!({})), None);
+}
+
+#[test]
+fn mailbox_type_hint_helpers_build_prompt_contains_context() {
+    let prompt = super::build_actor_mailbox_type_hint_prompt("run-42", "chat_message");
+    assert!(prompt.contains("run-42"));
+    assert!(prompt.contains("chat_message"));
+    assert!(prompt.contains("actor_inbox"));
 }

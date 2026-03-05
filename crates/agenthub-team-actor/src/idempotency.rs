@@ -1,10 +1,13 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[allow(clippy::too_many_arguments)]
 pub fn actor_message_fingerprint(
     run_id: &str,
     from_actor_id: &str,
+    from_peer_id: &str,
     to_actor_id: &str,
+    to_peer_id: &str,
     channel: &str,
     transport: &str,
     route: Option<&Value>,
@@ -19,7 +22,9 @@ pub fn actor_message_fingerprint(
     hasher.update("actor-message-fingerprint:v1");
     push_component(&mut hasher, run_id);
     push_component(&mut hasher, from_actor_id);
+    push_component(&mut hasher, from_peer_id);
     push_component(&mut hasher, to_actor_id);
+    push_component(&mut hasher, to_peer_id);
     push_component(&mut hasher, channel);
     push_component(&mut hasher, transport);
     push_component(&mut hasher, &route_canonical);
@@ -27,10 +32,13 @@ pub fn actor_message_fingerprint(
     format!("{:x}", hasher.finalize())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_default_actor_message_idempotency_key(
     run_id: &str,
     from_actor_id: &str,
+    from_peer_id: &str,
     to_actor_id: &str,
+    to_peer_id: &str,
     channel: &str,
     transport: &str,
     route: Option<&Value>,
@@ -41,7 +49,9 @@ pub fn build_default_actor_message_idempotency_key(
         actor_message_fingerprint(
             run_id,
             from_actor_id,
+            from_peer_id,
             to_actor_id,
+            to_peer_id,
             channel,
             transport,
             route,
@@ -107,6 +117,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::message::ACTOR_MAIN_PEER_ID;
 
     #[test]
     fn canonical_json_sorts_object_keys_recursively() {
@@ -133,7 +144,9 @@ mod tests {
         let key_a = build_default_actor_message_idempotency_key(
             "run-1",
             "planner",
+            ACTOR_MAIN_PEER_ID,
             "reviewer",
+            ACTOR_MAIN_PEER_ID,
             "coordination",
             "local",
             Some(&route_a),
@@ -142,13 +155,27 @@ mod tests {
         let key_b = build_default_actor_message_idempotency_key(
             "run-1",
             "planner",
+            ACTOR_MAIN_PEER_ID,
             "reviewer",
+            ACTOR_MAIN_PEER_ID,
+            "coordination",
+            "local",
+            Some(&route_b),
+            &payload_b,
+        );
+        let key_c = build_default_actor_message_idempotency_key(
+            "run-1",
+            "planner",
+            "peer-a",
+            "reviewer",
+            ACTOR_MAIN_PEER_ID,
             "coordination",
             "local",
             Some(&route_b),
             &payload_b,
         );
         assert_eq!(key_a, key_b);
+        assert_ne!(key_a, key_c);
         assert!(key_a.starts_with("auto:v1:"));
     }
 }

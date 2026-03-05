@@ -8,7 +8,7 @@ use agenthub_team_actor::{
     ActorMailboxStore, ActorMessageRelay, ActorRelayError, ActorSendRequest, ActorSendResponse,
     ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
     PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
-    SendActorMessageCommand, actor_message_fingerprint,
+    SendActorMessageCommand, ACTOR_MAIN_PEER_ID, actor_message_fingerprint,
 };
 use async_trait::async_trait;
 use base64::encode_config;
@@ -18,7 +18,7 @@ use reqwest::{Method, Url, header};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Sha256;
-use sqlx::{Error as SqlxError, Row, Sqlite, SqlitePool};
+use sqlx::{Error as SqlxError, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
 
 use super::TeamManager;
@@ -111,7 +111,9 @@ impl TeamManager {
         let SendActorMessageInput {
             run_id,
             from_actor_id,
+            from_peer_id,
             to_actor_id,
+            to_peer_id,
             channel,
             transport,
             route,
@@ -124,7 +126,9 @@ impl TeamManager {
             .send_with_result(SendActorMessageCommand {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
+                from_peer_id: from_peer_id.to_string(),
                 to_actor_id: to_actor_id.to_string(),
+                to_peer_id: to_peer_id.to_string(),
                 channel: channel.to_string(),
                 transport,
                 route,
@@ -150,6 +154,7 @@ impl TeamManager {
             .list_inbox(ListActorInboxQuery {
                 run_id: run_id.to_string(),
                 actor_id: actor_id.to_string(),
+                peer_id: ACTOR_MAIN_PEER_ID.to_string(),
                 limit,
                 after_id,
                 include_delivered,
@@ -171,12 +176,49 @@ impl TeamManager {
             .ack(AckActorMessageCommand {
                 run_id: run_id.to_string(),
                 actor_id: actor_id.to_string(),
+                peer_id: ACTOR_MAIN_PEER_ID.to_string(),
                 message_id,
                 delivered_at: now,
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
         Ok(message)
+    }
+
+    pub async fn has_pending_actor_message_payload_type(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        payload_type: &str,
+        current_message_id: Option<i64>,
+    ) -> anyhow::Result<bool> {
+        let payload_type = payload_type.trim();
+        if payload_type.is_empty() {
+            return Ok(false);
+        }
+
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            SELECT id
+            FROM team_actor_messages
+            WHERE run_id = "#,
+        );
+        builder.push_bind(run_id);
+        builder.push(" AND to_actor_id = ");
+        builder.push_bind(actor_id);
+        builder.push(" AND to_peer_id = ");
+        builder.push_bind(ACTOR_MAIN_PEER_ID);
+        builder.push(" AND status = 'pending'");
+        builder.push(" AND trim(json_extract(payload_json, '$.type')) = ");
+        builder.push_bind(payload_type);
+        if let Some(message_id) = current_message_id {
+            builder.push(" AND id < ");
+            builder.push_bind(message_id);
+        }
+        builder.push(" LIMIT 1");
+
+        let row = builder.build().fetch_optional(&self.db).await?;
+        Ok(row.is_some())
     }
 
     pub async fn relay_remote_messages_once(
@@ -213,7 +255,9 @@ impl TeamManager {
 pub struct SendActorMessageInput<'a> {
     pub run_id: &'a str,
     pub from_actor_id: &'a str,
+    pub from_peer_id: &'a str,
     pub to_actor_id: &'a str,
+    pub to_peer_id: &'a str,
     pub channel: &'a str,
     pub transport: TeamActorMessageTransport,
     pub route: Option<Value>,
@@ -240,7 +284,11 @@ impl ActorMailboxService for TeamActorMailboxService {
     ) -> Result<ActorSendResponse, ActorServiceError> {
         let run_id = required_trimmed_field(&request.run_id, "run_id")?;
         let from_actor_id = required_trimmed_field(&request.from_actor_id, "from_actor_id")?;
+        let from_peer_id = optional_trimmed(request.from_peer_id.as_deref())
+            .unwrap_or(ACTOR_MAIN_PEER_ID);
         let to_actor_id = required_trimmed_field(&request.to_actor_id, "to_actor_id")?;
+        let to_peer_id = optional_trimmed(request.to_peer_id.as_deref())
+            .unwrap_or(ACTOR_MAIN_PEER_ID);
         let channel = request
             .channel
             .as_deref()
@@ -257,7 +305,9 @@ impl ActorMailboxService for TeamActorMailboxService {
             .send_actor_message_with_created(SendActorMessageInput {
                 run_id,
                 from_actor_id,
+                from_peer_id,
                 to_actor_id,
+                to_peer_id,
                 channel,
                 transport,
                 route: request.route,
@@ -698,8 +748,10 @@ fn build_remote_relay_envelope(message: &TeamActorMessageRecord) -> Value {
         "message_id": message.message_id,
         "run_id": &message.run_id,
         "from_actor_id": &message.from_actor_id,
+        "from_peer_id": &message.from_peer_id,
         "from_actor_kind": &message.from_actor_kind,
         "to_actor_id": &message.to_actor_id,
+        "to_peer_id": &message.to_peer_id,
         "to_actor_kind": &message.to_actor_kind,
         "channel": &message.channel,
         "transport": message.transport.as_str(),
@@ -746,7 +798,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             INSERT OR IGNORE INTO team_actor_messages (
                 run_id,
                 from_actor_id,
+                from_peer_id,
                 to_actor_id,
+                to_peer_id,
                 channel,
                 transport,
                 route_json,
@@ -755,12 +809,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 created_at,
                 idempotency_key
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
         )
         .bind(&cmd.run_id)
         .bind(&cmd.from_actor_id)
+        .bind(&cmd.from_peer_id)
         .bind(&cmd.to_actor_id)
+        .bind(&cmd.to_peer_id)
         .bind(&cmd.channel)
         .bind(transport_raw)
         .bind(route_json)
@@ -780,6 +836,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 &mut tx,
                 &cmd.run_id,
                 &cmd.from_actor_id,
+                &cmd.from_peer_id,
                 idempotency_key,
             )
             .await?;
@@ -807,7 +864,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                         id,
                         run_id,
                         from_actor_id,
+                        from_peer_id,
                         to_actor_id,
+                        to_peer_id,
                         channel,
                         transport,
                         route_json,
@@ -816,13 +875,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                         created_at,
                         delivered_at
                     FROM team_actor_messages
-                    WHERE run_id = ?1 AND to_actor_id = ?2 AND id > ?3
+                    WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND id > ?4
                     ORDER BY id ASC
-                    LIMIT ?4
+                    LIMIT ?5
                     "#,
                 )
                 .bind(&query.run_id)
                 .bind(&query.actor_id)
+                .bind(&query.peer_id)
                 .bind(after_id)
                 .bind(query.limit)
                 .fetch_all(&self.db)
@@ -834,7 +894,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                         id,
                         run_id,
                         from_actor_id,
+                        from_peer_id,
                         to_actor_id,
+                        to_peer_id,
                         channel,
                         transport,
                         route_json,
@@ -843,13 +905,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                         created_at,
                         delivered_at
                     FROM team_actor_messages
-                    WHERE run_id = ?1 AND to_actor_id = ?2
+                    WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3
                     ORDER BY id ASC
-                    LIMIT ?3
+                    LIMIT ?4
                     "#,
                 )
                 .bind(&query.run_id)
                 .bind(&query.actor_id)
+                .bind(&query.peer_id)
                 .bind(query.limit)
                 .fetch_all(&self.db)
                 .await?
@@ -861,7 +924,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                     id,
                     run_id,
                     from_actor_id,
+                    from_peer_id,
                     to_actor_id,
+                    to_peer_id,
                     channel,
                     transport,
                     route_json,
@@ -870,13 +935,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                     created_at,
                     delivered_at
                 FROM team_actor_messages
-                WHERE run_id = ?1 AND to_actor_id = ?2 AND status = 'pending' AND id > ?3
+                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending' AND id > ?4
                 ORDER BY id ASC
-                LIMIT ?4
+                LIMIT ?5
                 "#,
             )
             .bind(&query.run_id)
             .bind(&query.actor_id)
+            .bind(&query.peer_id)
             .bind(after_id)
             .bind(query.limit)
             .fetch_all(&self.db)
@@ -888,7 +954,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                     id,
                     run_id,
                     from_actor_id,
+                    from_peer_id,
                     to_actor_id,
+                    to_peer_id,
                     channel,
                     transport,
                     route_json,
@@ -897,13 +965,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                     created_at,
                     delivered_at
                 FROM team_actor_messages
-                WHERE run_id = ?1 AND to_actor_id = ?2 AND status = 'pending'
+                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending'
                 ORDER BY id ASC
-                LIMIT ?3
+                LIMIT ?4
                 "#,
             )
             .bind(&query.run_id)
             .bind(&query.actor_id)
+            .bind(&query.peer_id)
             .bind(query.limit)
             .fetch_all(&self.db)
             .await?
@@ -928,13 +997,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             r#"
             UPDATE team_actor_messages
             SET status = 'delivered', delivered_at = COALESCE(delivered_at, ?1)
-            WHERE id = ?2 AND run_id = ?3 AND to_actor_id = ?4 AND status = 'pending'
+            WHERE id = ?2 AND run_id = ?3 AND to_actor_id = ?4 AND to_peer_id = ?5 AND status = 'pending'
             "#,
         )
         .bind(cmd.delivered_at)
         .bind(cmd.message_id)
         .bind(&cmd.run_id)
         .bind(&cmd.actor_id)
+        .bind(&cmd.peer_id)
         .execute(&mut *tx)
         .await?;
 
@@ -944,7 +1014,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 id,
                 run_id,
                 from_actor_id,
+                from_peer_id,
                 to_actor_id,
+                to_peer_id,
                 channel,
                 transport,
                 route_json,
@@ -953,12 +1025,13 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 created_at,
                 delivered_at
             FROM team_actor_messages
-            WHERE id = ?1 AND run_id = ?2 AND to_actor_id = ?3
+            WHERE id = ?1 AND run_id = ?2 AND to_actor_id = ?3 AND to_peer_id = ?4
             "#,
         )
         .bind(cmd.message_id)
         .bind(&cmd.run_id)
         .bind(&cmd.actor_id)
+        .bind(&cmd.peer_id)
         .fetch_one(&mut *tx)
         .await?;
         let message = parse_team_actor_message_row(&message_row)
@@ -981,7 +1054,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 id,
                 run_id,
                 from_actor_id,
+                from_peer_id,
                 to_actor_id,
+                to_peer_id,
                 channel,
                 transport,
                 route_json,
@@ -1107,7 +1182,9 @@ async fn fetch_message_by_id(
             id,
             run_id,
             from_actor_id,
+            from_peer_id,
             to_actor_id,
+            to_peer_id,
             channel,
             transport,
             route_json,
@@ -1129,6 +1206,7 @@ async fn fetch_message_by_idempotency(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     run_id: &str,
     from_actor_id: &str,
+    from_peer_id: &str,
     idempotency_key: &str,
 ) -> Result<TeamActorMessageRecord, sqlx::Error> {
     let row = sqlx::query(
@@ -1137,7 +1215,9 @@ async fn fetch_message_by_idempotency(
             id,
             run_id,
             from_actor_id,
+            from_peer_id,
             to_actor_id,
+            to_peer_id,
             channel,
             transport,
             route_json,
@@ -1146,12 +1226,13 @@ async fn fetch_message_by_idempotency(
             created_at,
             delivered_at
         FROM team_actor_messages
-        WHERE run_id = ?1 AND from_actor_id = ?2 AND idempotency_key = ?3
+        WHERE run_id = ?1 AND from_actor_id = ?2 AND from_peer_id = ?3 AND idempotency_key = ?4
         LIMIT 1
         "#,
     )
     .bind(run_id)
     .bind(from_actor_id)
+    .bind(from_peer_id)
     .bind(idempotency_key)
     .fetch_one(&mut **tx)
     .await?;
@@ -1165,7 +1246,9 @@ fn ensure_idempotency_compatible(
     let incoming_fp = actor_message_fingerprint(
         &cmd.run_id,
         &cmd.from_actor_id,
+        &cmd.from_peer_id,
         &cmd.to_actor_id,
+        &cmd.to_peer_id,
         &cmd.channel,
         cmd.transport.as_str(),
         cmd.route.as_ref(),
@@ -1174,7 +1257,9 @@ fn ensure_idempotency_compatible(
     let existing_fp = actor_message_fingerprint(
         &existing.run_id,
         &existing.from_actor_id,
+        &existing.from_peer_id,
         &existing.to_actor_id,
+        &existing.to_peer_id,
         &existing.channel,
         existing.transport.as_str(),
         existing.route.as_ref(),

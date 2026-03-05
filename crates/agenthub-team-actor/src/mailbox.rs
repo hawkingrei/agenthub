@@ -9,7 +9,9 @@ use crate::relay::{ActorMessageRelay, ActorRelayError};
 pub struct SendActorMessageCommand {
     pub run_id: String,
     pub from_actor_id: String,
+    pub from_peer_id: String,
     pub to_actor_id: String,
+    pub to_peer_id: String,
     pub channel: String,
     pub transport: ActorMessageTransport,
     pub route: Option<Value>,
@@ -28,6 +30,7 @@ pub struct CreatePendingMessageResult {
 pub struct ListActorInboxQuery {
     pub run_id: String,
     pub actor_id: String,
+    pub peer_id: String,
     pub limit: i64,
     pub after_id: Option<i64>,
     pub include_delivered: bool,
@@ -37,6 +40,7 @@ pub struct ListActorInboxQuery {
 pub struct AckActorMessageCommand {
     pub run_id: String,
     pub actor_id: String,
+    pub peer_id: String,
     pub message_id: i64,
     pub delivered_at: i64,
 }
@@ -151,7 +155,9 @@ where
             let event_payload = serde_json::json!({
                 "message_id": result.message.message_id,
                 "from_actor_id": result.message.from_actor_id,
+                "from_peer_id": result.message.from_peer_id,
                 "to_actor_id": result.message.to_actor_id,
+                "to_peer_id": result.message.to_peer_id,
                 "channel": result.message.channel,
                 "transport": result.message.transport.as_str(),
                 "status": result.message.status.as_str(),
@@ -193,7 +199,9 @@ where
             let event_payload = serde_json::json!({
                 "message_id": result.message.message_id,
                 "from_actor_id": result.message.from_actor_id,
+                "from_peer_id": result.message.from_peer_id,
                 "to_actor_id": result.message.to_actor_id,
+                "to_peer_id": result.message.to_peer_id,
                 "channel": result.message.channel,
                 "transport": result.message.transport.as_str(),
                 "status": result.message.status.as_str(),
@@ -240,6 +248,7 @@ where
                         .ack(AckActorMessageCommand {
                             run_id: message.run_id.clone(),
                             actor_id: message.to_actor_id.clone(),
+                            peer_id: message.to_peer_id.clone(),
                             message_id: message.message_id,
                             delivered_at: cmd.now,
                         })
@@ -263,7 +272,9 @@ where
                         let event_payload = serde_json::json!({
                             "message_id": message.message_id,
                             "from_actor_id": message.from_actor_id,
+                            "from_peer_id": message.from_peer_id,
                             "to_actor_id": message.to_actor_id,
+                            "to_peer_id": message.to_peer_id,
                             "channel": message.channel,
                             "transport": message.transport.as_str(),
                             "status": ActorMessageStatus::DeadLetter.as_str(),
@@ -295,7 +306,9 @@ where
                         let event_payload = serde_json::json!({
                             "message_id": message.message_id,
                             "from_actor_id": message.from_actor_id,
+                            "from_peer_id": message.from_peer_id,
                             "to_actor_id": message.to_actor_id,
+                            "to_peer_id": message.to_peer_id,
                             "channel": message.channel,
                             "transport": message.transport.as_str(),
                             "status": message.status.as_str(),
@@ -328,7 +341,9 @@ where
                     let event_payload = serde_json::json!({
                         "message_id": message.message_id,
                         "from_actor_id": message.from_actor_id,
+                        "from_peer_id": message.from_peer_id,
                         "to_actor_id": message.to_actor_id,
+                        "to_peer_id": message.to_peer_id,
                         "channel": message.channel,
                         "transport": message.transport.as_str(),
                         "status": ActorMessageStatus::DeadLetter.as_str(),

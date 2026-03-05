@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const ACTOR_MAIN_PEER_ID: &str = "main";
+pub const ACTOR_NODE_PEER_ID: &str = "node";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ActorIdentityKind {
@@ -59,8 +62,10 @@ pub struct ActorMessageRecord {
     pub message_id: i64,
     pub run_id: String,
     pub from_actor_id: String,
+    pub from_peer_id: String,
     pub from_actor_kind: ActorIdentityKind,
     pub to_actor_id: String,
+    pub to_peer_id: String,
     pub to_actor_kind: ActorIdentityKind,
     pub channel: String,
     pub transport: ActorMessageTransport,

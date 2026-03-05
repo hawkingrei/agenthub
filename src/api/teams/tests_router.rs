@@ -98,14 +98,14 @@ async fn teams_router_http_contract() {
         .expect("get team via router");
     assert_eq!(get_team_resp.status(), StatusCode::OK);
 
-    let create_main_task_resp = app
+    let create_task_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks"),
+            &format!("/{team_id}/tasks"),
             Some(&token),
             Some(json!({
-                "title": "router main task",
+                "title": "router task",
                 "created_by_actor_id": "user",
                 "context": {"token":"should-redact"},
                 "conversation_mode": "group_chat",
@@ -113,75 +113,99 @@ async fn teams_router_http_contract() {
             })),
         ))
         .await
-        .expect("create main task via router");
-    assert_eq!(create_main_task_resp.status(), StatusCode::OK);
-    let created_main_task = decode_json_body(create_main_task_resp).await;
-    let main_task_id = created_main_task["task"]["id"]
+        .expect("create task via router");
+    assert_eq!(create_task_resp.status(), StatusCode::OK);
+    let created_task = decode_json_body(create_task_resp).await;
+    let task_id = created_task["task"]["id"]
         .as_str()
-        .expect("main task id")
+        .expect("task id")
         .to_string();
     assert_eq!(
-        created_main_task["task"]["context"]["token"],
+        created_task["task"]["context"]["token"],
         Value::from("[redacted]")
     );
     assert!(
-        created_main_task["task"]["created_by_actor_id"]
+        created_task["task"]["created_by_actor_id"]
             .as_str()
             .map(|value| value.starts_with("user:"))
             .unwrap_or(false)
     );
 
-    let outsider_create_main_task_resp = app
+    let outsider_create_task_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks"),
+            &format!("/{team_id}/tasks"),
             Some(&outsider_token),
             Some(json!({
-                "title": "outsider main task",
+                "title": "outsider task",
                 "created_by_actor_id": "user",
                 "context": {},
                 "conversation_mode": "group_chat"
             })),
         ))
         .await
-        .expect("outsider create main task via router");
-    assert_eq!(
-        outsider_create_main_task_resp.status(),
-        StatusCode::NOT_FOUND
-    );
+        .expect("outsider create task via router");
+    assert_eq!(outsider_create_task_resp.status(), StatusCode::NOT_FOUND);
 
-    let list_main_tasks_resp = app
+    let list_tasks_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
-            &format!("/{team_id}/main_tasks?limit=20"),
+            &format!("/{team_id}/tasks?limit=20"),
             Some(&token),
             None,
         ))
         .await
-        .expect("list main tasks via router");
-    assert_eq!(list_main_tasks_resp.status(), StatusCode::OK);
-    let listed_main_tasks = decode_json_body(list_main_tasks_resp).await;
-    assert_eq!(listed_main_tasks.as_array().map(Vec::len), Some(1));
-
-    let get_main_task_resp = app
+        .expect("list tasks via router");
+    assert_eq!(list_tasks_resp.status(), StatusCode::OK);
+    let listed_tasks = decode_json_body(list_tasks_resp).await;
+    assert_eq!(listed_tasks.as_array().map(Vec::len), Some(1));
+    let get_task_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
-            &format!("/{team_id}/main_tasks/{main_task_id}"),
+            &format!("/{team_id}/tasks/{task_id}"),
             Some(&token),
             None,
         ))
         .await
-        .expect("get main task via router");
-    assert_eq!(get_main_task_resp.status(), StatusCode::OK);
+        .expect("get task via router");
+    assert_eq!(get_task_resp.status(), StatusCode::OK);
 
-    let send_main_task_message_resp = app
+    let send_human_task_message_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks/{main_task_id}/messages"),
+            &format!("/{team_id}/tasks/{task_id}/messages"),
+            Some(&token),
+            Some(json!({
+                "route": "group_chat",
+                "payload": {"text":"human message without explicit actor id"}
+            })),
+        ))
+        .await
+        .expect("send human task message without explicit actor id via router");
+    assert_eq!(send_human_task_message_resp.status(), StatusCode::OK);
+    let human_task_message = decode_json_body(send_human_task_message_resp).await;
+    assert!(
+        human_task_message["from_actor_id"]
+            .as_str()
+            .map(|value| value.starts_with("user:"))
+            .unwrap_or(false)
+    );
+    assert!(
+        human_task_message["payload"]["correlation_id"]
+            .as_str()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+    );
+
+    let send_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/tasks/{task_id}/messages"),
             Some(&token),
             Some(json!({
                 "from_actor_id": "planner",
@@ -191,11 +215,11 @@ async fn teams_router_http_contract() {
             })),
         ))
         .await
-        .expect("send main task message via router");
-    assert_eq!(send_main_task_message_resp.status(), StatusCode::OK);
-    let main_task_message = decode_json_body(send_main_task_message_resp).await;
+        .expect("send task message via router");
+    assert_eq!(send_task_message_resp.status(), StatusCode::OK);
+    let task_message = decode_json_body(send_task_message_resp).await;
     assert_eq!(
-        main_task_message["payload"]["authorization"],
+        task_message["payload"]["authorization"],
         Value::from("[redacted]")
     );
 
@@ -203,7 +227,7 @@ async fn teams_router_http_contract() {
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks/{main_task_id}/messages"),
+            &format!("/{team_id}/tasks/{task_id}/messages"),
             Some(&token),
             Some(json!({
                 "from_actor_id": "worker-1",
@@ -217,25 +241,25 @@ async fn teams_router_http_contract() {
     let to_leader_message = decode_json_body(send_to_leader_resp).await;
     assert_eq!(to_leader_message["to_actor_id"], Value::from("planner"));
 
-    let list_main_task_messages_resp = app
+    let list_task_messages_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
-            &format!("/{team_id}/main_tasks/{main_task_id}/messages?limit=20"),
+            &format!("/{team_id}/tasks/{task_id}/messages?limit=20"),
             Some(&token),
             None,
         ))
         .await
-        .expect("list main task messages via router");
-    assert_eq!(list_main_task_messages_resp.status(), StatusCode::OK);
-    let listed_main_task_messages = decode_json_body(list_main_task_messages_resp).await;
-    assert_eq!(listed_main_task_messages.as_array().map(Vec::len), Some(2));
+        .expect("list task messages via router");
+    assert_eq!(list_task_messages_resp.status(), StatusCode::OK);
+    let listed_task_messages = decode_json_body(list_task_messages_resp).await;
+    assert_eq!(listed_task_messages.as_array().map(Vec::len), Some(3));
 
     let compile_preview_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks/{main_task_id}/compile_run_preview"),
+            &format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
             Some(&token),
             Some(json!({})),
         ))
@@ -243,16 +267,13 @@ async fn teams_router_http_contract() {
         .expect("compile run preview via router");
     assert_eq!(compile_preview_resp.status(), StatusCode::OK);
     let compile_preview = decode_json_body(compile_preview_resp).await;
-    assert_eq!(
-        compile_preview["main_task_id"],
-        Value::from(main_task_id.clone())
-    );
+    assert_eq!(compile_preview["task_id"], Value::from(task_id.clone()));
     assert_eq!(
         compile_preview["run_payload"]["context_id"],
-        Value::from(main_task_id.clone())
+        Value::from(task_id.clone())
     );
     assert_eq!(
-        compile_preview["run_payload"]["input"]["main_task_compile_version"],
+        compile_preview["run_payload"]["input"]["task_compile_version"],
         Value::from(1)
     );
     assert_eq!(
@@ -264,7 +285,7 @@ async fn teams_router_http_contract() {
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/main_tasks/{main_task_id}/compile_run_preview"),
+            &format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
             Some(&outsider_token),
             Some(json!({})),
         ))
@@ -1024,19 +1045,23 @@ async fn teams_router_delete_team_cleans_member_session_dependents_without_500()
     .await
     .expect("insert member session");
 
+    let member_event_db = state
+        .agents
+        .test_event_pool_for_agent(member_agent_id)
+        .await
+        .expect("open member event db");
     sqlx::query(
         r#"
-        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
     )
-    .bind(member_agent_id)
     .bind(&session_id)
     .bind("1")
     .bind(now)
     .bind("stdout")
     .bind("event payload")
-    .execute(&state.db)
+    .execute(&member_event_db)
     .await
     .expect("insert member event");
 
@@ -1104,18 +1129,21 @@ async fn teams_router_delete_team_cleans_member_session_dependents_without_500()
     let deleted_team = decode_json_body(delete_team_resp).await;
     assert_eq!(deleted_team["id"], team_id);
 
-    let session_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1",
-    )
-    .bind(member_agent_id)
-    .fetch_one(&state.db)
-    .await
-    .expect("count member sessions");
+    let session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agent_sessions WHERE agent_id = ?1")
+            .bind(member_agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count member sessions");
     assert_eq!(session_count, 0);
 
-    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE agent_id = ?1")
-        .bind(member_agent_id)
-        .fetch_one(&state.db)
+    let member_event_db = state
+        .agents
+        .test_event_pool_for_agent(member_agent_id)
+        .await
+        .expect("open member event db");
+    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events")
+        .fetch_one(&member_event_db)
         .await
         .expect("count member events");
     assert_eq!(event_count, 0);

@@ -11,6 +11,9 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "- Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.",
   "- For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.",
   "- You are responsible for direct human-facing planning communication. Do not redirect human questions to workers.",
+  "- In shared human/team conversation, provide the first response by default.",
+  "- When replying in team conversation, use @member_id for directed recipients; no @ means broadcast to all members.",
+  "- If workers reply first due to urgent correction/new evidence, acknowledge and integrate their update quickly.",
   "Planning quality gate:",
   "- Decision Complete: every delegated step must be executable without extra implementation judgment calls.",
   "- Explore Before Asking: discoverable repo/system facts must be explored before asking human questions.",
@@ -35,7 +38,7 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "1. Before mailbox work, scan TODO sources (`TODO.md`, `.cache/context/todo.md`).",
   "2. If unfinished planning tasks exist, resume them and publish a concise continuity update.",
   "3. If no planning tasks exist, treat as zero-start and align mission/scope with human actor.",
-  "4. Refresh `AGENTS.md` sections: Run Objective, Current Phase, Team Formation, Task Analysis, Role Assignment, Communication Log, Consensus Decisions, Result Integration, Open Risks, Next Checkpoint.",
+  "4. Refresh `AGENTS.md` sections: Agent Profile, Objective, Active Assignment, Active Skills, Role Skill Profile, Routing Contract, TODO And Context Pointers, Progress Log.",
   "Workflow:",
   "1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.",
   "2. Delegate concrete, testable tasks to workers via actor mailbox.",
@@ -59,7 +62,9 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
   "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.",
   "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.",
   "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.",
-  "- Do not replace leader in direct human-facing planning replies unless explicitly routed.",
+  "- In shared human/team conversation, leader has first-response priority.",
+  "- In team conversation replies, use @member_id when targeting specific recipients; no @ means broadcast to all members.",
+  "- Do not speak before leader unless one of these is true: (a) leader statement is incorrect and needs correction, (b) you can add critical missing context, (c) you discovered new evidence, (d) you are explicitly mentioned.",
   "Team workflow phases:",
   "1. Team formation",
   "2. Task analysis",
@@ -84,13 +89,11 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
 export const DEFAULT_TEAM_LEADER_SKILLS = [
   "agenthub-actor-runtime",
   "team-leader-orchestrator",
-  "team-deliberation-rules",
 ];
 
 export const DEFAULT_TEAM_WORKER_SKILLS = [
   "agenthub-actor-runtime",
   "team-worker-executor",
-  "team-deliberation-rules",
 ];
 
 export const REQUIRED_TEAM_LEADER_SKILLS = [
@@ -104,9 +107,14 @@ export const REQUIRED_TEAM_WORKER_SKILLS = [
 ];
 
 const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];
+const OPTIONAL_TEAM_SKILLS = ["team-deliberation-rules"];
 
 export const TEAM_SKILL_OPTIONS = [
-  ...new Set([...DEFAULT_TEAM_LEADER_SKILLS, ...DEFAULT_TEAM_WORKER_SKILLS]),
+  ...new Set([
+    ...DEFAULT_TEAM_LEADER_SKILLS,
+    ...DEFAULT_TEAM_WORKER_SKILLS,
+    ...OPTIONAL_TEAM_SKILLS,
+  ]),
 ];
 
 export type WorkerDraft = {

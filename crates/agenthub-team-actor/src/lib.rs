@@ -8,6 +8,7 @@ mod transport;
 pub use contract::{
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
     ActorSendRequest, ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
+    actor_inbox_with_auto_ack,
 };
 pub use idempotency::{
     actor_message_fingerprint, build_default_actor_message_idempotency_key, canonical_json,
@@ -18,6 +19,7 @@ pub use mailbox::{
     RelayRemotePendingCommand, RelayRemotePendingResult, SendActorMessageCommand,
 };
 pub use message::{
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID,
     ActorIdentityKind, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
     infer_actor_identity_kind,
 };

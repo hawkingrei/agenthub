@@ -100,7 +100,9 @@ impl TeamInternalControl for TeamInternalControlService {
             .actor_send(ActorSendRequest {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
+                from_peer_id: None,
                 to_actor_id: to_actor_id.to_string(),
+                to_peer_id: None,
                 channel: Some(channel.to_string()),
                 transport: Some(transport),
                 route,

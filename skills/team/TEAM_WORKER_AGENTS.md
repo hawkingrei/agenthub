@@ -23,6 +23,7 @@ Use this template for worker workspace `AGENTS.md`.
 
 - current status: `pending|in_progress|completed|blocked`
 - latest update:
+- reply routing: use `@member_id` when replying to specific members; no `@` means broadcast.
 
 ## Blockers
 
@@ -42,4 +43,3 @@ Use this template for worker workspace `AGENTS.md`.
 - worker execution: `skills/team/team-worker-executor.SKILL.md`
 - deliberation: `skills/team/team-deliberation-rules.SKILL.md`
 - actor mailbox: `skills/team/team-actor-mailbox.SKILL.md`
-
