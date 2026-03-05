@@ -18,7 +18,7 @@ use agent_client_protocol::{
     SessionMode, SessionModeId, SessionModeState, SessionModelState, SessionNotification,
     SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall, ToolCallContent,
     ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
-    UnstructuredCommandInput,
+    UnstructuredCommandInput, UsageUpdate,
 };
 use codex_apply_patch::parse_patch;
 use codex_core::{
@@ -37,9 +37,9 @@ use codex_core::{
         McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent, Op,
         PatchApplyBeginEvent, PatchApplyEndEvent, ReasoningContentDeltaEvent,
         ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
-        ReviewTarget, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent, TurnAbortedEvent,
-        TurnCompleteEvent, TurnStartedEvent, UserMessageEvent, ViewImageToolCallEvent,
-        WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
+        ReviewTarget, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent, TokenCountEvent,
+        TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
+        ViewImageToolCallEvent, WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
     },
     review_format::format_review_findings_block,
     review_prompts::user_facing_hint,
@@ -48,6 +48,7 @@ use codex_protocol::{
     approvals::ElicitationRequestEvent,
     config_types::TrustLevel,
     custom_prompts::CustomPrompt,
+    items::TurnItem,
     mcp::CallToolResult,
     models::ResponseItem,
     openai_models::{ModelPreset, ReasoningEffort},
@@ -431,7 +432,6 @@ impl PromptState {
             | EventMsg::PatchApplyEnd(..)
             | EventMsg::TurnStarted(..)
             | EventMsg::TurnComplete(..)
-            | EventMsg::TokenCount(..)
             | EventMsg::TurnDiff(..)
             | EventMsg::TurnAborted(..)
             | EventMsg::EnteredReviewMode(..)
@@ -449,6 +449,19 @@ impl PromptState {
                 ..
             }) => {
                 info!("Task started with context window of {model_context_window:?}");
+            }
+            EventMsg::TokenCount(TokenCountEvent { info, .. }) => {
+                if let Some(info) = info
+                    && let Some(size) = info.model_context_window
+                {
+                    let used = info.last_token_usage.tokens_in_context_window().max(0) as u64;
+                    client
+                        .send_notification(SessionUpdate::UsageUpdate(UsageUpdate::new(
+                            used,
+                            size as u64,
+                        )))
+                        .await;
+                }
             }
             EventMsg::ItemStarted(ItemStartedEvent { thread_id, turn_id, item }) => {
 
@@ -567,6 +580,11 @@ impl PromptState {
             }
             EventMsg::ItemCompleted(ItemCompletedEvent { thread_id, turn_id, item }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
+                // Notify the client when context compaction completes so users see
+                // a status message rather than silence during /compact.
+                if matches!(item, TurnItem::ContextCompaction(..)) {
+                    client.send_agent_text("Context compacted".to_string()).await;
+                }
             }
             EventMsg::TurnComplete(TurnCompleteEvent {
                 last_agent_message,
@@ -642,6 +660,9 @@ impl PromptState {
             }
             EventMsg::Warning(WarningEvent { message }) => {
                 warn!("Warning: {message}");
+                // Forward warnings to the client as agent messages so users see
+                // informational notices (e.g., the post-compact advisory message).
+                client.send_agent_text(message).await;
             }
             EventMsg::McpStartupUpdate(McpStartupUpdateEvent { server, status }) => {
                 info!("MCP startup update: server={server}, status={status:?}");
@@ -669,16 +690,18 @@ impl PromptState {
                 info!("Model reroute: from={from_model}, to={to_model}, reason={reason:?}");
             }
 
+            EventMsg::ContextCompacted(..) => {
+                info!("Context compacted");
+                client.send_agent_text("Context compacted".to_string()).await;
+            }
+
             // Ignore these events
             EventMsg::AgentReasoningRawContent(..)
             | EventMsg::ThreadRolledBack(..)
-            // In the future we can use this to update usage stats
-            | EventMsg::TokenCount(..)
             // we already have a way to diff the turn, so ignore
             | EventMsg::TurnDiff(..)
             // Revisit when we can emit status updates
             | EventMsg::BackgroundEvent(..)
-            | EventMsg::ContextCompacted(..)
             | EventMsg::SkillsUpdateAvailable
             // Old events
             | EventMsg::AgentMessageDelta(..) | EventMsg::AgentReasoningDelta(..) | EventMsg::AgentReasoningRawContentDelta(..)
@@ -2866,7 +2889,7 @@ fn extract_slash_command(content: &[UserInput]) -> Option<(&str, &str)> {
 mod tests {
     use std::sync::atomic::AtomicUsize;
 
-    use agent_client_protocol::TextContent;
+    use agent_client_protocol::{TextContent, UsageUpdate};
     use codex_core::{
         config::ConfigOverrides, protocol::AgentMessageEvent, test_support::all_model_presets,
     };
@@ -2943,10 +2966,116 @@ mod tests {
             SessionUpdate::AgentMessageChunk(ContentChunk {
                 content: ContentBlock::Text(TextContent { text, .. }),
                 ..
-            }) if text == "Compact task completed"
+            }) if text == "Context compacted"
         ));
         let ops = thread.ops.lock().unwrap();
         assert_eq!(ops.as_slice(), &[Op::Compact]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_warning_forwarded_to_client() -> anyhow::Result<()> {
+        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::Prompt {
+            request: PromptRequest::new(session_id.clone(), vec!["warning-event".into()]),
+            response_tx: prompt_response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                let stop_reason = prompt_response_rx.await??.await??;
+                assert_eq!(stop_reason, StopReason::EndTurn);
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let notifications = client.notifications.lock().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert!(matches!(
+            &notifications[0].update,
+            SessionUpdate::AgentMessageChunk(ContentChunk {
+                content: ContentBlock::Text(TextContent { text, .. }),
+                ..
+            }) if text == "warning from test"
+        ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_context_compacted_event_forwarded() -> anyhow::Result<()> {
+        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::Prompt {
+            request: PromptRequest::new(session_id.clone(), vec!["context-compacted-event".into()]),
+            response_tx: prompt_response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                let stop_reason = prompt_response_rx.await??.await??;
+                assert_eq!(stop_reason, StopReason::EndTurn);
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let notifications = client.notifications.lock().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert!(matches!(
+            &notifications[0].update,
+            SessionUpdate::AgentMessageChunk(ContentChunk {
+                content: ContentBlock::Text(TextContent { text, .. }),
+                ..
+            }) if text == "Context compacted"
+        ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_token_count_emits_usage_update() -> anyhow::Result<()> {
+        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::Prompt {
+            request: PromptRequest::new(session_id.clone(), vec!["token-count-event".into()]),
+            response_tx: prompt_response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                let stop_reason = prompt_response_rx.await??.await??;
+                assert_eq!(stop_reason, StopReason::EndTurn);
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let notifications = client.notifications.lock().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert!(matches!(
+            &notifications[0].update,
+            SessionUpdate::UsageUpdate(UsageUpdate { used, size, .. })
+                if *used == 123 && *size == 4096
+        ));
 
         Ok(())
     }
@@ -3637,6 +3766,71 @@ mod tests {
                             turn_id: turn_id.clone(),
                             last_agent_message: None,
                         }));
+                    } else if prompt == "warning-event" {
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::Warning(WarningEvent {
+                                    message: "warning from test".to_string(),
+                                }),
+                            })
+                            .unwrap();
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                    turn_id: id.to_string(),
+                                    last_agent_message: None,
+                                }),
+                            })
+                            .unwrap();
+                    } else if prompt == "context-compacted-event" {
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::ContextCompacted(
+                                    codex_core::protocol::ContextCompactedEvent {},
+                                ),
+                            })
+                            .unwrap();
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                    turn_id: id.to_string(),
+                                    last_agent_message: None,
+                                }),
+                            })
+                            .unwrap();
+                    } else if prompt == "token-count-event" {
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::TokenCount(TokenCountEvent {
+                                    info: Some(codex_core::protocol::TokenUsageInfo {
+                                        total_token_usage: codex_core::protocol::TokenUsage {
+                                            total_tokens: 123,
+                                            ..Default::default()
+                                        },
+                                        last_token_usage: codex_core::protocol::TokenUsage {
+                                            total_tokens: 123,
+                                            ..Default::default()
+                                        },
+                                        model_context_window: Some(4096),
+                                    }),
+                                    rate_limits: None,
+                                }),
+                            })
+                            .unwrap();
+                        self.op_tx
+                            .send(Event {
+                                id: id.to_string(),
+                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                    turn_id: id.to_string(),
+                                    last_agent_message: None,
+                                }),
+                            })
+                            .unwrap();
                     } else {
                         self.op_tx
                             .send(Event {
@@ -3683,8 +3877,14 @@ mod tests {
                     self.op_tx
                         .send(Event {
                             id: id.to_string(),
-                            msg: EventMsg::AgentMessage(AgentMessageEvent {
-                                message: "Compact task completed".to_string(),
+                            msg: EventMsg::ItemCompleted(ItemCompletedEvent {
+                                thread_id: codex_protocol::ThreadId::new(),
+                                turn_id: id.to_string(),
+                                item: TurnItem::ContextCompaction(
+                                    codex_protocol::items::ContextCompactionItem {
+                                        id: "compact-item".to_string(),
+                                    },
+                                ),
                             }),
                         })
                         .unwrap();
