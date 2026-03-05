@@ -1034,8 +1034,7 @@ mod tests {
         )
         .await;
         assert_eq!(
-            send_resp["result"]["isError"],
-            false,
+            send_resp["result"]["isError"], false,
             "actor_send failed response: {send_resp}"
         );
         let message_id = send_resp["result"]["structuredContent"]["message_id"]

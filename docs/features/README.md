@@ -49,4 +49,5 @@ When multiple journal notes describe the same area:
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`
 - `docs/features/team-mcp-enforcement.md`
+- `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`

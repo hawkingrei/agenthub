@@ -14,7 +14,7 @@ This note captures the phased rollout plan and verification targets for that dir
 ## Goals
 
 - Shift Team UX from run-first to conversation-first.
-- Introduce persistent main-task and conversation artifacts for replay/audit/handoff.
+- Introduce persistent task and conversation artifacts for replay/audit/handoff.
 - Keep deterministic execution by compiling negotiated task context into structured run specs.
 - Improve inter-agent discoverability with capability cards.
 
@@ -26,7 +26,7 @@ This note captures the phased rollout plan and verification targets for that dir
 
 ## Target Experience
 
-1. User opens Team and starts a main task by chatting with leader/team.
+1. User opens Team and starts a task by chatting with leader/team.
 2. Leader negotiates scope and records task list / acceptance criteria.
 3. System compiles the agreed scope into deterministic run spec (`spec.steps` template).
 4. Workers execute; leader synthesizes and returns final deliverable.
@@ -43,7 +43,7 @@ This note captures the phased rollout plan and verification targets for that dir
 ### Phase 2: Main Task + Conversation Persistence
 
 - Add explicit models/tables for:
-  - main task metadata
+  - task metadata
   - conversation messages/events
 - Persist full dialogue/task artifacts for replay/audit.
 - Enforce storage redaction policy for provider tokens and sensitive runtime fields.
@@ -74,7 +74,7 @@ This note captures the phased rollout plan and verification targets for that dir
 ## Validation Plan
 
 - API tests:
-  - main-task lifecycle CRUD and replay semantics
+  - task lifecycle CRUD and replay semantics
   - conversation persistence and redaction behavior
   - compile-to-run payload schema checks
 - UI tests:
@@ -82,7 +82,7 @@ This note captures the phased rollout plan and verification targets for that dir
   - routing-mode correctness and message ordering
   - discovery card rendering + fallback behavior
 - E2E tests:
-  - `main task -> negotiation -> compile run -> execute -> synthesize` golden path
+  - `task -> negotiation -> compile run -> execute -> synthesize` golden path
   - debug run-ops regression path unchanged
 
 ## Risks and Mitigations

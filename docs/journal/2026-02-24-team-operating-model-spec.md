@@ -17,7 +17,7 @@ and end-to-end workflow phases.
 - Canonical Team terminology.
 - Team object/lifecycle definitions.
 - Human-facing flow vs internal execution flow boundaries.
-- Team run/step/main-task state machine definitions.
+- Team run/step/task state machine definitions.
 - Leader/worker role contracts and cold-start workflow.
 - Actor identity and mailbox partition semantics in Team context.
 
@@ -51,7 +51,7 @@ Team runtime has three layers:
 - One `Team` contains multiple `members` (`spec.members[]`).
 - Each member is an `agent` bound to a role (`leader` or `worker`).
 - A `Main Task` is a long-lived planning objective for a team.
-- A `Conversation` is the human/team message timeline bound to one main task.
+- A `Conversation` is the human/team message timeline bound to one task.
 - A `Run` is one executable snapshot compiled from planning context.
 - A `Step` is one execution unit within a run, assigned to one member.
 - An `Actor` is mailbox identity (`actor_id`) used for send/inbox/ack operations.
@@ -63,7 +63,7 @@ Team runtime has three layers:
   - Conversation
   - Start Team
 - Internal/debug concepts:
-  - Main task internal IDs
+  - Task internal IDs
   - Run ops
   - Step ops
   - Raw mailbox payloads
@@ -121,14 +121,14 @@ Role boundary:
 
 ### 2) Team/Main Task/Conversation Status Contract
 
-Main task status values:
+Task status values:
 - `open`
 - `in_progress`
 - `completed`
 - `canceled`
 
 Conversation contract:
-- One conversation belongs to one main task.
+- One conversation belongs to one task.
 - Conversation messages persist route and actor identity metadata.
 
 ### 3) Run/Step Status Contract
@@ -234,14 +234,9 @@ Expected verification set for this feature area:
 ## Canonical References
 
 - `docs/journal/2026-02-22-team-context-memory-architecture.md`
-- `docs/journal/2026-02-18-agent-actor-local-distributed-architecture.md`
+- `docs/features/actor-foundation.md`
+- `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
 
 ## Superseded Notes
 
-This note merged the following previously split topics:
-
-- `docs/journal/2026-02-20-team-role-workflow-policy.md`
-- `docs/journal/2026-02-23-team-create-draft-creating-state-and-member-role-alignment.md`
-- `docs/journal/2026-02-23-team-top-member-status-strip.md`
-- `docs/journal/2026-02-24-team-main-task-human-conversation-ui.md`
-- `docs/journal/2026-02-24-team-role-skill-runtime-spec.md`
+Previously split notes were compacted into canonical feature specs and old placeholders were removed.

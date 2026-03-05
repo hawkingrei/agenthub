@@ -4,7 +4,7 @@
 
 Team roadmap still had pending verification for two tracks:
 
-- chat-first golden path E2E (`main task -> compile preview -> create run -> worker evidence -> final synthesis`)
+- chat-first golden path E2E (`task -> compile preview -> create run -> worker evidence -> final synthesis`)
 - Team create-flow closure (`Guided Wizard` / `Manual Spec` entry behavior and forge modal layering)
 
 The required scenarios already existed, but local verification remained fragile in sandboxed environments.
@@ -36,7 +36,7 @@ Executed locally:
 npm --prefix web run lint
 npm --prefix web run test -- src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts
 npm --prefix web run build
-PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts -g "team debug run ops compiles main task preview and applies payload to create-run form|team chat-first path compiles preview, creates run, and captures worker plus final synthesis evidence|team forge manual spec mode skips leader/worker stages|team forge modal creates team with leader/worker presets"
+PLAYWRIGHT_NO_WEBSERVER=1 npm --prefix web run e2e -- tests/e2e/team_page.e2e.ts -g "team debug run ops compiles task preview and applies payload to create-run form|team chat-first path compiles preview, creates run, and captures worker plus final synthesis evidence|team forge manual spec mode skips leader/worker stages|team forge modal creates team with leader/worker presets"
 ```
 
 Result:

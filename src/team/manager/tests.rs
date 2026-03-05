@@ -7,11 +7,11 @@ use super::{TeamManager, TeamRunResumeError};
 use crate::db::AgentEventDbRouter;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamTaskStatus, TeamRunStatus, TeamStepStatus,
+    TeamRunStatus, TeamStepStatus, TeamTaskStatus,
 };
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind,
-    ActorInboxRequest, ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
+    ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
 };
 use axum::body::Bytes;
 use axum::extract::State;
@@ -479,10 +479,7 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["secret"], json!("[redacted]"));
 
-    let listed = manager
-        .list_tasks(&team.id, 20)
-        .await
-        .expect("list tasks");
+    let listed = manager.list_tasks(&team.id, 20).await.expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, task.id);
 

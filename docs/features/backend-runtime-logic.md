@@ -12,6 +12,7 @@ was captured in multiple point-fix notes. A consolidated backend logic spec is r
 - Context flush integration and memory-related runtime behavior.
 - Team deletion transactional guarantees.
 - Startup runtime policy for Team run recovery.
+- Conversation/event outbox persistence-first delivery baseline.
 
 ## Non-Goals
 
@@ -55,6 +56,12 @@ Run APIs must enforce owner/team boundaries before mutation:
 
 Team delete must execute member-runtime cleanup and Team-domain cascade within one DB transaction
 to avoid half-cleanup states and FK-related `500` errors.
+
+### 6) Conversation Event Outbox Baseline
+
+- Conversation/chat events should persist in DB first, then enqueue outbox records for async bus publish.
+- Event bus publish failures should not roll back already committed authoritative records.
+- Relay workers are responsible for retry/backoff and at-least-once delivery to realtime carriers.
 
 ## Contracts
 

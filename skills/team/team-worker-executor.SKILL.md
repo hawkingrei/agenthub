@@ -11,7 +11,7 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Treat workspace `AGENTS.md` as index only: objectives, phase, and skill pointers.
 - Keep detailed worker procedures in this skill (and related skill files), not in `AGENTS.md`.
 - On each new task, confirm current phase and referenced skills from `AGENTS.md` before execution.
-- Bootstrap worker `AGENTS.md` from `skills/team/TEAM_WORKER_AGENTS.md`.
+- Bootstrap worker `AGENTS.md` from `skills/team/TEAM_AGENTS.md` and set worker skill profile.
 
 ## Skill Routing Contract
 
@@ -107,6 +107,13 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --payload-json "$PAYLOAD_JSON"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
+
+## Mention Discipline
+
+- Proactively mention `@leader` in all non-trivial status/evidence updates.
+- Mention impacted peers directly for dependency handoff, interface changes, or blocker ownership.
+- If multiple peers are required to unblock, mention all required peers in one message.
+- Avoid broad broadcasts for actionable work items; use directed mentions to keep ownership explicit.
 
 ## Task Status Discipline
 

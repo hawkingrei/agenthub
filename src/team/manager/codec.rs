@@ -6,8 +6,8 @@ use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, infer_actor_identity_kind};
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
-    TeamTaskRecord, TeamTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord,
-    TeamRunRecord, TeamRunStatus, TeamStepRecord, TeamStepStatus,
+    TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
 
 pub(super) fn parse_team_definition_row(
@@ -42,9 +42,7 @@ pub(super) fn parse_team_run_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resul
     })
 }
 
-pub(super) fn parse_team_task_row(
-    row: &sqlx::sqlite::SqliteRow,
-) -> anyhow::Result<TeamTaskRecord> {
+pub(super) fn parse_team_task_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<TeamTaskRecord> {
     let context_json: String = row.get("context_json");
     let context: Value = serde_json::from_str(&context_json)?;
     let status_raw: String = row.get("status");

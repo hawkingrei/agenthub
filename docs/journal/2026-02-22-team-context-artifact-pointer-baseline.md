@@ -57,7 +57,7 @@ Executed targeted Rust tests:
 - `cargo test continuity`
 - `cargo test complete_step_offloads_large_output_to_workspace_context_artifact`
 - `cargo test init_db_creates_schema_and_enforces_foreign_keys`
-- `cargo test team_main_task_api_creates_lists_and_redacts_context`
+- `cargo test team_task_api_creates_lists_and_redacts_context`
 - `cargo test step_lifecycle_transitions_persist_and_emit_events`
 
 New regression test:

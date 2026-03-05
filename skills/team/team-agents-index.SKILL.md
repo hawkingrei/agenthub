@@ -9,8 +9,7 @@ Use this skill as the shared Team-level startup index for both leader and worker
 Primary references:
 
 - Shared Team baseline index: `skills/team/AGENTS.md`
-- Leader runtime template: `skills/team/TEAM_LEADER_AGENTS.md`
-- Worker runtime template: `skills/team/TEAM_WORKER_AGENTS.md`
+- Unified runtime template: `skills/team/TEAM_AGENTS.md`
 
 ## Responsibilities
 
@@ -20,6 +19,7 @@ Primary references:
   - leader compiles internal Team tasks
 - Align on six Team workflow phases before mailbox execution.
 - Route execution details to role-specific skills instead of duplicating procedure text.
+- Keep runtime AGENTS context small by loading only role-required skills.
 
 ## Routing
 
@@ -33,9 +33,11 @@ Primary references:
 ## Startup Checklist
 
 1. Read `skills/team/AGENTS.md` shared index.
-2. Resolve member role (`leader|worker`) and choose role-specific AGENTS template.
+2. Resolve member role (`leader|worker`) and fill one unified runtime template.
 3. Initialize or refresh workspace `AGENTS.md`:
-   - leader -> `skills/team/TEAM_LEADER_AGENTS.md`
-   - worker -> `skills/team/TEAM_WORKER_AGENTS.md`
-4. Load role-specific skill set based on current phase.
+   - use `skills/team/TEAM_AGENTS.md`
+   - set `role` and `Active Skills` to role-minimal set only
+4. Load role-specific skill set based on current phase:
+   - leader -> `team-leader-orchestrator` (+ optional `team-deliberation-rules`)
+   - worker -> `team-worker-executor` (+ optional `team-deliberation-rules`)
 5. Check unfinished TODO items in `TODO.md` and `.cache/context/todo.md` before processing inbox.
