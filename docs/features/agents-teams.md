@@ -24,7 +24,7 @@ terminology and operating expectations drift.
 ### 1) Three-Layer Team Model
 
 1. Human planning layer
-- Human collaborates through `Conversation` under a `Main Task`.
+- Human collaborates through `Conversation` under a `Task`.
 - Human provides goals/constraints; humans do not create internal Team `task` objects directly.
 
 2. Orchestration layer
@@ -37,7 +37,10 @@ terminology and operating expectations drift.
 
 - Leader: architecture/planning/review/synthesis owner.
 - Worker: implementation executor, evidence producer.
-- Leader answers human planning questions directly; worker outputs flow back via leader.
+- Messages without `@mention` target the whole team conversation.
+- Speaking policy in shared conversation is leader-first: leader should respond first.
+- Worker should speak only when one of these holds: correction of leader error, critical supplement, new finding/evidence, or explicit `@mention`.
+- Worker can talk with human directly in the shared team conversation when explicitly mentioned (or when context requires direct clarification), while execution ownership still converges through leader.
 
 ### 3) Six-Phase Collaboration Workflow
 
@@ -53,6 +56,9 @@ terminology and operating expectations drift.
 - Communication lane:
   - `Conversation` is the human-facing lane and remains available without an active run.
   - Human goals/constraints and `@member` coordination requests are authored here.
+  - Conversation is a single shared group stream across human, leader, and workers (not per-member isolated chats).
+  - Default routing: messages without `@mention` are team-wide with leader-first response priority.
+  - Messages with `@member_id` can target one or multiple members and relax worker speaking guardrails.
 - Execution lane:
   - `Runs` is the entry lane for run browsing, `Start Team`, and active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
@@ -69,22 +75,30 @@ terminology and operating expectations drift.
 - Load only required skills for current phase.
 - Keep decisions/errors in workspace-local context files.
 
+MCP enforcement baseline:
+
+- Team sessions are MCP-first for mailbox communication.
+- Team startup should fail-fast if mailbox MCP capability is missing or required mailbox tools are incomplete.
+- Team mode denies shell-based mailbox bypass for collaboration traffic.
+- Role defaults should keep skill set minimal; optional skills load by explicit profile.
+- See `docs/features/team-mcp-enforcement.md` for fail-fast and loop contract details.
+
 ### 6) Team AGENTS Injection Matrix
 
 - Shared baseline for both roles:
   - file: `skills/team/AGENTS.md`
   - injected skill: `team-agents-index`
-- Leader-specific runtime AGENTS:
-  - file template: `skills/team/TEAM_LEADER_AGENTS.md`
-  - injected skill: `team-leader-agents-index`
-- Worker-specific runtime AGENTS:
-  - file template: `skills/team/TEAM_WORKER_AGENTS.md`
-  - injected skill: `team-worker-agents-index`
+- Unified runtime template for both roles:
+  - file template: `skills/team/TEAM_AGENTS.md`
+- Leader runtime index:
+  - injected skill: `team-leader-agents-index` (apply leader skill profile)
+- Worker runtime index:
+  - injected skill: `team-worker-agents-index` (apply worker skill profile)
 
 Constraint:
 
-- leader and worker do not share one identical runtime `AGENTS.md`;
-- they share baseline terms but keep different role-focused AGENTS indexes.
+- leader and worker share one template but keep different role-focused active skill sets.
+- runtime `AGENTS.md` should include only phase-required skills to control context size.
 
 ## Contracts
 
@@ -96,10 +110,13 @@ Constraint:
 - `actor_id`: canonical mailbox identity.
 - `agent_id`: tool-level alias for `actor_id`.
 - `run_id`: mailbox partition and replay boundary.
+- `peer_id`: node identity for mailbox routing.
+  - `main`: AgentHub main node.
+  - `node`: remote execution node (default non-main peer label).
 
 ### 2) Status Values
 
-- Main task:
+- Task:
   - `open`, `in_progress`, `completed`, `canceled`
 - Run/step:
   - `submitted`, `working`, `input_required`, `completed`, `failed`, `canceled`
@@ -123,6 +140,8 @@ Constraint:
 - `Conversation` does not require an active run.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- Human-facing conversation remains group-visible even when `@mention` is used.
+- `@mention` controls response priority and coordination scope, not message visibility.
 
 ## Validation Matrix
 
@@ -142,12 +161,11 @@ Constraint:
 ## Open Risks
 
 - Some planning/TODO contracts are prompt-level guidance and not fully runtime-enforced.
-- Distributed actor routing policy remains staged and needs additional hardening.
+- Multi-node actor routing policy remains staged and needs additional hardening.
 
 ## Source Journals
 
 - `docs/journal/2026-02-24-team-operating-model-spec.md`
-- `docs/journal/2026-02-24-team-role-skill-runtime-spec.md`
-- `docs/journal/2026-02-20-team-role-workflow-policy.md`
-- `docs/journal/2026-02-18-agent-actor-local-distributed-architecture.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
+- `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
+- `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`

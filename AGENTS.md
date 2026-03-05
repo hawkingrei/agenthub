@@ -113,8 +113,9 @@ agenthub/
   - `AGENTS.md` is the role-level index and routing table; detailed execution procedures live in role/feature `SKILL.md` files
   - Team workflow must be indexed in `AGENTS.md` and routed to concrete skills:
     - shared Team baseline (injected to both leader/worker at startup): `skills/team/AGENTS.md` -> skill `team-agents-index`
-    - leader-specific Team index (injected to leader startup): `skills/team/TEAM_LEADER_AGENTS.md` -> skill `team-leader-agents-index`
-    - worker-specific Team index (injected to worker startup): `skills/team/TEAM_WORKER_AGENTS.md` -> skill `team-worker-agents-index`
+    - unified Team runtime template (used by both roles): `skills/team/TEAM_AGENTS.md`
+    - leader role index (applies leader skill profile into runtime AGENTS): skill `team-leader-agents-index`
+    - worker role index (applies worker skill profile into runtime AGENTS): skill `team-worker-agents-index`
     - phase planning/orchestration: `skills/team/team-leader-orchestrator.SKILL.md`
     - execution delivery: `skills/team/team-worker-executor.SKILL.md`
     - deliberation quality gate: `skills/team/team-deliberation-rules.SKILL.md`
@@ -125,7 +126,10 @@ agenthub/
   - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
   - Human inputs are goals/constraints via conversation; internal Team `task` objects are created by leader planning, not directly by human users
   - Team conversation delivery path: persist the message once in conversation, then forward via Team actor mailbox; mailbox transport reaches ACP upstream and MCP tools.
+  - Team role sessions must fail-fast if mailbox MCP capability is missing or required mailbox tools (`actor_inbox`/`actor_ack`/`actor_send`) are incomplete.
+  - Team mode must deny shell-based mailbox bypass; communication path should stay MCP mailbox first (`inbox -> process -> ack -> send/report`).
   - Mention routing contract: `@member_id` means explicit recipients only; no `@` means broadcast to all team members.
+  - Mailbox address translation: during mailbox fan-out, recipient `to_actor_id` should be translated into `@member_id` mention context for agent-facing chat payloads.
   - Reply contract: agent replies in team conversation should include `@member_id` when targeting specific recipients; replies without `@` are treated as broadcast.
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
@@ -150,6 +154,7 @@ agenthub/
   - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
   - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
   - Context and memory sections in `AGENTS.md` should stay concise as index pointers; append implementation details to dedicated skills/docs.
+  - Team MCP enforcement details and error code contract live in `docs/features/team-mcp-enforcement.md`.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership

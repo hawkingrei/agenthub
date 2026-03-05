@@ -13,6 +13,7 @@ This document defines that operational baseline.
 - Canonical Team/Actor terminology for runtime, API, and prompts.
 - Team startup/restart behavior and failure handling expectations.
 - Mailbox communication policy and message envelope constraints.
+- MCP-first enforcement policy for Team sessions.
 - Context/memory layering and promotion rules.
 - Membership change and member identity-card synchronization.
 
@@ -103,10 +104,16 @@ AGENTS injection matrix:
 
 - shared baseline (both roles):
   - `team-agents-index` -> `skills/team/AGENTS.md`
-- leader-specific:
-  - `team-leader-agents-index` -> `skills/team/TEAM_LEADER_AGENTS.md`
-- worker-specific:
-  - `team-worker-agents-index` -> `skills/team/TEAM_WORKER_AGENTS.md`
+- unified runtime template:
+  - `skills/team/TEAM_AGENTS.md`
+- leader role profile:
+  - `team-leader-agents-index` (leader skill set only)
+- worker role profile:
+  - `team-worker-agents-index` (worker skill set only)
+
+Context-size rule:
+
+- runtime `AGENTS.md` must load only role-required and phase-required skills.
 
 ### 5) Delegation And Communication Model
 
@@ -124,6 +131,23 @@ Mailbox operational priority (suggested):
 - high: blocking failures, urgent coordination, escalation
 - medium: member card/discovery broadcasts
 - low: routine assignment updates
+
+### 5.1) MCP-First Enforcement Profile
+
+Team collaboration should run with mailbox MCP as the primary communication path:
+
+- Team role sessions must prioritize mailbox MCP tools over shell-based message paths.
+- Startup should fail-fast when Team role is enabled but mailbox MCP capability is missing.
+- Startup should also fail-fast when required mailbox tools are incomplete (`actor_inbox`, `actor_ack`, `actor_send`).
+- Turn loop should stay deterministic:
+  - pull inbox -> process -> ack -> send/report -> next pull.
+- Team prompt dynamic tail should include an explicit `Allowed actions` block to deny bypass paths.
+- Enforcement failures should be visible as structured Team run events and debug-capability snapshots.
+- Role default skills remain minimal; deliberation is opt-in by profile.
+
+Detailed enforcement design:
+
+- `docs/features/team-mcp-enforcement.md`
 
 ### 6) Context And Memory Layering
 
@@ -232,6 +256,7 @@ Kind projections:
 - Keep this playbook aligned with:
   - `docs/features/agents-teams.md`
   - `docs/features/actor-foundation.md`
+  - `docs/features/team-mcp-enforcement.md`
   - `docs/features/backend-runtime-logic.md`
 - Prefer small, explicit delegation payloads over broad open-ended assignments.
 - Keep mailbox/event stream observability enabled in debug workflows.
