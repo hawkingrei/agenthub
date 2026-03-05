@@ -7,7 +7,7 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use super::*;
-use crate::infer_actor_identity_kind;
+use crate::{ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, infer_actor_identity_kind};
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -33,7 +33,7 @@ struct StoreState {
     next_message_id: i64,
     messages: Vec<StoredMessage>,
     events: Vec<EventRecord>,
-    idempotency_index: HashMap<(String, String, String), i64>,
+    idempotency_index: HashMap<(String, String, String, String), i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +101,7 @@ impl ActorMailboxStore for TestStore {
             let dedupe_key = (
                 cmd.run_id.clone(),
                 cmd.from_actor_id.clone(),
+                cmd.from_peer_id.clone(),
                 idempotency_key.to_string(),
             );
             if let Some(existing_id) = state.idempotency_index.get(&dedupe_key).copied() {
@@ -123,8 +124,10 @@ impl ActorMailboxStore for TestStore {
             message_id: state.next_message_id,
             run_id: cmd.run_id.clone(),
             from_actor_id: cmd.from_actor_id.clone(),
+            from_peer_id: cmd.from_peer_id.clone(),
             from_actor_kind: infer_actor_identity_kind(cmd.from_actor_id.as_str()),
             to_actor_id: cmd.to_actor_id.clone(),
+            to_peer_id: cmd.to_peer_id.clone(),
             to_actor_kind: infer_actor_identity_kind(cmd.to_actor_id.as_str()),
             channel: cmd.channel.clone(),
             transport: cmd.transport.clone(),
@@ -139,6 +142,7 @@ impl ActorMailboxStore for TestStore {
                 (
                     cmd.run_id.clone(),
                     cmd.from_actor_id.clone(),
+                    cmd.from_peer_id.clone(),
                     idempotency_key.to_string(),
                 ),
                 message.message_id,
@@ -167,6 +171,7 @@ impl ActorMailboxStore for TestStore {
             .iter()
             .filter(|entry| entry.record.run_id == query.run_id)
             .filter(|entry| entry.record.to_actor_id == query.actor_id)
+            .filter(|entry| entry.record.to_peer_id == query.peer_id)
             .filter(|entry| {
                 query.include_delivered || entry.record.status == ActorMessageStatus::Pending
             })
@@ -195,6 +200,7 @@ impl ActorMailboxStore for TestStore {
                 entry.record.run_id == cmd.run_id
                     && entry.record.message_id == cmd.message_id
                     && entry.record.to_actor_id == cmd.actor_id
+                    && entry.record.to_peer_id == cmd.peer_id
             })
             .ok_or_else(|| TestStoreError("message not found".to_string()))?;
 
@@ -337,7 +343,9 @@ fn remote_message_command(
     SendActorMessageCommand {
         run_id: run_id.to_string(),
         from_actor_id: "planner".to_string(),
+        from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
         to_actor_id: to_actor_id.to_string(),
+        to_peer_id: ACTOR_NODE_PEER_ID.to_string(),
         channel: "coordination".to_string(),
         transport: ActorMessageTransport::Remote,
         route: Some(json!({"endpoint":"mock://relay"})),
@@ -356,7 +364,9 @@ async fn send_and_ack_emit_expected_events() {
         .send(SendActorMessageCommand {
             run_id: "run-send-ack".to_string(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             channel: "coordination".to_string(),
             transport: ActorMessageTransport::Local,
             route: None,
@@ -372,6 +382,7 @@ async fn send_and_ack_emit_expected_events() {
         .ack(AckActorMessageCommand {
             run_id: message.run_id.clone(),
             actor_id: message.to_actor_id.clone(),
+            peer_id: message.to_peer_id.clone(),
             message_id: message.message_id,
             delivered_at: 20,
         })
@@ -384,6 +395,7 @@ async fn send_and_ack_emit_expected_events() {
         .ack(AckActorMessageCommand {
             run_id: message.run_id.clone(),
             actor_id: message.to_actor_id.clone(),
+            peer_id: message.to_peer_id.clone(),
             message_id: message.message_id,
             delivered_at: 30,
         })
@@ -396,6 +408,7 @@ async fn send_and_ack_emit_expected_events() {
         .list_inbox(ListActorInboxQuery {
             run_id: message.run_id.clone(),
             actor_id: message.to_actor_id.clone(),
+            peer_id: message.to_peer_id.clone(),
             limit: 100,
             after_id: None,
             include_delivered: false,
@@ -408,6 +421,7 @@ async fn send_and_ack_emit_expected_events() {
         .list_inbox(ListActorInboxQuery {
             run_id: message.run_id.clone(),
             actor_id: message.to_actor_id.clone(),
+            peer_id: message.to_peer_id.clone(),
             limit: 100,
             after_id: None,
             include_delivered: true,
@@ -442,7 +456,9 @@ async fn send_with_same_idempotency_key_reuses_message_and_event() {
         .send(SendActorMessageCommand {
             run_id: "run-send-idempotent".to_string(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             channel: "coordination".to_string(),
             transport: ActorMessageTransport::Local,
             route: None,
@@ -456,7 +472,9 @@ async fn send_with_same_idempotency_key_reuses_message_and_event() {
         .send(SendActorMessageCommand {
             run_id: "run-send-idempotent".to_string(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             channel: "coordination".to_string(),
             transport: ActorMessageTransport::Local,
             route: None,

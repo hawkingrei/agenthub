@@ -72,12 +72,26 @@ pub(crate) fn normalize_actor_context(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_ascii_lowercase());
+    let mut member_skills = Vec::with_capacity(context.member_skills.len());
+    for skill in context.member_skills {
+        let normalized = skill.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        if !member_skills
+            .iter()
+            .any(|item: &String| item.eq_ignore_ascii_case(normalized))
+        {
+            member_skills.push(normalized.to_string());
+        }
+    }
     Ok(AcpActorSkillContext {
         run_id: context.run_id.trim().to_string(),
         actor_id: context.actor_id.trim().to_string(),
         default_channel,
         actor_cli_path,
         member_role,
+        member_skills,
         continuity: context.continuity,
     })
 }

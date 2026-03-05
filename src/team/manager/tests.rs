@@ -4,13 +4,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
 use super::{TeamManager, TeamRunResumeError};
+use crate::db::AgentEventDbRouter;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamMainTaskStatus, TeamRunStatus, TeamStepStatus,
+    TeamTaskStatus, TeamRunStatus, TeamStepStatus,
 };
 use agenthub_team_actor::{
-    ActorAckRequest, ActorIdentityKind, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
-    ActorServiceErrorCode,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind,
+    ActorInboxRequest, ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
 };
 use axum::body::Bytes;
 use axum::extract::State;
@@ -113,7 +114,7 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
-        CREATE TABLE team_main_tasks (
+        CREATE TABLE team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
             title TEXT NOT NULL,
@@ -128,20 +129,20 @@ async fn setup_test_db() -> SqlitePool {
     )
     .execute(&pool)
     .await
-    .expect("create team_main_tasks");
+    .expect("create team_tasks");
 
     sqlx::query(
         r#"
         CREATE TABLE team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL UNIQUE,
+            task_id TEXT NOT NULL UNIQUE,
             mode TEXT NOT NULL,
             topic TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY(team_id) REFERENCES team_definitions(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -154,14 +155,14 @@ async fn setup_test_db() -> SqlitePool {
         CREATE TABLE team_conversation_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             conversation_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -175,7 +176,9 @@ async fn setup_test_db() -> SqlitePool {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
+            from_peer_id TEXT NOT NULL DEFAULT 'main',
             to_actor_id TEXT NOT NULL,
+            to_peer_id TEXT NOT NULL DEFAULT 'main',
             channel TEXT NOT NULL,
             transport TEXT NOT NULL,
             route_json TEXT,
@@ -302,7 +305,7 @@ async fn setup_test_db() -> SqlitePool {
     sqlx::query(
         r#"
         CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
-        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        ON team_actor_messages(run_id, from_actor_id, from_peer_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
         "#,
     )
@@ -424,21 +427,21 @@ async fn create_team_and_run_records_submission_event() {
 }
 
 #[tokio::test]
-async fn main_task_and_conversation_messages_are_persisted_with_redaction() {
+async fn task_and_conversation_messages_are_persisted_with_redaction() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
 
     let team = manager
         .create_team(TeamDefinitionConfig {
-            name: "main-task-team".to_string(),
-            description: Some("team for main task persistence".to_string()),
+            name: "task-team".to_string(),
+            description: Some("team for task persistence".to_string()),
             spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
         })
         .await
         .expect("create team");
 
     let (task, conversation) = manager
-        .create_main_task(
+        .create_task(
             &team.id,
             "Investigate rollout plan",
             "user",
@@ -451,15 +454,15 @@ async fn main_task_and_conversation_messages_are_persisted_with_redaction() {
             Some("kickoff"),
         )
         .await
-        .expect("create main task");
+        .expect("create task");
     assert_eq!(task.team_id, team.id);
-    assert_eq!(task.status, TeamMainTaskStatus::Open);
-    assert_eq!(conversation.main_task_id, task.id);
+    assert_eq!(task.status, TeamTaskStatus::Open);
+    assert_eq!(conversation.task_id, task.id);
     assert_eq!(task.context["token"], json!("[redacted]"));
     assert_eq!(task.context["nested"]["api_key"], json!("[redacted]"));
 
     let message = manager
-        .append_main_task_conversation_message(
+        .append_task_conversation_message(
             &task.id,
             "leader",
             Some("worker-1"),
@@ -472,19 +475,19 @@ async fn main_task_and_conversation_messages_are_persisted_with_redaction() {
         )
         .await
         .expect("append message");
-    assert_eq!(message.main_task_id, task.id);
+    assert_eq!(message.task_id, task.id);
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["secret"], json!("[redacted]"));
 
     let listed = manager
-        .list_main_tasks(&team.id, 20)
+        .list_tasks(&team.id, 20)
         .await
-        .expect("list main tasks");
+        .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, task.id);
 
     let messages = manager
-        .list_main_task_conversation_messages(&task.id, 50, None)
+        .list_task_conversation_messages(&task.id, 50, None)
         .await
         .expect("list conversation messages");
     assert_eq!(messages.len(), 1);
@@ -892,7 +895,11 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
 #[tokio::test]
 async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let event_dbs = AgentEventDbRouter::new(std::env::temp_dir().join(format!(
+        "agenthub-team-flush-eventdb-{}",
+        uuid::Uuid::new_v4()
+    )));
+    let manager = TeamManager::new_with_event_dbs(db.clone(), event_dbs.clone());
 
     let unique_suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -950,34 +957,36 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         .await
         .expect("start step");
 
+    let event_db = event_dbs
+        .pool_for_agent("planner")
+        .await
+        .expect("open planner event db");
     sqlx::query(
         r#"
-        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
     )
-    .bind("planner")
     .bind("session-flush-1")
     .bind("1")
     .bind(100_i64)
     .bind("acp")
     .bind(r#"{"type":"agent_message","content":"first signal","api_key":"secret"}"#)
-    .execute(&db)
+    .execute(&event_db)
     .await
     .expect("insert first agent event");
     sqlx::query(
         r#"
-        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
     )
-    .bind("planner")
     .bind("session-flush-1")
     .bind("2")
     .bind(101_i64)
     .bind("system")
     .bind("plain text event")
-    .execute(&db)
+    .execute(&event_db)
     .await
     .expect("insert second agent event");
 
@@ -1297,7 +1306,9 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1316,7 +1327,9 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1419,7 +1432,9 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1432,7 +1447,9 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1445,7 +1462,9 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1529,7 +1548,9 @@ async fn actor_mailbox_service_returns_contract_responses() {
         .actor_send(ActorSendRequest {
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
             route: None,
@@ -1545,7 +1566,9 @@ async fn actor_mailbox_service_returns_contract_responses() {
         .actor_send(ActorSendRequest {
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
             route: None,
@@ -1595,7 +1618,9 @@ async fn actor_mailbox_service_validates_required_fields() {
         .actor_send(ActorSendRequest {
             run_id: " ".to_string(),
             from_actor_id: "planner".to_string(),
+            from_peer_id: None,
             to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
             channel: None,
             transport: Some(TeamActorMessageTransport::Local),
             route: None,
@@ -1636,7 +1661,9 @@ async fn actor_message_send_is_idempotent_by_key() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1649,7 +1676,9 @@ async fn actor_message_send_is_idempotent_by_key() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1715,7 +1744,9 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1728,7 +1759,9 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
@@ -1783,7 +1816,9 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "remote-reviewer",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!({
@@ -1819,13 +1854,21 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
     assert_eq!(relay_result.retried, 0);
     assert_eq!(relay_result.dead_lettered, 0);
 
-    let relayed = manager
-        .list_actor_inbox(&run.id, "remote-reviewer", 100, None, true)
-        .await
-        .expect("list inbox with delivered");
-    assert_eq!(relayed.len(), 1);
-    assert_eq!(relayed[0].status, TeamActorMessageStatus::Delivered);
-    assert!(relayed[0].delivered_at.is_some());
+    let relayed_row = sqlx::query(
+        r#"
+        SELECT status, delivered_at
+        FROM team_actor_messages
+        WHERE id = ?1
+        "#,
+    )
+    .bind(sent.message_id)
+    .fetch_one(&db)
+    .await
+    .expect("fetch relayed message row");
+    let relayed_status: String = relayed_row.get("status");
+    let relayed_at: Option<i64> = relayed_row.try_get("delivered_at").ok();
+    assert_eq!(relayed_status, "delivered");
+    assert!(relayed_at.is_some());
 
     let events = manager
         .list_run_events(&run.id, 100, None)
@@ -1903,7 +1946,9 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "remote-retry",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!({
@@ -1924,7 +1969,9 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "remote-dead",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!({
@@ -2057,7 +2104,9 @@ async fn remote_actor_messages_relay_rejects_invalid_header_values() {
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
             from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "remote-reviewer",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!({

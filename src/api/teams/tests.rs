@@ -26,18 +26,18 @@ use crate::state::AppState;
 use crate::team::TeamManager;
 
 use super::{
-    AckTeamRunMessageRequest, CompileTeamMainTaskRunPreviewRequest, CompleteTeamRunStepRequest,
-    CreateTeamMainTaskRequest, CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest,
-    FlushTeamRunContextRequest, ListTeamMainTaskMessagesQuery, ListTeamMainTasksQuery,
+    AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
+    CreateTeamTaskRequest, CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest,
+    FlushTeamRunContextRequest, ListTeamTaskMessagesQuery, ListTeamTasksQuery,
     ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery, ResumeTeamRunStepRequest,
-    SendTeamMainTaskMessageRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
+    SendTeamTaskMessageRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
-    cancel_team_run, compile_team_main_task_run_preview, complete_team_run_step, create_team,
-    create_team_main_task, create_team_run, delete_team, fail_team_run_step,
-    flush_team_run_context, get_team, get_team_main_task, get_team_run, get_team_run_snapshot,
-    list_team_main_task_messages, list_team_main_tasks, list_team_run_events, list_team_run_inbox,
+    cancel_team_run, compile_team_task_run_preview, complete_team_run_step, create_team,
+    create_team_task, create_team_run, delete_team, fail_team_run_step,
+    flush_team_run_context, get_team, get_team_task, get_team_run, get_team_run_snapshot,
+    list_team_task_messages, list_team_tasks, list_team_run_events, list_team_run_inbox,
     list_team_run_steps, list_team_runs, list_teams, restart_team_run, resume_team_run,
-    resume_team_run_step, send_team_main_task_message, send_team_run_message,
+    resume_team_run_step, send_team_task_message, send_team_run_message,
     set_team_run_step_input_required, start_team_run_step, submit_team_run_step,
 };
 
@@ -87,8 +87,13 @@ async fn build_test_state_with_db_source(
             .expect("create auth"),
     );
     let permissions = Arc::new(AcpPermissionService::new(db.clone()));
+    let event_dbs = crate::db::AgentEventDbRouter::new(
+        std::env::temp_dir().join(format!("agenthub-api-teams-eventdb-{}", Uuid::new_v4())),
+    );
     let agents = Arc::new(AgentManager::new(
         db.clone(),
+        event_dbs.clone(),
+        None,
         push.clone(),
         Vec::new(),
         "agenthub-codex-acp".to_string(),
@@ -96,7 +101,7 @@ async fn build_test_state_with_db_source(
         permissions.clone(),
         auth.clone(),
     ));
-    let teams = Arc::new(TeamManager::new(db.clone()));
+    let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
     AppState {
         db,
         agents,
@@ -357,7 +362,7 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
-        CREATE TABLE team_main_tasks (
+        CREATE TABLE team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
             title TEXT NOT NULL,
@@ -372,20 +377,20 @@ async fn init_test_schema(db: &SqlitePool) {
     )
     .execute(db)
     .await
-    .expect("create team_main_tasks");
+    .expect("create team_tasks");
 
     sqlx::query(
         r#"
         CREATE TABLE team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL UNIQUE,
+            task_id TEXT NOT NULL UNIQUE,
             mode TEXT NOT NULL,
             topic TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY(team_id) REFERENCES team_definitions(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -398,14 +403,14 @@ async fn init_test_schema(db: &SqlitePool) {
         CREATE TABLE team_conversation_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             conversation_id TEXT NOT NULL,
-            main_task_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
-            FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -419,7 +424,9 @@ async fn init_test_schema(db: &SqlitePool) {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
             from_actor_id TEXT NOT NULL,
+            from_peer_id TEXT NOT NULL DEFAULT 'main',
             to_actor_id TEXT NOT NULL,
+            to_peer_id TEXT NOT NULL DEFAULT 'main',
             channel TEXT NOT NULL,
             transport TEXT NOT NULL,
             route_json TEXT,
@@ -443,7 +450,7 @@ async fn init_test_schema(db: &SqlitePool) {
     sqlx::query(
         r#"
         CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
-        ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+        ON team_actor_messages(run_id, from_actor_id, from_peer_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
         "#,
     )
@@ -614,6 +621,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         default_channel: "coordination".to_string(),
         actor_cli_path: actor_cli_path.clone(),
         member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     };
 

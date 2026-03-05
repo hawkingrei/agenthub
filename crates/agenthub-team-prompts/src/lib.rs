@@ -34,7 +34,7 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "1. Before mailbox work, scan TODO sources (`TODO.md`, `.cache/context/todo.md`).\n",
     "2. If unfinished planning tasks exist, resume them and publish a concise continuity update.\n",
     "3. If no planning tasks exist, treat as zero-start and align mission/scope with human actor.\n",
-    "4. Refresh `AGENTS.md` sections: Run Objective, Current Phase, Team Formation, Task Analysis, Role Assignment, Communication Log, Consensus Decisions, Result Integration, Open Risks, Next Checkpoint.\n",
+    "4. Refresh `AGENTS.md` sections: Agent Profile, Objective, Active Assignment, Active Skills, Role Skill Profile, Routing Contract, TODO And Context Pointers, Progress Log.\n",
     "Workflow:\n",
     "1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.\n",
     "2. Delegate concrete, testable tasks to workers via actor mailbox.\n",

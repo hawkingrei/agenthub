@@ -38,7 +38,7 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "1. Before mailbox work, scan TODO sources (`TODO.md`, `.cache/context/todo.md`).",
   "2. If unfinished planning tasks exist, resume them and publish a concise continuity update.",
   "3. If no planning tasks exist, treat as zero-start and align mission/scope with human actor.",
-  "4. Refresh `AGENTS.md` sections: Run Objective, Current Phase, Team Formation, Task Analysis, Role Assignment, Communication Log, Consensus Decisions, Result Integration, Open Risks, Next Checkpoint.",
+  "4. Refresh `AGENTS.md` sections: Agent Profile, Objective, Active Assignment, Active Skills, Role Skill Profile, Routing Contract, TODO And Context Pointers, Progress Log.",
   "Workflow:",
   "1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.",
   "2. Delegate concrete, testable tasks to workers via actor mailbox.",
@@ -89,13 +89,11 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
 export const DEFAULT_TEAM_LEADER_SKILLS = [
   "agenthub-actor-runtime",
   "team-leader-orchestrator",
-  "team-deliberation-rules",
 ];
 
 export const DEFAULT_TEAM_WORKER_SKILLS = [
   "agenthub-actor-runtime",
   "team-worker-executor",
-  "team-deliberation-rules",
 ];
 
 export const REQUIRED_TEAM_LEADER_SKILLS = [
@@ -109,9 +107,14 @@ export const REQUIRED_TEAM_WORKER_SKILLS = [
 ];
 
 const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];
+const OPTIONAL_TEAM_SKILLS = ["team-deliberation-rules"];
 
 export const TEAM_SKILL_OPTIONS = [
-  ...new Set([...DEFAULT_TEAM_LEADER_SKILLS, ...DEFAULT_TEAM_WORKER_SKILLS]),
+  ...new Set([
+    ...DEFAULT_TEAM_LEADER_SKILLS,
+    ...DEFAULT_TEAM_WORKER_SKILLS,
+    ...OPTIONAL_TEAM_SKILLS,
+  ]),
 ];
 
 export type WorkerDraft = {

@@ -1,7 +1,8 @@
 use agenthub_team_actor::{
-    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorMessageTransport, ActorSendRequest, ActorServiceError,
-    build_default_actor_message_idempotency_key, parse_actor_transport,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
+    ActorMailboxService, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
+    ActorServiceError, actor_inbox_with_auto_ack, build_default_actor_message_idempotency_key,
+    parse_actor_transport,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -302,7 +303,9 @@ where
 struct ResolveIdempotencyKeyInput<'a> {
     run_id: &'a str,
     from_actor_id: &'a str,
+    from_peer_id: &'a str,
     to_actor_id: &'a str,
+    to_peer_id: &'a str,
     channel: &'a str,
     transport: &'a ActorMessageTransport,
     route: Option<&'a Value>,
@@ -337,7 +340,9 @@ fn resolve_idempotency_key(
         build_default_actor_message_idempotency_key(
             input.run_id,
             input.from_actor_id,
+            input.from_peer_id,
             input.to_actor_id,
+            input.to_peer_id,
             input.channel,
             input.transport.as_str(),
             input.route,
@@ -364,15 +369,17 @@ async fn tool_actor_inbox<S: ActorMailboxService>(
     } else {
         Some(vec![ActorMessageStatus::Pending])
     };
-    let response = service
-        .actor_inbox(ActorInboxRequest {
+    let response = actor_inbox_with_auto_ack(
+        service,
+        ActorInboxRequest {
             run_id: context.run_id.clone(),
             actor_id: context.actor_id.clone(),
             cursor: args.cursor,
             limit: Some(limit),
             states,
-        })
-        .await;
+        },
+    )
+    .await;
     match response {
         Ok(response) => tool_result_success(json!({
             "messages": response.messages,
@@ -442,10 +449,17 @@ async fn tool_actor_send<S: ActorMailboxService>(
     let channel =
         take_optional(args.channel).unwrap_or_else(|| context.default_channel.to_string());
     let allow_duplicate = args.allow_duplicate.unwrap_or(false);
+    let to_peer_id = if transport == ActorMessageTransport::Remote {
+        ACTOR_NODE_PEER_ID
+    } else {
+        ACTOR_MAIN_PEER_ID
+    };
     let idempotency_key = match resolve_idempotency_key(ResolveIdempotencyKeyInput {
         run_id: &context.run_id,
         from_actor_id: &context.actor_id,
+        from_peer_id: ACTOR_MAIN_PEER_ID,
         to_actor_id: &to_actor_id,
+        to_peer_id,
         channel: &channel,
         transport: &transport,
         route: route.as_ref(),
@@ -460,7 +474,9 @@ async fn tool_actor_send<S: ActorMailboxService>(
         .actor_send(ActorSendRequest {
             run_id: context.run_id.clone(),
             from_actor_id: context.actor_id.clone(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
             to_actor_id,
+            to_peer_id: Some(to_peer_id.to_string()),
             channel: Some(channel),
             transport: Some(transport),
             route,
@@ -779,7 +795,9 @@ mod tests {
         let err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
             route: None,
@@ -796,7 +814,9 @@ mod tests {
         let key = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
             route: None,
@@ -813,7 +833,9 @@ mod tests {
         let blank_err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
             route: None,
@@ -827,7 +849,9 @@ mod tests {
         let long_err = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
             route: None,
@@ -846,7 +870,9 @@ mod tests {
         let first = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Remote,
             route: Some(&route),
@@ -860,7 +886,9 @@ mod tests {
         let second = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",
             from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
+            to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Remote,
             route: Some(&route),
@@ -1005,7 +1033,11 @@ mod tests {
             })),
         )
         .await;
-        assert_eq!(send_resp["result"]["isError"], false);
+        assert_eq!(
+            send_resp["result"]["isError"],
+            false,
+            "actor_send failed response: {send_resp}"
+        );
         let message_id = send_resp["result"]["structuredContent"]["message_id"]
             .as_i64()
             .expect("message id");
@@ -1046,7 +1078,7 @@ mod tests {
             .expect("inbox messages");
         assert_eq!(inbox_messages.len(), 1);
         assert_eq!(inbox_messages[0]["message_id"].as_i64(), Some(message_id));
-        assert_eq!(inbox_messages[0]["status"], "pending");
+        assert_eq!(inbox_messages[0]["status"], "delivered");
 
         let ack_resp = handle_jsonrpc_request(
             &service,

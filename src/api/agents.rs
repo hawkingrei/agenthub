@@ -674,6 +674,7 @@ fn parse_start_actor_runtime_context(
         member_role: actor_runtime
             .member_role
             .map(|value| value.trim().to_string()),
+        member_skills: Vec::new(),
         continuity: None,
     }))
 }
@@ -1165,8 +1166,13 @@ mod tests {
                 .expect("create auth service"),
         );
         let permissions = Arc::new(AcpPermissionService::new(db.clone()));
+        let event_dbs = crate::db::AgentEventDbRouter::new(
+            std::env::temp_dir().join(format!("agenthub-api-agents-eventdb-{}", Uuid::new_v4())),
+        );
         let agents = Arc::new(AgentManager::new(
             db.clone(),
+            event_dbs.clone(),
+            None,
             push.clone(),
             Vec::new(),
             "agenthub-codex-acp".to_string(),
@@ -1174,7 +1180,7 @@ mod tests {
             permissions.clone(),
             auth.clone(),
         ));
-        let teams = Arc::new(TeamManager::new(db.clone()));
+        let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
         AppState {
             db,
             agents,

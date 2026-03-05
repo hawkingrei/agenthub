@@ -324,18 +324,48 @@ impl TeamOrchestratorWorker {
         let run = self.teams.get_run(run_id).await?;
         let continuity_mode = parse_run_continuity_mode(&run.input);
         let continuity_max_chars = parse_run_continuity_max_chars(&run.input);
-        let member_role = self
+        let member_role = match self
             .resolve_member_role_for_step(&run.team_id, &step.member_id)
             .await
-            .unwrap_or_else(|err| {
-                tracing::warn!(
-                    run_id = %run_id,
-                    member_id = %step.member_id,
-                    "team orchestrator failed to resolve member role: {}",
-                    err
+        {
+            Ok(role) => role,
+            Err(err) => {
+                let err_text = format!(
+                    "orchestrator failed to resolve member role '{}' for step '{}': {}",
+                    step.member_id, step.step_key, err
                 );
-                None
-            });
+                if let Err(fail_err) = self.teams.fail_step(&step.id, &err_text).await {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        step_id = %step.id,
+                        "team orchestrator failed to mark step as failed after role resolution failure: {}",
+                        fail_err
+                    );
+                }
+                return Err(err.context(err_text));
+            }
+        };
+        let member_skills = match self
+            .resolve_member_skills_for_step(&run.team_id, &step.member_id)
+            .await
+        {
+            Ok(skills) => skills,
+            Err(err) => {
+                let err_text = format!(
+                    "orchestrator failed to resolve member skills '{}' for step '{}': {}",
+                    step.member_id, step.step_key, err
+                );
+                if let Err(fail_err) = self.teams.fail_step(&step.id, &err_text).await {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        step_id = %step.id,
+                        "team orchestrator failed to mark step as failed after skills resolution failure: {}",
+                        fail_err
+                    );
+                }
+                return Err(err.context(err_text));
+            }
+        };
         let continuity = if continuity_mode == "reset" {
             self.emit_continuity_event(
                 run_id,
@@ -424,7 +454,8 @@ impl TeamOrchestratorWorker {
             actor_id: step.member_id.clone(),
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
             actor_cli_path: default_actor_cli_path()?,
-            member_role,
+            member_role: Some(member_role),
+            member_skills,
             continuity,
         };
         let start_result = self
@@ -511,9 +542,31 @@ impl TeamOrchestratorWorker {
         &self,
         team_id: &str,
         member_id: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<String> {
         let team = self.teams.get_team(team_id).await?;
-        Ok(parse_member_role(&team.spec, member_id))
+        if let Some(role) = parse_member_role(&team.spec, member_id)
+            && is_supported_member_role(role.as_str())
+        {
+            return Ok(role);
+        }
+
+        let inferred_role = infer_member_role(&team.spec, member_id)?;
+        tracing::warn!(
+            team_id = %team_id,
+            member_id = %member_id,
+            inferred_role = %inferred_role,
+            "team orchestrator member role missing or unsupported, inferred fallback role"
+        );
+        Ok(inferred_role)
+    }
+
+    async fn resolve_member_skills_for_step(
+        &self,
+        team_id: &str,
+        member_id: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        let team = self.teams.get_team(team_id).await?;
+        Ok(parse_member_skills(&team.spec, member_id))
     }
 }
 
@@ -678,6 +731,141 @@ fn parse_member_role(spec: &Value, member_id: &str) -> Option<String> {
         })
 }
 
+fn parse_member_skills(spec: &Value, member_id: &str) -> Vec<String> {
+    let normalized_member_id = member_id.trim();
+    if normalized_member_id.is_empty() {
+        return Vec::new();
+    }
+    let Some(member_obj) = spec
+        .as_object()
+        .and_then(|spec_obj| spec_obj.get("members"))
+        .and_then(Value::as_array)
+        .and_then(|members| {
+            members.iter().find_map(|member| {
+                let member = member.as_object()?;
+                let id = member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())?;
+                if id != normalized_member_id {
+                    return None;
+                }
+                Some(member)
+            })
+        })
+    else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    let Some(skills) = member_obj.get("skills").and_then(Value::as_array) else {
+        return out;
+    };
+    for skill in skills {
+        let Some(raw) = skill.as_str() else {
+            continue;
+        };
+        let normalized = raw.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        if !out
+            .iter()
+            .any(|item: &String| item.eq_ignore_ascii_case(normalized))
+        {
+            out.push(normalized.to_string());
+        }
+    }
+    out
+}
+
+fn is_supported_member_role(role: &str) -> bool {
+    matches!(role, "leader" | "worker")
+}
+
+fn infer_member_role(spec: &Value, member_id: &str) -> anyhow::Result<String> {
+    let normalized_member_id = member_id.trim();
+    if normalized_member_id.is_empty() {
+        return Err(anyhow::anyhow!(
+            "step member_id is required to resolve team member role"
+        ));
+    }
+    let spec_obj = spec
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("team spec must be an object"))?;
+    let members = spec_obj
+        .get("members")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("spec.members must be an array"))?;
+    if members.is_empty() {
+        return Err(anyhow::anyhow!("spec.members must not be empty"));
+    }
+
+    let mut member_ids = HashSet::with_capacity(members.len());
+    let mut first_member_id: Option<String> = None;
+    let mut leader_by_role: Option<String> = None;
+
+    for member in members {
+        let member_obj = member
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("spec.members entries must be objects"))?;
+        let id = member_obj
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("spec.members[].member_id is required"))?
+            .to_string();
+        if first_member_id.is_none() {
+            first_member_id = Some(id.clone());
+        }
+        if leader_by_role.is_none() {
+            let role = member_obj
+                .get("role")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase);
+            if role.as_deref() == Some("leader") {
+                leader_by_role = Some(id.clone());
+            }
+        }
+        member_ids.insert(id);
+    }
+
+    if !member_ids.contains(normalized_member_id) {
+        return Err(anyhow::anyhow!(
+            "spec.members does not contain member_id '{}'",
+            normalized_member_id
+        ));
+    }
+
+    let explicit_leader = spec_obj
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| member_ids.contains(*value))
+        .map(str::to_string);
+    let leader_from_entrypoint = spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| member_ids.contains(*value))
+        .map(str::to_string);
+    let leader_member_id = explicit_leader
+        .or(leader_by_role)
+        .or(leader_from_entrypoint)
+        .or(first_member_id)
+        .ok_or_else(|| anyhow::anyhow!("unable to infer team leader member_id from team spec"))?;
+
+    if leader_member_id == normalized_member_id {
+        Ok("leader".to_string())
+    } else {
+        Ok("worker".to_string())
+    }
+}
+
 fn ensure_acyclic_step_specs(step_specs: &[OrchestratorStepSpec]) -> anyhow::Result<()> {
     let by_key: HashMap<&str, &OrchestratorStepSpec> = step_specs
         .iter()
@@ -741,6 +929,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
+    use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
     use async_trait::async_trait;
     use serde_json::json;
     use sqlx::SqlitePool;
@@ -748,7 +937,8 @@ mod tests {
 
     use super::{
         TeamMemberAgentStarter, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
-        is_step_ready, is_terminal_failure_session_status, parse_member_role, parse_step_specs,
+        infer_member_role, is_step_ready, is_terminal_failure_session_status, parse_member_role,
+        parse_step_specs,
     };
     use crate::acp::AcpActorSkillContext;
     use crate::team::{
@@ -893,6 +1083,68 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn infer_member_role_defaults_to_leader_for_entrypoint_member() {
+        let inferred = infer_member_role(
+            &json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"}
+                ]
+            }),
+            "planner",
+        )
+        .expect("infer planner role");
+        assert_eq!(inferred, "leader");
+
+        let inferred_worker = infer_member_role(
+            &json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"}
+                ]
+            }),
+            "reviewer",
+        )
+        .expect("infer reviewer role");
+        assert_eq!(inferred_worker, "worker");
+    }
+
+    #[test]
+    fn infer_member_role_prefers_leader_member_id_override() {
+        let inferred = infer_member_role(
+            &json!({
+                "entrypoint":"planner",
+                "leader_member_id":"lead-2",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"lead-2"},
+                    {"member_id":"worker-1"}
+                ]
+            }),
+            "lead-2",
+        )
+        .expect("infer leader role");
+        assert_eq!(inferred, "leader");
+
+        let inferred_worker = infer_member_role(
+            &json!({
+                "entrypoint":"planner",
+                "leader_member_id":"lead-2",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"lead-2"},
+                    {"member_id":"worker-1"}
+                ]
+            }),
+            "planner",
+        )
+        .expect("infer worker role for non-leader");
+        assert_eq!(inferred_worker, "worker");
     }
 
     #[test]
@@ -1060,7 +1312,9 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT NOT NULL,
                 from_actor_id TEXT NOT NULL,
+                from_peer_id TEXT NOT NULL DEFAULT 'main',
                 to_actor_id TEXT NOT NULL,
+                to_peer_id TEXT NOT NULL DEFAULT 'main',
                 channel TEXT NOT NULL,
                 transport TEXT NOT NULL,
                 route_json TEXT,
@@ -1127,7 +1381,7 @@ mod tests {
         sqlx::query(
             r#"
             CREATE UNIQUE INDEX idx_team_actor_messages_idempotency
-            ON team_actor_messages(run_id, from_actor_id, idempotency_key)
+            ON team_actor_messages(run_id, from_actor_id, from_peer_id, idempotency_key)
             WHERE idempotency_key IS NOT NULL
             "#,
         )
@@ -1240,7 +1494,9 @@ mod tests {
             .send_actor_message(SendActorMessageInput {
                 run_id: &run.id,
                 from_actor_id: "reviewer",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
                 to_actor_id: &calls[0].actor_context.actor_id,
+                to_peer_id: ACTOR_MAIN_PEER_ID,
                 channel: "default",
                 transport: TeamActorMessageTransport::Local,
                 route: None,
@@ -1717,7 +1973,15 @@ mod tests {
         let calls = starter.calls();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].member_id, "planner");
+        assert_eq!(
+            calls[0].actor_context.member_role.as_deref(),
+            Some("leader")
+        );
         assert_eq!(calls[1].member_id, "reviewer");
+        assert_eq!(
+            calls[1].actor_context.member_role.as_deref(),
+            Some("worker")
+        );
     }
 
     #[tokio::test]

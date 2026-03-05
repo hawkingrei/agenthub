@@ -1,4 +1,7 @@
-use agenthub_team_actor::{build_default_actor_message_idempotency_key, parse_actor_transport};
+use agenthub_team_actor::{
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMessageStatus,
+    actor_inbox_with_auto_ack, build_default_actor_message_idempotency_key, parse_actor_transport,
+};
 use serde_json::Value;
 
 use crate::team::{SendActorMessageInput, TeamActorMessageTransport, TeamManager};
@@ -344,6 +347,11 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                     "--allow-duplicate cannot be used with --idempotency-key"
                 ));
             }
+            let to_peer_id = if transport == TeamActorMessageTransport::Remote {
+                ACTOR_NODE_PEER_ID
+            } else {
+                ACTOR_MAIN_PEER_ID
+            };
             let resolved_idempotency_key = if allow_duplicate {
                 None
             } else {
@@ -351,7 +359,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                     build_default_actor_message_idempotency_key(
                         &run_id,
                         &from_actor_id,
+                        ACTOR_MAIN_PEER_ID,
                         &to_actor_id,
+                        to_peer_id,
                         &channel,
                         transport.as_str(),
                         route.as_ref(),
@@ -394,10 +404,31 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
         } => {
             let db = crate::db::init_db().await?;
             let manager = TeamManager::new(db);
-            let messages = manager
-                .list_actor_inbox(&run_id, &actor_id, limit, after_id, include_delivered)
-                .await?;
-            println!("{}", serde_json::to_string(&messages)?);
+            let service = manager.actor_mailbox_service();
+            let states = if include_delivered {
+                Some(vec![
+                    ActorMessageStatus::Pending,
+                    ActorMessageStatus::Delivered,
+                    ActorMessageStatus::DeadLetter,
+                ])
+            } else {
+                Some(vec![ActorMessageStatus::Pending])
+            };
+            let inbox = actor_inbox_with_auto_ack(
+                &service,
+                ActorInboxRequest {
+                    run_id,
+                    actor_id,
+                    cursor: after_id,
+                    limit: Some(limit),
+                    states,
+                },
+            )
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("actor inbox failed ({:?}): {}", err.code, err.message)
+            })?;
+            println!("{}", serde_json::to_string(&inbox.messages)?);
         }
         ActorCommand::Ack {
             run_id,
@@ -427,7 +458,13 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
                 .send_actor_message(SendActorMessageInput {
                     run_id: &run_id,
                     from_actor_id: &from_actor_id,
+                    from_peer_id: ACTOR_MAIN_PEER_ID,
                     to_actor_id: &to_actor_id,
+                    to_peer_id: if transport == TeamActorMessageTransport::Remote {
+                        ACTOR_NODE_PEER_ID
+                    } else {
+                        ACTOR_MAIN_PEER_ID
+                    },
                     channel: &channel,
                     transport,
                     route,
