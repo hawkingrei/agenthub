@@ -11,6 +11,11 @@ import {
   normalizeTeamMemberWorkStatus,
 } from "./team_member_status_strip";
 import {
+  applyMentionAtTag,
+  resolveMentionDraftQuery,
+  type MentionDraftQuery,
+} from "./team/mailbox_helpers";
+import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
@@ -35,6 +40,7 @@ type TeamTaskPanelProps = {
   onRefreshMessages: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   memberLiveStates?: TeamMemberLiveState[];
+  memberIds?: string[];
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -107,11 +113,73 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     onRefreshMessages,
     messages,
     memberLiveStates = [],
+    memberIds = [],
     messagesLoading,
     busy,
     formatTs,
     toPrettyJson,
   } = props;
+  const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
+
+  const mentionableMemberIds = React.useMemo(() => {
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const memberId of [...memberIds, ...memberLiveStates.map((member) => member.member_id)]) {
+      const normalized = memberId.trim();
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      ids.push(normalized);
+    }
+    return ids;
+  }, [memberIds, memberLiveStates]);
+  const mentionCandidates = React.useMemo(() => {
+    if (!activeMention) {
+      return [];
+    }
+    const keyword = activeMention.keyword.trim().toLowerCase();
+    return mentionableMemberIds
+      .filter((memberId) =>
+        keyword.length === 0 ? true : memberId.toLowerCase().startsWith(keyword)
+      )
+      .slice(0, 8);
+  }, [activeMention, mentionableMemberIds]);
+
+  const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
+    if (cursor === null || Number.isNaN(cursor)) {
+      setActiveMention(null);
+      setActiveMentionIndex(0);
+      return;
+    }
+    const next = resolveMentionDraftQuery(draft, cursor);
+    setActiveMention(next);
+    setActiveMentionIndex(0);
+  }, []);
+
+  const applyMentionSelection = React.useCallback(
+    (actorId: string) => {
+      if (!activeMention) {
+        return;
+      }
+      const applied = applyMentionAtTag(messageDraft, activeMention, actorId);
+      onMessageDraftChange(applied.text);
+      setActiveMention(null);
+      setActiveMentionIndex(0);
+      requestAnimationFrame(() => {
+        const textarea = messageTextareaRef.current;
+        if (!textarea) {
+          return;
+        }
+        textarea.focus();
+        textarea.setSelectionRange(applied.cursor, applied.cursor);
+      });
+    },
+    [activeMention, messageDraft, onMessageDraftChange]
+  );
+
   const canSendMessage = messageDraft.trim().length > 0 && busy !== "send-task-message";
   const liveStateByMemberId = React.useMemo(
     () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
@@ -167,7 +235,8 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
 
       <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
         Human messages are stored once in shared team conversation and routed through team mailbox.
-        Use @member_id to target specific agents; without @ the message is broadcast to all members.
+        Type `@` to select a teammate mention. Only selected mentions are routed; plain `@` stays
+        as normal text, and messages without mentions are broadcast to all members.
       </p>
 
       <div className="mt-3 grid gap-2 lg:grid-cols-2">
@@ -261,18 +330,90 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
           tasks later and persist structured conversation there.
         </p>
         <textarea
+          ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
           rows={3}
-          placeholder="Type planning message for the team (e.g. @worker-1 @worker-2 please verify)"
+          placeholder="Type planning message (use @ to pick teammate mention)"
           value={messageDraft}
-          onChange={(event) => onMessageDraftChange(event.target.value)}
+          onChange={(event) => {
+            const nextDraft = event.target.value;
+            onMessageDraftChange(nextDraft);
+            updateMentionQuery(nextDraft, event.target.selectionStart);
+          }}
+          onClick={(event) =>
+            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+          }
+          onKeyUp={(event) =>
+            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+          }
+          onBlur={() => {
+            setTimeout(() => {
+              setActiveMention(null);
+              setActiveMentionIndex(0);
+            }, 0);
+          }}
           onKeyDown={(event) => {
+            if (activeMention && mentionCandidates.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveMentionIndex((prev) => (prev + 1) % mentionCandidates.length);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveMentionIndex((prev) =>
+                  prev === 0 ? mentionCandidates.length - 1 : prev - 1
+                );
+                return;
+              }
+              if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
+                event.preventDefault();
+                const selected = mentionCandidates[activeMentionIndex] ?? mentionCandidates[0];
+                if (selected) {
+                  applyMentionSelection(selected);
+                }
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setActiveMention(null);
+                setActiveMentionIndex(0);
+                return;
+              }
+            }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSendMessage) {
               event.preventDefault();
               void onSendMessage();
             }
           }}
         />
+        {activeMention && mentionCandidates.length > 0 && (
+          <div className="mt-2 rounded-lg border border-ui-border bg-ui-surface shadow-sm">
+            <div className="px-3 py-1 text-xs text-ui-text-muted">
+              Select teammate mention (`@` without selection stays plain text)
+            </div>
+            <div className="max-h-44 overflow-auto py-1">
+              {mentionCandidates.map((memberId, index) => (
+                <button
+                  key={memberId}
+                  type="button"
+                  className={`flex w-full items-center justify-between px-3 py-1 text-left text-sm ${
+                    index === activeMentionIndex
+                      ? "bg-brand-primary/10 text-brand-primary"
+                      : "text-ui-text-primary hover:bg-ui-surface-soft"
+                  }`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    applyMentionSelection(memberId);
+                  }}
+                >
+                  <span className="mono">{memberId}</span>
+                  <span className="text-[11px] text-ui-text-muted">{`<at>${memberId}</at>`}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"

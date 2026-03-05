@@ -2247,23 +2247,24 @@ fn push_member_mention(
 }
 
 fn extract_mentions_from_text(text: &str) -> Vec<String> {
-    let bytes = text.as_bytes();
     let mut out = Vec::new();
     let mut cursor = 0usize;
-    while cursor < bytes.len() {
-        if bytes[cursor] != b'@' {
-            cursor += 1;
-            continue;
+    while let Some(open_index) = text[cursor..].find("<at>") {
+        let mention_start = cursor + open_index + 4;
+        let Some(close_index) = text[mention_start..].find("</at>") else {
+            break;
+        };
+        let mention_end = mention_start + close_index;
+        let candidate = text[mention_start..mention_end].trim();
+        if !candidate.is_empty()
+            && candidate
+                .as_bytes()
+                .iter()
+                .all(|raw| is_valid_mention_char(*raw))
+        {
+            out.push(candidate.to_string());
         }
-        let start = cursor + 1;
-        let mut end = start;
-        while end < bytes.len() && is_valid_mention_char(bytes[end]) {
-            end += 1;
-        }
-        if end > start {
-            out.push(text[start..end].to_string());
-        }
-        cursor = end;
+        cursor = mention_end + 5;
     }
     out
 }

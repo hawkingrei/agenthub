@@ -3666,7 +3666,7 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
             route: Some("group_chat".to_string()),
             payload: json!({
                 "type":"chat_message",
-                "text":"@worker-1 please validate api contract"
+                "text":"<at>worker-1</at> please validate api contract"
             }),
         }),
     )

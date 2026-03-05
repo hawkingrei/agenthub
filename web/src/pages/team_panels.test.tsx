@@ -1177,7 +1177,7 @@ describe("team panels interactions", () => {
     changeInputValue(
       required(
         container.querySelector(
-          'textarea[placeholder="Type planning message for the team (e.g. @worker-1 @worker-2 please verify)"]'
+          'textarea[placeholder="Type planning message (use @ to pick teammate mention)"]'
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),

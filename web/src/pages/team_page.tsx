@@ -63,6 +63,7 @@ import {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
+  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -859,6 +860,10 @@ export function TeamPage(props: TeamPageProps) {
     }
     return memberIds;
   }, [snapshot]);
+  const taskConversationMemberIds = useMemo(
+    () => snapshot?.members.map((member) => member.member_id) ?? [],
+    [snapshot?.members]
+  );
   const chatActors = useMemo(
     () =>
       resolveMailboxChatActors(
@@ -1824,7 +1829,13 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const conversation = resolveConversationForMessage();
       const taskId = conversation?.id;
-      const chatPayload = buildMailboxChatPayload(text);
+      const mentionActorIds = extractMentionedActorIds(
+        text,
+        taskConversationMemberIds
+      );
+      const chatPayload = buildMailboxChatPayload(text, {
+        mention_actor_ids: mentionActorIds,
+      });
       if (taskId) {
         const message = await api.sendTeamTaskMessage(props.token, selectedTeamId, taskId, {
           route: "group_chat",
@@ -1855,6 +1866,7 @@ export function TeamPage(props: TeamPageProps) {
     props.token,
     refreshEvents,
     refreshSnapshot,
+    taskConversationMemberIds,
     selectedTeamId,
     setWarning,
   ]);
@@ -2159,6 +2171,7 @@ export function TeamPage(props: TeamPageProps) {
         onRefreshMessages={refreshTaskMessages}
         messages={taskMessages}
         memberLiveStates={selectedTeamMemberLiveStates}
+        memberIds={taskConversationMemberIds}
         messagesLoading={taskMessagesLoading}
         busy={busy}
         formatTs={formatTs}

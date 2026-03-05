@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TeamActorMessageRecord } from "../../api";
 import {
+  applyMentionAtTag,
   buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxForwardChatPayload,
@@ -9,6 +10,7 @@ import {
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  resolveMentionDraftQuery,
   resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -87,14 +89,38 @@ describe("mailbox helpers", () => {
     expect(buildMailboxConversationKey("leader", "   ")).toBe("");
   });
 
-  it("extracts unique mentions that match known team members", () => {
+  it("extracts unique <at> mentions that match known team members", () => {
     expect(
       extractMentionedActorIds(
-        "please check @worker-1 and @worker-2, cc @worker-1 and @unknown",
+        "please check <at>worker-1</at> and <at>worker-2</at>, cc <at>worker-1</at>",
         ["leader", "worker-1", "worker-2"]
       )
     ).toEqual(["worker-1", "worker-2"]);
     expect(extractMentionedActorIds("plain text", ["worker-1"])).toEqual([]);
+    expect(
+      extractMentionedActorIds(
+        "assign <at>worker-2</at> and mail worker@company.com @worker-1",
+        ["worker-1", "worker-2"]
+      )
+    ).toEqual(["worker-2"]);
+  });
+
+  it("resolves mention query around cursor and avoids email-like cases", () => {
+    expect(resolveMentionDraftQuery("ping @work", 10)).toEqual({
+      start: 5,
+      end: 10,
+      keyword: "work",
+    });
+    expect(resolveMentionDraftQuery("mail user@corp.com", 15)).toBeNull();
+    expect(resolveMentionDraftQuery("plain text", 5)).toBeNull();
+  });
+
+  it("applies selected member as <at> tag mention", () => {
+    const mention = resolveMentionDraftQuery("please check @work soon", 18);
+    expect(mention).not.toBeNull();
+    const applied = applyMentionAtTag("please check @work soon", mention!, "worker-1");
+    expect(applied.text).toBe("please check <at>worker-1</at> soon");
+    expect(applied.cursor).toBe("please check <at>worker-1</at>".length);
   });
 
   it("builds chat payload with normalized mention ids", () => {

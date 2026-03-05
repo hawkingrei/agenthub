@@ -19,7 +19,13 @@ export type TaskMailboxRoutePlan = {
   toActorIds: string[];
 };
 
-const MENTION_TOKEN_REGEX = /@([A-Za-z0-9._:-]+)/g;
+const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
+
+export type MentionDraftQuery = {
+  start: number;
+  end: number;
+  keyword: string;
+};
 
 function normalizeActorIds(actorIds: string[]): string[] {
   const seen = new Set<string>();
@@ -99,7 +105,7 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
   }
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
+  for (const match of text.matchAll(MENTION_TAG_REGEX)) {
     const actorId = (match[1] ?? "").trim();
     if (!actorId || !normalizedMembers.has(actorId) || seen.has(actorId)) {
       continue;
@@ -108,6 +114,54 @@ export function extractMentionedActorIds(text: string, memberIds: string[]): str
     out.push(actorId);
   }
   return out;
+}
+
+export function resolveMentionDraftQuery(
+  draft: string,
+  cursorPosition: number
+): MentionDraftQuery | null {
+  const cursor = Math.max(0, Math.min(cursorPosition, draft.length));
+  const atIndex = draft.lastIndexOf("@", Math.max(0, cursor - 1));
+  if (atIndex < 0 || atIndex >= cursor) {
+    return null;
+  }
+  const previous = atIndex > 0 ? draft.charAt(atIndex - 1) : "";
+  if (/[A-Za-z0-9._%+-]/.test(previous)) {
+    return null;
+  }
+  const keyword = draft.slice(atIndex + 1, cursor);
+  if (keyword.includes("<") || keyword.includes(">") || /\s/.test(keyword)) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._:-]*$/.test(keyword)) {
+    return null;
+  }
+  return {
+    start: atIndex,
+    end: cursor,
+    keyword,
+  };
+}
+
+export function applyMentionAtTag(
+  draft: string,
+  mention: MentionDraftQuery,
+  actorId: string
+): { text: string; cursor: number } {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) {
+    return { text: draft, cursor: mention.end };
+  }
+  const prefix = draft.slice(0, mention.start);
+  const suffix = draft.slice(mention.end);
+  const tag = `<at>${normalizedActorId}</at>`;
+  const needsSpace = suffix.length === 0 || /^\s/.test(suffix) ? "" : " ";
+  const nextText = `${prefix}${tag}${needsSpace}${suffix}`;
+  const nextCursor = prefix.length + tag.length + needsSpace.length;
+  return {
+    text: nextText,
+    cursor: nextCursor,
+  };
 }
 
 export function resolveTaskMailboxRoutePlan(
