@@ -7,8 +7,8 @@ use self::errors::{
     map_submit_step_error, map_team_internal_error,
 };
 use agenthub_team_actor::{
-    ActorAckRequest, ActorIdentityKind, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorSendRequest, ActorServiceErrorCode, ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
+    ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
     actor_inbox_with_auto_ack, parse_actor_transport,
 };
 use agenthub_team_prompts::default_team_prompt_for_role;
@@ -19,7 +19,8 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
+use uuid::Uuid;
 
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
@@ -28,8 +29,8 @@ use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamTaskRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
-    TeamRunRecord, TeamStepRecord, TeamStepStatus,
+    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamStepRecord, TeamStepStatus, TeamTaskRecord,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -155,7 +156,7 @@ pub struct ListTeamTasksQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct SendTeamTaskMessageRequest {
-    pub from_actor_id: String,
+    pub from_actor_id: Option<String>,
     pub to_actor_id: Option<String>,
     pub route: Option<String>,
     pub payload: Value,
@@ -356,10 +357,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team).delete(delete_team))
-        .route(
-            "/:id/tasks",
-            post(create_team_task).get(list_team_tasks),
-        )
+        .route("/:id/tasks", post(create_team_task).get(list_team_tasks))
         .route("/:id/tasks/:task_id", get(get_team_task))
         .route(
             "/:id/tasks/:task_id/messages",
@@ -571,6 +569,12 @@ async fn send_team_task_message(
 ) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    let SendTeamTaskMessageRequest {
+        from_actor_id,
+        to_actor_id,
+        route,
+        payload,
+    } = payload;
     let task = state
         .teams
         .get_task(&task_id)
@@ -580,21 +584,23 @@ async fn send_team_task_message(
         return Err(ApiError::not_found("task not found"));
     }
     let actor_scope = parse_task_actor_scope(&team.spec, &user)?;
-    let from_actor_id = normalize_task_actor_id(
-        normalize_required_field(payload.from_actor_id, "from_actor_id")?.as_str(),
-        "from_actor_id",
-        &user,
-    )?;
-    let to_actor_id = payload
-        .to_actor_id
+    let from_actor_id = from_actor_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|raw| normalize_task_actor_id(raw, "from_actor_id", &user))
+        .transpose()?
+        .unwrap_or_else(|| canonical_user_actor_id(&user));
+    let to_actor_id = to_actor_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|raw| normalize_task_actor_id(raw, "to_actor_id", &user))
         .transpose()?;
-    let route = normalize_conversation_route(payload.route.as_deref())?;
+    let route = normalize_conversation_route(route.as_deref())?;
     validate_task_message_sender(&actor_scope, &from_actor_id)?;
     let resolved_to_actor_id = resolve_task_message_target(&actor_scope, &route, to_actor_id)?;
+    let payload = ensure_task_message_correlation_id(payload);
     let message = state
         .teams
         .append_task_conversation_message(
@@ -602,10 +608,22 @@ async fn send_team_task_message(
             &from_actor_id,
             resolved_to_actor_id.as_deref(),
             &route,
-            payload.payload,
+            payload,
         )
         .await
         .map_err(map_team_internal_error)?;
+    if from_actor_id == actor_scope.user_actor_id
+        && let Err(err) =
+            maybe_forward_task_message_to_mailbox(&state, &team, &actor_scope, &message).await
+    {
+        tracing::warn!(
+            team_id = %team.id,
+            task_id = %task_id,
+            message_id = message.message_id,
+            "task conversation mailbox forwarding failed: {:?}",
+            err
+        );
+    }
     Ok(Json(message))
 }
 
@@ -661,11 +679,7 @@ async fn compile_team_task_run_preview(
         .map_err(|err| map_not_found_error(err, "conversation not found"))?;
     let messages = state
         .teams
-        .list_task_conversation_messages(
-            &task_id,
-            TEAM_TASK_COMPILE_MESSAGE_LIMIT,
-            None,
-        )
+        .list_task_conversation_messages(&task_id, TEAM_TASK_COMPILE_MESSAGE_LIMIT, None)
         .await
         .map_err(map_team_internal_error)?;
     let preview = compile_task_run_preview_response(
@@ -1113,21 +1127,15 @@ async fn send_team_run_message(
         .to_string();
     let idempotency_key = normalize_optional_idempotency_key(idempotency_key.as_deref())?;
     let transport = parse_message_transport(transport.as_deref())?;
-    let from_peer_id = normalize_message_peer_id(
-        from_peer_id.as_deref(),
-        "from_peer_id",
-        ACTOR_MAIN_PEER_ID,
-    )?;
+    let from_peer_id =
+        normalize_message_peer_id(from_peer_id.as_deref(), "from_peer_id", ACTOR_MAIN_PEER_ID)?;
     let to_peer_id_default = if transport == TeamActorMessageTransport::Remote {
         ACTOR_NODE_PEER_ID
     } else {
         ACTOR_MAIN_PEER_ID
     };
-    let to_peer_id = normalize_message_peer_id(
-        to_peer_id.as_deref(),
-        "to_peer_id",
-        to_peer_id_default,
-    )?;
+    let to_peer_id =
+        normalize_message_peer_id(to_peer_id.as_deref(), "to_peer_id", to_peer_id_default)?;
     validate_message_actors(
         &member_ids,
         &from_actor_id,
@@ -1981,10 +1989,26 @@ fn normalize_task_created_by_actor_id(
     normalize_task_actor_id(raw, "created_by_actor_id", user)
 }
 
+fn ensure_task_message_correlation_id(payload: Value) -> Value {
+    let Value::Object(mut payload_obj) = payload else {
+        return payload;
+    };
+    let existing = payload_obj
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let correlation_id = existing.unwrap_or_else(|| Uuid::now_v7().to_string());
+    payload_obj.insert("correlation_id".to_string(), Value::String(correlation_id));
+    Value::Object(payload_obj)
+}
+
 #[derive(Debug)]
 struct TaskActorScope {
     user_actor_id: String,
     member_ids: HashSet<String>,
+    member_order: Vec<String>,
     leader_member_id: Option<String>,
 }
 
@@ -1996,6 +2020,10 @@ fn parse_task_actor_scope(
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let member_order = member_specs
+        .iter()
+        .map(|member| member.member_id.clone())
+        .collect::<Vec<_>>();
     let member_ids = member_specs
         .iter()
         .map(|member| member.member_id.clone())
@@ -2004,6 +2032,7 @@ fn parse_task_actor_scope(
     Ok(TaskActorScope {
         user_actor_id: canonical_user_actor_id(user),
         member_ids,
+        member_order,
         leader_member_id,
     })
 }
@@ -2066,6 +2095,234 @@ fn resolve_task_message_target(
     }
 }
 
+async fn maybe_forward_task_message_to_mailbox(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+    actor_scope: &TaskActorScope,
+    message: &TeamConversationMessageRecord,
+) -> Result<(), ApiError> {
+    let Some(run) = load_latest_active_run_for_team(state, &team.id).await? else {
+        return Ok(());
+    };
+    let Some(mailbox_sender) = resolve_task_mailbox_sender(actor_scope) else {
+        return Ok(());
+    };
+    let mention_ids =
+        extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids);
+    let (recipient_ids, delivery_scope) =
+        resolve_task_mailbox_recipient_ids(actor_scope, mention_ids.as_slice());
+    if recipient_ids.is_empty() {
+        return Ok(());
+    }
+    for to_actor_id in recipient_ids {
+        let forwarded_payload = build_task_mailbox_forward_payload(
+            &message.payload,
+            message,
+            to_actor_id.as_str(),
+            delivery_scope,
+        );
+        let send_result = state
+            .teams
+            .actor_mailbox_service()
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: mailbox_sender.clone(),
+                from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                to_actor_id: to_actor_id.clone(),
+                to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                channel: Some("default".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: forwarded_payload,
+                idempotency_key: Some(format!(
+                    "task:{}:{}:{}",
+                    message.task_id, message.message_id, to_actor_id
+                )),
+            })
+            .await
+            .map_err(map_actor_service_api_error)?;
+        if let Err(err) =
+            maybe_notify_actor_new_mailbox_message_type(state, &run.id, &send_result).await
+        {
+            tracing::warn!(
+                run_id = %run.id,
+                to_actor_id = %to_actor_id,
+                message_id = send_result.message_id,
+                "task mailbox type hint notify failed: {}",
+                err
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn load_latest_active_run_for_team(
+    state: &AppState,
+    team_id: &str,
+) -> Result<Option<TeamRunRecord>, ApiError> {
+    let runs = state
+        .teams
+        .list_runs(team_id, 50, None, None)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(runs
+        .into_iter()
+        .find(|run| is_team_run_status_active(&run.status)))
+}
+
+fn is_team_run_status_active(status: &TeamRunStatus) -> bool {
+    matches!(
+        status,
+        TeamRunStatus::Submitted | TeamRunStatus::Working | TeamRunStatus::InputRequired
+    )
+}
+
+fn resolve_task_mailbox_sender(actor_scope: &TaskActorScope) -> Option<String> {
+    let leader_member_id = actor_scope
+        .leader_member_id
+        .as_deref()
+        .filter(|member_id| actor_scope.member_ids.contains(*member_id))
+        .map(str::to_string);
+    if leader_member_id.is_some() {
+        return leader_member_id;
+    }
+    actor_scope.member_order.first().cloned()
+}
+
+fn resolve_task_mailbox_recipient_ids(
+    actor_scope: &TaskActorScope,
+    mention_ids: &[String],
+) -> (Vec<String>, &'static str) {
+    if !mention_ids.is_empty() {
+        return (mention_ids.to_vec(), "mention");
+    }
+    let Some(sender) = resolve_task_mailbox_sender(actor_scope) else {
+        return (Vec::new(), "broadcast");
+    };
+    let mut recipient_ids = Vec::new();
+    recipient_ids.push(sender.clone());
+    for member_id in &actor_scope.member_order {
+        if member_id != &sender {
+            recipient_ids.push(member_id.clone());
+        }
+    }
+    (recipient_ids, "broadcast")
+}
+
+fn extract_task_message_mention_actor_ids(
+    payload: &Value,
+    member_ids: &HashSet<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    if let Some(explicit_mentions) = payload.get("mention_actor_ids").and_then(Value::as_array) {
+        for value in explicit_mentions {
+            if let Some(candidate) = value.as_str() {
+                push_member_mention(candidate, member_ids, &mut seen, &mut out);
+            }
+        }
+    }
+    if let Some(text) = payload.get("text").and_then(Value::as_str) {
+        for candidate in extract_mentions_from_text(text) {
+            push_member_mention(candidate.as_str(), member_ids, &mut seen, &mut out);
+        }
+    }
+    out
+}
+
+fn push_member_mention(
+    raw_candidate: &str,
+    member_ids: &HashSet<String>,
+    seen: &mut HashSet<String>,
+    out: &mut Vec<String>,
+) {
+    let candidate = raw_candidate.trim();
+    if candidate.is_empty()
+        || !member_ids.contains(candidate)
+        || !seen.insert(candidate.to_string())
+    {
+        return;
+    }
+    out.push(candidate.to_string());
+}
+
+fn extract_mentions_from_text(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        if bytes[cursor] != b'@' {
+            cursor += 1;
+            continue;
+        }
+        let start = cursor + 1;
+        let mut end = start;
+        while end < bytes.len() && is_valid_mention_char(bytes[end]) {
+            end += 1;
+        }
+        if end > start {
+            out.push(text[start..end].to_string());
+        }
+        cursor = end;
+    }
+    out
+}
+
+fn is_valid_mention_char(raw: u8) -> bool {
+    matches!(raw, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b':' | b'-')
+}
+
+fn build_task_mailbox_forward_payload(
+    source_payload: &Value,
+    message: &TeamConversationMessageRecord,
+    to_actor_id: &str,
+    delivery_scope: &str,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mention_actor_ids".to_string(),
+        Value::Array(vec![Value::String(to_actor_id.to_string())]),
+    );
+    if let Some(text) = payload_obj
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let mention_token = format!("@{to_actor_id}");
+        if !text.contains(mention_token.as_str()) {
+            payload_obj.insert(
+                "text".to_string(),
+                Value::String(format!("{mention_token} {text}")),
+            );
+        }
+    }
+    payload_obj.insert(
+        "human_actor_id".to_string(),
+        Value::String(TEAM_SPECIAL_USER_ACTOR_ALIAS.to_string()),
+    );
+    payload_obj.insert(
+        "delivery_scope".to_string(),
+        Value::String(delivery_scope.to_string()),
+    );
+    payload_obj.insert(
+        "task_id".to_string(),
+        Value::String(message.task_id.clone()),
+    );
+    payload_obj.insert(
+        "task_message_id".to_string(),
+        Value::Number(serde_json::Number::from(message.message_id)),
+    );
+    payload_obj.insert(
+        "task_conversation_id".to_string(),
+        Value::String(message.conversation_id.clone()),
+    );
+    Value::Object(payload_obj)
+}
+
 #[derive(Debug, Default)]
 struct TaskCompileExtraction {
     task_list: Vec<String>,
@@ -2103,11 +2360,8 @@ fn compile_task_run_preview_response(
             .push(DEFAULT_TEAM_TASK_ACCEPTANCE_CRITERION.to_string());
     }
 
-    let role_assignments = build_task_role_assignments(
-        &step_template,
-        &member_specs,
-        leader_member_id.as_deref(),
-    );
+    let role_assignments =
+        build_task_role_assignments(&step_template, &member_specs, leader_member_id.as_deref());
     let task_list = extraction.task_list.clone();
     let acceptance_criteria = extraction.acceptance_criteria.clone();
     let deadline = extraction.deadline.clone();

@@ -156,7 +156,7 @@ export type TeamRunStatus =
   | "failed"
   | "canceled";
 
-export type TeamMainTaskStatus = "open" | "in_progress" | "completed" | "canceled";
+export type TeamTaskStatus = "open" | "in_progress" | "completed" | "canceled";
 
 export type TeamStepStatus =
   | "submitted"
@@ -180,11 +180,11 @@ export type TeamDefinitionRecord = {
   updated_at: number;
 };
 
-export type TeamMainTaskRecord = {
+export type TeamTaskRecord = {
   id: string;
   team_id: string;
   title: string;
-  status: TeamMainTaskStatus;
+  status: TeamTaskStatus;
   created_by_actor_id: string;
   context: unknown;
   created_at: number;
@@ -194,7 +194,7 @@ export type TeamMainTaskRecord = {
 export type TeamConversationRecord = {
   id: string;
   team_id: string;
-  main_task_id: string;
+  task_id: string;
   mode: "to_leader" | "to_member" | "group_chat";
   topic?: string | null;
   created_at: number;
@@ -204,7 +204,7 @@ export type TeamConversationRecord = {
 export type TeamConversationMessageRecord = {
   message_id: number;
   conversation_id: string;
-  main_task_id: string;
+  task_id: string;
   from_actor_id: string;
   to_actor_id?: string | null;
   route: "to_leader" | "to_member" | "group_chat";
@@ -212,8 +212,8 @@ export type TeamConversationMessageRecord = {
   created_at: number;
 };
 
-export type TeamMainTaskDetailResponse = {
-  task: TeamMainTaskRecord;
+export type TeamTaskDetailResponse = {
+  task: TeamTaskRecord;
   conversation: TeamConversationRecord;
 };
 
@@ -257,8 +257,10 @@ export type TeamActorMessageRecord = {
   message_id: number;
   run_id: string;
   from_actor_id: string;
+  from_peer_id: string;
   from_actor_kind: TeamActorIdentityKind;
   to_actor_id: string;
+  to_peer_id: string;
   to_actor_kind: TeamActorIdentityKind;
   channel: string;
   transport: TeamActorMessageTransport;
@@ -312,7 +314,7 @@ export type TeamCompiledRoleAssignmentRecord = {
   step_keys: string[];
 };
 
-export type TeamMainTaskCompiledPlanRecord = {
+export type TeamTaskCompiledPlanRecord = {
   task_list: string[];
   acceptance_criteria: string[];
   deadline?: string | null;
@@ -326,11 +328,11 @@ export type TeamRunPayloadPreviewRecord = {
   input: unknown;
 };
 
-export type TeamMainTaskRunCompilePreviewRecord = {
-  main_task_id: string;
+export type TeamTaskRunCompilePreviewRecord = {
+  task_id: string;
   conversation_id: string;
   run_payload: TeamRunPayloadPreviewRecord;
-  plan: TeamMainTaskCompiledPlanRecord;
+  plan: TeamTaskCompiledPlanRecord;
 };
 
 function parseApiErrorText(raw: string): string | null {
@@ -492,7 +494,7 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
-  createTeamMainTask: (
+  createTeamTask: (
     token: string,
     teamId: string,
     payload: {
@@ -503,51 +505,51 @@ export const api = {
       topic?: string;
     }
   ) =>
-    apiFetch<TeamMainTaskDetailResponse>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks`,
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks`,
       token,
       {
         method: "POST",
         body: JSON.stringify(payload),
       }
     ),
-  listTeamMainTasks: (token: string, teamId: string, limit?: number) => {
+  listTeamTasks: (token: string, teamId: string, limit?: number) => {
     const params = new URLSearchParams();
     if (limit != null) params.set("limit", String(limit));
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    return apiFetch<TeamMainTaskRecord[]>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks${suffix}`,
+    return apiFetch<TeamTaskRecord[]>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks${suffix}`,
       token
     );
   },
-  getTeamMainTask: (token: string, teamId: string, mainTaskId: string) =>
-    apiFetch<TeamMainTaskDetailResponse>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}`,
+  getTeamTask: (token: string, teamId: string, taskId: string) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
       token
     ),
-  sendTeamMainTaskMessage: (
+  sendTeamTaskMessage: (
     token: string,
     teamId: string,
-    mainTaskId: string,
+    taskId: string,
     payload: {
-      from_actor_id: string;
+      from_actor_id?: string;
       to_actor_id?: string;
       route?: "to_leader" | "to_member" | "group_chat";
       payload: unknown;
     }
   ) =>
     apiFetch<TeamConversationMessageRecord>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/messages`,
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}/messages`,
       token,
       {
         method: "POST",
         body: JSON.stringify(payload),
       }
     ),
-  listTeamMainTaskMessages: (
+  listTeamTaskMessages: (
     token: string,
     teamId: string,
-    mainTaskId: string,
+    taskId: string,
     payload?: { limit?: number; before_id?: number }
   ) => {
     const params = new URLSearchParams();
@@ -555,18 +557,18 @@ export const api = {
     if (payload?.before_id != null) params.set("before_id", String(payload.before_id));
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     return apiFetch<TeamConversationMessageRecord[]>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/messages${suffix}`,
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}/messages${suffix}`,
       token
     );
   },
-  compileTeamMainTaskRunPreview: (
+  compileTeamTaskRunPreview: (
     token: string,
     teamId: string,
-    mainTaskId: string,
+    taskId: string,
     payload: { context_id?: string }
   ) =>
-    apiFetch<TeamMainTaskRunCompilePreviewRecord>(
-      `/api/teams/${encodePathSegment(teamId)}/main_tasks/${encodePathSegment(mainTaskId)}/compile_run_preview`,
+    apiFetch<TeamTaskRunCompilePreviewRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}/compile_run_preview`,
       token,
       {
         method: "POST",
@@ -734,7 +736,9 @@ export const api = {
     runId: string,
     payload: {
       from_actor_id: string;
+      from_peer_id?: string;
       to_actor_id: string;
+      to_peer_id?: string;
       channel?: string;
       transport?: TeamActorMessageTransport;
       route?: unknown;

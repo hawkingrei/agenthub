@@ -9,8 +9,8 @@ use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header};
 use axum::response::IntoResponse;
 use chrono::Utc;
 use serde_json::{Value, json};
-use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{Row, SqlitePool};
 use tower::util::ServiceExt;
 use uuid::Uuid;
 
@@ -27,18 +27,18 @@ use crate::team::TeamManager;
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
-    CreateTeamTaskRequest, CreateTeamRequest, CreateTeamRunRequest, FailTeamRunStepRequest,
-    FlushTeamRunContextRequest, ListTeamTaskMessagesQuery, ListTeamTasksQuery,
-    ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery, ResumeTeamRunStepRequest,
-    SendTeamTaskMessageRequest, SendTeamRunMessageRequest, SetTeamRunStepInputRequiredRequest,
+    CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest, FailTeamRunStepRequest,
+    FlushTeamRunContextRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
+    ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
+    SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
     cancel_team_run, compile_team_task_run_preview, complete_team_run_step, create_team,
-    create_team_task, create_team_run, delete_team, fail_team_run_step,
-    flush_team_run_context, get_team, get_team_task, get_team_run, get_team_run_snapshot,
-    list_team_task_messages, list_team_tasks, list_team_run_events, list_team_run_inbox,
-    list_team_run_steps, list_team_runs, list_teams, restart_team_run, resume_team_run,
-    resume_team_run_step, send_team_task_message, send_team_run_message,
-    set_team_run_step_input_required, start_team_run_step, submit_team_run_step,
+    create_team_run, create_team_task, delete_team, fail_team_run_step, flush_team_run_context,
+    get_team, get_team_run, get_team_run_snapshot, get_team_task, list_team_run_events,
+    list_team_run_inbox, list_team_run_steps, list_team_runs, list_team_task_messages,
+    list_team_tasks, list_teams, restart_team_run, resume_team_run, resume_team_run_step,
+    send_team_run_message, send_team_task_message, set_team_run_step_input_required,
+    start_team_run_step, submit_team_run_step,
 };
 
 pub(crate) async fn build_test_state() -> AppState {
