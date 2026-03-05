@@ -10,6 +10,8 @@ import {
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  renderMarkdownWithMentions,
+  renderPlainTextWithMentions,
   resolveMentionDraftQuery,
   resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
@@ -115,12 +117,22 @@ describe("mailbox helpers", () => {
     expect(resolveMentionDraftQuery("plain text", 5)).toBeNull();
   });
 
-  it("applies selected member as <at> tag mention", () => {
+  it("applies selected member as @ mention token", () => {
     const mention = resolveMentionDraftQuery("please check @work soon", 18);
     expect(mention).not.toBeNull();
     const applied = applyMentionAtTag("please check @work soon", mention!, "worker-1");
-    expect(applied.text).toBe("please check <at>worker-1</at> soon");
-    expect(applied.cursor).toBe("please check <at>worker-1</at>".length);
+    expect(applied.text).toBe("please check @worker-1 soon");
+    expect(applied.cursor).toBe("please check @worker-1".length);
+  });
+
+  it("renders <at> mention as visual chip in markdown/plain text output", () => {
+    const markdown = renderMarkdownWithMentions("hello <at>worker-1</at>");
+    expect(markdown).toContain("team-mention");
+    expect(markdown).toContain("@worker-1");
+
+    const plain = renderPlainTextWithMentions("hello <at>worker-1</at>");
+    expect(plain).toContain("team-mention");
+    expect(plain).toContain("@worker-1");
   });
 
   it("builds chat payload with normalized mention ids", () => {

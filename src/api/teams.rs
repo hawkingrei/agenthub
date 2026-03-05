@@ -2248,6 +2248,7 @@ fn push_member_mention(
 
 fn extract_mentions_from_text(text: &str) -> Vec<String> {
     let mut out = Vec::new();
+    let bytes = text.as_bytes();
     let mut cursor = 0usize;
     while let Some(open_index) = text[cursor..].find("<at>") {
         let mention_start = cursor + open_index + 4;
@@ -2266,11 +2267,53 @@ fn extract_mentions_from_text(text: &str) -> Vec<String> {
         }
         cursor = mention_end + 5;
     }
+    let mut raw_cursor = 0usize;
+    while raw_cursor < bytes.len() {
+        if bytes[raw_cursor] != b'@'
+            || (raw_cursor > 0 && is_email_local_char(bytes[raw_cursor - 1]))
+        {
+            raw_cursor += 1;
+            continue;
+        }
+        let start = raw_cursor + 1;
+        let mut end = start;
+        while end < bytes.len() && is_valid_mention_char(bytes[end]) {
+            end += 1;
+        }
+        if end > start {
+            out.push(text[start..end].to_string());
+        }
+        raw_cursor = end;
+    }
     out
 }
 
 fn is_valid_mention_char(raw: u8) -> bool {
     matches!(raw, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b':' | b'-')
+}
+
+fn is_email_local_char(raw: u8) -> bool {
+    matches!(
+        raw,
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b'%' | b'+' | b'-'
+    )
+}
+
+fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, usize)> {
+    let needle = format!("@{actor_id}");
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+    while let Some(found) = text[cursor..].find(needle.as_str()) {
+        let start = cursor + found;
+        let end = start + needle.len();
+        let left_ok = start == 0 || !is_email_local_char(bytes[start - 1]);
+        let right_ok = end >= bytes.len() || !is_valid_mention_char(bytes[end]);
+        if left_ok && right_ok {
+            return Some((start, end));
+        }
+        cursor = end;
+    }
+    None
 }
 
 fn build_task_mailbox_forward_payload(
@@ -2293,12 +2336,19 @@ fn build_task_mailbox_forward_payload(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let mention_token = format!("@{to_actor_id}");
-        if !text.contains(mention_token.as_str()) {
-            payload_obj.insert(
-                "text".to_string(),
-                Value::String(format!("{mention_token} {text}")),
-            );
+        let mention_tag = format!("<at>{to_actor_id}</at>");
+        if !text.contains(mention_tag.as_str()) {
+            let normalized_text =
+                if let Some((start, end)) = find_raw_actor_mention_range(text, to_actor_id) {
+                    format!(
+                        "{prefix}{mention_tag}{suffix}",
+                        prefix = &text[..start],
+                        suffix = &text[end..]
+                    )
+                } else {
+                    format!("{mention_tag} {text}")
+                };
+            payload_obj.insert("text".to_string(), Value::String(normalized_text));
         }
     }
     payload_obj.insert(

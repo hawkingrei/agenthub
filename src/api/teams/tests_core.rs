@@ -3666,7 +3666,7 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
             route: Some("group_chat".to_string()),
             payload: json!({
                 "type":"chat_message",
-                "text":"<at>worker-1</at> please validate api contract"
+                "text":"@worker-1 please validate api contract"
             }),
         }),
     )
@@ -3714,6 +3714,10 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     assert_eq!(
         directed_payload["mention_actor_ids"],
         Value::from(vec!["worker-1"])
+    );
+    assert_eq!(
+        directed_payload["text"],
+        Value::from("<at>worker-1</at> please validate api contract")
     );
 
     let _ = send_team_task_message(

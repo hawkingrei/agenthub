@@ -4,17 +4,17 @@ import {
   TeamTaskRecord,
 } from "../api";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
-import { renderMarkdown } from "../markdown";
 import { TeamMemberLiveState } from "./team/member_helpers";
+import {
+  applyMentionAtTag,
+  renderMarkdownWithMentions,
+  resolveMentionDraftQuery,
+  type MentionDraftQuery,
+} from "./team/mailbox_helpers";
 import {
   normalizeTeamMemberLifecycle,
   normalizeTeamMemberWorkStatus,
 } from "./team_member_status_strip";
-import {
-  applyMentionAtTag,
-  resolveMentionDraftQuery,
-  type MentionDraftQuery,
-} from "./team/mailbox_helpers";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
@@ -208,7 +208,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       })
       .map((item) => ({
         ...item,
-        renderedHtml: renderMarkdown(item.markdownText),
+        renderedHtml: renderMarkdownWithMentions(item.markdownText),
       }));
   }, [messages, toPrettyJson]);
 
@@ -235,8 +235,8 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
 
       <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
         Human messages are stored once in shared team conversation and routed through team mailbox.
-        Type `@` to select a teammate mention. Only selected mentions are routed; plain `@` stays
-        as normal text, and messages without mentions are broadcast to all members.
+        Type `@` to select a teammate mention. Backend converts selected mentions into structured
+        routing tags, while plain `@` remains normal text.
       </p>
 
       <div className="mt-3 grid gap-2 lg:grid-cols-2">
@@ -408,7 +408,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                   }}
                 >
                   <span className="mono">{memberId}</span>
-                  <span className="text-[11px] text-ui-text-muted">{`<at>${memberId}</at>`}</span>
+                  <span className="text-[11px] text-ui-text-muted">{`@${memberId}`}</span>
                 </button>
               ))}
             </div>

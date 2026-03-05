@@ -63,7 +63,6 @@ import {
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
-  extractMentionedActorIds,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -1829,13 +1828,7 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const conversation = resolveConversationForMessage();
       const taskId = conversation?.id;
-      const mentionActorIds = extractMentionedActorIds(
-        text,
-        taskConversationMemberIds
-      );
-      const chatPayload = buildMailboxChatPayload(text, {
-        mention_actor_ids: mentionActorIds,
-      });
+      const chatPayload = buildMailboxChatPayload(text);
       if (taskId) {
         const message = await api.sendTeamTaskMessage(props.token, selectedTeamId, taskId, {
           route: "group_chat",
@@ -1866,7 +1859,6 @@ export function TeamPage(props: TeamPageProps) {
     props.token,
     refreshEvents,
     refreshSnapshot,
-    taskConversationMemberIds,
     selectedTeamId,
     setWarning,
   ]);

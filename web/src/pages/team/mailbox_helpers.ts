@@ -1,4 +1,5 @@
 import { TeamActorMessageRecord } from "../../api";
+import { escapeHtml, renderMarkdown } from "../../markdown";
 
 export type MailboxTemplateKey =
   | "leader_task_assignment"
@@ -20,6 +21,7 @@ export type TaskMailboxRoutePlan = {
 };
 
 const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
+const MENTION_RENDER_TOKEN_REGEX = /@@AGH_AT_MENTION:([A-Za-z0-9._:-]+)@@/g;
 
 export type MentionDraftQuery = {
   start: number;
@@ -154,7 +156,7 @@ export function applyMentionAtTag(
   }
   const prefix = draft.slice(0, mention.start);
   const suffix = draft.slice(mention.end);
-  const tag = `<at>${normalizedActorId}</at>`;
+  const tag = `@${normalizedActorId}`;
   const needsSpace = suffix.length === 0 || /^\s/.test(suffix) ? "" : " ";
   const nextText = `${prefix}${tag}${needsSpace}${suffix}`;
   const nextCursor = prefix.length + tag.length + needsSpace.length;
@@ -232,6 +234,38 @@ export function buildMailboxChatPayload(
     payload.mention_actor_ids = mentionActorIds;
   }
   return payload;
+}
+
+function mentionChipHtml(actorId: string): string {
+  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 mono text-[11px] text-brand-primary">@${escapeHtml(actorId)}</span>`;
+}
+
+function tokenizeAtMentions(text: string): string {
+  return text.replace(MENTION_TAG_REGEX, (_match, rawActorId: string) => {
+    const actorId = (rawActorId ?? "").trim();
+    if (!/^[A-Za-z0-9._:-]+$/.test(actorId)) {
+      return "";
+    }
+    return `@@AGH_AT_MENTION:${actorId}@@`;
+  });
+}
+
+function renderMentionTokensIntoHtml(text: string): string {
+  return text.replace(MENTION_RENDER_TOKEN_REGEX, (_match, actorId: string) =>
+    mentionChipHtml(actorId)
+  );
+}
+
+export function renderMarkdownWithMentions(text: string): string {
+  const tokenized = tokenizeAtMentions(text);
+  const rendered = renderMarkdown(tokenized);
+  return renderMentionTokensIntoHtml(rendered);
+}
+
+export function renderPlainTextWithMentions(text: string): string {
+  const tokenized = tokenizeAtMentions(text);
+  const escaped = escapeHtml(tokenized).replace(/\n/g, "<br/>");
+  return renderMentionTokensIntoHtml(escaped);
 }
 
 export function buildMailboxForwardChatPayload(

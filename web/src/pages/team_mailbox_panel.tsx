@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { renderPlainTextWithMentions } from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
@@ -408,7 +409,17 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                       <span>{message.status}</span>
                       <span>{formatTs(message.created_at)}</span>
                     </div>
-                    <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
+                    {typeof message.payload === "object" &&
+                    message.payload !== null &&
+                    "type" in message.payload &&
+                    (message.payload as { type?: unknown }).type === "chat_message" ? (
+                      <div
+                        className={`${TEAM_PANEL_PRE_CLASS} whitespace-pre-wrap`}
+                        dangerouslySetInnerHTML={{ __html: renderPlainTextWithMentions(payload) }}
+                      />
+                    ) : (
+                      <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
+                    )}
                     {message.status !== "delivered" && (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
