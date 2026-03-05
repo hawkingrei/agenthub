@@ -20,13 +20,8 @@
    - `docs/journal/2026-02-24-team-operating-model-spec.md`
    - consolidates role-skill injection pipeline, single-mode isolation, bootstrap/safe-path policy, cold-start TODO workflow, TODO lifecycle, and AGENTS/SKILL ownership boundary
 
-3. Compacted six overlapping notes into superseded pointers:
-   - `docs/journal/2026-02-17-team-skills-bootstrap-script.md`
-   - `docs/journal/2026-02-18-team-deliberation-rules-skill.md`
-   - `docs/journal/2026-02-19-team-role-skill-acp-auto-injection.md`
-   - `docs/journal/2026-02-20-team-single-node-skill-bootstrap.md`
-   - `docs/journal/2026-02-22-team-role-skill-single-mode-isolation.md`
-   - `docs/journal/2026-02-23-team-cold-start-skill-and-ui-playbook.md`
+3. Compacted six overlapping notes into superseded pointers in wave-1.
+   - Those pointer-only notes were removed in the 2026-03-05 doc pruning pass.
 
 4. Updated `docs/todo.md` references:
    - switched relevant verification items to the canonical spec

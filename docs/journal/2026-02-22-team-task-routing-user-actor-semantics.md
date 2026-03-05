@@ -3,7 +3,7 @@
 ## Background
 
 The chat-first Team roadmap requires deterministic conversation semantics before
-run compilation. We already persisted main-task conversations and route fields,
+run compilation. We already persisted task conversations and route fields,
 but actor and route contracts were still loose:
 
 - `from_actor_id` accepted arbitrary values without team/user validation.
@@ -14,11 +14,11 @@ but actor and route contracts were still loose:
 
 ## Scope
 
-- Harden main-task actor semantics in `src/api/teams.rs`:
+- Harden task actor semantics in `src/api/teams.rs`:
   - canonicalize user actor as `user:<authenticated_user_id>`
   - accept `"user"` alias but normalize to canonical value
   - reject mismatched `user:<id>` impersonation attempts
-- Enforce route-specific target rules for main-task messages:
+- Enforce route-specific target rules for task messages:
   - `to_member`: requires valid `to_actor_id` in `spec.members`
   - `to_leader`: resolves to leader member deterministically (auto-fill when omitted)
   - `group_chat`: requires `to_actor_id` to be omitted
@@ -52,10 +52,10 @@ but actor and route contracts were still loose:
 Executed locally:
 
 ```bash
-cargo test -q team_main_task_api_creates_lists_and_redacts_context -- --nocapture
-cargo test -q team_main_task_messages_api_supports_route_and_redaction -- --nocapture
+cargo test -q team_task_api_creates_lists_and_redacts_context -- --nocapture
+cargo test -q team_task_messages_api_supports_route_and_redaction -- --nocapture
 cargo test -q teams_router_http_contract -- --nocapture
-cargo test -q team_main_task -- --nocapture
+cargo test -q team_task -- --nocapture
 ```
 
 All commands passed.

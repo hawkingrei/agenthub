@@ -3,12 +3,12 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use agenthub_team_actor::{
-    AckActorMessageCommand, AckActorMessageResult, ActorAckRequest, ActorAckResponse,
-    ActorInboxRequest, ActorInboxResponse, ActorMailbox, ActorMailboxError, ActorMailboxService,
-    ActorMailboxStore, ActorMessageRelay, ActorRelayError, ActorSendRequest, ActorSendResponse,
-    ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
-    PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
-    SendActorMessageCommand, ACTOR_MAIN_PEER_ID, actor_message_fingerprint,
+    ACTOR_MAIN_PEER_ID, AckActorMessageCommand, AckActorMessageResult, ActorAckRequest,
+    ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox, ActorMailboxError,
+    ActorMailboxService, ActorMailboxStore, ActorMessageRelay, ActorRelayError, ActorSendRequest,
+    ActorSendResponse, ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult,
+    ListActorInboxQuery, PendingRemoteRelayRecord, RelayRemotePendingCommand,
+    RelayRemotePendingResult, SendActorMessageCommand, actor_message_fingerprint,
 };
 use async_trait::async_trait;
 use base64::encode_config;
@@ -284,11 +284,11 @@ impl ActorMailboxService for TeamActorMailboxService {
     ) -> Result<ActorSendResponse, ActorServiceError> {
         let run_id = required_trimmed_field(&request.run_id, "run_id")?;
         let from_actor_id = required_trimmed_field(&request.from_actor_id, "from_actor_id")?;
-        let from_peer_id = optional_trimmed(request.from_peer_id.as_deref())
-            .unwrap_or(ACTOR_MAIN_PEER_ID);
+        let from_peer_id =
+            optional_trimmed(request.from_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
         let to_actor_id = required_trimmed_field(&request.to_actor_id, "to_actor_id")?;
-        let to_peer_id = optional_trimmed(request.to_peer_id.as_deref())
-            .unwrap_or(ACTOR_MAIN_PEER_ID);
+        let to_peer_id =
+            optional_trimmed(request.to_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
         let channel = request
             .channel
             .as_deref()

@@ -126,6 +126,10 @@ agenthub/
   - Team collaboration follows six explicit phases: `team formation` -> `task analysis` -> `role assignment` -> `communication and collaboration` -> `consensus formation` -> `result integration`
   - Human inputs are goals/constraints via conversation; internal Team `task` objects are created by leader planning, not directly by human users
   - Team conversation delivery path: persist the message once in conversation, then forward via Team actor mailbox; mailbox transport reaches ACP upstream and MCP tools.
+  - Team communication lane should use event bus as the realtime carrier for chat/timeline fan-out; mailbox remains the authoritative execution command path.
+  - User-facing conversation input should not require user-supplied `run_id` or `from_actor_id`; backend must derive sender identity from session and resolve routing from `@member_id`.
+  - `conversation_id` is the required human-facing scope key; `run_id` is execution-scoped and should be generated when execution starts.
+  - `correlation_id` should link one intent chain across conversation events, mailbox commands, and run events.
   - Team role sessions must fail-fast if mailbox MCP capability is missing or required mailbox tools (`actor_inbox`/`actor_ack`/`actor_send`) are incomplete.
   - Team mode must deny shell-based mailbox bypass; communication path should stay MCP mailbox first (`inbox -> process -> ack -> send/report`).
   - Mention routing contract: `@member_id` means explicit recipients only; no `@` means broadcast to all team members.

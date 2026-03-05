@@ -32,6 +32,9 @@ state labels, and panel behaviors diverged.
 
 - Team surface is conversation-first for human interaction.
 - `Conversation` remains available even when no active run exists.
+- Conversation uses one shared group stream (human + leader + workers); no per-recipient split view on the human surface.
+- Default response routing is team-wide when no `@mention` is provided, with leader-first speaking priority.
+- `@member_id` allows direct worker/human interaction in the same stream; multiple mentions should be supported.
 - `Runs` is the dedicated run-entry tab (run browser + `Start Team` + run selection).
 - Internal execution controls (`Run Ops`, `Step Ops`, raw mailbox tools) remain in Debug sections.
 - `Start Team` stays visible as explicit operator action.
@@ -68,8 +71,14 @@ state labels, and panel behaviors diverged.
 
 ### 2) Team Interaction Contract
 
-- Human-facing Team terminology should prioritize `Conversation` instead of exposing internal `main_task` wording.
+- Human-facing Team terminology should prioritize `Conversation` instead of exposing internal `task` wording.
 - Debug-only operations keep internal runtime concepts and IDs.
+- `@mention` semantics should be explicit in UI copy:
+  - no mention -> whole team target;
+  - no mention -> leader should respond first;
+  - mention(s) -> prioritized responders;
+  - worker should normally wait unless correcting, supplementing, or reporting new findings;
+  - all messages remain visible in the shared group conversation.
 
 ### 3) Team Tab Routing Contract
 
@@ -134,6 +143,6 @@ state labels, and panel behaviors diverged.
 
 - `docs/journal/2026-02-23-web-tailwind-design-token-rollout-wave1.md`
 - `docs/journal/2026-02-21-team-usability-polish-and-scroll-hardening.md`
-- `docs/journal/2026-02-24-team-main-task-human-conversation-ui.md`
+- `docs/journal/2026-02-24-team-task-human-conversation-ui.md`
 - `docs/journal/2026-02-23-team-top-member-status-strip.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`

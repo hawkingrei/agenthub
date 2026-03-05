@@ -11,6 +11,7 @@ terminology and operating expectations drift.
 - Team operating model and role boundaries.
 - Canonical terminology and lifecycle semantics.
 - Actor identity and mailbox semantics in Team mode.
+- Conversation event-bus communication semantics for Team chat lane.
 - Cold-start and context-ownership constraints.
 
 ## Non-Goals
@@ -59,6 +60,7 @@ terminology and operating expectations drift.
   - Conversation is a single shared group stream across human, leader, and workers (not per-member isolated chats).
   - Default routing: messages without `@mention` are team-wide with leader-first response priority.
   - Messages with `@member_id` can target one or multiple members and relax worker speaking guardrails.
+  - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
   - `Runs` is the entry lane for run browsing, `Start Team`, and active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
@@ -109,7 +111,9 @@ Constraint:
 - `worker`: member role, not separate entity type.
 - `actor_id`: canonical mailbox identity.
 - `agent_id`: tool-level alias for `actor_id`.
+- `conversation_id`: required human-facing chat scope key.
 - `run_id`: mailbox partition and replay boundary.
+- `correlation_id`: one intent-chain ID across conversation/mailbox/run events.
 - `peer_id`: node identity for mailbox routing.
   - `main`: AgentHub main node.
   - `node`: remote execution node (default non-main peer label).
@@ -142,6 +146,8 @@ Constraint:
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
+- Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
+- Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
 
 ## Validation Matrix
 
@@ -169,3 +175,4 @@ Constraint:
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
 - `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
 - `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
+- `docs/journal/2026-03-05-team-conversation-event-bus-contract.md`

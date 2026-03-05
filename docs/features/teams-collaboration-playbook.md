@@ -13,6 +13,7 @@ This document defines that operational baseline.
 - Canonical Team/Actor terminology for runtime, API, and prompts.
 - Team startup/restart behavior and failure handling expectations.
 - Mailbox communication policy and message envelope constraints.
+- Conversation event-bus carrier contract and routing normalization.
 - MCP-first enforcement policy for Team sessions.
 - Context/memory layering and promotion rules.
 - Membership change and member identity-card synchronization.
@@ -53,6 +54,7 @@ Operational collaboration follows six phases:
 - `step`: run-local unit of execution.
 - `task`: leader-defined internal work item composed into run/step operations.
 - `conversation`: human-facing interaction stream.
+- `correlation_id`: chain identity linking one intent across conversation/mailbox/run events.
 
 Human/Task boundary:
 
@@ -65,6 +67,7 @@ Identity conventions:
 - `actor_id` is canonical mailbox identity.
 - `agent_id` is compatibility alias for tool/client ergonomics.
 - `run_id` remains required for deterministic partitioning and replay.
+- `conversation_id` is required for human-facing chat scope.
 
 ### 3) Team Lifecycle And Start Semantics
 
@@ -149,6 +152,21 @@ Detailed enforcement design:
 
 - `docs/features/team-mcp-enforcement.md`
 
+### 5.2) Conversation Event Bus Profile
+
+Conversation lane should use event bus as the realtime chat/timeline carrier, while keeping mailbox
+as execution command authority:
+
+- user-facing input should not require user-provided `run_id` or `from_actor_id`;
+- backend normalizes sender identity from session and resolves recipients from `@member_id`;
+- `conversation_id` is required for chat scope, `run_id` is optional until execution starts;
+- `correlation_id` should link one intent chain across chat events and mailbox/run evidence;
+- execution command types still require mailbox path (`assignment`, `approval`, `step_action`, execution results).
+
+Detailed event-bus design:
+
+- `docs/features/team-conversation-event-bus.md`
+
 ### 6) Context And Memory Layering
 
 Context is workspace-local under `.cache/context` and should be layered:
@@ -216,6 +234,7 @@ Kind projections:
 - Internal task/run/step machinery is debug/operator detail and should not dominate primary flow.
 - `Start Team` is exposed as operator action; low-level controls remain in debug surfaces.
 - Human operations should target goals/constraints; internal task creation remains leader-owned.
+- Conversation message APIs should require `conversation_id` and support mention-only routing without requiring explicit `run_id`.
 
 ### 3) Error Surface Contract
 
@@ -257,6 +276,7 @@ Kind projections:
   - `docs/features/agents-teams.md`
   - `docs/features/actor-foundation.md`
   - `docs/features/team-mcp-enforcement.md`
+  - `docs/features/team-conversation-event-bus.md`
   - `docs/features/backend-runtime-logic.md`
 - Prefer small, explicit delegation payloads over broad open-ended assignments.
 - Keep mailbox/event stream observability enabled in debug workflows.

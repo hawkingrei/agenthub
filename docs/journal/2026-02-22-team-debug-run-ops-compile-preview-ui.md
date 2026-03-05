@@ -3,16 +3,16 @@
 ## Background
 
 Team backend now exposes `compile_run_preview` for deterministic translation from
-main-task discussion artifacts to run payload. The Team UI still required manual
+task discussion artifacts to run payload. The Team UI still required manual
 copying from API output into `Create Run`, which made chat-first preview usage
 slow and error-prone.
 
 ## Scope
 
 - Add Team API client types and endpoint binding for:
-  - `POST /api/teams/:id/main_tasks/:main_task_id/compile_run_preview`
+  - `POST /api/teams/:id/tasks/:task_id/compile_run_preview`
 - Add Debug Run Ops UI section in Team page for compile preview:
-  - input `main_task_id`
+  - input `task_id`
   - optional `context_id` override
   - trigger `Compile Preview`
   - render compiled preview JSON
@@ -49,7 +49,7 @@ Playwright command added and attempted:
 
 ```bash
 cd web
-npm run e2e -- tests/e2e/team_page.e2e.ts -g "team debug run ops compiles main task preview and applies payload to create-run form"
+npm run e2e -- tests/e2e/team_page.e2e.ts -g "team debug run ops compiles task preview and applies payload to create-run form"
 ```
 
 Local execution in the current environment is still blocked: sandboxed runs hit
@@ -61,5 +61,5 @@ in `docs/todo.md`.
 
 - Run the new Playwright case in CI (or clean local runtime) and record run ID.
 - Extend from Debug entry to full chat-first primary-surface flow after the
-  broader `main task -> negotiation -> compile -> execute -> synthesize` E2E
+  broader `task -> negotiation -> compile -> execute -> synthesize` E2E
   coverage is complete.

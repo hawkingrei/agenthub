@@ -21,19 +21,19 @@ pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
-    parse_team_conversation_row, parse_team_definition_row, parse_team_task_row,
-    parse_team_member_continuity_state_row, parse_team_run_row, parse_team_step_row,
-    team_task_status_to_str, team_run_status_to_str, team_step_status_to_str,
+    parse_team_conversation_row, parse_team_definition_row, parse_team_member_continuity_state_row,
+    parse_team_run_row, parse_team_step_row, parse_team_task_row, team_run_status_to_str,
+    team_step_status_to_str, team_task_status_to_str,
 };
 use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
-    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord, TeamTaskRecord,
-    TeamTaskStatus, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
-    TeamRunStatus, TeamStepRecord, TeamStepStatus,
+    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
+    TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
-use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::db::AgentEventDbRouter;
+use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 
 #[derive(Clone)]
 pub struct TeamManager {

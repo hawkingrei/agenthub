@@ -36,7 +36,7 @@ Team operator workflows discussed actor identity in `agent_id` terms, while runt
 - `src/team/manager/tests.rs`
 - `src/api/openapi/spec.rs`
 - `web/src/api.ts`
-- `docs/journal/2026-02-24-actor-agent-id-alias.md`
+- `docs/features/actor-foundation.md`
 - `docs/todo.md`
 
 ## Validation Notes

@@ -20,6 +20,7 @@ Use this skill for Team mailbox communication. It is the protocol reference for
 - `agent_id` is a compatibility alias only.
 - `run_id` is the execution partition key for routing/replay.
 - For Team coordination, route by stable `spec.members[].member_id`.
+- Mention routing should prefer explicit `@member_id` recipients for actionable collaboration.
 
 ## Envelope Contract
 
@@ -59,6 +60,7 @@ Recommended fields:
 - Worker reports blockers to leader first.
 - Worker contacts human actor directly only when explicitly routed or when escalation policy requires it.
 - Leader remains default human-facing coordinator for planning and synthesis.
+- For collaboration-intensive work, proactively mention impacted peers (`@member_id`) instead of relying on broadcast.
 
 ## Output Contract Examples
 

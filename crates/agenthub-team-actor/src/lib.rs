@@ -19,9 +19,8 @@ pub use mailbox::{
     RelayRemotePendingCommand, RelayRemotePendingResult, SendActorMessageCommand,
 };
 pub use message::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID,
-    ActorIdentityKind, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
-    infer_actor_identity_kind,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind, ActorMessageRecord,
+    ActorMessageStatus, ActorMessageTransport, infer_actor_identity_kind,
 };
 pub use relay::{ActorMessageRelay, ActorRelayError};
 pub use transport::{ParseActorTransportError, parse_actor_transport};

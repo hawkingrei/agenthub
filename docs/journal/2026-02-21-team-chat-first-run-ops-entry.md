@@ -33,4 +33,4 @@ All commands passed locally during this change.
 
 ## Follow-up
 
-- Continue chat-first flow by making leader negotiation/main-task conversation the explicit first action in Team UX copy and interaction hints.
+- Continue chat-first flow by making leader negotiation/task conversation the explicit first action in Team UX copy and interaction hints.

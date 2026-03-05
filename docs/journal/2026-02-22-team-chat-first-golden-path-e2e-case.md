@@ -4,7 +4,7 @@
 
 The Team roadmap keeps an open verification item for the chat-first golden path:
 
-- `main task -> leader negotiation -> run compile -> worker execution -> final synthesis`
+- `task -> leader negotiation -> run compile -> worker execution -> final synthesis`
 
 Existing Playwright coverage already validated Team Forge, mailbox IM flow, and compile-preview run-ops behavior independently, but there was no single scenario that chained compile-to-run with downstream worker/final-deliverable evidence in one test.
 

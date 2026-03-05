@@ -19,8 +19,7 @@ pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
     "canceled",
 ];
 
-pub const TEAM_TASK_STATUS_VALUES: [&str; 4] =
-    ["open", "in_progress", "completed", "canceled"];
+pub const TEAM_TASK_STATUS_VALUES: [&str; 4] = ["open", "in_progress", "completed", "canceled"];
 pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,8 +168,8 @@ pub enum TeamRunResumeError {
 #[cfg(test)]
 mod tests {
     use super::{
-        TEAM_TASK_STATUS_VALUES, TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES,
-        TEAM_STEP_STATUS_VALUES, TeamRunResumeError,
+        TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
+        TEAM_TASK_STATUS_VALUES, TeamRunResumeError,
     };
 
     #[test]

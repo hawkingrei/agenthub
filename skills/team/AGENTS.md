@@ -1,38 +1,36 @@
 # Team Shared AGENTS Index
 
-This file is the shared Team-level AGENTS index injected to both leader and worker
-at startup.
+Shared baseline injected to both leader and worker at startup.
+This file is index-only; detailed procedures live in skill files.
 
-## Purpose
+## Mission
 
-- Keep one consistent Team collaboration contract across roles.
-- Define stable terms and workflow boundaries before role-specific procedures.
-- Ensure both leader and worker start from the same phase model and communication model.
+- Operate as one coordinated team for human goals.
+- Keep routing deterministic through `Mailbox -> ACP upstream -> MCP`.
+- Enforce role boundary: leader plans/synthesizes, workers execute/report evidence.
 
-## Canonical Terms
+## Core Contract
 
-- `team`: collaboration boundary.
-- `member`: stable identity in team spec.
-- `agent`: runtime process bound to one member.
-- `actor_id`: canonical mailbox identity.
-- `agent_id`: compatibility alias.
-- `run_id`: mailbox partition and replay boundary.
-- `task`: internal Team execution unit created by leader planning.
+- Participants: `human`, `leader`, `worker`.
+- Identity mapping:
+  - transport identity: `actor_id`
+  - team identity: `member_id`
+  - mailbox/replay boundary: `run_id`
+- Conversation delivery:
+  - persist each message once in conversation history
+  - forward via actor mailbox transport
+- Mention routing:
+  - `@member_id` = directed recipients only
+  - no `@` = broadcast to all team members
+  - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context
+  - prefer directed `@member_id` over broadcast for execution collaboration
+  - leader should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
+  - workers should actively mention leader plus impacted peers when reporting blockers, dependency changes, or evidence handoff
+- Human/task boundary:
+  - humans provide goals/constraints
+  - internal Team `task` objects are created by leader planning
 
-## Human/Task Boundary
-
-- Human provides goals, constraints, priorities, and acceptance expectations through conversation.
-- Internal Team `task` objects are created by leader planning.
-- Workers execute delegated tasks and report evidence back to leader.
-
-## Conversation Routing Contract
-
-- Persist each human/team conversation message once in conversation history.
-- Deliver conversation messages through Team actor mailbox transport; mailbox delivery reaches ACP upstream and MCP tools.
-- Mention routing: `@member_id` targets only mentioned members; no `@` broadcasts to all members.
-- Reply routing: when targeting specific recipients, include `@member_id`; replies without `@` are broadcast.
-
-## Team Workflow Phases
+## Team Phases
 
 1. team formation
 2. task analysis
@@ -41,22 +39,21 @@ at startup.
 5. consensus formation
 6. result integration
 
-## Routing Contract
+## Routing To Skills
 
-- `AGENTS.md` is index/routing only.
-- Detailed procedures are executed from role skills:
-  - `team-agents-index`
-  - `team-leader-agents-index`
-  - `team-worker-agents-index`
-  - `team-leader-orchestrator`
-  - `team-worker-executor`
-  - `team-deliberation-rules`
-  - `team-actor-mailbox`
+- unified runtime template: `TEAM_AGENTS.md`
+- shared index loader: `team-agents-index`
+- leader index loader: `team-leader-agents-index`
+- worker index loader: `team-worker-agents-index`
+- leader orchestration: `team-leader-orchestrator`
+- worker execution: `team-worker-executor`
+- deliberation quality gate: `team-deliberation-rules`
+- mailbox protocol: `team-actor-mailbox`
 
-## Startup Contract
+## Startup Checklist
 
-- On role startup, load this shared index first.
-- Then load role-specific index and execution skills for current phase.
-- Before new mailbox work, check unfinished items in:
+- Read this file first.
+- Then load role-specific index and only skills required for the current phase.
+- Before new mailbox work, check unfinished items:
   - `TODO.md`
   - `.cache/context/todo.md`

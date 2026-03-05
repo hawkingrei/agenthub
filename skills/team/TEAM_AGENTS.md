@@ -1,85 +1,69 @@
-# Team AGENTS Index Template
+# Team Runtime AGENTS Template (Single Template)
 
-Use this template as the team-level runtime index in leader workspace `AGENTS.md`.
-Keep it concise and route detailed procedures to skill files.
+Use this single template for all Team members.
+Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 
-## Run Objective
+## Agent Profile
 
-- primary objective:
-- success criteria:
-
-## Current Phase
-
+- member_id:
+- role: `leader|worker`
 - current phase: `team formation|task analysis|role assignment|communication and collaboration|consensus formation|result integration`
 - transition condition:
 
-## Human Input
+## Objective
 
-- goals and constraints from human actor:
-- priority and acceptance preference:
+- current objective:
+- success criteria:
 
-Note:
-- humans provide goals/constraints via conversation;
-- internal tasks are created by leader planning, not directly by human.
-- routing contract: `@member_id` means directed recipients; no `@` means broadcast.
-- delivery contract: conversation is persisted once, then forwarded through actor mailbox transport.
+## Active Assignment
 
-## Team Formation
+- assignment summary:
+- acceptance criteria:
+- deadline:
 
-- member roster:
-- role coverage:
-- capability gaps:
+## Active Skills (Load Only These)
 
-## Task Analysis
+- shared baseline (always):
+  - `team-agents-index`
+  - `team-actor-mailbox`
+- role core (pick one):
+  - leader: `team-leader-orchestrator`
+  - worker: `team-worker-executor`
+- optional (load only when needed):
+  - `team-deliberation-rules`
 
-- in-scope:
-- out-of-scope:
-- risks:
-- assumptions:
+## Role Skill Profile
 
-## Role Assignment
+Leader minimal profile:
 
-- leader responsibilities:
-- worker assignments:
-- acceptance criteria per assignment:
-- deadlines:
+- default loaded:
+  - `team-leader-orchestrator`
+  - `team-actor-mailbox`
+- load on demand:
+  - `team-deliberation-rules` (only for option comparison/consensus disputes)
 
-## Skill Routing
+Worker minimal profile:
 
-- leader orchestration: `skills/team/team-leader-orchestrator.SKILL.md`
-- worker execution: `skills/team/team-worker-executor.SKILL.md`
-- deliberation rules: `skills/team/team-deliberation-rules.SKILL.md`
-- actor mailbox protocol: `skills/team/team-actor-mailbox.SKILL.md`
+- default loaded:
+  - `team-worker-executor`
+  - `team-actor-mailbox`
+- load on demand:
+  - `team-deliberation-rules` (only for trade-off evaluation requested by leader)
 
-## Identity Cards
+## Routing Contract
 
-- member identity source: `spec.members[].description`
-- runtime check endpoint: `/api/agents/:id/.well-known/agent-card`
-- owner of identity updates:
+- `@member_id` means directed recipients only.
+- no `@` means broadcast.
+- Prefer directed mentions for execution collaboration and blocker resolution.
 
-## Communication Log
+## TODO And Context Pointers
 
-- checkpoint notes:
-- blocking questions:
-- escalation events:
+- `TODO.md`
+- `.cache/context/todo.md`
+- latest evidence/log paths:
 
-## Consensus Decisions
+## Progress Log
 
-- accepted options:
-- rejected options and reasons:
-
-## Result Integration
-
-- merged outcomes:
-- evidence pointers:
-- human-facing summary draft:
-
-## Open Risks
-
-- unresolved risks:
-- mitigation or fallback:
-
-## Next Checkpoint
-
-- checkpoint time:
-- expected deliverables:
+- status: `pending|in_progress|completed|blocked`
+- latest update:
+- next checkpoint:
