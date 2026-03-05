@@ -58,15 +58,12 @@ import {
   type TeamCreateEntryMode,
 } from "./team/create_draft_storage";
 import {
-  buildMailboxForwardChatPayload,
   MailboxTemplateKey,
   buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
-  extractMentionedActorIds,
   mergeMailboxMessages,
-  resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -240,35 +237,6 @@ function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
     }
     return right.id.localeCompare(left.id);
   });
-}
-
-function asObjectRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function resolveTeamLeaderMemberId(spec: unknown, memberIds: string[]): string {
-  const normalizedMemberIds = [...new Set(memberIds.map((memberId) => memberId.trim()).filter(Boolean))];
-  if (normalizedMemberIds.length === 0) {
-    return "";
-  }
-  const memberSet = new Set(normalizedMemberIds);
-  const specRecord = asObjectRecord(spec);
-  const leaderFromSpec = typeof specRecord?.leader_member_id === "string"
-    ? specRecord.leader_member_id.trim()
-    : "";
-  if (leaderFromSpec && memberSet.has(leaderFromSpec)) {
-    return leaderFromSpec;
-  }
-  const leaderFromRole =
-    parseTeamSpecMembers(spec).find((member) => member.role.trim().toLowerCase() === "leader")
-      ?.member_id ?? "";
-  if (leaderFromRole && memberSet.has(leaderFromRole)) {
-    return leaderFromRole;
-  }
-  return normalizedMemberIds[0] ?? "";
 }
 
 export function TeamPage(props: TeamPageProps) {
@@ -668,18 +636,6 @@ export function TeamPage(props: TeamPageProps) {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
-  const selectedTeamMemberIds = useMemo(() => {
-    if (!selectedTeam) {
-      return [];
-    }
-    return parseTeamSpecMembers(selectedTeam.spec).map((member) => member.member_id);
-  }, [selectedTeam]);
-  const selectedTeamLeaderMemberId = useMemo(() => {
-    if (!selectedTeam) {
-      return "";
-    }
-    return resolveTeamLeaderMemberId(selectedTeam.spec, selectedTeamMemberIds);
-  }, [selectedTeam, selectedTeamMemberIds]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");

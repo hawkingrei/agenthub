@@ -716,9 +716,8 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 .map(|skill| skill.name.as_str())
                 .collect::<Vec<_>>();
             let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
-            let has_actor_mailbox_mcp = mcp_server_names
-                .iter()
-                .any(|name| *name == ACTOR_MAILBOX_MCP_SERVER_NAME);
+            let has_actor_mailbox_mcp =
+                mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
             tracing::info!(
                 run_id = %ctx.run_id,
                 actor_id = %ctx.actor_id,
