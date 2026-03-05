@@ -21,9 +21,8 @@ Primary references:
 
 1. Read shared baseline (`skills/team/AGENTS.md`).
 2. Initialize or refresh workspace `AGENTS.md` from `skills/team/TEAM_AGENTS.md`.
-3. Set `role=worker` and keep `Active Skills` minimal:
-   - `team-worker-executor`
+3. Set `role=worker` and load minimal `Active Skills`:
+   - `team-worker-executor` (role execution skill)
    - `team-actor-mailbox`
    - add `team-deliberation-rules` only when needed
-4. Load role execution skill: `team-worker-executor`.
-5. Check `TODO.md` and `.cache/context/todo.md` before mailbox rounds.
+4. Check `TODO.md` and `.cache/context/todo.md` before mailbox rounds.

@@ -100,9 +100,9 @@ Minimum envelope fields:
 
 Peer identity policy:
 
-- `from_peer_id = main` is required for Team mailbox send API.
-- `to_peer_id = main` for local transport.
-- `to_peer_id != main` for remote transport (default `node`).
+- `from_peer_id` defaults to `main` when omitted; callers SHOULD set it explicitly in multi-peer deployments.
+- `to_peer_id` defaults to `main` for local transport when omitted.
+- For remote transport, callers MUST set `to_peer_id` to a non-`main` peer (for example `node`); if omitted, current implementation falls back to `main` and delivers locally (backward-compatibility path).
 
 Identity-kind projection (for UX/policy):
 
