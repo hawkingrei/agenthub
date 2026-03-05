@@ -1468,7 +1468,7 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
             channel: "coordination",
             transport: TeamActorMessageTransport::Local,
             route: None,
-            payload: json!({"type":"worker_status","status":"done"}),
+            payload: json!({"type":"  worker_status  ","status":"done"}),
             idempotency_key: None,
         })
         .await

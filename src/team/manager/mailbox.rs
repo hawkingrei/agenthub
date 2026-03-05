@@ -209,7 +209,7 @@ impl TeamManager {
         builder.push(" AND to_peer_id = ");
         builder.push_bind(ACTOR_MAIN_PEER_ID);
         builder.push(" AND status = 'pending'");
-        builder.push(" AND json_extract(payload_json, '$.type') = ");
+        builder.push(" AND trim(json_extract(payload_json, '$.type')) = ");
         builder.push_bind(payload_type);
         if let Some(message_id) = current_message_id {
             builder.push(" AND id < ");
