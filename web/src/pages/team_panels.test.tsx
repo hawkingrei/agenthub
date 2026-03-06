@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MantineProvider } from "@mantine/core";
 import {
   AgentEvent,
   TeamConversationMessageRecord,
@@ -28,6 +29,20 @@ import { TeamTabsBar } from "./team_tabs_bar";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
+
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList) as typeof window.matchMedia;
+}
 
 function required<T>(value: T | null | undefined, message: string): T {
   if (value == null) {
@@ -249,6 +264,33 @@ function buildSnapshot(overrides: Partial<TeamRunSnapshotRecord> = {}): TeamRunS
   };
 }
 
+function buildMemberLiveState(
+  overrides: Partial<{
+    member_id: string;
+    role: string;
+    agent_name?: string;
+    lifecycle_status: string;
+    lifecycle_tone: "active" | "inactive" | "missing";
+    run_status: string;
+    step_status: string;
+    pending_inbox_count: number | null;
+    current_work: string;
+  }> = {}
+) {
+  return {
+    member_id: "leader-agent",
+    role: "leader",
+    agent_name: "Leader Agent",
+    lifecycle_status: "running",
+    lifecycle_tone: "active" as const,
+    run_status: "working",
+    step_status: "working",
+    pending_inbox_count: 1,
+    current_work: "planning handoff",
+    ...overrides,
+  };
+}
+
 describe("team panels interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -266,97 +308,127 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders summary and triggers refresh/create/select callbacks", () => {
+  it("TeamSidebar renders subject rail and triggers navigation callbacks", () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeamWizard = vi.fn();
     const onOpenCreateTeamManual = vi.fn();
     const onSelectTeam = vi.fn();
+    const onSelectConversation = vi.fn();
+    const onSelectAgentTab = vi.fn();
+    const onSelectUtilityTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
 
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={onRefreshTeams}
-          onOpenCreateTeamWizard={onOpenCreateTeamWizard}
-          onOpenCreateTeamManual={onOpenCreateTeamManual}
-          draftTeamName="alpha"
-          leaderMemberId="leader-agent"
-          configuredWorkerCount={2}
-          teams={[teamOne, teamTwo]}
-          selectedTeamId="team-1"
-          teamMemberSummaryByTeamId={new Map([
-            [
-              "team-1",
-              {
-                active: 1,
-                inactive: 1,
-                missing: 0,
-                total: 2,
-              },
-            ],
-            [
-              "team-2",
-              {
-                active: 2,
-                inactive: 0,
-                missing: 0,
-                total: 2,
-              },
-            ],
-          ])}
-          onSelectTeam={onSelectTeam}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId="team-1"
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="member_console"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
       );
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
-    clickElement(findButtonByText(container, "Guided Wizard"));
+    clickElement(findButtonByText(container, "Create Team"));
     clickElement(findButtonByText(container, "Manual Spec"));
-    clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
+    clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
     changeInputValue(filterInput, "team-2");
-    expect(container.textContent).toContain("Team Two");
-    expect(container.textContent).not.toContain("Team One");
     expect(container.textContent).toContain("filtered=1 total=2");
     clickElement(findButtonByAriaLabel(container, "Clear team filter"));
-    expect(container.textContent).toContain("Team One");
-    expect(container.textContent).toContain("Team Two");
-    const selectedItem = required(
-      container.querySelector("button[aria-current='true']"),
-      "selected team item missing"
-    );
-    expect(selectedItem.textContent).toContain("Team One");
+    clickElement(findButtonByText(container, "Team Two"));
+    clickElement(findButtonByText(container, "Conversation"));
+    clickElement(findButtonByText(container, "worker-agent"));
+    clickElement(findButtonByText(container, "Console"));
+    clickElement(findButtonByText(container, "Runs"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
-    expect(onSelectTeam).toHaveBeenCalledWith("team-1");
-    expect(container.textContent).toContain("active=1 inactive=1 missing=0 total=2");
-    expect(container.textContent).toContain("Operating Model");
-    expect(container.textContent).toContain(
-      "Leader plans and talks to human actor. Workers execute delegated tasks and report evidence back to leader."
-    );
+    expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(onSelectConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "member_console");
+    expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
+    expect(container.textContent).toContain("Human");
+    expect(container.textContent).toContain("Agents");
+    expect(container.textContent).toContain("Utilities");
+    expect(container.textContent).toContain("lifecycle=working");
+    expect(container.textContent).toContain("work=working");
 
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={() => {}}
-          onOpenCreateTeamWizard={() => {}}
-          onOpenCreateTeamManual={() => {}}
-          draftTeamName=""
-          leaderMemberId=""
-          configuredWorkerCount={0}
-          teams={[buildTeam()]}
-          selectedTeamId={null}
-          teamMemberSummaryByTeamId={new Map()}
-          onSelectTeam={() => {}}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeamWizard={() => {}}
+            onOpenCreateTeamManual={() => {}}
+            draftTeamName=""
+            leaderMemberId=""
+            configuredWorkerCount={0}
+            teams={[buildTeam()]}
+            selectedTeam={null}
+            selectedTeamId={null}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[]}
+            selectedMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -369,19 +441,28 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={() => {}}
-          onOpenCreateTeamWizard={() => {}}
-          onOpenCreateTeamManual={() => {}}
-          draftTeamName=""
-          leaderMemberId=""
-          configuredWorkerCount={0}
-          teams={[]}
-          selectedTeamId={null}
-          teamMemberSummaryByTeamId={new Map()}
-          onSelectTeam={() => {}}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeamWizard={() => {}}
+            onOpenCreateTeamManual={() => {}}
+            draftTeamName=""
+            leaderMemberId=""
+            configuredWorkerCount={0}
+            teams={[]}
+            selectedTeam={null}
+            selectedTeamId={null}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[]}
+            selectedMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+          />
+        </MantineProvider>
       );
     });
 

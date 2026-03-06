@@ -213,6 +213,42 @@ export const TEAM_MUTED_TEXT_CLASS = "muted text-ui-sm text-ui-text-muted";
 export const TEAM_SIDEBAR_ROOT_CLASS =
   "teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
 
+export const TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS =
+  "flex w-full items-center justify-between gap-3 rounded-xl border border-ui-border-strong bg-ui-surface-soft px-3 py-3 text-left shadow-sm transition hover:border-ui-border-emphasis";
+
+export const TEAM_SIDEBAR_SWITCHER_PANEL_CLASS =
+  "rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+
+export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-2";
+
+export const TEAM_SIDEBAR_SECTION_LABEL_CLASS =
+  "px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted";
+
+export const TEAM_SIDEBAR_NAV_LIST_CLASS = "flex min-w-0 flex-col gap-2";
+
+const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition";
+
+export const TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS =
+  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} border-ui-border-strong bg-ui-surface-soft shadow-sm`;
+
+export const TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS =
+  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} border-ui-border bg-ui-surface hover:border-ui-border-strong`;
+
+export const TEAM_SIDEBAR_NAV_ITEM_META_CLASS =
+  "mono w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-ui-xs text-ui-text-muted";
+
+export const TEAM_SIDEBAR_SUBNAV_CLASS = "mt-1 flex flex-wrap gap-1.5";
+
+const TEAM_SIDEBAR_SUBNAV_BUTTON_BASE_CLASS =
+  "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[11px] font-medium transition";
+
+export const TEAM_SIDEBAR_SUBNAV_BUTTON_ACTIVE_CLASS =
+  `${TEAM_SIDEBAR_SUBNAV_BUTTON_BASE_CLASS} bg-brand-primary text-ui-text-inverse shadow-sm`;
+
+export const TEAM_SIDEBAR_SUBNAV_BUTTON_IDLE_CLASS =
+  `${TEAM_SIDEBAR_SUBNAV_BUTTON_BASE_CLASS} border border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
+
 export const TEAM_SIDEBAR_FORGE_CARD_CLASS =
   "teams-form teams-create-launch flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
 
