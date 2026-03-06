@@ -29,8 +29,9 @@ use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
 use crate::acp::{
-    AcpActorSkillContext, AcpHandle, AcpPermissionService, AgenthubAcpEventSink,
-    SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context, spawn_acp_session,
+    AcpActorSkillContext, AcpHandle, AcpPermissionService, AcpPromptDeliveryPolicy,
+    AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context,
+    spawn_acp_session,
 };
 use crate::auth::AuthService;
 use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -63,6 +64,13 @@ const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
+
+fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
+    match provider {
+        ACP_PROVIDER_CODEX => AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+        _ => AcpPromptDeliveryPolicy::StrictFifo,
+    }
+}
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AgentSendInputError {
@@ -1249,6 +1257,7 @@ impl AgentManager {
                 stdin,
                 safe_paths,
                 actor_context: actor_context.clone(),
+                prompt_delivery_policy: acp_prompt_delivery_policy(provider),
             })
             .await
             {
