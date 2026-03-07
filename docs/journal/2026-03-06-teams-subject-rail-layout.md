@@ -154,6 +154,11 @@ confirmed the reference structure we actually want to copy:
   - `Agents`: hide `Debug`, `Session`, and `Updated` when developer mode is off;
   - `Teams`: hide shared-thread message details, workspace runtime details, `Advanced -> Debug`, agent-thread technical metadata, and raw mailbox tools when developer mode is off;
   - normal collaboration surfaces (`Conversation`, `Runs`, `Overview`, `Events`, `Steps`) remain available in both modes.
+- tightened the left rail further for non-developer mode:
+  - team switcher rows no longer show raw team IDs by default;
+  - agent rows now default to `name + status (+ pending count)` instead of always rendering `member_id · role · lifecycle`;
+  - the sidebar `Show Team Details` entry is now developer-only;
+  - the `Runs` utility row copy was shortened to match the lighter rail tone.
 - left the long-term backend fix as a follow-up:
   - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
   - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.
@@ -210,3 +215,4 @@ confirmed the reference structure we actually want to copy:
   - Chrome DevTools MCP script verification on `https://agenthub.hawkingrei.com/admin` confirmed the toggle writes `localStorage['agenthub_ui_prefs_v1'] = {\"developerMode\":true}` and was restored back to `false` after verification;
   - Chrome DevTools MCP regression on `https://agenthub.hawkingrei.com/` after `make build-web` confirmed the current production bundle defaults to the cleaner non-developer mode (`Debug` hidden, `Session`/`Updated` omitted);
   - deployed MCP verification of the gated `Teams` technical controls is partially blocked by current runtime data: after reload the authenticated `/teams` context had no selected team, so the thread-level `Show details` / workspace-details / advanced-debug branches were not all visible on the live page; these branches are covered by local unit tests and build validation.
+  - Chrome DevTools MCP baseline on the deployed `https://agenthub.hawkingrei.com/teams` still shows the old left-rail behavior (`member_id · role · lifecycle` visible in agent rows when developer mode is on, raw team IDs visible in the switcher list), which is the concrete before-state for this local-only left-rail reduction.

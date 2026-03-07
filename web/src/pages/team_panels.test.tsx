@@ -323,6 +323,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamSidebar
+            developerMode={true}
             busy={null}
             onRefreshTeams={onRefreshTeams}
             onOpenCreateTeamWizard={onOpenCreateTeamWizard}
@@ -416,6 +417,68 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("worker · working");
     expect(container.textContent).not.toContain("Console");
 
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId="team-1"
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="member_console"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    expect(container.textContent).not.toContain("Show Team Details");
+    expect(container.textContent).not.toContain("leader · working");
+    expect(container.textContent).not.toContain("worker · working");
+    expect(container.textContent).not.toContain("team-1");
+
     clickElement(findButtonByText(container, "Operations"));
     expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
     expect(container.textContent).toContain("Utilities 1");
@@ -426,6 +489,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamSidebar
+            developerMode={true}
             busy={null}
             onRefreshTeams={onRefreshTeams}
             onOpenCreateTeamWizard={onOpenCreateTeamWizard}
@@ -484,6 +548,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamSidebar
+            developerMode={false}
             busy={null}
             onRefreshTeams={() => {}}
             onOpenCreateTeamWizard={() => {}}
@@ -518,6 +583,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamSidebar
+            developerMode={false}
             busy={null}
             onRefreshTeams={() => {}}
             onOpenCreateTeamWizard={() => {}}

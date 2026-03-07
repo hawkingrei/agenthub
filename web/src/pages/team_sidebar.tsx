@@ -35,6 +35,7 @@ type TeamMemberSummary = {
 };
 
 type TeamSidebarProps = {
+  developerMode: boolean;
   busy: string | null;
   onRefreshTeams: () => Promise<void> | void;
   onOpenCreateTeamWizard: () => void;
@@ -95,6 +96,7 @@ function resolveSidebarScope(tab: TeamTab): TeamSidebarScope {
 
 export function TeamSidebar(props: TeamSidebarProps) {
   const {
+    developerMode,
     busy,
     onRefreshTeams,
     onOpenCreateTeamWizard,
@@ -252,17 +254,21 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 >
                   Manual Spec
                 </button>
-                <div className="my-1 border-t border-ui-border/80" />
-                <button
-                  type="button"
-                  className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
-                  onClick={() => {
-                    setTeamActionsOpen(false);
-                    setTeamDetailsOpen((current) => !current);
-                  }}
-                >
-                  {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
-                </button>
+                {developerMode && (
+                  <>
+                    <div className="my-1 border-t border-ui-border/80" />
+                    <button
+                      type="button"
+                      className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
+                      onClick={() => {
+                        setTeamActionsOpen(false);
+                        setTeamDetailsOpen((current) => !current);
+                      }}
+                    >
+                      {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -320,7 +326,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   title={team.id}
                 >
                   <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
-                  <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-80`}>{team.id}</span>
+                  {developerMode && (
+                    <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-80`}>{team.id}</span>
+                  )}
                   {summary && (
                     <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-70`}>
                       {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
@@ -458,7 +466,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           }
                           onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                           title={
-                            [primaryLabel, member.member_id, member.current_work]
+                            [primaryLabel, developerMode ? member.member_id : null, member.current_work]
                               .filter((value) => value && value.trim().length > 0)
                               .join(" · ") || member.member_id
                           }
@@ -481,7 +489,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
                               )}
                             </span>
                           </span>
-                          <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>{memberMeta}</span>
+                          {developerMode && memberMeta && (
+                            <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>{memberMeta}</span>
+                          )}
                         </button>
                       );
                     })}
@@ -525,9 +535,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                         {item.label}
                       </span>
                       <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-                        {item.value === "runs"
-                          ? "Run browser and execution entry"
-                          : "Run browser and execution entry"}
+                        {item.value === "runs" ? "Browse runs" : "Browse runs"}
                       </span>
                     </button>
                   ))}

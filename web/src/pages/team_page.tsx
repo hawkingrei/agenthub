@@ -2676,6 +2676,7 @@ export function TeamPage(props: TeamPageProps) {
       >
         {!teamsSidebarCollapsed && (
           <TeamSidebar
+            developerMode={props.developerMode}
             busy={busy}
             onRefreshTeams={refreshTeams}
             onOpenCreateTeamWizard={openCreateTeamWizardModal}
