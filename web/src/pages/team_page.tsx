@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Menu } from "@mantine/core";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
@@ -30,14 +31,13 @@ import {
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
-import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
+import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import { TeamTaskPanel } from "./team_task_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
-import { TeamTabsBar } from "./team_tabs_bar";
 import {
   buildTeamForgeCleanupWarning,
   buildLeaderForgeDefaultWorkdir,
@@ -86,8 +86,11 @@ import {
 } from "./team/member_helpers";
 import {
   buildAgentLabel,
+  DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
   pickNextWorkerAgentId,
+  resolveTeamConversationTask,
+  sortTasksByActivity,
   toPrettyJson,
   upsertRun,
 } from "./team/page_helpers";
@@ -207,11 +210,13 @@ type TeamPageProps = {
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
-const TEAM_AGENT_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
-  TEAM_AGENT_WORKSPACE_TABS.has(item.value)
+const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>(["member_console", "mailbox", "debug"]);
+const TEAM_AGENT_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
+  TEAM_AGENT_ADVANCED_TABS.has(item.value)
 );
-const TEAM_PRIMARY_TAB_ITEMS = TEAM_TAB_ITEMS.filter(
-  (item) => !TEAM_AGENT_WORKSPACE_TABS.has(item.value)
+const TEAM_UTILITY_ADVANCED_TABS = new Set<TeamTab>(["overview", "events", "steps", "debug"]);
+const TEAM_UTILITY_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
+  TEAM_UTILITY_ADVANCED_TABS.has(item.value)
 );
 
 const TEAM_EVENT_PREVIEW_LIMIT = 5;
@@ -235,23 +240,12 @@ function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
-  return [...tasks].sort((left, right) => {
-    if (right.updated_at !== left.updated_at) {
-      return right.updated_at - left.updated_at;
-    }
-    if (right.created_at !== left.created_at) {
-      return right.created_at - left.created_at;
-    }
-    return right.id.localeCompare(left.id);
-  });
-}
-
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
+  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
   useEffect(() => {
     document.body.classList.add("teams-page");
@@ -709,6 +703,12 @@ export function TeamPage(props: TeamPageProps) {
       buildTeamMemberLiveStates(selectedTeamMemberStatuses, selectedTeamSnapshotMembers),
     [selectedTeamMemberStatuses, selectedTeamSnapshotMembers]
   );
+  const selectedTeamMemberSummary = useMemo(() => {
+    if (!selectedTeam) {
+      return null;
+    }
+    return teamMemberSummaryByTeamId.get(selectedTeam.id) ?? null;
+  }, [selectedTeam, teamMemberSummaryByTeamId]);
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -1814,24 +1814,43 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) {
       return null;
     }
-    const selectedId = selectedTaskId.trim();
-    if (selectedId) {
-      const selected = taskList.find(
-        (task) => task.id === selectedId && task.team_id === selectedTeamId
-      );
-      if (selected) {
-        return selected;
-      }
+    const conversation = resolveTeamConversationTask(taskList, selectedTaskId, selectedTeamId);
+    if (conversation) {
+      setSelectedTaskId(conversation.id);
     }
-    const latest = sortTasksByActivity(taskList).find(
-      (task) => task.team_id === selectedTeamId
-    );
-    if (latest) {
-      setSelectedTaskId(latest.id);
-      return latest;
-    }
-    return null;
+    return conversation;
   }, [taskList, selectedTaskId, selectedTeamId]);
+
+  const ensureSharedConversation = useCallback(async () => {
+    if (!selectedTeamId) {
+      return null;
+    }
+    const existing = resolveConversationForMessage();
+    if (existing) {
+      return existing;
+    }
+    const remoteTasks = sortTasksByActivity(await api.listTeamTasks(props.token, selectedTeamId, 100));
+    const remoteConversation = resolveTeamConversationTask(remoteTasks, selectedTaskId, selectedTeamId);
+    if (remoteConversation) {
+      setTaskList(remoteTasks);
+      setSelectedTaskId(remoteConversation.id);
+      return remoteConversation;
+    }
+
+    const created = await api.createTeamTask(props.token, selectedTeamId, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      conversation_mode: "group_chat",
+      topic: DEFAULT_TEAM_THREAD_TITLE,
+      context: {
+        bootstrap_kind: "shared_thread",
+        bootstrap_source: "teams_all",
+      },
+    });
+    setTaskList((prev) => sortTasksByActivity([created.task, ...prev.filter((task) => task.id !== created.task.id)]));
+    setSelectedTaskId(created.task.id);
+    setTaskMessages([]);
+    return created.task;
+  }, [props.token, resolveConversationForMessage, selectedTaskId, selectedTeamId]);
 
   const onSendTaskMessage = useCallback(async () => {
     if (!selectedTeamId) {
@@ -1847,7 +1866,7 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     setWarning(null);
     try {
-      const conversation = resolveConversationForMessage();
+      const conversation = await ensureSharedConversation();
       const taskId = conversation?.id;
       const chatPayload = buildMailboxChatPayload(text);
       if (taskId) {
@@ -1864,10 +1883,10 @@ export function TeamPage(props: TeamPageProps) {
             refreshEvents(activeRunIdForSelectedTeam),
           ]);
         }
-      } else {
-        setWarning("No task selected. Ask leader to define a task first.");
+        setTaskMessageDraft("");
+        return;
       }
-      setTaskMessageDraft("");
+      setWarning("Unable to initialize shared team thread.");
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -1875,7 +1894,7 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [
     activeRunIdForSelectedTeam,
-    resolveConversationForMessage,
+    ensureSharedConversation,
     taskMessageDraft,
     props.token,
     refreshEvents,
@@ -2099,6 +2118,22 @@ export function TeamPage(props: TeamPageProps) {
   const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
   const teamRunMetaItemClassName =
     "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
+  const workspaceToolbarClassName =
+    "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+  const workspaceToolbarButtonBaseClassName =
+    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
+  const workspaceToolbarButtonActiveClassName =
+    `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
+  const workspaceToolbarButtonIdleClassName =
+    `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  const workspaceNoticeClassName =
+    "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
+  const workspaceNoticeTextClassName =
+    "flex min-w-0 flex-1 items-center gap-2 text-xs text-ui-text-muted";
+  const workspaceNoticeDotBaseClassName =
+    "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
+  const workspaceMetaDropdownClassName =
+    "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg";
   const tabNeedsActiveRun = tabRequiresActiveRun(tab);
   const showRunContextLoading = tab !== "runs" && tabNeedsActiveRun && runsLoading && !activeRunForSelectedTeam;
   const showNoActiveRunNotice = tab !== "runs" && tabNeedsActiveRun && !runsLoading && !activeRunForSelectedTeam;
@@ -2108,30 +2143,151 @@ export function TeamPage(props: TeamPageProps) {
     [selectedMemberId, selectedTeamMemberLiveStates]
   );
   const isAgentWorkspace = TEAM_AGENT_WORKSPACE_TABS.has(tab);
-  const workspaceTabItems = isAgentWorkspace ? TEAM_AGENT_TAB_ITEMS : TEAM_PRIMARY_TAB_ITEMS;
+  const workspaceAdvancedTabItems = isAgentWorkspace
+    ? TEAM_AGENT_ADVANCED_TAB_ITEMS
+    : TEAM_UTILITY_ADVANCED_TAB_ITEMS;
+  const isAdvancedWorkspace = workspaceAdvancedTabItems.some((item) => item.value === tab);
+  const showRunActionsInAdvanced = Boolean(activeRunForSelectedTeam && tab !== "runs");
   const workspaceEyebrow = !selectedTeam
     ? "Team Workbench"
-    : tab === "conversation"
-      ? "Human Conversation"
-      : tab === "runs"
-        ? "Run Workspace"
-        : isAgentWorkspace
-          ? "Agent Workspace"
-          : "Team Utility";
+    : tab === "runs"
+      ? "Run Workspace"
+      : !isAgentWorkspace && tab !== "conversation"
+        ? "Team Utility"
+        : null;
+  const selectedAgentLabel = useMemo(() => {
+    const agentName = selectedMemberLiveState?.agent_name?.trim();
+    if (agentName) {
+      return agentName;
+    }
+    return selectedMemberLiveState?.member_id ?? selectedTeam?.name ?? "Agent";
+  }, [selectedMemberLiveState?.agent_name, selectedMemberLiveState?.member_id, selectedTeam?.name]);
   const workspaceTitle = !selectedTeam
     ? "Team Workbench"
+    : tab === "conversation"
+      ? "all"
     : selectedMemberLiveState && isAgentWorkspace
-      ? selectedMemberLiveState.member_id
+      ? selectedAgentLabel
       : selectedTeam.name;
   const workspaceDescription = !selectedTeam
     ? "Select a team from the left rail to start team conversations and supervise execution."
     : tab === "conversation"
-      ? "Shared human-to-team planning lane. Use this first before execution-specific tools."
+      ? "Shared team thread for planning, requests, and broadcast coordination."
       : tab === "runs"
         ? "Browse runs, choose the active execution context, or start a new team run."
         : isAgentWorkspace
-          ? "Inspect one agent directly without losing the broader team context."
-          : "Run-scoped utilities stay available, but they are secondary to conversation and run control.";
+          ? "Direct ACP thread for the selected agent."
+          : "Run-scoped utilities stay available, but they should not replace conversation-first coordination.";
+  const workspaceMemberAvailability = useMemo(() => {
+    if (selectedTeamMemberSummary) {
+      return {
+        online: selectedTeamMemberSummary.active,
+        offline: selectedTeamMemberSummary.inactive,
+        missing: selectedTeamMemberSummary.missing,
+      };
+    }
+    let online = 0;
+    let offline = 0;
+    let missing = 0;
+    for (const member of selectedTeamMemberLiveStates) {
+      const lifecycle = normalizeTeamMemberLifecycle(member);
+      if (lifecycle === "missing") {
+        missing += 1;
+      } else if (lifecycle === "stopped") {
+        offline += 1;
+      } else {
+        online += 1;
+      }
+    }
+    return { online, offline, missing };
+  }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
+  const workspaceNoticeText = useMemo(() => {
+    const runLabel = activeRunForSelectedTeam
+      ? `Run ${activeRunForSelectedTeam.status}.`
+      : "No active run.";
+    const rosterLabel = `${selectedTeamMemberLiveStates.length} members in roster.`;
+    const availabilityLabel =
+      workspaceMemberAvailability.missing > 0
+        ? `${workspaceMemberAvailability.missing} missing.`
+        : workspaceMemberAvailability.offline > 0
+          ? `${workspaceMemberAvailability.offline} offline.`
+          : `${workspaceMemberAvailability.online} online.`;
+    const agentLabel = (() => {
+      if (!isAgentWorkspace || !selectedMemberLiveState) {
+        return null;
+      }
+      const lifecycle = normalizeTeamMemberLifecycle(selectedMemberLiveState);
+      if (lifecycle !== "unknown") {
+        return `${selectedAgentLabel} is ${lifecycle}.`;
+      }
+      const workStatus = normalizeTeamMemberWorkStatus(selectedMemberLiveState);
+      if (workStatus !== "unknown") {
+        return `${selectedAgentLabel} is ${workStatus === "no_run" ? "waiting for a run" : workStatus}.`;
+      }
+      return null;
+    })();
+    return [runLabel, rosterLabel, availabilityLabel, agentLabel]
+      .filter((value): value is string => Boolean(value))
+      .join(" ");
+  }, [
+    activeRunForSelectedTeam,
+    isAgentWorkspace,
+    selectedAgentLabel,
+    selectedMemberLiveState,
+    selectedTeamMemberLiveStates.length,
+    workspaceMemberAvailability,
+  ]);
+  const workspaceNoticeDotClassName = useMemo(() => {
+    if (workspaceMemberAvailability.missing > 0) {
+      return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+    }
+    if (!activeRunForSelectedTeam) {
+      return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
+    }
+    if (activeRunForSelectedTeam.status === "working") {
+      return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
+    }
+    if (activeRunForSelectedTeam.status === "completed") {
+      return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
+    }
+    if (activeRunForSelectedTeam.status === "failed") {
+      return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+    }
+    if (activeRunForSelectedTeam.status === "canceled") {
+      return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
+    }
+    return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
+  }, [activeRunForSelectedTeam, workspaceMemberAvailability.missing, workspaceNoticeDotBaseClassName]);
+  const workspaceDetailItems = useMemo(
+    () =>
+      [
+        `team=${selectedTeam?.id ?? "-"}`,
+        `active_run=${activeRunIdForSelectedTeam ?? "-"}`,
+        `run_status=${activeRunForSelectedTeam?.status ?? "-"}`,
+        `context=${activeRunForSelectedTeam?.context_id ?? "-"}`,
+        isAgentWorkspace &&
+        selectedMemberLiveState?.agent_name &&
+        selectedMemberLiveState.agent_name !== selectedMemberLiveState.member_id
+          ? `agent=${selectedMemberLiveState.agent_name}`
+          : null,
+        isAgentWorkspace ? `member=${selectedMemberLiveState?.member_id ?? "-"}` : null,
+      ].filter((value): value is string => value !== null),
+    [
+      activeRunForSelectedTeam?.context_id,
+      activeRunForSelectedTeam?.status,
+      activeRunIdForSelectedTeam,
+      isAgentWorkspace,
+      selectedMemberLiveState?.agent_name,
+      selectedMemberLiveState?.member_id,
+      selectedTeam?.id,
+    ]
+  );
+  const onOpenRunsWorkspace = useCallback(() => {
+    setTab("runs");
+  }, [setTab]);
+  React.useEffect(() => {
+    setWorkspaceDetailsOpen(false);
+  }, [selectedTeamId, tab]);
   const onRefreshActiveRun = useCallback(() => {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
@@ -2229,6 +2385,8 @@ export function TeamPage(props: TeamPageProps) {
         onSendMessage={onSendTaskMessage}
         onRefreshMessages={refreshTaskMessages}
         messages={taskMessages}
+        mailboxMessages={snapshot?.mailbox.recent_messages ?? []}
+        humanActorId={HUMAN_MAILBOX_ACTOR_ID}
         memberLiveStates={selectedTeamMemberLiveStates}
         memberIds={taskConversationMemberIds}
         messagesLoading={taskMessagesLoading}
@@ -2553,68 +2711,129 @@ export function TeamPage(props: TeamPageProps) {
               <div className={teamSectionCardClassName}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted">
-                      {workspaceEyebrow}
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold tracking-tight text-ui-text-primary">
+                    {workspaceEyebrow && (
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted">
+                        {workspaceEyebrow}
+                      </p>
+                    )}
+                    <h2 className={`${workspaceEyebrow ? "mt-1" : ""} text-xl font-semibold tracking-tight text-ui-text-primary`}>
                       {workspaceTitle}
                     </h2>
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={
-                        tab === "conversation"
-                          ? panelPrimaryButtonClassName
-                          : panelSecondaryButtonClassName
-                      }
-                      onClick={onSelectConversationSubject}
-                    >
-                      Conversation
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        tab === "runs" ? panelPrimaryButtonClassName : panelSecondaryButtonClassName
-                      }
-                      onClick={() => onSelectUtilityWorkspace("runs")}
-                    >
-                      Runs
-                    </button>
-                    {selectedMemberLiveState && (
+                    <div className={workspaceToolbarClassName}>
                       <button
                         type="button"
                         className={
-                          isAgentWorkspace
-                            ? panelPrimaryButtonClassName
-                            : panelSecondaryButtonClassName
+                          tab === "runs"
+                            ? workspaceToolbarButtonActiveClassName
+                            : workspaceToolbarButtonIdleClassName
                         }
-                        onClick={() =>
-                          onSelectAgentWorkspace(selectedMemberLiveState.member_id, "agent_acp")
-                        }
+                        onClick={onOpenRunsWorkspace}
                       >
-                        Agent
+                        <i className="bi bi-play-circle" aria-hidden="true" />
+                        <span>Runs</span>
                       </button>
+                      {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
+                        <Menu withinPortal={false} position="bottom-end" shadow="md">
+                          <Menu.Target>
+                            <button
+                              type="button"
+                              className={
+                                isAdvancedWorkspace
+                                  ? workspaceToolbarButtonActiveClassName
+                                  : workspaceToolbarButtonIdleClassName
+                              }
+                              aria-label="Open advanced views"
+                            >
+                              <i className="bi bi-sliders2" aria-hidden="true" />
+                              <span>Advanced</span>
+                            </button>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            {workspaceAdvancedTabItems.length > 0 && (
+                              <>
+                                <Menu.Label>Views</Menu.Label>
+                                {workspaceAdvancedTabItems.map((item) => (
+                                  <Menu.Item
+                                    key={item.value}
+                                    onClick={() => setTab(item.value)}
+                                  >
+                                    {item.label}
+                                  </Menu.Item>
+                                ))}
+                              </>
+                            )}
+                            {showRunActionsInAdvanced && (
+                              <>
+                                {workspaceAdvancedTabItems.length > 0 && <Menu.Divider />}
+                                <Menu.Label>Run</Menu.Label>
+                                <Menu.Item onClick={onRefreshActiveRun}>
+                                  Refresh Run
+                                </Menu.Item>
+                                <Menu.Item
+                                  onClick={onCancelRun}
+                                  disabled={
+                                    busy === "cancel-run" ||
+                                    activeRunForSelectedTeam.status === "canceled"
+                                  }
+                                >
+                                  Cancel
+                                </Menu.Item>
+                                <Menu.Item
+                                  onClick={onResumeRun}
+                                  disabled={busy === "resume-run" || !canResumeActiveRun}
+                                >
+                                  Resume
+                                </Menu.Item>
+                                <Menu.Item
+                                  onClick={onRestartRun}
+                                  disabled={busy === "restart-run" || !canRestartActiveRun}
+                                >
+                                  Restart
+                                </Menu.Item>
+                              </>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className={`${workspaceNoticeClassName} mono`}>
+                  <div className={workspaceNoticeTextClassName}>
+                    <span className={workspaceNoticeDotClassName} aria-hidden="true" />
+                    <span className="min-w-0 flex-1 text-xs leading-5 text-ui-text-muted">
+                      {workspaceNoticeText}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border/80 bg-ui-surface-soft text-ui-text-muted transition hover:border-ui-border-emphasis hover:text-ui-text-primary"
+                      onClick={() => setWorkspaceDetailsOpen((current) => !current)}
+                      aria-expanded={workspaceDetailsOpen}
+                      aria-label="Toggle workspace details"
+                      title="Workspace details"
+                    >
+                      <i className="bi bi-three-dots" aria-hidden="true" />
+                    </button>
+                    {workspaceDetailsOpen && (
+                      <div className={workspaceMetaDropdownClassName}>
+                        {workspaceDetailItems.map((item) => (
+                          <div
+                            key={item}
+                            className={teamRunMetaItemClassName}
+                          >
+                            {item}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
-                <div className="mono mt-3 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-                  <span className={teamRunMetaItemClassName}>{`team=${selectedTeam.id}`}</span>
-                  <span className={teamRunMetaItemClassName}>
-                    {`members=${selectedTeamMemberLiveStates.length}`}
-                  </span>
-                  <span className={teamRunMetaItemClassName}>
-                    {`active_run=${activeRunIdForSelectedTeam ?? "-"}`}
-                  </span>
-                  {selectedMemberLiveState && (
-                    <span className={teamRunMetaItemClassName}>
-                      {`member=${selectedMemberLiveState.member_id}`}
-                    </span>
-                  )}
-                </div>
               </div>
-              <TeamTabsBar tab={tab} onTabChange={setTab} items={workspaceTabItems} />
 
               {tab === "runs" && (
                 <TeamRunPanel
@@ -2637,23 +2856,6 @@ export function TeamPage(props: TeamPageProps) {
                   runsHasMore={runsHasMore}
                   selectedTeamId={selectedTeamId}
                   onLoadMoreRuns={onLoadMoreRuns}
-                />
-              )}
-
-              {tab !== "runs" && activeRunForSelectedTeam && !runsLoading && (
-                <TeamActiveRunPanel
-                  run={activeRunForSelectedTeam}
-                  busy={busy}
-                  canResumeRun={canResumeActiveRun}
-                  canRestartRun={canRestartActiveRun}
-                  onRefresh={onRefreshActiveRun}
-                  onCancel={onCancelRun}
-                  onResume={onResumeRun}
-                  onRestart={onRestartRun}
-                  formatTs={formatTs}
-                  cardClassName={teamSectionCardClassName}
-                  titleClassName={teamSectionTitleClassName}
-                  metaItemClassName={teamRunMetaItemClassName}
                 />
               )}
 
@@ -2700,9 +2902,7 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "agent_acp" && activeRunForSelectedTeam && (
                     <TeamMemberAcpPanel
-                      snapshot={snapshot}
                       selectedMemberId={selectedMemberId}
-                      onSelectedMemberIdChange={setSelectedMemberId}
                       selectedMemberSnapshot={selectedMemberSnapshot}
                       memberEvents={memberEvents}
                       memberEventsHasMore={memberEventsHasMore}

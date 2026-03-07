@@ -1,30 +1,27 @@
 import React from "react";
-import { Collapse } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
+import { StatusBadge, type StatusTone } from "../components/status_badge";
 import {
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_LIST_ITEM_ACTIVE_CLASS,
-  TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_GHOST_BUTTON_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_SIDEBAR_FORGE_CARD_CLASS,
   TEAM_SIDEBAR_META_GRID_CLASS,
   TEAM_SIDEBAR_ROOT_CLASS,
   TEAM_SIDEBAR_SECTION_CLASS,
-  TEAM_SIDEBAR_SECTION_LABEL_CLASS,
+  TEAM_SIDEBAR_SECTION_TOGGLE_CLASS,
   TEAM_SIDEBAR_NAV_LIST_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_META_CLASS,
-  TEAM_SIDEBAR_SUBNAV_CLASS,
-  TEAM_SIDEBAR_SUBNAV_BUTTON_ACTIVE_CLASS,
-  TEAM_SIDEBAR_SUBNAV_BUTTON_IDLE_CLASS,
   TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS,
+  TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS,
   TEAM_SIDEBAR_SWITCHER_PANEL_CLASS,
+  TEAM_SIDEBAR_SCOPE_SWITCH_CLASS,
+  TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS,
+  TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
@@ -58,21 +55,43 @@ type TeamSidebarProps = {
   onSelectUtilityTab: (tab: TeamTab) => void;
 };
 
-const AGENT_VIEW_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
-  { value: "agent_acp", label: "ACP" },
-  { value: "member_console", label: "Console" },
-  { value: "mailbox", label: "Mailbox" },
-];
-
 const TEAM_UTILITY_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   { value: "runs", label: "Runs" },
-  { value: "overview", label: "Overview" },
-  { value: "events", label: "Events" },
-  { value: "steps", label: "Steps" },
-  { value: "debug", label: "Debug" },
 ];
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
+const OPERATIONS_FOCUS_TABS = new Set<TeamTab>(["runs", "overview", "events", "steps", "debug"]);
+
+type TeamSidebarScope = "subjects" | "operations";
+type TeamSidebarSection = "channels" | "agents" | "utilities";
+
+function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
+  if (status === "working") return "active";
+  if (status === "pending") return "warning";
+  if (status === "blocked") return "danger";
+  if (status === "done") return "active";
+  if (status === "idle") return "inactive";
+  return "neutral";
+}
+
+function formatWorkLabel(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): string {
+  if (status === "no_run") {
+    return "no run";
+  }
+  return status;
+}
+
+function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
+  const agentName = member.agent_name?.trim();
+  if (agentName) {
+    return agentName;
+  }
+  return member.member_id;
+}
+
+function resolveSidebarScope(tab: TeamTab): TeamSidebarScope {
+  return OPERATIONS_FOCUS_TABS.has(tab) ? "operations" : "subjects";
+}
 
 export function TeamSidebar(props: TeamSidebarProps) {
   const {
@@ -97,6 +116,16 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
   const [teamFilter, setTeamFilter] = React.useState("");
   const [teamPickerOpen, setTeamPickerOpen] = React.useState(selectedTeamId == null);
+  const [teamDetailsOpen, setTeamDetailsOpen] = React.useState(false);
+  const [teamActionsOpen, setTeamActionsOpen] = React.useState(false);
+  const [sidebarScope, setSidebarScope] = React.useState<TeamSidebarScope>(
+    resolveSidebarScope(tab)
+  );
+  const [sectionOpen, setSectionOpen] = React.useState<Record<TeamSidebarSection, boolean>>({
+    channels: true,
+    agents: true,
+    utilities: true,
+  });
   const normalizedTeamFilter = teamFilter.trim().toLowerCase();
   const filteredTeams = React.useMemo(() => {
     if (!normalizedTeamFilter) {
@@ -116,51 +145,131 @@ export function TeamSidebar(props: TeamSidebarProps) {
     }
   }, [selectedTeamId]);
 
+  React.useEffect(() => {
+    setSidebarScope(resolveSidebarScope(tab));
+  }, [tab]);
+
+  const handleSelectSubjectsScope = React.useCallback(() => {
+    setSidebarScope("subjects");
+    if (resolveSidebarScope(tab) === "operations") {
+      if (selectedMemberId) {
+        onSelectAgentTab(selectedMemberId, "agent_acp");
+        return;
+      }
+      onSelectConversation();
+    }
+  }, [onSelectAgentTab, onSelectConversation, selectedMemberId, tab]);
+
+  const handleSelectOperationsScope = React.useCallback(() => {
+    setSidebarScope("operations");
+    if (resolveSidebarScope(tab) !== "operations") {
+      onSelectUtilityTab("runs");
+    }
+  }, [onSelectUtilityTab, tab]);
+
+  const toggleSection = React.useCallback((section: TeamSidebarSection) => {
+    setSectionOpen((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }, []);
+  const teamPickerItemBaseClass =
+    "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border border-transparent px-2 py-2 text-left transition";
+  const teamPickerItemActiveClass =
+    `${teamPickerItemBaseClass} bg-ui-surface-soft text-ui-text-primary`;
+  const teamPickerItemIdleClass =
+    `${teamPickerItemBaseClass} text-ui-text-secondary hover:bg-ui-surface-soft/80 hover:text-ui-text-primary`;
+
   return (
     <aside className={TEAM_SIDEBAR_ROOT_CLASS}>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted">
-            Teams
-          </p>
-          <h2 className="mt-1 text-base font-semibold text-ui-text-primary">Workbench</h2>
-        </div>
+      <div className="flex items-start gap-2">
         <button
-          onClick={() => {
-            void onRefreshTeams();
-          }}
-          disabled={busy === "refresh-teams"}
-          className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-          title="Refresh teams"
-          aria-label="Refresh teams"
+          type="button"
+          className={`${TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS} flex-1`}
+          onClick={() => setTeamPickerOpen((current) => !current)}
+          aria-expanded={teamPickerOpen}
+          aria-label={`Toggle team switcher${selectedTeam ? `: ${selectedTeam.name}` : ""}`}
+          title={selectedTeam ? selectedTeam.id : "Toggle team switcher"}
         >
-          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-          <span>Refresh</span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ui-text-primary">
+              {selectedTeam?.name ?? "Select team"}
+            </div>
+            {!selectedTeam && (
+              <div className="mono mt-0.5 truncate text-[11px] text-ui-text-muted">
+                {`${teams.length} teams loaded`}
+              </div>
+            )}
+          </div>
+          <i
+            className={`${teamPickerOpen ? "bi bi-chevron-up" : "bi bi-chevron-down"} text-ui-text-muted`}
+            aria-hidden="true"
+          />
         </button>
+        <div className="flex items-center gap-2 pt-0.5">
+          <button
+            onClick={() => {
+              void onRefreshTeams();
+            }}
+            disabled={busy === "refresh-teams"}
+            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            title="Refresh teams"
+            aria-label="Refresh teams"
+          >
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Refresh</span>
+          </button>
+          <div className="relative">
+              <button
+                type="button"
+                className={TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS}
+                aria-label="Open team actions"
+                title="Open team actions"
+                aria-expanded={teamActionsOpen}
+                onClick={() => setTeamActionsOpen((current) => !current)}
+              >
+                <i className="bi bi-three-dots" aria-hidden="true" />
+              </button>
+            {teamActionsOpen && (
+              <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg">
+                <button
+                  type="button"
+                  className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
+                  onClick={() => {
+                    setTeamActionsOpen(false);
+                    onOpenCreateTeamWizard();
+                  }}
+                >
+                  Create Team
+                </button>
+                <button
+                  type="button"
+                  className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
+                  onClick={() => {
+                    setTeamActionsOpen(false);
+                    onOpenCreateTeamManual();
+                  }}
+                >
+                  Manual Spec
+                </button>
+                <div className="my-1 border-t border-ui-border/80" />
+                <button
+                  type="button"
+                  className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
+                  onClick={() => {
+                    setTeamActionsOpen(false);
+                    setTeamDetailsOpen((current) => !current);
+                  }}
+                >
+                  {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <button
-        type="button"
-        className={TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS}
-        onClick={() => setTeamPickerOpen((current) => !current)}
-        aria-expanded={teamPickerOpen}
-        aria-label="Toggle team switcher"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ui-text-primary">
-            {selectedTeam?.name ?? "Select team"}
-          </div>
-          <div className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-            {selectedTeam ? selectedTeam.id : `${teams.length} teams loaded`}
-          </div>
-        </div>
-        <i
-          className={teamPickerOpen ? "bi bi-chevron-up" : "bi bi-chevron-down"}
-          aria-hidden="true"
-        />
-      </button>
-
-      <Collapse in={teamPickerOpen}>
+      {teamPickerOpen && (
         <div className={TEAM_SIDEBAR_SWITCHER_PANEL_CLASS}>
           <div className="teams-filter flex items-center gap-2">
             <input
@@ -199,8 +308,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   type="button"
                   className={
                     team.id === selectedTeamId
-                      ? TEAM_LIST_ITEM_ACTIVE_CLASS
-                      : TEAM_LIST_ITEM_IDLE_CLASS
+                      ? teamPickerItemActiveClass
+                      : teamPickerItemIdleClass
                   }
                   onClick={() => {
                     onSelectTeam(team.id);
@@ -211,9 +320,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   title={team.id}
                 >
                   <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
-                  <span className={TEAM_LIST_ITEM_META_CLASS}>{team.id}</span>
+                  <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-80`}>{team.id}</span>
                   {summary && (
-                    <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-80`}>
+                    <span className={`${TEAM_LIST_ITEM_META_CLASS} opacity-70`}>
                       {`active=${summary.active} inactive=${summary.inactive} missing=${summary.missing} total=${summary.total}`}
                     </span>
                   )}
@@ -221,139 +330,211 @@ export function TeamSidebar(props: TeamSidebarProps) {
               );
             })}
           </div>
-        </div>
-      </Collapse>
 
-      <div className={TEAM_SIDEBAR_FORGE_CARD_CLASS}>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={onOpenCreateTeamWizard} className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}>
-            Create Team
-          </button>
-          <button
-            className={TEAM_PANEL_GHOST_BUTTON_CLASS}
-            onClick={onOpenCreateTeamManual}
-          >
-            Manual Spec
-          </button>
+          {teamDetailsOpen && (
+            <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} border-t border-ui-border/70 pt-3`}>
+              <span>draft_team={draftTeamName.trim() || "-"}</span>
+              <span>leader={leaderMemberId.trim() || "-"}</span>
+              <span>workers={configuredWorkerCount}</span>
+            </div>
+          )}
         </div>
-        <div className={TEAM_SIDEBAR_META_GRID_CLASS}>
-          <span>draft_team={draftTeamName.trim() || "-"}</span>
-          <span>leader={leaderMemberId.trim() || "-"}</span>
-          <span>workers={configuredWorkerCount}</span>
-        </div>
-      </div>
+      )}
 
       {selectedTeam && (
         <>
-          <section className={TEAM_SIDEBAR_SECTION_CLASS}>
-            <div className={TEAM_SIDEBAR_SECTION_LABEL_CLASS}>Human</div>
-            <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
-              <button
-                type="button"
-                className={
-                  tab === "conversation"
-                    ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
-                    : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
-                }
-                onClick={onSelectConversation}
-              >
-                <span className="text-sm font-semibold text-ui-text-primary">Conversation</span>
-                <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-                  Shared planning and human coordination lane
-                </span>
-              </button>
-            </div>
-          </section>
+          <div className={TEAM_SIDEBAR_SCOPE_SWITCH_CLASS} aria-label="Team sidebar scope">
+            <span className="shrink-0 px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ui-text-muted">
+              Index
+            </span>
+            <button
+              type="button"
+              className={
+                sidebarScope === "subjects"
+                  ? TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS
+                  : TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS
+              }
+              onClick={handleSelectSubjectsScope}
+            >
+              Channels & Agents
+            </button>
+            <button
+              type="button"
+              className={
+                sidebarScope === "operations"
+                  ? TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS
+                  : TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS
+              }
+              onClick={handleSelectOperationsScope}
+            >
+              Operations
+            </button>
+          </div>
 
-          <section className={TEAM_SIDEBAR_SECTION_CLASS}>
-            <div className={TEAM_SIDEBAR_SECTION_LABEL_CLASS}>Agents</div>
-            <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
-              {memberLiveStates.length === 0 && (
-                <p className={TEAM_MUTED_TEXT_CLASS}>No members found in current team spec.</p>
-              )}
-              {memberLiveStates.map((member) => {
-                const lifecycle = normalizeTeamMemberLifecycle(member);
-                const workStatus = normalizeTeamMemberWorkStatus(member);
-                const isSelectedMember = selectedMemberId === member.member_id;
-                const isActiveMember = isSelectedMember && AGENT_FOCUS_TABS.has(tab);
-                return (
-                  <div key={member.member_id} className="min-w-0">
+          {sidebarScope === "subjects" && (
+            <>
+              <section className={TEAM_SIDEBAR_SECTION_CLASS}>
+                <button
+                  type="button"
+                  className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
+                  onClick={() => toggleSection("channels")}
+                  aria-expanded={sectionOpen.channels}
+                  aria-label="Toggle channels section"
+                >
+                  <span>Channels 1</span>
+                  <i
+                    className={
+                      sectionOpen.channels ? "bi bi-chevron-down" : "bi bi-chevron-right"
+                    }
+                    aria-hidden="true"
+                  />
+                </button>
+                {sectionOpen.channels && (
+                  <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
                     <button
                       type="button"
                       className={
-                        isActiveMember
+                        tab === "conversation"
                           ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
                           : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
                       }
-                      onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
+                      onClick={onSelectConversation}
                     >
-                      <span className="truncate text-sm font-semibold text-ui-text-primary">
-                        {member.member_id}
-                      </span>
+                      <span className="text-sm font-semibold text-ui-text-primary">all</span>
                       <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-                        {`role=${member.role} agent=${member.agent_name ?? "-"} lifecycle=${lifecycle} work=${workStatus}`}
-                      </span>
-                      <span
-                        className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}
-                        title={member.current_work}
-                      >
-                        {`current=${member.current_work}`}
+                        Shared team thread
                       </span>
                     </button>
-                    {isSelectedMember && (
-                      <div className={TEAM_SIDEBAR_SUBNAV_CLASS}>
-                        {AGENT_VIEW_ITEMS.map((item) => (
-                          <button
-                            key={item.value}
-                            type="button"
-                            className={
-                              tab === item.value
-                                ? TEAM_SIDEBAR_SUBNAV_BUTTON_ACTIVE_CLASS
-                                : TEAM_SIDEBAR_SUBNAV_BUTTON_IDLE_CLASS
-                            }
-                            onClick={() => onSelectAgentTab(member.member_id, item.value)}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-            </div>
-          </section>
+                )}
+              </section>
 
-          <section className={TEAM_SIDEBAR_SECTION_CLASS}>
-            <div className={TEAM_SIDEBAR_SECTION_LABEL_CLASS}>Utilities</div>
-            <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
-              {TEAM_UTILITY_ITEMS.map((item) => (
+              <section className={TEAM_SIDEBAR_SECTION_CLASS}>
                 <button
-                  key={item.value}
                   type="button"
-                  className={
-                    tab === item.value
-                      ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
-                      : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
-                  }
-                  onClick={() => onSelectUtilityTab(item.value)}
+                  className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
+                  onClick={() => toggleSection("agents")}
+                  aria-expanded={sectionOpen.agents}
+                  aria-label="Toggle agents section"
                 >
-                  <span className="text-sm font-semibold text-ui-text-primary">{item.label}</span>
-                  <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-                    {item.value === "runs"
-                      ? "Run browser and execution entry"
-                      : item.value === "overview"
-                        ? "Snapshot and member overview"
-                        : item.value === "events"
-                          ? "Run event timeline"
-                          : item.value === "steps"
-                            ? "Execution steps and actions"
-                            : "Operational diagnostics"}
-                  </span>
+                  <span>{`Agents ${memberLiveStates.length}`}</span>
+                  <i
+                    className={
+                      sectionOpen.agents ? "bi bi-chevron-down" : "bi bi-chevron-right"
+                    }
+                    aria-hidden="true"
+                  />
                 </button>
-              ))}
-            </div>
-          </section>
+                {sectionOpen.agents && (
+                  <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
+                    {memberLiveStates.length === 0 && (
+                      <p className={TEAM_MUTED_TEXT_CLASS}>No members found in current team spec.</p>
+                    )}
+                    {memberLiveStates.map((member) => {
+                      const lifecycle = normalizeTeamMemberLifecycle(member);
+                      const workStatus = normalizeTeamMemberWorkStatus(member);
+                      const isActiveMember =
+                        selectedMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
+                      const primaryLabel = resolveMemberPrimaryLabel(member);
+                      const memberMeta = Array.from(
+                        new Set(
+                          [
+                            primaryLabel !== member.member_id ? member.member_id : null,
+                            member.role,
+                            lifecycle,
+                          ].filter(
+                            (value): value is string => Boolean(value && value !== "unknown")
+                          )
+                        )
+                      ).join(" · ");
+                      return (
+                        <button
+                          key={member.member_id}
+                          type="button"
+                          className={
+                            isActiveMember
+                              ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
+                              : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
+                          }
+                          onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
+                          title={
+                            [primaryLabel, member.member_id, member.current_work]
+                              .filter((value) => value && value.trim().length > 0)
+                              .join(" · ") || member.member_id
+                          }
+                        >
+                          <span className="flex w-full items-start justify-between gap-2">
+                            <span className="truncate text-sm font-semibold text-ui-text-primary">
+                              {primaryLabel}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              <StatusBadge
+                                label={formatWorkLabel(workStatus)}
+                                tone={resolveWorkTone(workStatus)}
+                                className="text-[10px] uppercase tracking-[0.08em]"
+                                title={`run=${member.run_status} step=${member.step_status}`}
+                              />
+                              {(member.pending_inbox_count ?? 0) > 0 && (
+                                <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[10px] font-semibold text-ui-text-secondary">
+                                  {member.pending_inbox_count}
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>{memberMeta}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {sidebarScope === "operations" && (
+            <section className={TEAM_SIDEBAR_SECTION_CLASS}>
+              <button
+                type="button"
+                className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
+                onClick={() => toggleSection("utilities")}
+                aria-expanded={sectionOpen.utilities}
+                aria-label="Toggle utilities section"
+              >
+                <span>{`Utilities ${TEAM_UTILITY_ITEMS.length}`}</span>
+                <i
+                  className={
+                    sectionOpen.utilities ? "bi bi-chevron-down" : "bi bi-chevron-right"
+                  }
+                  aria-hidden="true"
+                />
+              </button>
+              {sectionOpen.utilities && (
+                <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
+                  {TEAM_UTILITY_ITEMS.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      className={
+                        tab === item.value
+                          ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
+                          : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
+                      }
+                      onClick={() => onSelectUtilityTab(item.value)}
+                    >
+                      <span className="text-sm font-semibold text-ui-text-primary">
+                        {item.label}
+                      </span>
+                      <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
+                        {item.value === "runs"
+                          ? "Run browser and execution entry"
+                          : "Run browser and execution entry"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </aside>

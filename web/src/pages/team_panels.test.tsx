@@ -374,22 +374,32 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByAriaLabel(container, "Refresh teams"));
-    clickElement(findButtonByText(container, "Create Team"));
-    clickElement(findButtonByText(container, "Manual Spec"));
     clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
+    clickElement(findButtonByAriaLabel(container, "Refresh teams"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Create Team"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Manual Spec"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
+    expect(container.textContent).not.toContain("draft_team=alpha");
     changeInputValue(filterInput, "team-2");
     expect(container.textContent).toContain("filtered=1 total=2");
     clickElement(findButtonByAriaLabel(container, "Clear team filter"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Show Team Details"));
+    expect(container.textContent).toContain("draft_team=alpha");
+    expect(container.textContent).toContain("leader=leader-agent");
+    expect(container.textContent).toContain("workers=2");
     clickElement(findButtonByText(container, "Team Two"));
-    clickElement(findButtonByText(container, "Conversation"));
-    clickElement(findButtonByText(container, "worker-agent"));
-    clickElement(findButtonByText(container, "Console"));
-    clickElement(findButtonByText(container, "Runs"));
+    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
+    expect(container.textContent).not.toContain("Worker Agent");
+    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
+    expect(container.textContent).toContain("Worker Agent");
+    clickElement(findButtonByText(container, "Shared team thread"));
+    clickElement(findButtonByText(container, "Worker Agent"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
@@ -397,13 +407,78 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
-    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "member_console");
-    expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
-    expect(container.textContent).toContain("Human");
+    expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).toContain("Utilities");
-    expect(container.textContent).toContain("lifecycle=working");
-    expect(container.textContent).toContain("work=working");
+    expect(container.textContent).not.toContain("Utilities 1");
+    expect(container.textContent).toContain("Leader Agent");
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("leader · working");
+    expect(container.textContent).toContain("worker · working");
+    expect(container.textContent).not.toContain("Console");
+
+    clickElement(findButtonByText(container, "Operations"));
+    expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
+    expect(container.textContent).toContain("Utilities 1");
+    expect(container.textContent).not.toContain("Channels 1");
+    expect(container.textContent).not.toContain("Debug");
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="runs"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByText(container, "Channels & Agents"));
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
 
     act(() => {
       root.render(
@@ -1246,15 +1321,10 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh Tasks"));
-    clickElement(findButtonByText(container, "Refresh Messages"));
+    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
+    clickElement(findButtonByText(container, "Refresh Channel"));
+    clickElement(findButtonByText(container, "Refresh Thread"));
     clickElement(findButtonByText(container, "Send Message"));
-
-    const selects = container.querySelectorAll("select");
-    changeSelectValue(
-      required(selects[0] as HTMLSelectElement | undefined, "task select missing"),
-      "task-2"
-    );
     changeInputValue(
       required(
         container.querySelector(
@@ -1268,20 +1338,86 @@ describe("team panels interactions", () => {
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-2");
+    expect(onSelectedTaskIdChange).not.toHaveBeenCalled();
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
-    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Thread");
+    expect(container.textContent).toContain("Broadcast by default. Add `@member_id` to direct one teammate.");
     expect(container.textContent).not.toContain("worker update");
     expect(container.textContent).toContain("work:working");
     expect(container.textContent).not.toContain("work:blocked");
     expect(container.textContent).toContain("agent:working");
   });
 
+  it("TeamTaskPanel renders delivered mailbox replies to the human in shared thread", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          tasks={[buildTask()]}
+          tasksLoading={false}
+          selectedTaskId="task-1"
+          onSelectedTaskIdChange={vi.fn()}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "user:u-1",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "hello team" },
+            }),
+          ]}
+          mailboxMessages={[
+            buildMailboxMessage(9, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user",
+              status: "delivered",
+              payload: { type: "chat_message", text: "leader reply visible in all" },
+            }),
+            buildMailboxMessage(10, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "worker-agent",
+              status: "delivered",
+              payload: { type: "chat_message", text: "worker-only mailbox message" },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "leader-agent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "reviewing shared thread",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("hello team");
+    expect(container.textContent).toContain("leader reply visible in all");
+    expect(container.textContent).not.toContain("worker-only mailbox message");
+    expect(container.textContent).toContain("reply");
+  });
+
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
-    const onSelectedMemberIdChange = vi.fn();
     const onRefresh = vi.fn();
     const onLoadOlder = vi.fn();
     const acpEvents: AgentEvent[] = [
@@ -1314,9 +1450,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamMemberAcpPanel
-          snapshot={buildSnapshot()}
           selectedMemberId="worker-agent"
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
           selectedMemberSnapshot={buildMemberSnapshot({
             member_id: "worker-agent",
             role: "worker",
@@ -1335,9 +1469,15 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByText(container, "Refresh"));
     clickElement(findButtonByText(container, "Load Older"));
-    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
+    expect(container.textContent).not.toContain("member=worker-agent");
+    expect(container.textContent).not.toContain("role=worker");
+    expect(container.textContent).not.toContain("session=task-77");
+    clickElement(findButtonByAriaLabel(container, "Toggle thread details"));
+    expect(container.textContent).toContain("member=worker-agent");
+    expect(container.textContent).toContain("role=worker");
     expect(container.textContent).toContain("session=task-77");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(1);

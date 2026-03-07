@@ -19,7 +19,11 @@ import {
   shouldShowUnexpectedExitNotice,
 } from "./agent_ws";
 import { ErrorBanner } from "./error_banner";
-import { clearAuthAndRedirect, isInvalidTokenMessage } from "./auth_redirect";
+import {
+  clearAuthAndRedirect,
+  isInvalidTokenMessage,
+  resolvePostLoginRedirectTarget,
+} from "./auth_redirect";
 import {
   deriveConnectionBadge,
   OFFLINE_MESSAGE,
@@ -113,6 +117,40 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+
+function AuthRedirect(): null {
+  useEffect(() => {
+    clearAuthAndRedirect(`${location.pathname}${location.search}${location.hash}`);
+  }, []);
+  return null;
+}
+
+function PostLoginRedirect({ target }: { target: string }): null {
+  useEffect(() => {
+    location.replace(target);
+  }, [target]);
+  return null;
+}
+
+export function shouldRedirectTeamsToLogin(
+  pathname: string,
+  auth: AuthState | null,
+  token: string | null
+): boolean {
+  return pathname.startsWith("/teams") && (!auth || !token);
+}
+
+export function resolvePostAuthRedirectTarget(
+  pathname: string,
+  search: string,
+  auth: AuthState | null,
+  token: string | null
+): string | null {
+  if (pathname !== "/") return null;
+  if (!auth || !token) return null;
+  return resolvePostLoginRedirectTarget(search);
+}
+
 type PendingPermissionJumpState = {
   toolCallId: string;
   sessionId: string | null;
@@ -920,6 +958,12 @@ export function App() {
     !acpView.hasAcp;
 
   const token = auth?.token ?? null;
+  const postAuthRedirectTarget = resolvePostAuthRedirectTarget(
+    location.pathname,
+    location.search,
+    auth,
+    token
+  );
   useEffect(() => {
     activeAgentRef.current = activeAgent;
   }, [activeAgent]);
@@ -2582,10 +2626,14 @@ export function App() {
   }
 
   if (location.pathname.startsWith("/teams")) {
-    if (!auth || !token) {
-      return <AuthRequired />;
+    if (shouldRedirectTeamsToLogin(location.pathname, auth, token)) {
+      return <AuthRedirect />;
     }
     return <TeamPage auth={auth} token={token} onLogout={onLogout} />;
+  }
+
+  if (postAuthRedirectTarget) {
+    return <PostLoginRedirect target={postAuthRedirectTarget} />;
   }
 
   return (

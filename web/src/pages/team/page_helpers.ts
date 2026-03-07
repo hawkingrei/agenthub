@@ -1,9 +1,17 @@
 import { formatAgentModelLabel } from "../../agent_presets";
-import type { AgentEvent, AgentRecord, TeamRunEventRecord, TeamRunRecord } from "../../api";
+import type {
+  AgentEvent,
+  AgentRecord,
+  TeamRunEventRecord,
+  TeamRunRecord,
+  TeamTaskRecord,
+} from "../../api";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
 }
+
+export const DEFAULT_TEAM_THREAD_TITLE = "all";
 
 export function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
   const withoutCurrent = list.filter((run) => run.id !== nextRun.id);
@@ -46,6 +54,33 @@ export function pickNextWorkerAgentId(
   excludedAgentIds: Set<string>
 ): string {
   return agents.find((agent) => !excludedAgentIds.has(agent.id))?.id ?? "";
+}
+
+export function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
+  return [...tasks].sort((left, right) => {
+    if (right.updated_at !== left.updated_at) {
+      return right.updated_at - left.updated_at;
+    }
+    if (right.created_at !== left.created_at) {
+      return right.created_at - left.created_at;
+    }
+    return right.id.localeCompare(left.id);
+  });
+}
+
+export function resolveTeamConversationTask(
+  tasks: TeamTaskRecord[],
+  selectedTaskId: string,
+  teamId: string
+): TeamTaskRecord | null {
+  const selectedId = selectedTaskId.trim();
+  if (selectedId) {
+    const selected = tasks.find((task) => task.id === selectedId && task.team_id === teamId);
+    if (selected) {
+      return selected;
+    }
+  }
+  return sortTasksByActivity(tasks).find((task) => task.team_id === teamId) ?? null;
 }
 
 export function formatTs(ts?: number | null): string {
