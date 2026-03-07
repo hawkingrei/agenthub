@@ -1,7 +1,10 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { renderPlainTextWithMentions } from "./team/mailbox_helpers";
+import {
+  renderPlainTextWithMentions,
+  resolveChatMessageText,
+} from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
@@ -30,6 +33,7 @@ type MailboxTemplateOption = {
 };
 
 type TeamMailboxPanelProps = {
+  developerMode: boolean;
   mode?: "full" | "advanced_only";
   snapshot: TeamRunSnapshotRecord | null;
   humanActorId?: string;
@@ -105,6 +109,7 @@ const MAILBOX_ADVANCED_HINT_CLASS =
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
+    developerMode,
     snapshot,
     humanActorId = "",
     selectedMemberId,
@@ -154,6 +159,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   } = props;
   const showConversation = mode === "full";
   const showAdvancedControls = mode === "advanced_only";
+  const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
   const humanPendingCount =
     snapshot?.mailbox.recent_messages.filter(
@@ -369,8 +375,12 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
                 </strong>
               </div>
-              <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
-              <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
+              {developerMode && (
+                <>
+                  <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
+                  <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
+                </>
+              )}
               <button
                 type="button"
                 className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
@@ -388,14 +398,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             >
               {conversationMessages.map((message) => {
                 const isOutgoing = message.from_actor_id === chatActors.fromActorId;
-                const payload =
-                  typeof message.payload === "object" &&
-                  message.payload !== null &&
-                  "type" in message.payload &&
-                  (message.payload as { type?: unknown }).type === "chat_message" &&
-                  "text" in message.payload
-                    ? String((message.payload as { text?: unknown }).text ?? "")
-                    : toPrettyJson(message.payload);
+                const chatText = resolveChatMessageText(message.payload);
+                const payload = chatText ?? toPrettyJson(message.payload);
                 return (
                   <li
                     key={message.message_id}
@@ -409,10 +413,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                       <span>{message.status}</span>
                       <span>{formatTs(message.created_at)}</span>
                     </div>
-                    {typeof message.payload === "object" &&
-                    message.payload !== null &&
-                    "type" in message.payload &&
-                    (message.payload as { type?: unknown }).type === "chat_message" ? (
+                    {chatText !== null ? (
                       <div
                         className={`${TEAM_PANEL_PRE_CLASS} whitespace-pre-wrap`}
                         dangerouslySetInnerHTML={{ __html: renderPlainTextWithMentions(payload) }}
@@ -470,13 +471,19 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         </div>
       )}
 
-      {showConversation && (
+      {showConversation && developerMode && (
         <div className={MAILBOX_ADVANCED_HINT_CLASS}>
           Advanced mailbox tools were moved to <strong>Debug -&gt; Mailbox Raw</strong>.
         </div>
       )}
 
-      {showAdvancedControls && (
+      {showAdvancedControls && !developerMode && (
+        <div className={`${MAILBOX_ADVANCED_HINT_CLASS} mt-3`}>
+          Enable Developer Mode in Admin to access raw mailbox tools.
+        </div>
+      )}
+
+      {showDeveloperMailboxTools && (
         <div className="teams-message-advanced mt-3">
           <h4 className={`mb-2 ${MAILBOX_SECTION_TITLE_CLASS}`}>Advanced mailbox controls</h4>
           {advancedControls}

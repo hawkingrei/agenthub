@@ -206,6 +206,7 @@ type TeamPageProps = {
   auth: AuthState;
   token: string;
   onLogout: () => void;
+  developerMode: boolean;
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
@@ -2143,9 +2144,10 @@ export function TeamPage(props: TeamPageProps) {
     [selectedMemberId, selectedTeamMemberLiveStates]
   );
   const isAgentWorkspace = TEAM_AGENT_WORKSPACE_TABS.has(tab);
-  const workspaceAdvancedTabItems = isAgentWorkspace
+  const workspaceAdvancedTabItems = (isAgentWorkspace
     ? TEAM_AGENT_ADVANCED_TAB_ITEMS
-    : TEAM_UTILITY_ADVANCED_TAB_ITEMS;
+    : TEAM_UTILITY_ADVANCED_TAB_ITEMS
+  ).filter((item) => props.developerMode || item.value !== "debug");
   const isAdvancedWorkspace = workspaceAdvancedTabItems.some((item) => item.value === tab);
   const showRunActionsInAdvanced = Boolean(activeRunForSelectedTeam && tab !== "runs");
   const workspaceEyebrow = !selectedTeam
@@ -2287,7 +2289,13 @@ export function TeamPage(props: TeamPageProps) {
   }, [setTab]);
   React.useEffect(() => {
     setWorkspaceDetailsOpen(false);
-  }, [selectedTeamId, tab]);
+  }, [props.developerMode, selectedTeamId, tab]);
+  React.useEffect(() => {
+    if (!props.developerMode && tab === "debug") {
+      setTab("conversation");
+      setWorkspaceDetailsOpen(false);
+    }
+  }, [props.developerMode, setTab, tab]);
   const onRefreshActiveRun = useCallback(() => {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
@@ -2375,6 +2383,7 @@ export function TeamPage(props: TeamPageProps) {
   const conversationPanel = (
     <div className="space-y-3">
       <TeamTaskPanel
+        developerMode={props.developerMode}
         tasks={taskList}
         tasksLoading={tasksLoading}
         selectedTaskId={selectedTaskId}
@@ -2808,36 +2817,39 @@ export function TeamPage(props: TeamPageProps) {
                       {workspaceNoticeText}
                     </span>
                   </div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border/80 bg-ui-surface-soft text-ui-text-muted transition hover:border-ui-border-emphasis hover:text-ui-text-primary"
-                      onClick={() => setWorkspaceDetailsOpen((current) => !current)}
-                      aria-expanded={workspaceDetailsOpen}
-                      aria-label="Toggle workspace details"
-                      title="Workspace details"
-                    >
-                      <i className="bi bi-three-dots" aria-hidden="true" />
-                    </button>
-                    {workspaceDetailsOpen && (
-                      <div className={workspaceMetaDropdownClassName}>
-                        {workspaceDetailItems.map((item) => (
-                          <div
-                            key={item}
-                            className={teamRunMetaItemClassName}
-                          >
-                            {item}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {props.developerMode && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border/80 bg-ui-surface-soft text-ui-text-muted transition hover:border-ui-border-emphasis hover:text-ui-text-primary"
+                        onClick={() => setWorkspaceDetailsOpen((current) => !current)}
+                        aria-expanded={workspaceDetailsOpen}
+                        aria-label="Toggle workspace details"
+                        title="Workspace details"
+                      >
+                        <i className="bi bi-three-dots" aria-hidden="true" />
+                      </button>
+                      {workspaceDetailsOpen && (
+                        <div className={workspaceMetaDropdownClassName}>
+                          {workspaceDetailItems.map((item) => (
+                            <div
+                              key={item}
+                              className={teamRunMetaItemClassName}
+                            >
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {tab === "runs" && (
                 <TeamRunPanel
                   selectedTeam={selectedTeam}
+                  developerMode={props.developerMode}
                   busy={busy}
                   onDeleteTeam={onDeleteTeam}
                   onStartTeam={onCreateRun}
@@ -2902,6 +2914,7 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "agent_acp" && activeRunForSelectedTeam && (
                     <TeamMemberAcpPanel
+                      developerMode={props.developerMode}
                       selectedMemberId={selectedMemberId}
                       selectedMemberSnapshot={selectedMemberSnapshot}
                       memberEvents={memberEvents}
@@ -2943,6 +2956,7 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "steps" && activeRunForSelectedTeam && (
                     <TeamStepsPanel
+                      developerMode={props.developerMode}
                       mode="list_only"
                       steps={steps}
                       onRefreshSteps={async () => {
@@ -2980,6 +2994,7 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "mailbox" && activeRunForSelectedTeam && (
                     <TeamMailboxPanel
+                      developerMode={props.developerMode}
                       mode="full"
                       snapshot={snapshot}
                       humanActorId={HUMAN_MAILBOX_ACTOR_ID}
@@ -3054,7 +3069,7 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   )}
 
-                  {tab === "debug" && (
+                  {tab === "debug" && props.developerMode && (
                     <>
                       <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3117,6 +3132,7 @@ export function TeamPage(props: TeamPageProps) {
 
                       {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
                         <TeamStepsPanel
+                          developerMode={props.developerMode}
                           mode="controls_only"
                           steps={steps}
                           onRefreshSteps={async () => {
@@ -3173,6 +3189,7 @@ export function TeamPage(props: TeamPageProps) {
 
                       {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
                         <TeamMailboxPanel
+                          developerMode={props.developerMode}
                           mode="advanced_only"
                           snapshot={snapshot}
                           humanActorId={HUMAN_MAILBOX_ACTOR_ID}

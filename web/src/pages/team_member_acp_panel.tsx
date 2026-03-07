@@ -16,6 +16,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type TeamMemberAcpPanelProps = {
+  developerMode: boolean;
   selectedMemberId: string;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   memberEvents: AgentEvent[];
@@ -30,6 +31,7 @@ type TeamMemberAcpPanelProps = {
 export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const {
     selectedMemberId,
+    developerMode,
     selectedMemberSnapshot,
     memberEvents,
     memberEventsHasMore,
@@ -67,10 +69,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
 
   const conversationRef = React.useRef<HTMLDivElement>(null);
   const [stickToBottom, setStickToBottom] = React.useState(true);
-  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
 
   React.useEffect(() => {
-    setDetailsOpen(false);
+    setThreadOptionsOpen(false);
   }, [selectedMemberId, selectedSessionId]);
 
   React.useEffect(() => {
@@ -123,50 +125,56 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Thread</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
-            onClick={() => {
-              void onRefresh();
-            }}
-            disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-            title="Refresh thread"
-            aria-label="Refresh thread"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </button>
-          <button
-            onClick={() => {
-              void onLoadOlder();
-            }}
-            disabled={!canLoadOlder}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          >
-            Load Older
-          </button>
-          <button
             type="button"
             className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={() => setDetailsOpen((current) => !current)}
-            aria-expanded={detailsOpen}
-            aria-label="Toggle thread details"
-            title="Thread details"
+            onClick={() => setThreadOptionsOpen((current) => !current)}
+            aria-expanded={threadOptionsOpen}
+            aria-label="Toggle thread options"
+            title="Thread options"
           >
             <i className="bi bi-three-dots" aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {detailsOpen && (
-        <div className="mono mt-3 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-          <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
-            member={selectedMemberId || "-"}
+      {threadOptionsOpen && (
+        <div className="mt-3 flex flex-col gap-3 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                void onRefresh();
+              }}
+              disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
+              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+              title="Refresh thread"
+              aria-label="Refresh thread"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh Thread</span>
+            </button>
+            <button
+              onClick={() => {
+                void onLoadOlder();
+              }}
+              disabled={!canLoadOlder}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            >
+              Load Older
+            </button>
           </div>
-          <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
-            role={selectedMemberSnapshot?.role ?? "-"}
-          </div>
-          <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
-            session={selectedSessionId ?? "-"}
-          </div>
+          {developerMode && (
+            <div className="mono flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
+              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+                member={selectedMemberId || "-"}
+              </div>
+              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+                role={selectedMemberSnapshot?.role ?? "-"}
+              </div>
+              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+                session={selectedSessionId ?? "-"}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

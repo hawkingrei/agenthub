@@ -132,6 +132,28 @@ confirmed the reference structure we actually want to copy:
   - `TeamTaskPanel` now merges delivered mailbox `chat_message` replies addressed to the human actor into the visible thread waterfall;
   - worker/agent-only mailbox traffic is still excluded from the shared thread;
   - this is intentionally a read-model bridge, not a fake persistence rewrite.
+- fixed mailbox reply rendering when payloads arrive as JSON strings:
+  - some delivered mailbox replies reach the web UI with `payload` serialized as a string instead of a parsed object;
+  - `TeamTaskPanel` and `TeamMailboxPanel` now both resolve `chat_message.text` from either structured payload objects or JSON-string payloads;
+  - unknown payload shapes still fall back to the existing pretty-JSON rendering path.
+- rechecked the authenticated `slock` channel view with Chrome MCP and confirmed the thread layout we actually want to copy:
+  - left rail remains `workspace -> scope switch -> grouped subjects`;
+  - the thread header stays minimal (`all`, one short description, lightweight actions);
+  - message rows are chat-first (`author + timestamp + body`) with mentions rendered inline and no transport metadata in the default reading path;
+  - system/runtime status sits in a lightweight strip above the thread instead of inside each message.
+- started a second UI pass to align AgentHub with that authenticated thread view:
+  - `TeamTaskPanel` now moves shared-thread transport metadata behind per-message details and makes the default row `author + time + body`;
+  - author display names now prefer `You` for the human actor and `agent_name` for team members;
+  - the shared-thread composer copy was tightened toward `Message #all`;
+  - `TeamMemberAcpPanel` now uses one thread-options surface for refresh/load-older/details instead of exposing those actions directly in the header.
+- added a browser-local developer mode shared by `Agents` and `Teams`:
+  - source of truth is local browser storage, not backend API or DB state;
+  - default behavior is environment-sensitive: `on` outside production builds and `off` in production bundles;
+  - the control surface lives in `Admin -> UI`, but `Admin` itself is intentionally not gated by developer mode.
+- narrowed developer mode to technical surfaces only instead of hiding normal workflow controls:
+  - `Agents`: hide `Debug`, `Session`, and `Updated` when developer mode is off;
+  - `Teams`: hide shared-thread message details, workspace runtime details, `Advanced -> Debug`, agent-thread technical metadata, and raw mailbox tools when developer mode is off;
+  - normal collaboration surfaces (`Conversation`, `Runs`, `Overview`, `Events`, `Steps`) remain available in both modes.
 - left the long-term backend fix as a follow-up:
   - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
   - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.
@@ -143,6 +165,9 @@ confirmed the reference structure we actually want to copy:
 - `make build-web`
 - Chrome DevTools MCP baseline on `https://agenthub.hawkingrei.com/teams` before the left-rail update:
   - left rail still mixed workspace switching, create actions, and all three groups (`Human`, `Agents`, `Utilities`) at once.
+- Chrome DevTools MCP baseline before the local developer-mode change:
+  - authenticated `/teams` still showed shared-thread `Show details` controls and workspace-details toggle by default;
+  - authenticated `/` with an active agent still exposed debug-oriented agent metadata in the same top-level workbench family, and there was no developer-mode entry in `Admin`.
 - Chrome DevTools MCP regression check on `https://agenthub.hawkingrei.com/teams` after the latest left-rail refinement:
   - left rail shows `Channels & Agents` and `Operations`, with `Create Team` / `Manual Spec` moved into the `...` toolbar dropdown;
   - `Channels` and `Agents` sections are individually collapsible;
@@ -177,5 +202,11 @@ confirmed the reference structure we actually want to copy:
   - MCP diagnosis for the send failure confirms `GET /api/teams/:id/tasks` returns `[]`, while a direct authenticated `POST /api/teams/:id/tasks` returns `500`; local SQLite inspection showed the runtime DB still stored the team conversation in legacy `team_main_tasks` / `main_task_id` tables, which matches the startup migration fix in `src/db.rs`.
   - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the latest shared-thread message (`mcp verify 2026-03-07`) is persisted without `internal server error`, while SQLite inspection of `team_actor_messages` confirms the leader reply exists only in mailbox (`to_actor_id = user`) before this UI bridge.
   - post-edit validation for the mailbox-reply bridge is currently local-only (`team_panels.test.tsx` + `make build-web`); a domain-level Chrome MCP regression still requires deploy of the pending web changes.
+  - MCP baseline on `https://agenthub.hawkingrei.com/teams?return=login#shared` showed leader replies rendered as raw payload JSON strings (`{\"type\":\"chat_message\",...}`) inside the shared thread before this payload parser fix.
+  - authenticated MCP baseline on `https://agenthub.hawkingrei.com/teams` still shows the deployed shared thread in its old metadata-first form (`conversation/reply`, `seq`, `from -> to`, `mailbox`, `work:*`, `agent:*` all visible by default), which is the concrete before-state for the current local-only chat-first refactor.
   - Chrome DevTools MCP baseline for unauthenticated `https://agenthub.hawkingrei.com/teams` showed the standalone `Login Required / Please login to continue.` page; after the redirect change this route should land on the root login screen instead.
   - Chrome DevTools MCP baseline after clearing site auth on `https://agenthub.hawkingrei.com/teams` now lands on the root login page `https://agenthub.hawkingrei.com/` instead of stalling inside `/teams`.
+  - Chrome DevTools MCP regression on `https://agenthub.hawkingrei.com/admin` now shows a dedicated `UI` tab with `Developer Mode` and explicit copy that it applies to this browser only and affects `Agents` + `Teams`;
+  - Chrome DevTools MCP script verification on `https://agenthub.hawkingrei.com/admin` confirmed the toggle writes `localStorage['agenthub_ui_prefs_v1'] = {\"developerMode\":true}` and was restored back to `false` after verification;
+  - Chrome DevTools MCP regression on `https://agenthub.hawkingrei.com/` after `make build-web` confirmed the current production bundle defaults to the cleaner non-developer mode (`Debug` hidden, `Session`/`Updated` omitted);
+  - deployed MCP verification of the gated `Teams` technical controls is partially blocked by current runtime data: after reload the authenticated `/teams` context had no selected team, so the thread-level `Show details` / workspace-details / advanced-debug branches were not all visible on the live page; these branches are covered by local unit tests and build validation.

@@ -24,6 +24,7 @@ const renderHeader = (props: Partial<React.ComponentProps<typeof OutputHeader>>)
     <OutputHeader
       activeAgent={baseAgent}
       activeSessionId="session-12345678"
+      developerMode={true}
       agentsCollapsed={false}
       hasAcp={true}
       thinkingStartTs={null}
@@ -38,6 +39,7 @@ describe("OutputHeader", () => {
       <OutputHeader
         activeAgent={null}
         activeSessionId={null}
+        developerMode={true}
         agentsCollapsed={false}
         hasAcp={false}
         thinkingStartTs={null}
@@ -69,6 +71,13 @@ describe("OutputHeader", () => {
   it("omits session label when no session id is active", () => {
     const html = renderHeader({ activeSessionId: null });
     expect(html).not.toContain("Session");
+  });
+
+  it("hides session metadata when developer mode is off", () => {
+    const html = renderHeader({ developerMode: false });
+    expect(html).toContain("Code mode on");
+    expect(html).not.toContain("Session session-");
+    expect(html).not.toContain("Updated");
   });
 
   it("renders model tag when label is provided", () => {

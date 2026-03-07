@@ -4,18 +4,14 @@ import {
   TeamConversationMessageRecord,
   TeamTaskRecord,
 } from "../api";
-import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
+  resolveChatMessageText,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
-import {
-  normalizeTeamMemberLifecycle,
-  normalizeTeamMemberWorkStatus,
-} from "./team_member_status_strip";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
@@ -29,6 +25,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
+  developerMode: boolean;
   tasks: TeamTaskRecord[];
   tasksLoading: boolean;
   selectedTaskId: string;
@@ -59,14 +56,27 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "mt-3 min-h-[320px] max-h-[min(72vh,760px)] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
 const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
-const TEAM_TASK_ACTIVITY_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface px-3 py-2 shadow-sm";
-const TEAM_TASK_ACTIVITY_META_ROW_CLASS =
-  "mono mb-1 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
-const TEAM_TASK_ACTIVITY_BADGE_CLASS = "rounded-full border border-ui-border bg-ui-surface px-2 py-0.5";
-const TEAM_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS =
-  "rounded-full border border-brand-primary/30 bg-brand-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-primary";
+const TEAM_TASK_ACTIVITY_ITEM_CLASS =
+  "rounded-lg border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
+  "flex items-start justify-between gap-3";
+const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
+  "flex min-w-0 flex-wrap items-center gap-2";
+const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
+  "text-sm font-semibold text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
+const TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS =
+  "rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm leading-6 text-ui-text-primary";
+  "mt-2 text-sm leading-6 text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
+  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft/80";
+const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
+  "mt-2 inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
+const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
+  "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
+const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
+  "mono font-medium text-ui-text-secondary";
 
 type ThreadWaterfallItem = {
   key: string;
@@ -80,37 +90,13 @@ type ThreadWaterfallItem = {
   renderedHtml: string;
 };
 
-function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
-  if (status === "working") return "active";
-  if (status === "pending") return "warning";
-  if (status === "blocked") return "danger";
-  if (status === "done") return "active";
-  if (status === "idle") return "inactive";
-  return "neutral";
-}
-
-function resolveLifecycleTone(
-  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
-): StatusTone {
-  if (lifecycle === "working") return "active";
-  if (lifecycle === "idle") return "warning";
-  if (lifecycle === "stopped") return "inactive";
-  if (lifecycle === "missing") return "danger";
-  return "neutral";
-}
-
 function resolveMessageText(
   message: TeamConversationMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
-  if (
-    typeof message.payload === "object" &&
-    message.payload !== null &&
-    "type" in message.payload &&
-    (message.payload as { type?: unknown }).type === "chat_message" &&
-    "text" in message.payload
-  ) {
-    return String((message.payload as { text?: unknown }).text ?? "");
+  const chatText = resolveChatMessageText(message.payload);
+  if (chatText !== null) {
+    return chatText;
   }
   return toPrettyJson(message.payload);
 }
@@ -119,14 +105,9 @@ function resolveMailboxMessageText(
   message: TeamActorMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
-  if (
-    typeof message.payload === "object" &&
-    message.payload !== null &&
-    "type" in message.payload &&
-    (message.payload as { type?: unknown }).type === "chat_message" &&
-    "text" in message.payload
-  ) {
-    return String((message.payload as { text?: unknown }).text ?? "");
+  const chatText = resolveChatMessageText(message.payload);
+  if (chatText !== null) {
+    return chatText;
   }
   return toPrettyJson(message.payload);
 }
@@ -140,8 +121,25 @@ function isHumanMailboxActor(actorId: string | null | undefined, humanActorId: s
   return normalized === human || normalized.startsWith(`${human}:`);
 }
 
+function resolveThreadAuthorLabel(
+  actorId: string,
+  humanActorId: string,
+  liveStateByMemberId: Map<string, TeamMemberLiveState>
+): string {
+  if (isHumanMailboxActor(actorId, humanActorId)) {
+    return "You";
+  }
+  const state = liveStateByMemberId.get(actorId);
+  const agentName = state?.agent_name?.trim();
+  if (agentName) {
+    return agentName;
+  }
+  return actorId;
+}
+
 export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const {
+    developerMode,
     tasksLoading,
     onRefreshTasks,
     messageDraft,
@@ -162,6 +160,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
+  const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
 
   const mentionableMemberIds = React.useMemo(() => {
     const seen = new Set<string>();
@@ -308,7 +307,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       </div>
 
       <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-        Shared team thread. Use `@` for directed messages; plain text stays broadcast.
+        General channel for shared planning, requests, and broadcast coordination.
       </p>
 
       {threadOptionsOpen && (
@@ -343,41 +342,85 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
-            const workStatus = state ? normalizeTeamMemberWorkStatus(state) : "unknown";
-            const lifecycle = state ? normalizeTeamMemberLifecycle(state) : "unknown";
+            const authorLabel = resolveThreadAuthorLabel(
+              item.fromActorId,
+              humanActorId,
+              liveStateByMemberId
+            );
             return (
               <div key={item.key} className={TEAM_TASK_ACTIVITY_ITEM_CLASS}>
-                <div className={TEAM_TASK_ACTIVITY_META_ROW_CLASS}>
-                  <span className={TEAM_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS}>{item.streamLabel}</span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>
-                    seq={item.sequence}
-                  </span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>
-                    {item.fromActorId} -&gt; {item.toActorId ?? "-"}
-                  </span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>{item.routeOrStatus}</span>
-                  <span>{formatTs(item.createdAt)}</span>
-                </div>
-                {state && (
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      label={`work:${workStatus}`}
-                      tone={resolveWorkTone(workStatus)}
-                      className="team-status"
-                      title={`work status: run=${state.run_status} step=${state.step_status}`}
-                    />
-                    <StatusBadge
-                      label={`agent:${lifecycle}`}
-                      tone={resolveLifecycleTone(lifecycle)}
-                      className="team-status"
-                      title={`agent status: ${state.lifecycle_status}`}
-                    />
+                <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
+                  <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
+                    <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
+                    {item.streamLabel === "reply" && (
+                      <span className={TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS}>reply</span>
+                    )}
                   </div>
-                )}
+                  <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
+                </div>
                 <div
                   className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                   dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
                 />
+                {developerMode && (
+                  <button
+                    type="button"
+                    className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                    onClick={() =>
+                      setExpandedItemKeys((current) => ({
+                        ...current,
+                        [item.key]: !current[item.key],
+                      }))
+                    }
+                    aria-expanded={Boolean(expandedItemKeys[item.key])}
+                  >
+                    {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
+                  </button>
+                )}
+                {developerMode && expandedItemKeys[item.key] && (
+                  <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
+                    <dl className={TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS}>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>source</dt>
+                      <dd>{item.streamLabel}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>seq</dt>
+                      <dd>{item.sequence}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>from</dt>
+                      <dd className="mono">{item.fromActorId}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>to</dt>
+                      <dd className="mono">{item.toActorId ?? "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>route</dt>
+                      <dd>{item.routeOrStatus}</dd>
+                    </div>
+                    {state && (
+                      <>
+                        <div>
+                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>work</dt>
+                          <dd>{state.run_status}/{state.step_status}</dd>
+                        </div>
+                        <div>
+                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>agent</dt>
+                          <dd>{state.lifecycle_status}</dd>
+                        </div>
+                        {state.current_work && (
+                          <div className="sm:col-span-2">
+                            <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>current_work</dt>
+                            <dd>{state.current_work}</dd>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    </dl>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -396,13 +439,13 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
         <p className={TEAM_MUTED_TEXT_CLASS}>
-          Broadcast by default. Add `@member_id` to direct one teammate.
+          Use `@member_id` to direct one teammate.
         </p>
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
           rows={4}
-          placeholder="Type planning message (use @ to pick teammate mention)"
+          placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {
             const nextDraft = event.target.value;
@@ -493,7 +536,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             }}
             disabled={!canSendMessage}
           >
-            Send Message
+            Send
           </button>
         </div>
       </div>

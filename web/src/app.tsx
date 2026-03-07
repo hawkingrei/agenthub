@@ -108,6 +108,10 @@ import {
   AUTH_PRIMARY_BUTTON_CLASS,
   AUTH_SECONDARY_BUTTON_CLASS,
 } from "./ui/tailwind_classes";
+import {
+  loadDeveloperModePreference,
+  persistDeveloperModePreference,
+} from "./ui/developer_mode";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
@@ -721,12 +725,26 @@ export function App() {
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(true);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
+  const [developerMode, setDeveloperMode] = useState<boolean>(() =>
+    loadDeveloperModePreference()
+  );
   const [acpTab, setAcpTab] = useState<"conversation" | "plan" | "debug">(
     "conversation"
   );
-  const handleAcpTabSelect = useCallback((next: "conversation" | "plan" | "debug") => {
-    setAcpTab(next);
+  const handleDeveloperModeChange = useCallback((next: boolean) => {
+    setDeveloperMode(next);
+    persistDeveloperModePreference(next);
   }, []);
+  const handleAcpTabSelect = useCallback(
+    (next: "conversation" | "plan" | "debug") => {
+      if (!developerMode && next === "debug") {
+        setAcpTab("conversation");
+        return;
+      }
+      setAcpTab(next);
+    },
+    [developerMode]
+  );
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
@@ -2545,7 +2563,8 @@ export function App() {
     () => ({
       acpView,
       subtitle: activeAgentRecord?.workdir ?? null,
-      acpTab,
+      acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
+      developerMode,
       onSelectTab: handleAcpTabSelect,
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
@@ -2560,6 +2579,7 @@ export function App() {
       acpView,
       activeAgentRecord?.workdir,
       acpTab,
+      developerMode,
       handleAcpTabSelect,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
@@ -2568,7 +2588,17 @@ export function App() {
       acpDebugProps,
     ]
   );
-  const showInputDock = !(acpTab === "debug" && acpView.hasAcp);
+  const showInputDock = !(
+    developerMode &&
+    acpTab === "debug" &&
+    acpView.hasAcp
+  );
+
+  useEffect(() => {
+    if (!developerMode && acpTab === "debug") {
+      setAcpTab("conversation");
+    }
+  }, [acpTab, developerMode]);
   const inputDockJumpMode = useMemo(
     () =>
       resolveInputDockJumpMode({
@@ -2621,6 +2651,8 @@ export function App() {
         joinPin={joinPin}
         safePathInput={safePathInput}
         setSafePathInput={setSafePathInput}
+        developerMode={developerMode}
+        onDeveloperModeChange={handleDeveloperModeChange}
       />
     );
   }
@@ -2629,7 +2661,14 @@ export function App() {
     if (shouldRedirectTeamsToLogin(location.pathname, auth, token)) {
       return <AuthRedirect />;
     }
-    return <TeamPage auth={auth} token={token} onLogout={onLogout} />;
+    return (
+      <TeamPage
+        auth={auth}
+        token={token}
+        onLogout={onLogout}
+        developerMode={developerMode}
+      />
+    );
   }
 
   if (postAuthRedirectTarget) {
@@ -2746,6 +2785,7 @@ export function App() {
             <OutputHeader
               activeAgent={activeAgentRecord}
               activeSessionId={activeSessionId}
+              developerMode={developerMode}
               agentsCollapsed={agentsCollapsed}
               hasAcp={acpView.hasAcp}
               thinkingStartTs={thinkingStartTs}
