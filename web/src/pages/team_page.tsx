@@ -2711,8 +2711,24 @@ export function TeamPage(props: TeamPageProps) {
                 Team Workbench
               </h2>
               <p className={teamSectionBodyTextClassName}>
-                Select a team from the left panel to start team conversations and supervise execution.
+                Create a team or select one from the left panel to start team conversations and supervise execution.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                  onClick={openCreateTeamWizardModal}
+                >
+                  Create Team
+                </button>
+                <button
+                  type="button"
+                  className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                  onClick={openCreateTeamManualModal}
+                >
+                  Manual Spec
+                </button>
+              </div>
             </div>
           )}
 

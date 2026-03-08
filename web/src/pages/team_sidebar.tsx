@@ -277,26 +277,28 @@ export function TeamSidebar(props: TeamSidebarProps) {
 
       {teamPickerOpen && (
         <div className={TEAM_SIDEBAR_SWITCHER_PANEL_CLASS}>
-          <div className="teams-filter flex items-center gap-2">
-            <input
-              className={TEAM_PANEL_INPUT_CLASS}
-              placeholder="Filter teams by name or id"
-              aria-label="Filter teams"
-              value={teamFilter}
-              onChange={(event) => setTeamFilter(event.target.value)}
-            />
-            {hasTeamFilter && (
-              <button
-                type="button"
-                className={TEAM_PANEL_GHOST_BUTTON_CLASS}
-                onClick={() => setTeamFilter("")}
-                aria-label="Clear team filter"
-                title="Clear team filter"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          {teams.length > 0 && (
+            <div className="teams-filter flex items-center gap-2">
+              <input
+                className={TEAM_PANEL_INPUT_CLASS}
+                placeholder="Filter teams by name or id"
+                aria-label="Filter teams"
+                value={teamFilter}
+                onChange={(event) => setTeamFilter(event.target.value)}
+              />
+              {hasTeamFilter && (
+                <button
+                  type="button"
+                  className={TEAM_PANEL_GHOST_BUTTON_CLASS}
+                  onClick={() => setTeamFilter("")}
+                  aria-label="Clear team filter"
+                  title="Clear team filter"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="teams-list mt-3 flex max-h-64 min-h-0 flex-col gap-2 overflow-auto">
             {teams.length === 0 && <p className={TEAM_MUTED_TEXT_CLASS}>No teams yet.</p>}
@@ -338,6 +340,25 @@ export function TeamSidebar(props: TeamSidebarProps) {
               );
             })}
           </div>
+
+          {teams.length === 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={TEAM_PANEL_GHOST_BUTTON_CLASS}
+                onClick={onOpenCreateTeamWizard}
+              >
+                Create Team
+              </button>
+              <button
+                type="button"
+                className={TEAM_PANEL_GHOST_BUTTON_CLASS}
+                onClick={onOpenCreateTeamManual}
+              >
+                Manual Spec
+              </button>
+            </div>
+          )}
 
           {teamDetailsOpen && (
             <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} border-t border-ui-border/70 pt-3`}>

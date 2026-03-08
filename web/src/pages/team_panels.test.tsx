@@ -579,6 +579,8 @@ describe("team panels interactions", () => {
     changeInputValue(unmatchedFilterInput, "missing-team");
     expect(container.textContent).toContain("No teams match current filter.");
 
+    const noTeamsCreateWizard = vi.fn();
+    const noTeamsCreateManual = vi.fn();
     act(() => {
       root.render(
         <MantineProvider>
@@ -586,8 +588,8 @@ describe("team panels interactions", () => {
             developerMode={false}
             busy={null}
             onRefreshTeams={() => {}}
-            onOpenCreateTeamWizard={() => {}}
-            onOpenCreateTeamManual={() => {}}
+            onOpenCreateTeamWizard={noTeamsCreateWizard}
+            onOpenCreateTeamManual={noTeamsCreateManual}
             draftTeamName=""
             leaderMemberId=""
             configuredWorkerCount={0}
@@ -608,6 +610,13 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("No teams yet.");
+    expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
+    clickElement(findButtonByText(container, "Create Team"));
+    clickElement(findButtonByText(container, "Manual Spec"));
+    expect(container.textContent).toContain("Create Team");
+    expect(container.textContent).toContain("Manual Spec");
+    expect(noTeamsCreateWizard).toHaveBeenCalledTimes(1);
+    expect(noTeamsCreateManual).toHaveBeenCalledTimes(1);
   });
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {

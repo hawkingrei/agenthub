@@ -168,6 +168,15 @@ confirmed the reference structure we actually want to copy:
   - converted the notice strip from sentence-style status text into compact `·`-separated fragments (`run working · 3 members · 2 offline`);
   - removed the monospace treatment from the notice strip because it is now product copy rather than technical metadata;
   - reduced the shared-thread composer height from four rows to three so the first screen gives more space back to the thread itself.
+- improved the zero-team empty state:
+  - when the sidebar has no teams loaded, `Create Team` and `Manual Spec` are now visible directly in the empty switcher panel instead of being hidden behind the `...` actions menu;
+  - this matches the current deployed baseline, where MCP showed `No teams yet.` with no primary action in the visible empty rail.
+- mirrored the empty-state action in the main workspace:
+  - when no team is selected, the `Team Workbench` empty card now exposes direct `Create Team` and `Manual Spec` actions instead of only explanatory text;
+  - this avoids a split empty state where the user sees an empty main workspace with no obvious next step unless they inspect sidebar menus.
+- simplified the zero-team rail further:
+  - when no teams are loaded, the switcher panel no longer renders the meaningless team filter input;
+  - the empty-state copy now matches the available actions by telling the user to create a team or select one from the left rail.
 - left the long-term backend fix as a follow-up:
   - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
   - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.
