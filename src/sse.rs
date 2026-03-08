@@ -46,7 +46,16 @@ async fn sse_agent(
 
     let output_rx = match state.agents.subscribe_output(&agent_id).await {
         Ok(rx) => rx,
-        Err(err) => return (StatusCode::NOT_FOUND, err.to_string()).into_response(),
+        Err(err) => {
+            if let Err(reconcile_err) = state.agents.reconcile_runtime_absence(&agent_id).await {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    error = %reconcile_err,
+                    "sse agent route failed to reconcile stale running state"
+                );
+            }
+            return (StatusCode::NOT_FOUND, err.to_string()).into_response();
+        }
     };
 
     sse_response(vec![output_rx])
@@ -67,8 +76,18 @@ async fn sse_agents(
 
     let mut output_rxs = Vec::with_capacity(agent_ids.len());
     for agent_id in agent_ids {
-        if let Ok(rx) = state.agents.subscribe_output(&agent_id).await {
-            output_rxs.push(rx);
+        match state.agents.subscribe_output(&agent_id).await {
+            Ok(rx) => output_rxs.push(rx),
+            Err(_) => {
+                if let Err(reconcile_err) = state.agents.reconcile_runtime_absence(&agent_id).await
+                {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %reconcile_err,
+                        "sse agents route failed to reconcile stale running state"
+                    );
+                }
+            }
         }
     }
 
@@ -291,6 +310,7 @@ mod tests {
         http::{Method, Request, StatusCode},
     };
     use chrono::Utc;
+    use sqlx::Row;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use tower::util::ServiceExt;
@@ -525,6 +545,46 @@ mod tests {
             .expect("create token")
     }
 
+    async fn insert_running_agent_without_handle(
+        state: &AppState,
+        suffix: &str,
+    ) -> (String, String) {
+        let now = Utc::now().timestamp();
+        let agent_id = format!("stale-agent-{suffix}-{}", Uuid::new_v4());
+        let session_id = format!("stale-session-{suffix}-{}", Uuid::new_v4());
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'running', ?6, ?7)
+            "#,
+        )
+        .bind(&agent_id)
+        .bind(format!("stale-{suffix}"))
+        .bind("/tmp")
+        .bind("cat")
+        .bind("[]")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert stale running agent");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(&session_id)
+        .bind(&agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert stale running session");
+        (agent_id, session_id)
+    }
+
     fn sample_output(stream: OutputStream) -> AgentOutput {
         AgentOutput {
             event_id: 42,
@@ -598,6 +658,36 @@ mod tests {
             .await
             .expect("execute request");
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn sse_agents_reconciles_stale_running_agent_before_returning_not_found() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let (agent_id, session_id) = insert_running_agent_without_handle(&state, "sse").await;
+        let app = super::router(state.clone());
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/agents?ids={agent_id}&token={token}"
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let agent_row = sqlx::query("SELECT status FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("fetch reconciled agent");
+        assert_eq!(agent_row.get::<String, _>("status"), "exited");
+
+        let session_row = sqlx::query("SELECT status, ended_at FROM agent_sessions WHERE id = ?1")
+            .bind(&session_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("fetch reconciled session");
+        assert_eq!(session_row.get::<String, _>("status"), "exited");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
     }
 
     #[test]

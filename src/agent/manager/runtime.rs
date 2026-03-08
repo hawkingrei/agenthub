@@ -1317,6 +1317,34 @@ branch refs/heads/agent-a
     }
 
     #[tokio::test]
+    async fn reconcile_runtime_absence_marks_stale_running_agent_exited() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, "reconcile-runtime").await;
+
+        let reconciled = state
+            .agents
+            .reconcile_runtime_absence(&agent_id)
+            .await
+            .expect("reconcile stale runtime absence");
+        assert!(reconciled, "expected stale running agent to be reconciled");
+
+        let agent_row = sqlx::query("SELECT status FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("fetch agent row");
+        assert_eq!(agent_row.get::<String, _>("status"), "exited");
+
+        let session_row = sqlx::query("SELECT status, ended_at FROM agent_sessions WHERE id = ?1")
+            .bind(&session_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("fetch session row");
+        assert_eq!(session_row.get::<String, _>("status"), "exited");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
+    }
+
+    #[tokio::test]
     async fn finalize_process_exit_tolerates_closed_pool() {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, session_id) = insert_agent_and_session(&state.db, "finalize-closed").await;
