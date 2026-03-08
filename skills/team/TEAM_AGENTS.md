@@ -61,6 +61,8 @@ Worker minimal profile:
 - In team conversation, reply with final content only.
 - Do not expose mailbox transport status, `current_phase`, or raw JSON envelope fields in visible chat text.
 - Keep structured status/evidence payloads for internal execution coordination and leader/worker handoff only.
+- In shared group chat, workers may reply directly with implementation progress, facts, and scoped answers.
+- Leader remains owner of planning decisions and final integrated response.
 
 ## TODO And Context Pointers
 

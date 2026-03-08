@@ -30,6 +30,8 @@ This file is index-only; detailed procedures live in skill files.
   - team conversation replies should render final answer content only
   - do not echo mailbox status, `current_phase`, or transport envelope fields into visible chat text
   - keep structured status/evidence payloads for internal execution coordination only
+  - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for leader relay
+  - leader remains owner of planning decisions and final integrated response
 - Human/task boundary:
   - humans provide goals/constraints
   - internal Team `task` objects are created by leader planning

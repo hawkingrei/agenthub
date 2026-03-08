@@ -57,6 +57,8 @@ Recommended fields:
   - visible reply text must contain final answer content only
   - do not echo mailbox transport status, `current_phase`, or raw JSON envelope fields into chat text
   - if transport requires a chat envelope, keep it minimal and put only the natural-language reply in `text`
+  - in shared group chat, workers may reply directly with implementation progress, facts, and scoped answers
+  - keep leader as the owner of planning decisions and final synthesis
   - bad visible reply example: `{"type":"chat_message","current_phase":"Team formation","text":"..."}`
   - good visible reply example: `已收到你的消息。当前 mailbox 收发正常；如果有具体任务，直接发目标、约束和期望输出即可。`
 
@@ -70,8 +72,9 @@ Recommended fields:
 ## Escalation Rules
 
 - Worker reports blockers to leader first.
-- Worker contacts human actor directly only when explicitly routed or when escalation policy requires it.
-- Leader remains default human-facing coordinator for planning and synthesis.
+- Worker may reply in shared group chat for implementation progress, facts, and scoped answers.
+- Worker contacts human actor directly outside shared group chat only when explicitly routed or when escalation policy requires it.
+- Leader remains default human-facing coordinator for planning decisions and synthesis.
 - For collaboration-intensive work, proactively mention impacted peers (`@member_id`) instead of relying on broadcast.
 
 ## Output Contract Examples
