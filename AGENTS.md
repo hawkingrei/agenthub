@@ -135,6 +135,7 @@ agenthub/
   - Mention routing contract: `@member_id` means explicit recipients only; no `@` means broadcast to all team members.
   - Mailbox address translation: during mailbox fan-out, recipient `to_actor_id` should be translated into `@member_id` mention context for agent-facing chat payloads.
   - Reply contract: agent replies in team conversation should include `@member_id` when targeting specific recipients; replies without `@` are treated as broadcast.
+  - Human-facing team conversation replies must contain final reply content only; do not expose mailbox transport status, `current_phase`, or raw JSON envelope fields in visible chat text.
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
   - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work

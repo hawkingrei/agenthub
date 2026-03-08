@@ -26,6 +26,10 @@ This file is index-only; detailed procedures live in skill files.
   - prefer directed `@member_id` over broadcast for execution collaboration
   - leader should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
   - workers should actively mention leader plus impacted peers when reporting blockers, dependency changes, or evidence handoff
+- Human-facing reply contract:
+  - team conversation replies should render final answer content only
+  - do not echo mailbox status, `current_phase`, or transport envelope fields into visible chat text
+  - keep structured status/evidence payloads for internal execution coordination only
 - Human/task boundary:
   - humans provide goals/constraints
   - internal Team `task` objects are created by leader planning

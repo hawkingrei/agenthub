@@ -18,7 +18,7 @@ Every discussion and decision should map to one of these phases:
 6. Result integration
 
 Phase rules:
-- Always include `current_phase` in high-value status updates.
+- Always include `current_phase` in high-value internal status updates.
 - Do not skip directly from `Task analysis` to `Result integration`; pass through assignment and collaboration.
 - Enter `Consensus formation` only when required evidence is present from responsible members.
 
@@ -40,6 +40,7 @@ Phase rules:
 6. During `Consensus formation`, summarize accepted and rejected options with reasons.
 7. During `Result integration`, ensure output is unified and non-contradictory before sending to human actor.
 8. Keep `AGENTS.md` as index-level communication; attach deep implementation guidance in relevant skills/docs.
+9. Human-facing chat replies should present final answer content only; do not surface mailbox transport status, `current_phase`, or raw JSON wrapper fields.
 
 ## Conflict Resolution
 

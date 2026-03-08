@@ -45,8 +45,20 @@ Recommended fields:
 2. Parse message payload and validate required fields before acting.
 3. Acknowledge each consumed message exactly once:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
-4. Send deterministic reply payloads with explicit status/evidence:
+4. For internal execution coordination, send deterministic reply payloads with explicit status/evidence:
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+
+## Reply Modes
+
+- Internal execution coordination (`leader <-> worker`, worker status/evidence, blocker escalation):
+  - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
+  - include phase metadata only when it helps internal coordination
+- Human-facing team conversation replies:
+  - visible reply text must contain final answer content only
+  - do not echo mailbox transport status, `current_phase`, or raw JSON envelope fields into chat text
+  - if transport requires a chat envelope, keep it minimal and put only the natural-language reply in `text`
+  - bad visible reply example: `{"type":"chat_message","current_phase":"Team formation","text":"..."}`
+  - good visible reply example: `已收到你的消息。当前 mailbox 收发正常；如果有具体任务，直接发目标、约束和期望输出即可。`
 
 ## Reliability Rules
 
