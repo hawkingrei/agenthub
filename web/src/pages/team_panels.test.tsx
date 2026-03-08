@@ -1456,9 +1456,12 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
-    expect(container.textContent).toContain("Thread");
-    expect(container.textContent).toContain(
+    expect(container.querySelector("h3")).toBeNull();
+    expect(container.textContent).not.toContain(
       "General channel for shared planning, requests, and broadcast coordination."
+    );
+    expect(container.textContent).toContain(
+      "Use @member_id for direct replies · Ctrl/Cmd + Enter to send"
     );
     expect(container.textContent).not.toContain("worker update");
     expect(container.textContent).not.toContain("work:working");
@@ -1669,7 +1672,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
     clickElement(findButtonByText(container, "Refresh Thread"));
     clickElement(findButtonByText(container, "Load Older"));
-    expect(container.textContent).toContain("Thread");
+    expect(container.querySelector("h3")).toBeNull();
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
     expect(container.textContent).toContain("member=worker-agent");

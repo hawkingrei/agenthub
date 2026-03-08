@@ -159,6 +159,10 @@ confirmed the reference structure we actually want to copy:
   - agent rows now default to `name + status (+ pending count)` instead of always rendering `member_id · role · lifecycle`;
   - the sidebar `Show Team Details` entry is now developer-only;
   - the `Runs` utility row copy was shortened to match the lighter rail tone.
+- tightened the thread surface itself:
+  - removed the redundant inner `Thread` panel titles from both the shared thread and the agent ACP thread because the workspace header already names the current subject;
+  - removed the repeated shared-thread description from inside the panel;
+  - collapsed the composer helper copy into one lightweight footer hint (`@member_id for direct replies · Ctrl/Cmd+Enter to send`) instead of two always-visible lines.
 - left the long-term backend fix as a follow-up:
   - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
   - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.

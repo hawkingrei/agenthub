@@ -10,7 +10,6 @@ import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
@@ -122,7 +121,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Thread</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             type="button"

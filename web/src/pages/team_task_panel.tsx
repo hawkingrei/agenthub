@@ -19,7 +19,6 @@ import {
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
@@ -291,7 +290,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Thread</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             type="button"
@@ -305,10 +303,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
           </button>
         </div>
       </div>
-
-      <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-        General channel for shared planning, requests, and broadcast coordination.
-      </p>
 
       {threadOptionsOpen && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -438,9 +432,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       </div>
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
-        <p className={TEAM_MUTED_TEXT_CLASS}>
-          Use `@member_id` to direct one teammate.
-        </p>
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
@@ -527,7 +518,9 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
           </div>
         )}
         <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
-          <span className={TEAM_TASK_SHORTCUT_CLASS}>shortcut: Ctrl/Cmd + Enter</span>
+          <span className={TEAM_TASK_SHORTCUT_CLASS}>
+            {`Use @member_id for direct replies · Ctrl/Cmd + Enter to send`}
+          </span>
           <button
             type="button"
             className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
