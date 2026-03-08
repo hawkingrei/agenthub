@@ -2174,12 +2174,12 @@ export function TeamPage(props: TeamPageProps) {
   const workspaceDescription = !selectedTeam
     ? "Select a team from the left rail to start team conversations and supervise execution."
     : tab === "conversation"
-      ? "Shared team thread for planning, requests, and broadcast coordination."
+      ? "Shared planning and broadcast thread."
       : tab === "runs"
-        ? "Browse runs, choose the active execution context, or start a new team run."
+        ? "Browse runs and choose the active execution context."
         : isAgentWorkspace
-          ? "Direct ACP thread for the selected agent."
-          : "Run-scoped utilities stay available, but they should not replace conversation-first coordination.";
+          ? "Direct thread for the selected agent."
+          : "Operational views stay available without displacing the main thread.";
   const workspaceMemberAvailability = useMemo(() => {
     if (selectedTeamMemberSummary) {
       return {
@@ -2205,32 +2205,32 @@ export function TeamPage(props: TeamPageProps) {
   }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
   const workspaceNoticeText = useMemo(() => {
     const runLabel = activeRunForSelectedTeam
-      ? `Run ${activeRunForSelectedTeam.status}.`
-      : "No active run.";
-    const rosterLabel = `${selectedTeamMemberLiveStates.length} members in roster.`;
+      ? `run ${activeRunForSelectedTeam.status}`
+      : "no active run";
+    const rosterLabel = `${selectedTeamMemberLiveStates.length} members`;
     const availabilityLabel =
       workspaceMemberAvailability.missing > 0
-        ? `${workspaceMemberAvailability.missing} missing.`
+        ? `${workspaceMemberAvailability.missing} missing`
         : workspaceMemberAvailability.offline > 0
-          ? `${workspaceMemberAvailability.offline} offline.`
-          : `${workspaceMemberAvailability.online} online.`;
+          ? `${workspaceMemberAvailability.offline} offline`
+          : `${workspaceMemberAvailability.online} online`;
     const agentLabel = (() => {
       if (!isAgentWorkspace || !selectedMemberLiveState) {
         return null;
       }
       const lifecycle = normalizeTeamMemberLifecycle(selectedMemberLiveState);
       if (lifecycle !== "unknown") {
-        return `${selectedAgentLabel} is ${lifecycle}.`;
+        return `${selectedAgentLabel} ${lifecycle}`;
       }
       const workStatus = normalizeTeamMemberWorkStatus(selectedMemberLiveState);
       if (workStatus !== "unknown") {
-        return `${selectedAgentLabel} is ${workStatus === "no_run" ? "waiting for a run" : workStatus}.`;
+        return `${selectedAgentLabel} ${workStatus === "no_run" ? "waiting for a run" : workStatus}`;
       }
       return null;
     })();
     return [runLabel, rosterLabel, availabilityLabel, agentLabel]
       .filter((value): value is string => Boolean(value))
-      .join(" ");
+      .join(" · ");
   }, [
     activeRunForSelectedTeam,
     isAgentWorkspace,
@@ -2811,7 +2811,7 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
                 </div>
-                <div className={`${workspaceNoticeClassName} mono`}>
+                <div className={workspaceNoticeClassName}>
                   <div className={workspaceNoticeTextClassName}>
                     <span className={workspaceNoticeDotClassName} aria-hidden="true" />
                     <span className="min-w-0 flex-1 text-xs leading-5 text-ui-text-muted">

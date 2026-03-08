@@ -163,6 +163,11 @@ confirmed the reference structure we actually want to copy:
   - removed the redundant inner `Thread` panel titles from both the shared thread and the agent ACP thread because the workspace header already names the current subject;
   - removed the repeated shared-thread description from inside the panel;
   - collapsed the composer helper copy into one lightweight footer hint (`@member_id for direct replies · Ctrl/Cmd+Enter to send`) instead of two always-visible lines.
+- tightened the workspace header copy:
+  - shortened the shared-thread and agent-thread descriptions so the workspace header reads more like a thread client and less like an internal console;
+  - converted the notice strip from sentence-style status text into compact `·`-separated fragments (`run working · 3 members · 2 offline`);
+  - removed the monospace treatment from the notice strip because it is now product copy rather than technical metadata;
+  - reduced the shared-thread composer height from four rows to three so the first screen gives more space back to the thread itself.
 - left the long-term backend fix as a follow-up:
   - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
   - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.

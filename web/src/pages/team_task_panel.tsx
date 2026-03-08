@@ -435,7 +435,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
-          rows={4}
+          rows={3}
           placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {
