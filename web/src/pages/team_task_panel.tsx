@@ -13,7 +13,6 @@ import {
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
-  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -76,18 +75,6 @@ const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
   "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-medium text-ui-text-secondary";
-
-type ThreadWaterfallItem = {
-  key: string;
-  sequence: number;
-  createdAt: number;
-  fromActorId: string;
-  toActorId: string | null;
-  routeOrStatus: string;
-  streamLabel: string;
-  markdownText: string;
-  renderedHtml: string;
-};
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
