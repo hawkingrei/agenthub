@@ -15,6 +15,7 @@ type StepAction = "start" | "complete" | "fail" | "input_required" | "resume";
 
 type TeamStepsPanelProps = {
   steps: TeamStepRecord[];
+  developerMode: boolean;
   mode?: "full" | "list_only" | "controls_only";
   onRefreshSteps: () => Promise<void> | void;
   stepKey: string;
@@ -57,6 +58,7 @@ const STEPS_LIST_ONLY_NOTE_CLASS =
 export function TeamStepsPanel(props: TeamStepsPanelProps) {
   const {
     steps,
+    developerMode,
     mode = "full",
     onRefreshSteps,
     stepKey,
@@ -239,7 +241,13 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
 
       {mode === "list_only" && (
         <div className={STEPS_LIST_ONLY_NOTE_CLASS}>
-          Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
+          {developerMode ? (
+            <>
+              Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
+            </>
+          ) : (
+            "Step controls are available in Developer Mode."
+          )}
         </div>
       )}
 

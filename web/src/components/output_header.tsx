@@ -18,6 +18,7 @@ import {
 type OutputHeaderProps = {
   activeAgent: AgentRecord | null;
   activeSessionId: string | null;
+  developerMode: boolean;
   agentsCollapsed: boolean;
   hasAcp: boolean;
   thinkingStartTs: number | null;
@@ -29,6 +30,7 @@ type OutputHeaderProps = {
 export const OutputHeader = React.memo(function OutputHeader({
   activeAgent,
   activeSessionId,
+  developerMode,
   agentsCollapsed,
   hasAcp,
   thinkingStartTs,
@@ -93,10 +95,10 @@ export const OutputHeader = React.memo(function OutputHeader({
           <span className={OUTPUT_HEADER_PILL_CLASS}>
             Code mode {activeAgent.code_mode ? "on" : "off"}
           </span>
-          {sessionLabel && (
+          {developerMode && sessionLabel && (
             <span className={OUTPUT_HEADER_SESSION_CLASS}>Session {sessionLabel}</span>
           )}
-          {updatedLabel && (
+          {developerMode && updatedLabel && (
             <span className={OUTPUT_HEADER_UPDATED_CLASS}>Updated {updatedLabel}</span>
           )}
         </div>

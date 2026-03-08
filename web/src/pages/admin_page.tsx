@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Switch } from "@mantine/core";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
@@ -25,6 +26,8 @@ type AdminProps = {
   joinPin: string | null;
   safePathInput: string;
   setSafePathInput: (value: string) => void;
+  developerMode: boolean;
+  onDeveloperModeChange: (value: boolean) => void;
 };
 
 const ADMIN_APP_CLASS =
@@ -71,7 +74,7 @@ const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-slate-500";
 
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
-    "safe" | "devices" | "audits" | "join" | "vapid"
+    "safe" | "devices" | "audits" | "join" | "vapid" | "ui"
   >("safe");
   return (
     <div className={ADMIN_APP_CLASS}>
@@ -129,6 +132,12 @@ export function AdminPage(props: AdminProps) {
             onClick={() => setTab("vapid")}
           >
             VAPID Keys
+          </button>
+          <button
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "ui" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+            onClick={() => setTab("ui")}
+          >
+            UI
           </button>
         </div>
 
@@ -284,6 +293,25 @@ export function AdminPage(props: AdminProps) {
                 >
                   Rotate Keys
                 </button>
+              </div>
+            </div>
+          )}
+          {tab === "ui" && (
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>UI Settings</h3>
+              <div className="flex flex-col gap-3">
+                <Switch
+                  checked={props.developerMode}
+                  onChange={(event) =>
+                    props.onDeveloperModeChange(event.currentTarget.checked)
+                  }
+                  label="Developer Mode"
+                  description="Applies to this browser only. Affects Agents and Teams."
+                />
+                <p className={ADMIN_MUTED_TEXT_CLASS}>
+                  Default behavior: enabled in development and tests, disabled in
+                  production builds.
+                </p>
               </div>
             </div>
           )}

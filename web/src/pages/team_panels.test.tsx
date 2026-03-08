@@ -2,12 +2,12 @@
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MantineProvider } from "@mantine/core";
 import {
   AgentEvent,
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
-  TeamTaskRecord,
   TeamMemberSnapshot,
   TeamRunEventRecord,
   TeamRunRecord,
@@ -28,6 +28,20 @@ import { TeamTabsBar } from "./team_tabs_bar";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
+
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList) as typeof window.matchMedia;
+}
 
 function required<T>(value: T | null | undefined, message: string): T {
   if (value == null) {
@@ -175,20 +189,6 @@ function buildMailboxMessage(
   };
 }
 
-function buildTask(overrides: Partial<TeamTaskRecord> = {}): TeamTaskRecord {
-  return {
-    id: "task-1",
-    team_id: "team-1",
-    title: "Investigate regression",
-    status: "open",
-    created_by_actor_id: "user:u-1",
-    context: {},
-    created_at: 1_700_000_010,
-    updated_at: 1_700_000_020,
-    ...overrides,
-  };
-}
-
 function buildTaskMessage(
   messageId: number,
   overrides: Partial<TeamConversationMessageRecord> = {}
@@ -249,6 +249,33 @@ function buildSnapshot(overrides: Partial<TeamRunSnapshotRecord> = {}): TeamRunS
   };
 }
 
+function buildMemberLiveState(
+  overrides: Partial<{
+    member_id: string;
+    role: string;
+    agent_name?: string;
+    lifecycle_status: string;
+    lifecycle_tone: "active" | "inactive" | "missing";
+    run_status: string;
+    step_status: string;
+    pending_inbox_count: number | null;
+    current_work: string;
+  }> = {}
+) {
+  return {
+    member_id: "leader-agent",
+    role: "leader",
+    agent_name: "Leader Agent",
+    lifecycle_status: "running",
+    lifecycle_tone: "active" as const,
+    run_status: "working",
+    step_status: "working",
+    pending_inbox_count: 1,
+    current_work: "planning handoff",
+    ...overrides,
+  };
+}
+
 describe("team panels interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -266,97 +293,269 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders summary and triggers refresh/create/select callbacks", () => {
+  it("TeamSidebar renders subject rail and triggers navigation callbacks", () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeamWizard = vi.fn();
     const onOpenCreateTeamManual = vi.fn();
     const onSelectTeam = vi.fn();
+    const onSelectConversation = vi.fn();
+    const onSelectAgentTab = vi.fn();
+    const onSelectUtilityTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
 
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={onRefreshTeams}
-          onOpenCreateTeamWizard={onOpenCreateTeamWizard}
-          onOpenCreateTeamManual={onOpenCreateTeamManual}
-          draftTeamName="alpha"
-          leaderMemberId="leader-agent"
-          configuredWorkerCount={2}
-          teams={[teamOne, teamTwo]}
-          selectedTeamId="team-1"
-          teamMemberSummaryByTeamId={new Map([
-            [
-              "team-1",
-              {
-                active: 1,
-                inactive: 1,
-                missing: 0,
-                total: 2,
-              },
-            ],
-            [
-              "team-2",
-              {
-                active: 2,
-                inactive: 0,
-                missing: 0,
-                total: 2,
-              },
-            ],
-          ])}
-          onSelectTeam={onSelectTeam}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId="team-1"
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="member_console"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
       );
     });
 
+    clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
-    clickElement(findButtonByText(container, "Guided Wizard"));
-    clickElement(findButtonByText(container, "Manual Spec"));
-    clickElement(required(container.querySelector(".teams-list .team-item"), "team item missing"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Guided Wizard"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Manual Spec"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
+    expect(container.textContent).not.toContain("draft_team=alpha");
     changeInputValue(filterInput, "team-2");
-    expect(container.textContent).toContain("Team Two");
-    expect(container.textContent).not.toContain("Team One");
     expect(container.textContent).toContain("filtered=1 total=2");
     clickElement(findButtonByAriaLabel(container, "Clear team filter"));
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickElement(findButtonByText(document.body, "Show Team Details"));
+    expect(container.textContent).toContain("draft_team=alpha");
+    expect(container.textContent).toContain("leader=leader-agent");
+    expect(container.textContent).toContain("workers=2");
+    clickElement(findButtonByText(container, "Team Two"));
+    expect(container.querySelector("input[aria-label='Filter teams']")).not.toBeNull();
     expect(container.textContent).toContain("Team One");
-    expect(container.textContent).toContain("Team Two");
-    const selectedItem = required(
-      container.querySelector("button[aria-current='true']"),
-      "selected team item missing"
-    );
-    expect(selectedItem.textContent).toContain("Team One");
+    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
+    expect(container.textContent).not.toContain("Worker Agent");
+    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
+    expect(container.textContent).toContain("Worker Agent");
+    clickElement(findButtonByText(container, "Shared team thread"));
+    clickElement(findButtonByText(container, "Worker Agent"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
-    expect(onSelectTeam).toHaveBeenCalledWith("team-1");
-    expect(container.textContent).toContain("active=1 inactive=1 missing=0 total=2");
-    expect(container.textContent).toContain("Operating Model");
-    expect(container.textContent).toContain(
-      "Leader plans and talks to human actor. Workers execute delegated tasks and report evidence back to leader."
-    );
+    expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(onSelectConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+    expect(container.textContent).toContain("Channels");
+    expect(container.textContent).toContain("Agents");
+    expect(container.textContent).not.toContain("Utilities 1");
+    expect(container.textContent).toContain("Leader Agent");
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("leader · working");
+    expect(container.textContent).toContain("worker · working");
+    expect(container.textContent).not.toContain("Console");
 
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={() => {}}
-          onOpenCreateTeamWizard={() => {}}
-          onOpenCreateTeamManual={() => {}}
-          draftTeamName=""
-          leaderMemberId=""
-          configuredWorkerCount={0}
-          teams={[buildTeam()]}
-          selectedTeamId={null}
-          teamMemberSummaryByTeamId={new Map()}
-          onSelectTeam={() => {}}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId="team-1"
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="member_console"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    expect(container.textContent).not.toContain("Show Team Details");
+    expect(container.textContent).not.toContain("leader · working");
+    expect(container.textContent).not.toContain("worker · working");
+    expect(container.textContent).not.toContain("team-1");
+
+    clickElement(findButtonByText(container, "Operations"));
+    expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
+    expect(container.textContent).toContain("Utilities 1");
+    expect(container.textContent).not.toContain("Channels 1");
+    expect(container.textContent).not.toContain("Debug");
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={onRefreshTeams}
+            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
+            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 1,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+              [
+                "team-2",
+                {
+                  active: 2,
+                  inactive: 0,
+                  missing: 0,
+                  total: 2,
+                },
+              ],
+            ])}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                pending_inbox_count: 3,
+                current_work: "collecting evidence",
+              }),
+            ]}
+            selectedMemberId="worker-agent"
+            tab="runs"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={onSelectConversation}
+            onSelectAgentTab={onSelectAgentTab}
+            onSelectUtilityTab={onSelectUtilityTab}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByText(container, "Channels & Agents"));
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeamWizard={() => {}}
+            onOpenCreateTeamManual={() => {}}
+            draftTeamName=""
+            leaderMemberId=""
+            configuredWorkerCount={0}
+            teams={[buildTeam()]}
+            selectedTeam={null}
+            selectedTeamId={null}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[]}
+            selectedMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -367,25 +566,44 @@ describe("team panels interactions", () => {
     changeInputValue(unmatchedFilterInput, "missing-team");
     expect(container.textContent).toContain("No teams match current filter.");
 
+    const noTeamsCreateWizard = vi.fn();
+    const noTeamsCreateManual = vi.fn();
     act(() => {
       root.render(
-        <TeamSidebar
-          busy={null}
-          onRefreshTeams={() => {}}
-          onOpenCreateTeamWizard={() => {}}
-          onOpenCreateTeamManual={() => {}}
-          draftTeamName=""
-          leaderMemberId=""
-          configuredWorkerCount={0}
-          teams={[]}
-          selectedTeamId={null}
-          teamMemberSummaryByTeamId={new Map()}
-          onSelectTeam={() => {}}
-        />
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeamWizard={noTeamsCreateWizard}
+            onOpenCreateTeamManual={noTeamsCreateManual}
+            draftTeamName=""
+            leaderMemberId=""
+            configuredWorkerCount={0}
+            teams={[]}
+            selectedTeam={null}
+            selectedTeamId={null}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[]}
+            selectedMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
     expect(container.textContent).toContain("No teams yet.");
+    expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
+    clickElement(findButtonByText(container, "Guided Wizard"));
+    clickElement(findButtonByText(container, "Manual Spec"));
+    expect(container.textContent).toContain("Guided Wizard");
+    expect(container.textContent).toContain("Manual Spec");
+    expect(noTeamsCreateWizard).toHaveBeenCalledTimes(1);
+    expect(noTeamsCreateManual).toHaveBeenCalledTimes(1);
   });
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
@@ -402,6 +620,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamRunPanel
           selectedTeam={buildTeam()}
+          developerMode={true}
           busy={null}
           onDeleteTeam={onDeleteTeam}
           onStartTeam={onStartTeam}
@@ -452,6 +671,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamRunPanel
           selectedTeam={buildTeam()}
+          developerMode={true}
           busy={null}
           onDeleteTeam={() => {}}
           onStartTeam={() => {}}
@@ -485,6 +705,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamRunPanel
           selectedTeam={buildTeam()}
+          developerMode={false}
           busy={null}
           onDeleteTeam={() => {}}
           onStartTeam={() => {}}
@@ -507,7 +728,8 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(container.textContent).toContain("Debug → Run Ops");
+    expect(container.textContent).toContain("Developer Mode");
+    expect(container.textContent).not.toContain("Debug → Run Ops");
     expect(container.textContent).toContain("Start Team");
     expect(container.textContent).not.toContain("Create Run");
     expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
@@ -583,6 +805,7 @@ describe("team panels interactions", () => {
     const onApplyStepAction = vi.fn();
 
     const baseProps = {
+      developerMode: true,
       steps: [buildStep({ id: "step-1", status: "submitted" })],
       onRefreshSteps,
       stepKey: "plan",
@@ -723,6 +946,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamStepsPanel
+          developerMode={true}
           mode="list_only"
           steps={[buildStep({ id: "step-1", status: "working" })]}
           onRefreshSteps={() => {}}
@@ -767,6 +991,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamStepsPanel
+          developerMode={true}
           mode="controls_only"
           steps={[buildStep({ id: "step-1", status: "working" })]}
           onRefreshSteps={() => {}}
@@ -802,7 +1027,46 @@ describe("team panels interactions", () => {
     });
     expect(findButtonByText(container, "Submit Step")).toBeDefined();
     expect(findButtonByText(container, "Apply Step Action")).toBeDefined();
-    expect(container.querySelector(".teams-step-list")).toBeNull();
+
+    act(() => {
+      root.render(
+        <TeamStepsPanel
+          developerMode={false}
+          mode="list_only"
+          steps={[buildStep({ id: "step-1", status: "working" })]}
+          onRefreshSteps={() => {}}
+          stepKey=""
+          onStepKeyChange={() => {}}
+          stepMemberId=""
+          onStepMemberIdChange={() => {}}
+          stepDependsOn=""
+          onStepDependsOnChange={() => {}}
+          stepInput="{}"
+          onStepInputChange={() => {}}
+          onSubmitStep={() => {}}
+          busy={null}
+          selectedStepId=""
+          onSelectedStepIdChange={() => {}}
+          stepAction="start"
+          onStepActionChange={() => {}}
+          stepRemoteTaskId=""
+          onStepRemoteTaskIdChange={() => {}}
+          stepOutput="{}"
+          onStepOutputChange={() => {}}
+          stepFailText=""
+          onStepFailTextChange={() => {}}
+          stepInputReason=""
+          onStepInputReasonChange={() => {}}
+          stepInputRequiredPayload="{}"
+          onStepInputRequiredPayloadChange={() => {}}
+          stepResumePayload="{}"
+          onStepResumePayloadChange={() => {}}
+          onApplyStepAction={() => {}}
+        />
+      );
+    });
+    expect(container.textContent).toContain("Step controls are available in Developer Mode.");
+    expect(container.querySelector(".teams-step-list")).not.toBeNull();
   });
 
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
@@ -1098,7 +1362,6 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel supports create/select/send workflow", () => {
-    const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
@@ -1108,17 +1371,8 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamTaskPanel
-          tasks={[
-            buildTask(),
-            buildTask({
-              id: "task-2",
-              title: "Ship patch",
-              status: "in_progress",
-            }),
-          ]}
+          developerMode={true}
           tasksLoading={false}
-          selectedTaskId="task-1"
-          onSelectedTaskIdChange={onSelectedTaskIdChange}
           onRefreshTasks={onRefreshTasks}
           messageDraft="hello leader"
           onMessageDraftChange={onMessageDraftChange}
@@ -1165,19 +1419,14 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh Tasks"));
-    clickElement(findButtonByText(container, "Refresh Messages"));
-    clickElement(findButtonByText(container, "Send Message"));
-
-    const selects = container.querySelectorAll("select");
-    changeSelectValue(
-      required(selects[0] as HTMLSelectElement | undefined, "task select missing"),
-      "task-2"
-    );
+    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
+    clickElement(findButtonByText(container, "Refresh Channel"));
+    clickElement(findButtonByText(container, "Refresh Thread"));
+    clickElement(findButtonByText(container, "Send"));
     changeInputValue(
       required(
         container.querySelector(
-          'textarea[placeholder="Type planning message (use @ to pick teammate mention)"]'
+          'textarea[placeholder="Message #all"]'
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),
@@ -1187,20 +1436,161 @@ describe("team panels interactions", () => {
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-2");
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
-    expect(container.textContent).toContain("Conversation");
+    expect(container.querySelector("h3")).toBeNull();
+    expect(container.textContent).not.toContain(
+      "General channel for shared planning, requests, and broadcast coordination."
+    );
+    expect(container.textContent).toContain(
+      "Use @member_id for direct replies · Ctrl/Cmd + Enter to send"
+    );
     expect(container.textContent).not.toContain("worker update");
-    expect(container.textContent).toContain("work:working");
-    expect(container.textContent).not.toContain("work:blocked");
-    expect(container.textContent).toContain("agent:working");
+    expect(container.textContent).not.toContain("work:working");
+    expect(container.textContent).not.toContain("agent:working");
+    const detailButtons = Array.from(container.querySelectorAll("button")).filter((candidate) =>
+      candidate.textContent?.includes("Show details")
+    );
+    clickElement(detailButtons[1] ?? null);
+    expect(container.textContent).toContain("work");
+    expect(container.textContent).toContain("working/working");
+    expect(container.textContent).toContain("agent");
+    expect(container.textContent).toContain("running");
+  });
+
+  it("TeamTaskPanel renders delivered mailbox replies to the human in shared thread", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={true}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "user:u-1",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "hello team" },
+            }),
+          ]}
+          mailboxMessages={[
+            buildMailboxMessage(9, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user",
+              status: "delivered",
+              payload: { type: "chat_message", text: "leader reply visible in all" },
+            }),
+            buildMailboxMessage(10, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "worker-agent",
+              status: "delivered",
+              payload: { type: "chat_message", text: "worker-only mailbox message" },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "leader-agent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "reviewing shared thread",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("hello team");
+    expect(container.textContent).toContain("leader reply visible in all");
+    expect(container.textContent).not.toContain("worker-only mailbox message");
+    expect(container.textContent).toContain("reply");
+    expect(container.textContent).toContain("You");
+    expect(container.textContent).toContain("leader-agent");
+  });
+
+  it("TeamTaskPanel renders mailbox chat_message payload strings as thread text", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={true}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[]}
+          mailboxMessages={[
+            buildMailboxMessage(11, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user",
+              status: "delivered",
+              payload:
+                '{"type":"chat_message","current_phase":"Team formation","text":"rendered from string payload"}',
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("rendered from string payload");
+    expect(container.textContent).not.toContain('{"type":"chat_message"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamTaskPanel hides message details when developer mode is off", () => {
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[buildTaskMessage(1)]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    });
+
+    expect(container.textContent).not.toContain("Show details");
+    expect(container.textContent).not.toContain("source");
+    expect(container.textContent).not.toContain("route");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
-    const onSelectedMemberIdChange = vi.fn();
     const onRefresh = vi.fn();
     const onLoadOlder = vi.fn();
     const acpEvents: AgentEvent[] = [
@@ -1233,9 +1623,8 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamMemberAcpPanel
-          snapshot={buildSnapshot()}
+          developerMode={true}
           selectedMemberId="worker-agent"
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
           selectedMemberSnapshot={buildMemberSnapshot({
             member_id: "worker-agent",
             role: "worker",
@@ -1252,14 +1641,49 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Refresh"));
+    expect(container.textContent).not.toContain("member=worker-agent");
+    expect(container.textContent).not.toContain("role=worker");
+    expect(container.textContent).not.toContain("session=task-77");
+    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
+    clickElement(findButtonByText(container, "Refresh Thread"));
     clickElement(findButtonByText(container, "Load Older"));
-    expect(container.textContent).toContain("Agent ACP");
+    expect(container.querySelector("h3")).toBeNull();
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
+    expect(container.textContent).toContain("member=worker-agent");
+    expect(container.textContent).toContain("role=worker");
     expect(container.textContent).toContain("session=task-77");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("TeamMemberAcpPanel hides technical metadata when developer mode is off", () => {
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={false}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={buildMemberSnapshot({
+            member_id: "worker-agent",
+            role: "worker",
+            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+          })}
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
+    expect(container.textContent).toContain("Refresh Thread");
+    expect(container.textContent).not.toContain("member=worker-agent");
+    expect(container.textContent).not.toContain("role=worker");
+    expect(container.textContent).not.toContain("session=task-77");
   });
 
   it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {
@@ -1298,6 +1722,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamMailboxPanel
+          developerMode={true}
           snapshot={buildSnapshot()}
           humanActorId="user"
           selectedMemberId="worker-agent"
@@ -1398,6 +1823,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamMailboxPanel
+          developerMode={true}
           mode="advanced_only"
           snapshot={buildSnapshot()}
           selectedMemberId="worker-agent"
@@ -1538,6 +1964,7 @@ describe("team panels interactions", () => {
     act(() => {
       root.render(
         <TeamMailboxPanel
+          developerMode={true}
           snapshot={null}
           selectedMemberId=""
           unreadByMemberId={{}}
@@ -1589,5 +2016,144 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members available.");
     expect(container.textContent).toContain("No conversation records yet for this pair.");
+  });
+
+  it("TeamMailboxPanel renders chat_message payload strings as plain text", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={true}
+          snapshot={buildSnapshot()}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{}}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[
+            buildMailboxMessage(30, {
+              from_actor_id: "worker-agent",
+              to_actor_id: "leader-agent",
+              status: "delivered",
+              payload:
+                '{"type":"chat_message","text":"mailbox string payload text","source":"team_workbench"}',
+            }),
+          ]}
+          toPrettyJson={toPrettyJson}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel="default"
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute="{}"
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("mailbox string payload text");
+    expect(container.textContent).not.toContain('{"type":"chat_message"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamMailboxPanel hides raw mailbox tools when developer mode is off", () => {
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={false}
+          mode="advanced_only"
+          snapshot={buildSnapshot()}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{}}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[]}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel="default"
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute="{}"
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain(
+      "Enable Developer Mode in Admin to access raw mailbox tools."
+    );
+    expect(container.textContent).not.toContain("Advanced mailbox controls");
+    expect(container.textContent).not.toContain("from_actor_id");
   });
 });

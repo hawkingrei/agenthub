@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, AgentRecord, TeamRunEventRecord, TeamRunRecord } from "../../api";
+import type {
+  AgentEvent,
+  AgentRecord,
+  TeamRunEventRecord,
+  TeamRunRecord,
+  TeamTaskRecord,
+} from "../../api";
 import {
   buildAgentLabel,
+  DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
   pickNextWorkerAgentId,
+  resolveSelectedTeamTask,
+  resolveTeamConversationTask,
+  sortTasksByActivity,
   toPrettyJson,
   upsertAgentEventList,
   upsertEventList,
@@ -71,6 +81,25 @@ function buildAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
   };
 }
 
+function buildTask(
+  id: string,
+  createdAt: number,
+  updatedAt = createdAt,
+  overrides: Partial<TeamTaskRecord> = {}
+): TeamTaskRecord {
+  return {
+    id,
+    team_id: "team-1",
+    title: id,
+    status: "open",
+    created_by_actor_id: "user",
+    context: {},
+    created_at: createdAt,
+    updated_at: updatedAt,
+    ...overrides,
+  };
+}
+
 describe("team page helpers", () => {
   it("upserts run by id and keeps latest-first sort order", () => {
     const list = [buildRun("run-1", 100), buildRun("run-2", 120)];
@@ -125,6 +154,32 @@ describe("team page helpers", () => {
     const agents = [buildAgent({ id: "a1" }), buildAgent({ id: "a2" })];
     expect(pickNextWorkerAgentId(agents, new Set(["a1"]))).toBe("a2");
     expect(pickNextWorkerAgentId(agents, new Set(["a1", "a2"]))).toBe("");
+  });
+
+  it("sorts team tasks by recent activity and resolves conversation task", () => {
+    const tasks = [
+      buildTask("task-1", 100, 120),
+      buildTask("task-2", 110, 110),
+      buildTask("task-3", 90, 120, {
+        title: DEFAULT_TEAM_THREAD_TITLE,
+        context: { bootstrap_kind: "shared_thread" },
+      }),
+    ];
+    expect(sortTasksByActivity(tasks).map((task) => task.id)).toEqual([
+      "task-1",
+      "task-3",
+      "task-2",
+    ]);
+    expect(resolveSelectedTeamTask(tasks, "task-3", "team-1")?.id).toBe("task-3");
+    expect(resolveSelectedTeamTask(tasks, "task-2", "team-1")?.id).toBe("task-2");
+    expect(resolveSelectedTeamTask(tasks, "missing", "team-1")?.id).toBe("task-1");
+    expect(resolveTeamConversationTask(tasks, "team-1")?.id).toBe("task-3");
+    expect(resolveTeamConversationTask([buildTask("task-1", 100, 120)], "team-1")).toBeNull();
+    expect(resolveSelectedTeamTask([buildTask("task-1", 100, 120)], "", "team-1")?.id).toBe(
+      "task-1"
+    );
+    expect(resolveTeamConversationTask([], "team-1")).toBeNull();
+    expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {

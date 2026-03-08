@@ -20,6 +20,7 @@ const baseProps: AcpPanelProps = {
   acpView: baseView,
   subtitle: null,
   acpTab: "conversation",
+  developerMode: true,
   onSelectTab: () => {},
   showConversationBadge: false,
   showConversationJump: false,
@@ -115,6 +116,16 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("Plan");
     expect(html).toContain("Debug");
     expect(html).not.toContain("Interrupt");
+  });
+
+  it("hides debug tab and falls back to conversation when developer mode is off", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel {...baseProps} developerMode={false} acpTab="debug" />
+    );
+    expect(html).toContain("Conversation");
+    expect(html).toContain("Plan");
+    expect(html).not.toContain("Debug");
+    expect(html).not.toContain("Session Controls");
   });
 
   it("shows pending badge when conversation badge is enabled", () => {

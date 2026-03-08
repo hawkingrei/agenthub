@@ -34,6 +34,7 @@ const RUN_PANEL_FOOT_META_CLASS = "mono text-ui-xs text-ui-text-muted";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
+  developerMode: boolean;
   busy: string | null;
   onDeleteTeam: () => Promise<void> | void;
   onStartTeam: () => Promise<void> | void;
@@ -57,6 +58,7 @@ type TeamRunPanelProps = {
 export function TeamRunPanel(props: TeamRunPanelProps) {
   const {
     selectedTeam,
+    developerMode,
     busy,
     onDeleteTeam,
     onStartTeam,
@@ -80,7 +82,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h2>{selectedTeam.name}</h2>
+        <div className="text-lg font-semibold tracking-tight text-ui-text-primary">
+          {selectedTeam.name}
+        </div>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <span className="mono">{selectedTeam.id}</span>
           <button
@@ -97,8 +101,14 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
       <div className={RUN_PANEL_LIST_CLASS}>
         <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
         <p className={TEAM_MUTED_TEXT_CLASS}>
-          Team execution is agent-driven. You can quick-start here, or use <code>Debug → Run Ops</code>{" "}
-          for manual run debugging.
+          {developerMode ? (
+            <>
+              Team execution is agent-driven. You can quick-start here, or use{" "}
+              <code>Debug → Run Ops</code> for manual run debugging.
+            </>
+          ) : (
+            "Team execution is agent-driven. You can quick-start here. Manual run debugging is available in Developer Mode."
+          )}
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>Quick start a new run for this team.</span>
@@ -146,7 +156,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
             <p className={TEAM_MUTED_TEXT_CLASS}>
-              No runs loaded yet. Use Debug → Run Ops to create or load runs.
+              {developerMode
+                ? "No runs loaded yet. Use Debug → Run Ops to create or load runs."
+                : "No runs loaded yet. Enable Developer Mode for manual run debugging tools."}
             </p>
           )}
           {isActiveRunHiddenByFilter && activeRun && (

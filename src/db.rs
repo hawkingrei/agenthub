@@ -604,6 +604,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    migrate_legacy_team_task_schema(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -1278,6 +1279,211 @@ async fn migrate_agent_events_message_column_to_blob(pool: &SqlitePool) -> anyho
     Ok(())
 }
 
+async fn migrate_legacy_team_task_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    let legacy_main_tasks_exists = sqlite_table_exists(pool, "team_main_tasks").await?;
+    let conversations_use_main_task_id =
+        sqlite_table_has_column(pool, "team_conversations", "main_task_id").await?;
+    let messages_use_main_task_id =
+        sqlite_table_has_column(pool, "team_conversation_messages", "main_task_id").await?;
+
+    if !legacy_main_tasks_exists && !conversations_use_main_task_id && !messages_use_main_task_id {
+        return Ok(());
+    }
+
+    tracing::info!(
+        legacy_main_tasks_exists,
+        conversations_use_main_task_id,
+        messages_use_main_task_id,
+        "db init: migrating legacy team task schema"
+    );
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("PRAGMA defer_foreign_keys = ON")
+        .execute(&mut *tx)
+        .await?;
+
+    if legacy_main_tasks_exists {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO team_tasks (
+                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+            )
+            SELECT
+                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+            FROM team_main_tasks
+            ORDER BY created_at ASC, id ASC
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    if conversations_use_main_task_id {
+        sqlx::query("DROP TABLE IF EXISTS team_conversations_migrated")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversations_migrated (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                task_id TEXT NOT NULL UNIQUE,
+                mode TEXT NOT NULL,
+                topic TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+                FOREIGN KEY(task_id) REFERENCES team_tasks(id)
+            );
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations_migrated (
+                id, team_id, task_id, mode, topic, created_at, updated_at
+            )
+            SELECT
+                id, team_id, main_task_id, mode, topic, created_at, updated_at
+            FROM team_conversations
+            ORDER BY created_at ASC, id ASC
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    if messages_use_main_task_id {
+        sqlx::query("DROP TABLE IF EXISTS team_conversation_messages_staged")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages_staged (
+                id INTEGER PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages_staged (
+                id, conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, created_at
+            )
+            SELECT
+                id, conversation_id, main_task_id, from_actor_id, to_actor_id, route, payload_json, created_at
+            FROM team_conversation_messages
+            ORDER BY id ASC
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DROP TABLE team_conversation_messages")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if conversations_use_main_task_id {
+        sqlx::query("DROP TABLE team_conversations")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("ALTER TABLE team_conversations_migrated RENAME TO team_conversations")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if legacy_main_tasks_exists {
+        sqlx::query("DROP TABLE team_main_tasks")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if messages_use_main_task_id {
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages_migrated (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
+                FOREIGN KEY(task_id) REFERENCES team_tasks(id)
+            );
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages_migrated (
+                id, conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, created_at
+            )
+            SELECT
+                id, conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, created_at
+            FROM team_conversation_messages_staged
+            ORDER BY id ASC
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DROP TABLE team_conversation_messages_staged")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "ALTER TABLE team_conversation_messages_migrated RENAME TO team_conversation_messages",
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn sqlite_table_exists(pool: &SqlitePool, table_name: &str) -> anyhow::Result<bool> {
+    let exists = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ?1
+        LIMIT 1
+        "#,
+    )
+    .bind(table_name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(exists.is_some())
+}
+
+async fn sqlite_table_has_column(
+    pool: &SqlitePool,
+    table_name: &str,
+    column_name: &str,
+) -> anyhow::Result<bool> {
+    if !sqlite_table_exists(pool, table_name).await? {
+        return Ok(false);
+    }
+    let query = format!("PRAGMA table_info('{table_name}')");
+    let columns = sqlx::query(&query).fetch_all(pool).await?;
+    Ok(columns.iter().any(|row| {
+        row.get::<String, _>("name")
+            .eq_ignore_ascii_case(column_name)
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1514,6 +1720,270 @@ mod tests {
         assert_eq!(
             stored_message,
             b"{\"type\":\"agent_message\",\"text\":\"legacy\"}".to_vec()
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_migrates_legacy_team_task_schema() {
+        let dir = unique_temp_dir("db-migrate-legacy-team-task-schema");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_main_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_main_tasks");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversations (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                main_task_id TEXT NOT NULL UNIQUE,
+                mode TEXT NOT NULL,
+                topic TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+                FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversations");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                main_task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
+                FOREIGN KEY(main_task_id) REFERENCES team_main_tasks(id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages");
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-legacy")
+        .bind("legacy-team")
+        .bind(Some("legacy task schema"))
+        .bind(r#"{"members":[{"member_id":"leader","role":"leader"}]}"#)
+        .bind(Some("root"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_main_tasks (
+                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("task-legacy")
+        .bind("team-legacy")
+        .bind("all")
+        .bind("open")
+        .bind("user:test")
+        .bind("{}")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy main task");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id, team_id, main_task_id, mode, topic, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("conversation-legacy")
+        .bind("team-legacy")
+        .bind("task-legacy")
+        .bind("group_chat")
+        .bind(Some("all"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy conversation");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                id, conversation_id, main_task_id, from_actor_id, to_actor_id, route, payload_json, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind(1_i64)
+        .bind("conversation-legacy")
+        .bind("task-legacy")
+        .bind("user:test")
+        .bind(None::<String>)
+        .bind("group_chat")
+        .bind(r#"{"text":"hello"}"#)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy message");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with legacy team-task migration");
+
+        let legacy_exists: Option<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'team_main_tasks'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query legacy table");
+        assert!(
+            legacy_exists.is_none(),
+            "legacy team_main_tasks should be removed"
+        );
+
+        let task_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_conversations')
+            WHERE name = 'task_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated task_id column");
+        assert_eq!(task_id_column, "task_id");
+
+        let main_task_id_column: Option<String> = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_conversations')
+            WHERE name = 'main_task_id'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("read removed main_task_id column");
+        assert!(main_task_id_column.is_none());
+
+        let migrated_task_row = sqlx::query(
+            r#"
+            SELECT id, team_id, title, created_by_actor_id
+            FROM team_tasks
+            WHERE id = 'task-legacy'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated task");
+        assert_eq!(migrated_task_row.get::<String, _>("team_id"), "team-legacy");
+        assert_eq!(migrated_task_row.get::<String, _>("title"), "all");
+        assert_eq!(
+            migrated_task_row.get::<String, _>("created_by_actor_id"),
+            "user:test"
+        );
+
+        let migrated_conversation_row = sqlx::query(
+            r#"
+            SELECT id, team_id, task_id, mode, topic
+            FROM team_conversations
+            WHERE id = 'conversation-legacy'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated conversation");
+        assert_eq!(
+            migrated_conversation_row.get::<String, _>("task_id"),
+            "task-legacy"
+        );
+        assert_eq!(
+            migrated_conversation_row.get::<String, _>("mode"),
+            "group_chat"
+        );
+        assert_eq!(
+            migrated_conversation_row.get::<Option<String>, _>("topic"),
+            Some("all".to_string())
+        );
+
+        let migrated_message_row = sqlx::query(
+            r#"
+            SELECT id, conversation_id, task_id, route, payload_json
+            FROM team_conversation_messages
+            WHERE id = 1
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated message");
+        assert_eq!(
+            migrated_message_row.get::<String, _>("conversation_id"),
+            "conversation-legacy"
+        );
+        assert_eq!(
+            migrated_message_row.get::<String, _>("task_id"),
+            "task-legacy"
+        );
+        assert_eq!(migrated_message_row.get::<String, _>("route"), "group_chat");
+        assert_eq!(
+            migrated_message_row.get::<String, _>("payload_json"),
+            r#"{"text":"hello"}"#
         );
 
         pool.close().await;

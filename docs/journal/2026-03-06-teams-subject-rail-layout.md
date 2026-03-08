@@ -1,0 +1,236 @@
+# 2026-03-06 Teams Subject Rail Layout
+
+## Context
+
+The earlier Team UI direction was reset to avoid repeating a broad shell rewrite. The next pass
+needed to learn from Slock's composition without copying its skin:
+
+- keep `/teams` only;
+- keep current project code style;
+- move from tab-first navigation toward subject-first navigation;
+- keep backend Team semantics unchanged.
+
+Chrome DevTools MCP comparison against `https://app.slock.ai/channel/dfed28bb-5d1c-4ee2-99fe-5ed773e1fa09`
+confirmed the reference structure we actually want to copy:
+
+- left rail is a product navigation stack (`workspace` -> `scope switch` -> grouped subjects);
+- `all` is the default public thread and should remain the only shared channel entry in AgentHub;
+- agents are first-class subjects in the rail, not secondary filters under a generic workspace;
+- the main header uses a single lightweight system-status strip instead of several summary pills;
+- advanced / operational tools stay separate from the thread body.
+
+## Implementation
+
+- reworked the Team sidebar into a subject rail:
+  - team switcher button with expandable team picker;
+  - `Channels` section with a single `all` entry for the shared team conversation;
+  - `Agents` section with leader/worker entries that open agent ACP directly;
+  - `Utilities` section for run-scoped operational tools.
+- removed the old Team-mode switch strip and the large explanatory Team Forge prose block from the
+  primary left rail.
+- added a compact workspace context header in the main pane so the selected Team / Agent / Run
+  context is visible without scanning multiple cards.
+- kept the existing `tab` and `selectedMemberId` state model instead of introducing a new route or
+  backend subject model.
+- kept Team semantics intact:
+  - `all` is only a UI alias for the existing team conversation;
+  - no backend schema/API changes;
+  - no change to task/conversation/mailbox ownership.
+- reduced the top tab bar from a global flat tool list into a context-aware secondary tab bar:
+  - agent-focused views only show `ACP`, `Console`, `Mailbox`;
+  - team-level workspace keeps `Conversation`, `Runs`, `Overview`, `Events`, `Steps`, `Debug`.
+- reshaped the left rail to follow Slock's navigation logic more closely:
+  - keep `Team switcher` as the top workspace selector;
+  - move `Create Team` / `Manual Spec` and team meta toggles into a compact `...` actions dropdown in the rail header;
+  - add a scope switch between `Channels & Agents` and `Operations`;
+  - show grouped navigation items only for the active scope instead of keeping all sections visible at the same time;
+  - compress agent rows into subject-like entries with unread count badges and compact role/lifecycle metadata.
+- tightened the left rail and conversation composer to better match the skeleton-first Slock layout:
+  - add collapsible `Channels`, `Agents`, and `Utilities` sections in the left rail;
+  - surface agent work status directly in each left-rail row while keeping detailed member context in the row tooltip;
+  - hide switcher meta details (`draft_team`, `leader`, `workers`) behind the same `...` actions dropdown;
+  - tighten the conversation composer into a footer-style panel with a shorter broadcast hint.
+- pushed the rail closer to Slock's list-first navigation model:
+  - rename the subject scope to `Channels & Agents`;
+  - remove agent secondary view buttons from the left rail so the rail only selects subjects;
+  - restyle channel/agent entries as tighter rows instead of card-like blocks;
+  - remove the ACP member dropdown and rely on the left rail as the single member selector.
+- added explicit toolbars above both the rail and the workspace:
+  - left toolbar now holds refresh plus the compact `...` actions dropdown;
+  - right workspace toolbar now exposes `Runs` plus a single `Advanced` entry as the main control strip;
+  - advanced team utilities (`Overview`, `Events`, `Steps`, `Debug`) move behind `Advanced` in the channel view;
+  - advanced agent utilities (`Mailbox`, `Member Console`, `Debug`) move behind `Advanced` in the agent ACP view.
+- fixed a sidebar overflow regression introduced by the denser rail layout:
+  - `teams-sidebar` now keeps horizontal clipping but restores vertical scrolling;
+  - long subject lists and the `Operations` section remain reachable without relying on page-level scroll.
+- softened the workspace header controls and reduced default metadata noise:
+  - `Runs` and `Advanced` now render as compact segmented-style controls instead of full-width action buttons;
+  - default header metadata is reduced to concise summary pills (`run=...`, `members=...`);
+  - full execution metadata (`team`, `active_run`, `run_status`, `context`, optional `member`) moves behind a `...` details toggle.
+- reduced the remaining operations-bar feel in the workspace header:
+  - keep `Refresh Run` visible as the single lightweight direct action;
+  - move `Cancel` / `Resume` / `Restart` behind a compact `Run Actions` menu instead of keeping three sibling buttons in the header.
+- reduced panel feel in the team switcher so the left rail reads more like a navigator:
+  - the switcher trigger is now a lighter directory-style header with a small `Workspace` label;
+  - the expanded switcher uses a simple left-rail branch (`border-l`) instead of a boxed panel;
+  - team choices inside the switcher are rendered as compact rows instead of mini cards.
+- tightened the subject panels so the main workspace reads more like a thread client:
+  - fixed a runtime regression caused by a missing `TEAM_PANEL_REFRESH_BUTTON_CLASS` import in `team_page.tsx`;
+  - renamed the shared `all` panel from `Conversation` to `Thread` and aligned the refresh/selector copy to `channel` / `thread`;
+  - moved the optional thread selector and manual message refresh behind a compact `...` thread-options toggle;
+  - changed the ACP panel title to `Thread` and hid `member` / `role` / `session` metadata behind a compact `...` details toggle.
+- aligned the remaining skeleton pieces with the Slock reference model:
+  - replaced the old run/member summary pills with a single workspace notice strip that reads like a compact system line (`Run canceled. 3 members in roster. 3 offline.`);
+  - reused `teamMemberSummaryByTeamId` for that strip so rail counts and header counts stay on one source of truth;
+  - lightened the left-rail scope switch into an `INDEX` row instead of a heavier button group.
+- improved subject readability so the rail behaves more like Slock's object index:
+  - agent rows now prefer `agent_name` as the primary label and demote `member_id` into secondary metadata;
+  - the main workspace heading also prefers the same readable agent label instead of showing raw UUID-like member ids;
+  - hidden workspace details retain the raw `member=` field for debugging, and add `agent=` when the readable label differs.
+- unified thread wording across the shared channel and direct agent views:
+  - agent ACP toolbar actions now read `Refresh thread` and `Thread details`;
+  - empty-state copy now refers to agent threads instead of ACP internals.
+- tightened the agent notice strip fallback:
+  - when lifecycle state is unavailable, the notice strip now falls back to work status instead of rendering `is unknown`.
+- reduced remaining header chrome:
+  - `Refresh Run` moved into the `Run Actions` menu so the workspace header keeps only stable top-level entries (`Runs`, `Advanced`, `Run Actions`);
+  - `Channel` / `Agent ACP` eyebrow labels are removed from the shared-thread and direct-agent views so the main header reads closer to Slock's title-plus-description pattern.
+- tightened the left-rail top bar to match Slock's workspace-first entry point:
+  - removed the extra `Teams / Workbench` heading block from the rail;
+  - the rail now starts with one compact workspace switcher row plus `Refresh` / `...` actions;
+  - the switcher button itself now exposes the current team name directly instead of hiding it behind a generic `Workspace` label.
+- collapsed the workspace header down to two stable controls:
+  - moved `Refresh Run` / `Cancel` / `Resume` / `Restart` into the existing `Advanced` dropdown;
+  - removed the standalone `Run Actions` button so the top header now keeps only `Runs` and `Advanced`.
+- clarified the `Advanced` menu structure:
+  - utility views and run actions are grouped separately in code so the menu stops reading like one flat tool dump.
+- started the lightweight shared-thread bootstrap path (`plan 1`) without changing backend models:
+  - extracted shared helpers for task ordering and conversation resolution;
+  - on send, the `all` thread now re-checks server tasks before creating anything;
+  - when no task exists at all, the UI creates a default `all` task with `group_chat` conversation mode and immediately uses it as the shared thread target;
+  - message drafts are now cleared only after a successful send, so bootstrap failures do not drop user input.
+- removed the remaining multi-task affordance from the shared thread UI:
+  - `all` no longer exposes a task selector in thread options;
+  - the thread header now keeps only the `...` control, with `Refresh Channel` / `Refresh Thread` moved behind it.
+- fixed the `internal server error` triggered by the shared-thread bootstrap path:
+  - root cause was not the frontend payload; the live SQLite database was still on the legacy `team_main_tasks` / `main_task_id` schema while the current backend already writes `team_tasks` / `task_id`;
+  - added an idempotent startup migration in `src/db.rs` that copies legacy task rows into `team_tasks`, rebuilds `team_conversations` and `team_conversation_messages` onto `task_id`, and drops the old `team_main_tasks` table after a successful migration;
+  - this keeps the new `all` lazy-bootstrap behavior intact instead of reverting the UI back to the pre-bootstrap path.
+- diagnosed the follow-up "nobody replied" symptom on the domain page:
+  - the issue was not mailbox delivery failure; MCP + SQLite inspection showed the leader did reply after the new `all` message;
+  - the reply existed in `team_actor_messages` with `to_actor_id = user` and payload `{\"type\":\"chat_message\", ...}`, but it never appeared in `team_conversation_messages`;
+  - for the current single-shared-thread UI, the practical gap is visibility, not delivery.
+- aligned unauthenticated `/teams` behavior with the main Agents entry:
+  - unauthenticated access to `/teams` no longer stalls on the standalone `Login Required` page;
+  - the route now immediately redirects back to `/`, which already hosts the shared password/passkey login surface;
+  - `/admin` keeps using the dedicated `AuthRequired` page, so this change stays scoped to the Teams workbench.
+- preserved the pending Teams target through the login bounce:
+  - unauthenticated `/teams...` redirects now encode the original path into `/?next=...`;
+  - once authentication exists on `/`, the app consumes that `next` target and returns the user to the original Teams URL;
+  - invalid or absolute redirect targets are ignored so the flow stays same-origin only.
+- added a UI bridge for the shared `all` thread:
+  - `TeamTaskPanel` now merges delivered mailbox `chat_message` replies addressed to the human actor into the visible thread waterfall;
+  - worker/agent-only mailbox traffic is still excluded from the shared thread;
+  - this is intentionally a read-model bridge, not a fake persistence rewrite.
+- fixed mailbox reply rendering when payloads arrive as JSON strings:
+  - some delivered mailbox replies reach the web UI with `payload` serialized as a string instead of a parsed object;
+  - `TeamTaskPanel` and `TeamMailboxPanel` now both resolve `chat_message.text` from either structured payload objects or JSON-string payloads;
+  - unknown payload shapes still fall back to the existing pretty-JSON rendering path.
+- rechecked the authenticated `slock` channel view with Chrome MCP and confirmed the thread layout we actually want to copy:
+  - left rail remains `workspace -> scope switch -> grouped subjects`;
+  - the thread header stays minimal (`all`, one short description, lightweight actions);
+  - message rows are chat-first (`author + timestamp + body`) with mentions rendered inline and no transport metadata in the default reading path;
+  - system/runtime status sits in a lightweight strip above the thread instead of inside each message.
+- started a second UI pass to align AgentHub with that authenticated thread view:
+  - `TeamTaskPanel` now moves shared-thread transport metadata behind per-message details and makes the default row `author + time + body`;
+  - author display names now prefer `You` for the human actor and `agent_name` for team members;
+  - the shared-thread composer copy was tightened toward `Message #all`;
+  - `TeamMemberAcpPanel` now uses one thread-options surface for refresh/load-older/details instead of exposing those actions directly in the header.
+- added a browser-local developer mode shared by `Agents` and `Teams`:
+  - source of truth is local browser storage, not backend API or DB state;
+  - default behavior is environment-sensitive: `on` outside production builds and `off` in production bundles;
+  - the control surface lives in `Admin -> UI`, but `Admin` itself is intentionally not gated by developer mode.
+- narrowed developer mode to technical surfaces only instead of hiding normal workflow controls:
+  - `Agents`: hide `Debug`, `Session`, and `Updated` when developer mode is off;
+  - `Teams`: hide shared-thread message details, workspace runtime details, `Advanced -> Debug`, agent-thread technical metadata, and raw mailbox tools when developer mode is off;
+  - normal collaboration surfaces (`Conversation`, `Runs`, `Overview`, `Events`, `Steps`) remain available in both modes.
+- tightened the left rail further for non-developer mode:
+  - team switcher rows no longer show raw team IDs by default;
+  - agent rows now default to `name + status (+ pending count)` instead of always rendering `member_id · role · lifecycle`;
+  - the sidebar `Show Team Details` entry is now developer-only;
+  - the `Runs` utility row copy was shortened to match the lighter rail tone.
+- tightened the thread surface itself:
+  - removed the redundant inner `Thread` panel titles from both the shared thread and the agent ACP thread because the workspace header already names the current subject;
+  - removed the repeated shared-thread description from inside the panel;
+  - collapsed the composer helper copy into one lightweight footer hint (`@member_id for direct replies · Ctrl/Cmd+Enter to send`) instead of two always-visible lines.
+- tightened the workspace header copy:
+  - shortened the shared-thread and agent-thread descriptions so the workspace header reads more like a thread client and less like an internal console;
+  - converted the notice strip from sentence-style status text into compact `·`-separated fragments (`run working · 3 members · 2 offline`);
+  - removed the monospace treatment from the notice strip because it is now product copy rather than technical metadata;
+  - reduced the shared-thread composer height from four rows to three so the first screen gives more space back to the thread itself.
+- improved the zero-team empty state:
+  - when the sidebar has no teams loaded, `Create Team` and `Manual Spec` are now visible directly in the empty switcher panel instead of being hidden behind the `...` actions menu;
+  - this matches the current deployed baseline, where MCP showed `No teams yet.` with no primary action in the visible empty rail.
+- mirrored the empty-state action in the main workspace:
+  - when no team is selected, the `Team Workbench` empty card now exposes direct `Create Team` and `Manual Spec` actions instead of only explanatory text;
+  - this avoids a split empty state where the user sees an empty main workspace with no obvious next step unless they inspect sidebar menus.
+- simplified the zero-team rail further:
+  - when no teams are loaded, the switcher panel no longer renders the meaningless team filter input;
+  - the empty-state copy now matches the available actions by telling the user to create a team or select one from the left rail.
+- left the long-term backend fix as a follow-up:
+  - canonical server-side thread persistence still needs stable task/conversation identifiers on agent replies;
+  - until that contract is added, the frontend mailbox merge is the least-wrong way to make existing replies visible.
+
+## Validation
+
+- `npx vitest run src/pages/team_panels.test.tsx --pool=threads --maxWorkers=1`
+- `npx vitest run src/pages/team/page_helpers.test.ts src/pages/team_panels.test.tsx --pool=threads --maxWorkers=1`
+- `make build-web`
+- Chrome DevTools MCP baseline on `https://agenthub.hawkingrei.com/teams` before the left-rail update:
+  - left rail still mixed workspace switching, create actions, and all three groups (`Human`, `Agents`, `Utilities`) at once.
+- Chrome DevTools MCP baseline before the local developer-mode change:
+  - authenticated `/teams` still showed shared-thread `Show details` controls and workspace-details toggle by default;
+  - authenticated `/` with an active agent still exposed debug-oriented agent metadata in the same top-level workbench family, and there was no developer-mode entry in `Admin`.
+- Chrome DevTools MCP regression check on `https://agenthub.hawkingrei.com/teams` after the latest left-rail refinement:
+  - left rail shows `Channels & Agents` and `Operations`, with `Create Team` / `Manual Spec` moved into the `...` toolbar dropdown;
+  - `Channels` and `Agents` sections are individually collapsible;
+  - the `...` actions dropdown reveals `Create Team`, `Manual Spec`, and on-demand team meta controls;
+  - agent rows show explicit status labels (`idle`, `working`, `blocked`, or `no run`);
+  - the workspace header now exposes `Runs` and `Advanced` directly above the main pane;
+  - `Advanced` shows `Overview` / `Events` / `Steps` / `Debug` in the channel view and `Mailbox` / `Member Console` / `Debug` in the agent ACP view;
+  - `Runs` / `Advanced` now render as lighter segmented controls rather than primary action buttons;
+  - the header defaults to summary pills only, with a separate `...` details toggle for full runtime metadata;
+  - the team switcher now reads as a lighter `Workspace` header and the expanded team list reads as a rail branch instead of a card panel;
+  - the latest `Run Actions` menu change is implemented in code and passed local build/test, but a stable Chrome MCP regression snapshot for this sub-step was blocked by intermittent host instability (`ERR_CONNECTION_CLOSED`, Cloudflare `524`) and fresh-session `Login Required` pages on `https://agenthub.hawkingrei.com/teams`;
+  - the conversation composer now renders the shorter broadcast hint above the input;
+  - clicking an agent opens `Agent ACP` directly without a second member selector in the panel;
+  - sidebar overflow is now `overflow-x-hidden overflow-y-auto`, and MCP script verification confirms `scrollTop` advances to the maximum scroll range;
+  - after fixing the missing refresh-button import, the blank `/teams` page regression is resolved and the workspace renders again;
+  - in the `all` channel view, MCP confirms `Thread`, `Refresh channel`, and the `...` thread-options toggle render while the optional selector stays hidden by default;
+  - in the agent ACP view, MCP confirms the panel title is `Thread` and `member` / `role` / `session` metadata stays hidden until `Toggle ACP details` is opened.
+  - MCP comparison against the Slock reference page confirms the AgentHub rail now follows the same high-level order (`workspace` -> `scope/index switch` -> grouped subjects), while keeping AgentHub-specific semantics (`all` only, no `Humans` group);
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the workspace header now uses one notice strip (`Run canceled. 3 members in roster. 3 offline.`) instead of summary pills;
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the left-rail scope switch now renders as a lighter `INDEX` row with `Channels & Agents` / `Operations`.
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms agent rows now surface readable agent names (`tidb-bug-fix-team-leader`, `tidb-bug-fix-team-worker-shiro`) while keeping `member_id` in secondary metadata;
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the agent workspace heading also uses the readable agent name and the notice strip references the same label (`tidb-bug-fix-team-leader is stopped.`);
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the direct agent panel now uses thread terminology consistently (`Refresh thread`, `Toggle thread details`, `Selected agent has no thread session yet.`).
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the shared-thread header now renders directly as `all` plus description without the extra `CHANNEL` eyebrow line;
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms `Refresh Run` is no longer a top-level header button and instead lives behind `Run Actions`.
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the left rail no longer starts with a separate `TEAMS / Workbench` heading block;
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the first rail control now reads as the active workspace switcher (`Toggle team switcher: tidb bug/fix team`) followed immediately by refresh/actions, which is materially closer to Slock's top-of-rail layout.
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the workspace header now exposes only `Runs` and `Advanced` as stable controls;
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms `Advanced` now contains both utility views (`Overview`, `Events`, `Steps`, `Debug`) and run actions (`Refresh Run`, `Cancel`, `Resume`, `Restart`).
+  - the lazy shared-thread bootstrap path is covered by local helper tests and build validation, but a Chrome MCP end-to-end verification still needs a clean team with zero tasks to exercise first-message bootstrap on the real UI.
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the shared `Thread` header now shows only the `Thread options` control, and `Refresh channel` / `Refresh Thread` appear only after opening that menu.
+  - MCP diagnosis for the send failure confirms `GET /api/teams/:id/tasks` returns `[]`, while a direct authenticated `POST /api/teams/:id/tasks` returns `500`; local SQLite inspection showed the runtime DB still stored the team conversation in legacy `team_main_tasks` / `main_task_id` tables, which matches the startup migration fix in `src/db.rs`.
+  - MCP regression on `https://agenthub.hawkingrei.com/teams` confirms the latest shared-thread message (`mcp verify 2026-03-07`) is persisted without `internal server error`, while SQLite inspection of `team_actor_messages` confirms the leader reply exists only in mailbox (`to_actor_id = user`) before this UI bridge.
+  - post-edit validation for the mailbox-reply bridge is currently local-only (`team_panels.test.tsx` + `make build-web`); a domain-level Chrome MCP regression still requires deploy of the pending web changes.
+  - MCP baseline on `https://agenthub.hawkingrei.com/teams?return=login#shared` showed leader replies rendered as raw payload JSON strings (`{\"type\":\"chat_message\",...}`) inside the shared thread before this payload parser fix.
+  - authenticated MCP baseline on `https://agenthub.hawkingrei.com/teams` still shows the deployed shared thread in its old metadata-first form (`conversation/reply`, `seq`, `from -> to`, `mailbox`, `work:*`, `agent:*` all visible by default), which is the concrete before-state for the current local-only chat-first refactor.
+  - Chrome DevTools MCP baseline for unauthenticated `https://agenthub.hawkingrei.com/teams` showed the standalone `Login Required / Please login to continue.` page; after the redirect change this route should land on the root login screen instead.
+  - Chrome DevTools MCP baseline after clearing site auth on `https://agenthub.hawkingrei.com/teams` now lands on the root login page `https://agenthub.hawkingrei.com/` instead of stalling inside `/teams`.
+  - Chrome DevTools MCP regression on `https://agenthub.hawkingrei.com/admin` now shows a dedicated `UI` tab with `Developer Mode` and explicit copy that it applies to this browser only and affects `Agents` + `Teams`;
+  - Chrome DevTools MCP script verification on `https://agenthub.hawkingrei.com/admin` confirmed the toggle writes `localStorage['agenthub_ui_prefs_v1'] = {\"developerMode\":true}` and was restored back to `false` after verification;
+  - Chrome DevTools MCP regression on `https://agenthub.hawkingrei.com/` after `make build-web` confirmed the current production bundle defaults to the cleaner non-developer mode (`Debug` hidden, `Session`/`Updated` omitted);
+  - deployed MCP verification of the gated `Teams` technical controls is partially blocked by current runtime data: after reload the authenticated `/teams` context had no selected team, so the thread-level `Show details` / workspace-details / advanced-debug branches were not all visible on the live page; these branches are covered by local unit tests and build validation.
+  - Chrome DevTools MCP baseline on the deployed `https://agenthub.hawkingrei.com/teams` still shows the old left-rail behavior (`member_id · role · lifecycle` visible in agent rows when developer mode is on, raw team IDs visible in the switcher list), which is the concrete before-state for this local-only left-rail reduction.

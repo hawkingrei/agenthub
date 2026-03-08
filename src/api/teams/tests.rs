@@ -637,22 +637,33 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
     let mut has_actor_cli = false;
 
     for _ in 0..40 {
-        let events = state
-            .agents
-            .list_events_for_session(&agent.id, &session_id, 500, None)
-            .await
-            .expect("list events");
-        for event in events {
-            let line = event.message.as_str();
-            if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
-                has_run_id = true;
-            } else if line == "AGENTHUB_ACTOR_ID=planner" {
-                has_actor_id = true;
-            } else if line == "AGENTHUB_ACTOR_CHANNEL=coordination" {
-                has_channel = true;
-            } else if line.starts_with("AGENTHUB_ACTOR_CLI=") && line.ends_with(&actor_cli_path) {
-                has_actor_cli = true;
+        let mut before_id = None;
+        loop {
+            let events = state
+                .agents
+                .list_events_for_session(&agent.id, &session_id, 2000, before_id)
+                .await
+                .expect("list events");
+            if events.is_empty() {
+                break;
             }
+            for event in &events {
+                let line = event.message.as_str();
+                if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
+                    has_run_id = true;
+                } else if line == "AGENTHUB_ACTOR_ID=planner" {
+                    has_actor_id = true;
+                } else if line == "AGENTHUB_ACTOR_CHANNEL=coordination" {
+                    has_channel = true;
+                } else if line.starts_with("AGENTHUB_ACTOR_CLI=") && line.ends_with(&actor_cli_path)
+                {
+                    has_actor_cli = true;
+                }
+            }
+            if has_run_id && has_actor_id && has_channel && has_actor_cli {
+                break;
+            }
+            before_id = events.first().map(|event| event.event_id);
         }
         if has_run_id && has_actor_id && has_channel && has_actor_cli {
             break;

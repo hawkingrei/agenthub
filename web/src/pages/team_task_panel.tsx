@@ -1,44 +1,37 @@
 import React from "react";
 import {
+  TeamActorMessageRecord,
   TeamConversationMessageRecord,
-  TeamTaskRecord,
 } from "../api";
-import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
+  resolveChatMessageText,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
-  normalizeTeamMemberLifecycle,
-  normalizeTeamMemberWorkStatus,
-} from "./team_member_status_strip";
-import {
-  TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
-  tasks: TeamTaskRecord[];
+  developerMode: boolean;
   tasksLoading: boolean;
-  selectedTaskId: string;
-  onSelectedTaskIdChange: (value: string) => void;
   onRefreshTasks: () => Promise<void> | void;
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: () => Promise<void> | void;
   onRefreshMessages: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
+  mailboxMessages?: TeamActorMessageRecord[];
+  humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
   messagesLoading: boolean;
@@ -48,70 +41,96 @@ type TeamTaskPanelProps = {
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-3 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+  "mt-4 flex flex-col gap-3 rounded-xl border border-ui-border-strong bg-ui-surface p-3 shadow-sm";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
+const TEAM_TASK_COMPOSER_META_ROW_CLASS =
+  "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
-const TEAM_TASK_SUBSECTION_TITLE_CLASS = "mt-3 text-ui-sm font-semibold text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-2 max-h-[420px] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
+  "mt-3 min-h-[320px] max-h-[min(72vh,760px)] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
 const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
-const TEAM_TASK_ACTIVITY_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface px-3 py-2 shadow-sm";
-const TEAM_TASK_ACTIVITY_META_ROW_CLASS =
-  "mono mb-1 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
-const TEAM_TASK_ACTIVITY_BADGE_CLASS = "rounded-full border border-ui-border bg-ui-surface px-2 py-0.5";
-const TEAM_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS =
-  "rounded-full border border-brand-primary/30 bg-brand-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-primary";
+const TEAM_TASK_ACTIVITY_ITEM_CLASS =
+  "rounded-lg border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
+  "flex items-start justify-between gap-3";
+const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
+  "flex min-w-0 flex-wrap items-center gap-2";
+const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
+  "text-sm font-semibold text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
+const TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS =
+  "rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm leading-6 text-ui-text-primary";
-
-function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
-  if (status === "working") return "active";
-  if (status === "pending") return "warning";
-  if (status === "blocked") return "danger";
-  if (status === "done") return "active";
-  if (status === "idle") return "inactive";
-  return "neutral";
-}
-
-function resolveLifecycleTone(
-  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
-): StatusTone {
-  if (lifecycle === "working") return "active";
-  if (lifecycle === "idle") return "warning";
-  if (lifecycle === "stopped") return "inactive";
-  if (lifecycle === "missing") return "danger";
-  return "neutral";
-}
+  "mt-2 text-sm leading-6 text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
+  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft/80";
+const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
+  "mt-2 inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
+const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
+  "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
+const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
+  "mono font-medium text-ui-text-secondary";
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
-  if (
-    typeof message.payload === "object" &&
-    message.payload !== null &&
-    "type" in message.payload &&
-    (message.payload as { type?: unknown }).type === "chat_message" &&
-    "text" in message.payload
-  ) {
-    return String((message.payload as { text?: unknown }).text ?? "");
+  const chatText = resolveChatMessageText(message.payload);
+  if (chatText !== null) {
+    return chatText;
   }
   return toPrettyJson(message.payload);
 }
 
+function resolveMailboxMessageText(
+  message: TeamActorMessageRecord,
+  toPrettyJson: (value: unknown) => string
+): string {
+  const chatText = resolveChatMessageText(message.payload);
+  if (chatText !== null) {
+    return chatText;
+  }
+  return toPrettyJson(message.payload);
+}
+
+function isHumanMailboxActor(actorId: string | null | undefined, humanActorId: string): boolean {
+  const normalized = (actorId ?? "").trim();
+  const human = humanActorId.trim();
+  if (!normalized || !human) {
+    return false;
+  }
+  return normalized === human || normalized.startsWith(`${human}:`);
+}
+
+function resolveThreadAuthorLabel(
+  actorId: string,
+  humanActorId: string,
+  liveStateByMemberId: Map<string, TeamMemberLiveState>
+): string {
+  if (isHumanMailboxActor(actorId, humanActorId)) {
+    return "You";
+  }
+  const state = liveStateByMemberId.get(actorId);
+  const agentName = state?.agent_name?.trim();
+  if (agentName) {
+    return agentName;
+  }
+  return actorId;
+}
+
 export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const {
-    tasks,
+    developerMode,
     tasksLoading,
-    selectedTaskId,
-    onSelectedTaskIdChange,
     onRefreshTasks,
     messageDraft,
     onMessageDraftChange,
     onSendMessage,
     onRefreshMessages,
     messages,
+    mailboxMessages = [],
+    humanActorId = "user",
     memberLiveStates = [],
     memberIds = [],
     messagesLoading,
@@ -122,6 +141,8 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
+  const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
+  const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
 
   const mentionableMemberIds = React.useMemo(() => {
     const seen = new Set<string>();
@@ -186,7 +207,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     [memberLiveStates]
   );
   const waterfallItems = React.useMemo(() => {
-    return messages
+    const conversationItems = messages
       .map((message) => ({
         key: `conversation-${message.message_id}`,
         sequence: message.message_id,
@@ -194,9 +215,46 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         fromActorId: message.from_actor_id,
         toActorId: message.to_actor_id ?? null,
         routeOrStatus: message.route,
+        streamLabel: "conversation",
         markdownText: resolveMessageText(message, toPrettyJson),
         renderedHtml: "",
+      }));
+    const conversationSignatures = new Set(
+      conversationItems.map(
+        (item) =>
+          `${item.fromActorId}|${item.toActorId ?? "-"}|${item.createdAt}|${item.markdownText}`
+      )
+    );
+    const mailboxReplyItems = mailboxMessages
+      .filter((message) => {
+        if (message.status !== "delivered") {
+          return false;
+        }
+        if (!isHumanMailboxActor(message.to_actor_id, humanActorId)) {
+          return false;
+        }
+        if (isHumanMailboxActor(message.from_actor_id, humanActorId)) {
+          return false;
+        }
+        const text = resolveMailboxMessageText(message, toPrettyJson);
+        return text.trim().length > 0;
+      })
+      .map((message) => ({
+        key: `mailbox-${message.message_id}`,
+        sequence: message.message_id,
+        createdAt: message.created_at,
+        fromActorId: message.from_actor_id,
+        toActorId: message.to_actor_id ?? null,
+        routeOrStatus: "mailbox",
+        streamLabel: "reply",
+        markdownText: resolveMailboxMessageText(message, toPrettyJson),
+        renderedHtml: "",
       }))
+      .filter((item) => {
+        const signature = `${item.fromActorId}|${item.toActorId ?? "-"}|${item.createdAt}|${item.markdownText}`;
+        return !conversationSignatures.has(signature);
+      });
+    return [...conversationItems, ...mailboxReplyItems]
       .sort((left, right) => {
         if (left.createdAt !== right.createdAt) {
           return left.createdAt - right.createdAt;
@@ -210,13 +268,27 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         ...item,
         renderedHtml: renderMarkdownWithMentions(item.markdownText),
       }));
-  }, [messages, toPrettyJson]);
+  }, [humanActorId, mailboxMessages, messages, toPrettyJson]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Human - Team Conversation</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
+          <button
+            type="button"
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            onClick={() => setThreadOptionsOpen((current) => !current)}
+            aria-expanded={threadOptionsOpen}
+            aria-label="Toggle thread options"
+            title="Thread options"
+          >
+            <i className="bi bi-three-dots" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      {threadOptionsOpen && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
@@ -224,116 +296,130 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
               void onRefreshTasks();
             }}
             disabled={tasksLoading || busy === "refresh-task"}
-            title="Refresh tasks"
-            aria-label="Refresh tasks"
+            title="Refresh channel"
+            aria-label="Refresh channel"
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh Tasks</span>
+            <span>Refresh Channel</span>
+          </button>
+          <button
+            type="button"
+            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            onClick={() => {
+              void onRefreshMessages();
+            }}
+            disabled={messagesLoading || busy === "refresh-task-messages"}
+          >
+            Refresh Thread
           </button>
         </div>
-      </div>
+      )}
 
-      <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-        Human messages are stored once in shared team conversation and routed through team mailbox.
-        Type `@` to select a teammate mention. Backend converts selected mentions into structured
-        routing tags, while plain `@` remains normal text.
-      </p>
-
-      <div className="mt-3 grid gap-2 lg:grid-cols-2">
-        <select
-          className={TEAM_PANEL_INPUT_CLASS}
-          value={selectedTaskId}
-          onChange={(event) => onSelectedTaskIdChange(event.target.value)}
-        >
-          <option value="">Select task conversation (optional)</option>
-          {tasks.map((task) => (
-            <option key={task.id} value={task.id}>
-              {task.title}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          onClick={() => {
-            void onRefreshMessages();
-          }}
-          disabled={!selectedTaskId || messagesLoading || busy === "refresh-task-messages"}
-        >
-          Refresh Messages
-        </button>
-      </div>
-
-      <div className={TEAM_TASK_SUBSECTION_TITLE_CLASS}>Conversation Stream</div>
       <div className={TEAM_TASK_ACTIVITY_LIST_CLASS}>
         <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
-            const workStatus = state ? normalizeTeamMemberWorkStatus(state) : "unknown";
-            const lifecycle = state ? normalizeTeamMemberLifecycle(state) : "unknown";
+            const authorLabel = resolveThreadAuthorLabel(
+              item.fromActorId,
+              humanActorId,
+              liveStateByMemberId
+            );
             return (
               <div key={item.key} className={TEAM_TASK_ACTIVITY_ITEM_CLASS}>
-                <div className={TEAM_TASK_ACTIVITY_META_ROW_CLASS}>
-                  <span className={TEAM_TASK_ACTIVITY_STREAM_CONVERSATION_CLASS}>conversation</span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>
-                    seq={item.sequence}
-                  </span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>
-                    {item.fromActorId} -&gt; {item.toActorId ?? "-"}
-                  </span>
-                  <span className={TEAM_TASK_ACTIVITY_BADGE_CLASS}>{item.routeOrStatus}</span>
-                  <span>{formatTs(item.createdAt)}</span>
-                </div>
-                {state && (
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      label={`work:${workStatus}`}
-                      tone={resolveWorkTone(workStatus)}
-                      className="team-status"
-                      title={`work status: run=${state.run_status} step=${state.step_status}`}
-                    />
-                    <StatusBadge
-                      label={`agent:${lifecycle}`}
-                      tone={resolveLifecycleTone(lifecycle)}
-                      className="team-status"
-                      title={`agent status: ${state.lifecycle_status}`}
-                    />
+                <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
+                  <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
+                    <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
+                    {item.streamLabel === "reply" && (
+                      <span className={TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS}>reply</span>
+                    )}
                   </div>
-                )}
+                  <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
+                </div>
                 <div
                   className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                   dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
                 />
+                {developerMode && (
+                  <button
+                    type="button"
+                    className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                    onClick={() =>
+                      setExpandedItemKeys((current) => ({
+                        ...current,
+                        [item.key]: !current[item.key],
+                      }))
+                    }
+                    aria-expanded={Boolean(expandedItemKeys[item.key])}
+                  >
+                    {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
+                  </button>
+                )}
+                {developerMode && expandedItemKeys[item.key] && (
+                  <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
+                    <dl className={TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS}>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>source</dt>
+                      <dd>{item.streamLabel}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>seq</dt>
+                      <dd>{item.sequence}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>from</dt>
+                      <dd className="mono">{item.fromActorId}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>to</dt>
+                      <dd className="mono">{item.toActorId ?? "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>route</dt>
+                      <dd>{item.routeOrStatus}</dd>
+                    </div>
+                    {state && (
+                      <>
+                        <div>
+                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>work</dt>
+                          <dd>{state.run_status}/{state.step_status}</dd>
+                        </div>
+                        <div>
+                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>agent</dt>
+                          <dd>{state.lifecycle_status}</dd>
+                        </div>
+                        {state.current_work && (
+                          <div className="sm:col-span-2">
+                            <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>current_work</dt>
+                            <dd>{state.current_work}</dd>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    </dl>
+                  </div>
+                )}
               </div>
             );
           })}
           {messagesLoading && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              Loading conversation...
+              Loading thread...
             </div>
           )}
           {!messagesLoading && waterfallItems.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              No conversation messages yet.
+              No thread messages yet.
             </div>
           )}
         </div>
       </div>
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
-        <p className={`mb-2 ${TEAM_MUTED_TEXT_CLASS}`}>
-          Message is visible to the whole team. Workers should reply when mentioned, correcting
-          leader, adding critical context, or reporting new findings.
-        </p>
-        <p className={`mb-2 ${TEAM_MUTED_TEXT_CLASS}`}>
-          When no task is selected, messages are delivered to run mailbox only. Leader can define
-          tasks later and persist structured conversation there.
-        </p>
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
           rows={3}
-          placeholder="Type planning message (use @ to pick teammate mention)"
+          placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {
             const nextDraft = event.target.value;
@@ -414,7 +500,10 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             </div>
           </div>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
+          <span className={TEAM_TASK_SHORTCUT_CLASS}>
+            {`Use @member_id for direct replies · Ctrl/Cmd + Enter to send`}
+          </span>
           <button
             type="button"
             className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
@@ -423,9 +512,8 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             }}
             disabled={!canSendMessage}
           >
-            Send Message
+            Send
           </button>
-          <span className={TEAM_TASK_SHORTCUT_CLASS}>shortcut: Ctrl/Cmd + Enter</span>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { expect, test, testLocalLlm } from "./coverage";
+import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
 type StoredAuthState = {
   token: string;
@@ -201,6 +202,39 @@ async function selectTeamFromSidebar(
     return;
   }
   await expect(teamItem).toHaveAttribute("data-team-selected", "true");
+}
+
+async function openMainTeamAction(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
+  const button = page
+    .locator(".teams-main")
+    .getByRole("button", { name: label, exact: true })
+    .first();
+  await expect(button).toBeVisible();
+  await button.click();
+}
+
+async function openAdvancedView(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
+  await page.getByRole("button", { name: "Open advanced views" }).click();
+  const menuItem = page.getByRole("menuitem", { name: label, exact: true });
+  await expect(menuItem).toBeVisible();
+  await menuItem.click();
+}
+
+async function enableDeveloperMode(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  await page.addInitScript((storageKey: string) => {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({ developerMode: true })
+    );
+  }, UI_PREFS_STORAGE_KEY);
 }
 
 async function mockTeamPageApis(
@@ -883,8 +917,7 @@ test("team forge modal creates team with leader/worker presets", async ({
   await page.goto("/teams");
 
   await expect(page.getByRole("heading", { name: "AgentHub Teams" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Guided Wizard" })).toBeVisible();
-  await page.getByRole("button", { name: "Guided Wizard" }).click();
+  await openMainTeamAction(page, "Guided Wizard");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await expect(dialog).toBeVisible();
@@ -961,7 +994,7 @@ test("team forge manual spec mode skips leader/worker stages", async ({
   const fixture = await mockTeamPageApis(page);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Manual Spec" }).click();
+  await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await expect(dialog.getByRole("checkbox", { name: /manual/i })).toHaveCount(0);
@@ -1000,7 +1033,7 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   await mockTeamPageApis(page);
   await page.goto("/teams");
 
-  await page.getByRole("button", { name: "Guided Wizard" }).click();
+  await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("dup-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -1258,7 +1291,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await selectTeamFromSidebar(page, "Team Desktop");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
-  await page.getByRole("button", { name: "Overview" }).click();
+  await openAdvancedView(page, "Overview");
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
   await expect(page.locator(".teams-overview-meta")).toBeVisible();
 
@@ -1277,7 +1310,8 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(overviewLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(overviewLayout.overflowing).toEqual([]);
 
-  await page.getByRole("button", { name: "Member Console" }).click();
+  await page.locator(".teams-member-list .team-member-row", { hasText: longLeaderId }).click();
+  await openAdvancedView(page, "Member Console");
   const memberConsoleCard = page.locator(".card", { hasText: "Member Console" });
   await expect(memberConsoleCard).toBeVisible();
   await memberConsoleCard.locator("select").first().selectOption(longLeaderId);
@@ -1299,7 +1333,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+  await openAdvancedView(page, "Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -1324,7 +1358,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
   fixture.agents.splice(0, fixture.agents.length);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Guided Wizard" }).click();
+  await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("forge-team");
   await dialog.getByRole("button", { name: "Next Stage" }).click();
@@ -1342,6 +1376,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
 
 test("team quant workflow creates team and launches run", async ({ page }) => {
   const fixture = await mockTeamPageApis(page);
+  await enableDeveloperMode(page);
   const runsByTeamId = new Map<string, TeamRunRecord[]>();
   const runById = new Map<string, TeamRunRecord>();
   const runStepsById = new Map<string, Array<Record<string, unknown>>>();
@@ -1592,7 +1627,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   };
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Manual Spec" }).click();
+  await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("quant-alpha-desk");
@@ -1614,7 +1649,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   expect(createPayload).not.toBeNull();
   expect((createPayload as CreateTeamPayload).spec).toEqual(quantSpec);
 
-  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await openAdvancedView(page, "Debug");
   await page
     .getByPlaceholder("context_id (optional, auto-generated when empty)")
     .fill("quant-run-ctx");
@@ -1630,7 +1665,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "working"
   );
-  await page.getByRole("button", { name: "Overview" }).click();
+  await openAdvancedView(page, "Overview");
   await expect(page.locator(".team-member-row", { hasText: "quant-leader" })).toBeVisible();
   await expect(
     page.locator(".team-member-row", { hasText: "portfolio-worker" })
@@ -1644,6 +1679,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
+  await enableDeveloperMode(page);
   const teamId = "team-compile";
   const teamCreatedAt = fixture.now + 120;
   const previewResponse = {
@@ -1709,7 +1745,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Compile Team");
-  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await openAdvancedView(page, "Debug");
   await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -1731,6 +1767,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
+  await enableDeveloperMode(page);
   const teamId = "team-chat-first";
   const runId = "run-chat-first-1";
   const teamCreatedAt = fixture.now + 180;
@@ -2126,7 +2163,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Chat First Team");
-  await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await openAdvancedView(page, "Debug");
   await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -2145,10 +2182,8 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
       ?.task_id
   ).toBe("task-chat-1");
 
-  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
-  await page
-    .locator(".teams-chat-members .team-item", { hasText: "agent-worker-1 (worker)" })
-    .click();
+  await openAdvancedView(page, "Overview");
+  await page.locator(".teams-member-list .team-member-row", { hasText: "agent-worker-1" }).click();
   await expect(page.locator(".teams-chat-messages")).toContainText(
     "Please implement endpoint scaffolding and tests."
   );
@@ -2169,12 +2204,13 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     to_actor_id: "agent-worker-1",
   });
 
-  await page.getByRole("button", { name: "Member Console" }).click();
+  await openAdvancedView(page, "Member Console");
   await expect(page.locator(".teams-step-body")).toContainText("a2a_discovery_card");
   await expect(page.locator(".teams-step-body")).not.toContainText("Loading discovery card...");
   await expect(page.locator(".teams-step-body")).toContainText("acp_gemini");
 
-  await page.getByRole("button", { name: "Events" }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openAdvancedView(page, "Events");
   await expect(page.locator(".teams-event-list")).toContainText(
     "Final deliverable prepared and returned to user."
   );
@@ -2285,7 +2321,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   });
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "Manual Spec" }).click();
+  await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("virtual-tool-team");
@@ -2623,14 +2659,15 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     return match ? Number(match[1]) : 0;
   };
 
+  await enableDeveloperMode(page);
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Team Mailbox");
-
-  await page.locator(".tab", { hasText: "Mailbox" }).click();
+  await openAdvancedView(page, "Overview");
+  await page
+    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-1" })
+    .click();
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
 
-  const unreadWorker1Before = await unreadFor("agent-worker-1");
-  expect(unreadWorker1Before).toBeGreaterThan(0);
   const unreadWorker2Before = await unreadFor("agent-worker-2");
   expect(unreadWorker2Before).toBeGreaterThan(0);
 
@@ -2640,6 +2677,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await expect(page.locator(".teams-chat-head")).toContainText(
     "agent-leader-1 → agent-worker-1"
   );
+  await page.getByRole("button", { name: "Jump to bottom" }).click();
   await expect(page.locator(".teams-chat-head")).toContainText("auto_follow=on");
   await expect.poll(async () => unreadFor("agent-worker-1")).toBe(0);
   expect(await unreadFor("agent-worker-2")).toBeGreaterThan(0);
@@ -2651,11 +2689,11 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   });
   await expect(page.locator(".teams-chat-head")).toContainText("auto_follow=off");
 
-  await page.getByRole("button", { name: "Overview" }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openAdvancedView(page, "Overview");
   await page
-    .locator(".teams-member-list .team-item", { hasText: "agent-worker-2 (worker)" })
+    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
     .click();
-  await expect(page.locator(".tab.active")).toContainText("Mailbox");
   await expect(page.locator(".teams-chat-head")).toContainText(
     "agent-leader-1 → agent-worker-2"
   );
@@ -2668,7 +2706,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   expect(counters.snapshot).toBeGreaterThan(snapshotBeforePolling);
   expect(counters.inbox).toBeGreaterThan(inboxBeforePolling);
 
-  await page.getByRole("button", { name: "Debug" }).click();
+  await openAdvancedView(page, "Debug");
   await page.getByRole("button", { name: "Mailbox Raw" }).click();
   await expect(page.getByRole("heading", { name: "Send Message (JSON)" })).toBeVisible();
 
@@ -2680,7 +2718,11 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .fill('{"type":"chat_message","text":"advanced-mailbox-ping"}');
   await advancedPanel.getByRole("button", { name: "Send Message" }).click();
 
-  await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openAdvancedView(page, "Overview");
+  await page
+    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
+    .click();
   await expect(page.locator(".teams-chat-messages")).toContainText("advanced-mailbox-ping");
   expect(counters.send).toBeGreaterThan(0);
 });

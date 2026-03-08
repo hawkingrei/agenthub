@@ -77,12 +77,19 @@ pub struct SpawnAcpSessionRequest {
     pub stdin: ChildStdin,
     pub safe_paths: Vec<String>,
     pub actor_context: Option<AcpActorSkillContext>,
+    pub prompt_delivery_policy: AcpPromptDeliveryPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AcpStream {
     System,
     Acp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpPromptDeliveryPolicy {
+    StrictFifo,
+    AllowConcurrentPrompts,
 }
 
 #[async_trait::async_trait]
@@ -601,8 +608,34 @@ impl AcpHandle {
     }
 }
 
-fn should_queue_while_prompt_running(prompt_in_flight: bool, cmd: &AcpCommand) -> bool {
-    prompt_in_flight && !matches!(cmd, AcpCommand::Cancel)
+fn is_session_mutation_command(cmd: &AcpCommand) -> bool {
+    matches!(
+        cmd,
+        AcpCommand::SetMode(_) | AcpCommand::SetModel(_) | AcpCommand::SetConfig { .. }
+    )
+}
+
+fn should_queue_while_prompts_active(
+    active_prompt_count: usize,
+    prompt_delivery_policy: AcpPromptDeliveryPolicy,
+    has_pending_session_mutation: bool,
+    cmd: &AcpCommand,
+) -> bool {
+    if active_prompt_count == 0 {
+        return false;
+    }
+
+    match cmd {
+        AcpCommand::Cancel => false,
+        AcpCommand::Prompt(_) => {
+            has_pending_session_mutation
+                || !matches!(
+                    prompt_delivery_policy,
+                    AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+                )
+        }
+        AcpCommand::SetMode(_) | AcpCommand::SetModel(_) | AcpCommand::SetConfig { .. } => true,
+    }
 }
 
 async fn dispatch_acp_command(
@@ -612,20 +645,11 @@ async fn dispatch_acp_command(
     session_id: &str,
     skill_blocks: &[ContentBlock],
     prompt_done_tx: &mpsc::UnboundedSender<()>,
-    prompt_in_flight: &mut bool,
+    active_prompt_count: &mut usize,
 ) {
     match cmd {
         AcpCommand::Prompt(prompt) => {
-            if *prompt_in_flight {
-                event_sink
-                    .emit_raw(
-                        AcpStream::System,
-                        "acp prompt skipped because another prompt is still running".to_string(),
-                    )
-                    .await;
-                return;
-            }
-            *prompt_in_flight = true;
+            *active_prompt_count = active_prompt_count.saturating_add(1);
 
             let conn = conn.clone();
             let event_sink = event_sink.clone();
@@ -693,6 +717,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         stdin,
         safe_paths,
         actor_context,
+        prompt_delivery_policy,
     } = request;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
@@ -828,12 +853,14 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
 
             let conn = Rc::new(conn);
             let (prompt_done_tx, mut prompt_done_rx) = mpsc::unbounded_channel::<()>();
-            let mut prompt_in_flight = false;
+            let mut active_prompt_count = 0usize;
             let mut cmd_rx_closed = false;
             let mut pending_commands = VecDeque::<AcpCommand>::new();
 
-            while !cmd_rx_closed || prompt_in_flight || !pending_commands.is_empty() {
-                if !prompt_in_flight && let Some(cmd) = pending_commands.pop_front() {
+            while !cmd_rx_closed || active_prompt_count > 0 || !pending_commands.is_empty() {
+                if active_prompt_count == 0
+                    && let Some(cmd) = pending_commands.pop_front()
+                {
                     dispatch_acp_command(
                         cmd,
                         conn.clone(),
@@ -841,14 +868,14 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         &session_id,
                         &skill_blocks,
                         &prompt_done_tx,
-                        &mut prompt_in_flight,
+                        &mut active_prompt_count,
                     )
                     .await;
                     continue;
                 }
 
                 tokio::select! {
-                    maybe_done = prompt_done_rx.recv(), if prompt_in_flight => {
+                    maybe_done = prompt_done_rx.recv(), if active_prompt_count > 0 => {
                         if maybe_done.is_none() {
                             event_sink
                                 .emit_raw(
@@ -856,13 +883,21 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     "acp prompt completion channel closed unexpectedly".to_string(),
                                 )
                                 .await;
+                            break;
                         }
-                        prompt_in_flight = false;
+                        active_prompt_count = active_prompt_count.saturating_sub(1);
                     }
                     maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
                         match maybe_cmd {
                             Some(cmd) => {
-                                if should_queue_while_prompt_running(prompt_in_flight, &cmd) {
+                                let has_pending_session_mutation =
+                                    pending_commands.iter().any(is_session_mutation_command);
+                                if should_queue_while_prompts_active(
+                                    active_prompt_count,
+                                    prompt_delivery_policy,
+                                    has_pending_session_mutation,
+                                    &cmd,
+                                ) {
                                     pending_commands.push_back(cmd);
                                     continue;
                                 }
@@ -873,7 +908,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     &session_id,
                                     &skill_blocks,
                                     &prompt_done_tx,
-                                    &mut prompt_in_flight,
+                                    &mut active_prompt_count,
                                 )
                                 .await;
                             }
@@ -1313,9 +1348,9 @@ impl AcpPermissionService {
 #[cfg(test)]
 mod tests {
     use super::{
-        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle, AcpSendError,
-        build_actor_mailbox_mcp_server, load_mcp_servers_from_path,
-        should_queue_while_prompt_running,
+        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle,
+        AcpPromptDeliveryPolicy, AcpSendError, build_actor_mailbox_mcp_server,
+        load_mcp_servers_from_path, should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use std::fs;
@@ -1423,31 +1458,55 @@ mod tests {
     }
 
     #[test]
-    fn prompt_in_flight_allows_cancel_passthrough_only() {
-        assert!(should_queue_while_prompt_running(
+    fn prompt_delivery_policy_is_provider_aware() {
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::StrictFifo,
+            false,
+            &AcpCommand::Prompt("hello".to_string())
+        ));
+        assert!(!should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
+            &AcpCommand::Prompt("hello".to_string())
+        ));
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             true,
             &AcpCommand::Prompt("hello".to_string())
         ));
-        assert!(should_queue_while_prompt_running(
-            true,
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetMode("auto".to_string())
         ));
-        assert!(should_queue_while_prompt_running(
-            true,
+        assert!(should_queue_while_prompts_active(
+            2,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetModel("gpt-5".to_string())
         ));
-        assert!(should_queue_while_prompt_running(
-            true,
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetConfig {
                 config_id: "mode".to_string(),
                 value: "auto".to_string(),
             }
         ));
-        assert!(!should_queue_while_prompt_running(
+        assert!(!should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             true,
             &AcpCommand::Cancel
         ));
-        assert!(!should_queue_while_prompt_running(
+        assert!(!should_queue_while_prompts_active(
+            0,
+            AcpPromptDeliveryPolicy::StrictFifo,
             false,
             &AcpCommand::Prompt("hello".to_string())
         ));

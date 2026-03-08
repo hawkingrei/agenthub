@@ -19,6 +19,7 @@ type AcpPanelProps = {
   acpView: AcpView;
   subtitle: string | null;
   acpTab: AcpPanelTab;
+  developerMode: boolean;
   onSelectTab: (tab: AcpPanelTab) => void;
   showConversationBadge: boolean;
   showConversationJump: boolean;
@@ -31,6 +32,7 @@ type AcpPanelProps = {
 function AcpPanelView({
   subtitle,
   acpTab,
+  developerMode,
   onSelectTab,
   showConversationBadge,
   showConversationJump,
@@ -39,6 +41,7 @@ function AcpPanelView({
   plan,
   debug,
 }: AcpPanelProps) {
+  const effectiveTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const tabButtonClassName = (selected: boolean, withGap = false) =>
     `acp-tab-button ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
   return (
@@ -50,7 +53,7 @@ function AcpPanelView({
         <div className="acp-actions flex items-center gap-2">
           <div className={ACP_PANEL_TABS_CLASS}>
             <button
-              className={tabButtonClassName(acpTab === "conversation", true)}
+              className={tabButtonClassName(effectiveTab === "conversation", true)}
               onClick={() => onSelectTab("conversation")}
             >
               Conversation
@@ -61,24 +64,26 @@ function AcpPanelView({
               )}
             </button>
             <button
-              className={tabButtonClassName(acpTab === "plan")}
+              className={tabButtonClassName(effectiveTab === "plan")}
               onClick={() => onSelectTab("plan")}
             >
               Plan
             </button>
-            <button
-              className={tabButtonClassName(acpTab === "debug")}
-              onClick={() => onSelectTab("debug")}
-            >
-              Debug
-            </button>
+            {developerMode && (
+              <button
+                className={tabButtonClassName(effectiveTab === "debug")}
+                onClick={() => onSelectTab("debug")}
+              >
+                Debug
+              </button>
+            )}
           </div>
         </div>
       </div>
-      {acpTab === "conversation" && <AcpConversation {...conversation} />}
-      {acpTab === "plan" && <AcpPlan {...plan} />}
-      {acpTab === "debug" && <AcpDebug {...debug} />}
-      {acpTab === "conversation" && showConversationJump ? (
+      {effectiveTab === "conversation" && <AcpConversation {...conversation} />}
+      {effectiveTab === "plan" && <AcpPlan {...plan} />}
+      {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
+      {effectiveTab === "conversation" && showConversationJump ? (
         <button
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
           onClick={onJumpToConversationBottom}

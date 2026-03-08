@@ -218,6 +218,35 @@ type MailboxChatPayload = {
   mention_actor_ids?: string[];
 };
 
+function parseStructuredMailboxPayload(payload: unknown): unknown {
+  if (typeof payload !== "string") {
+    return payload;
+  }
+  const trimmed = payload.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return payload;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return payload;
+  }
+}
+
+export function resolveChatMessageText(payload: unknown): string | null {
+  const parsed = parseStructuredMailboxPayload(payload);
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "type" in parsed &&
+    (parsed as { type?: unknown }).type === "chat_message" &&
+    "text" in parsed
+  ) {
+    return String((parsed as { text?: unknown }).text ?? "");
+  }
+  return null;
+}
+
 export function buildMailboxChatPayload(
   text: string,
   options?: { mention_actor_ids?: string[] }
