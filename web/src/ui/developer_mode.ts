@@ -1,6 +1,6 @@
 import { getLocalStorageItemSafe, setLocalStorageItemSafe } from "../storage/safe_storage";
 
-const UI_PREFS_STORAGE_KEY = "agenthub_ui_prefs_v1";
+export const UI_PREFS_STORAGE_KEY = "agenthub_ui_prefs_v1";
 
 type UiPreferences = {
   developerMode?: boolean;

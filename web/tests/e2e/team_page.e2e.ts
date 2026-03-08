@@ -1,4 +1,5 @@
 import { expect, test, testLocalLlm } from "./coverage";
+import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
 type StoredAuthState = {
   token: string;
@@ -228,12 +229,12 @@ async function openAdvancedView(
 async function enableDeveloperMode(
   page: import("@playwright/test").Page
 ): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((storageKey: string) => {
     window.localStorage.setItem(
-      "agenthub_ui_prefs_v1",
+      storageKey,
       JSON.stringify({ developerMode: true })
     );
-  });
+  }, UI_PREFS_STORAGE_KEY);
 }
 
 async function mockTeamPageApis(

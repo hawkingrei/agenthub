@@ -22,6 +22,8 @@ and trims one remaining tracing hot-path allocation.
   `Channels 1` label down to `Channels`;
 - removed dead `TeamTaskPanel` props (`tasks`, `selectedTaskId`, `onSelectedTaskIdChange`) after
   the shared-thread selector UI was removed;
+- exported the browser-local developer-mode storage key and reused it from Teams E2E helpers so
+  Playwright setup stays aligned with the app when the preference key changes;
 - changed shared-thread resolution to prefer the explicit `all`/`shared_thread` task instead of
   falling back to the most recently active task, and aligned the Teams workspace title/messages
   with that resolved shared-thread target;
