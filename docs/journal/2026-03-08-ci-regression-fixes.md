@@ -75,3 +75,30 @@ Fixes:
 - update mailbox-flow tests to re-enter mailbox via `Runs -> Advanced -> Overview -> member row`
 - restore the Team Forge final-stage primary button label to `Create Team` so the UI matches the modal intent and existing test expectations
 - align unread/auto-follow assertions with the current mailbox lifecycle, where selecting a conversation may immediately mark it seen
+
+## Follow-up: Compile Preview task selection
+
+After the navigation-model migration, `Web E2E` still regressed in the two compile-preview flows.
+
+Root cause:
+
+- the shared-thread tightening changed `selectedConversation` so it only resolved the explicit
+  `all`/`shared_thread` task
+- the debug compile-preview path also relied on that same selection state to decide whether
+  `Compile Preview` should be enabled
+- the E2E fixtures intentionally start from a normal planning task, not an `all` task, so the
+  button became disabled even though a valid task was present
+
+Fix:
+
+- split the Teams task resolution into two distinct read models:
+  - `resolveTeamConversationTask(...)` now resolves only the shared `all` thread used by group chat
+  - `resolveSelectedTeamTask(...)` resolves the currently selected task (or the most recent task)
+    for compile/debug/run flows
+- keep shared-thread message sending strict to `all`, while restoring `Compile Preview` and
+  chat-first compile flows to the selected non-shared task
+
+Validation:
+
+- `cd web && PLAYWRIGHT_NO_WEBSERVER=1 npm run e2e -- tests/e2e/team_page.e2e.ts -g "team debug run ops compiles task preview and applies payload to create-run form"`
+- `cd web && PLAYWRIGHT_NO_WEBSERVER=1 npm run e2e -- tests/e2e/team_page.e2e.ts -g "team chat-first path compiles preview, creates run, and captures worker plus final synthesis evidence"`

@@ -608,9 +608,17 @@ impl AcpHandle {
     }
 }
 
+fn is_session_mutation_command(cmd: &AcpCommand) -> bool {
+    matches!(
+        cmd,
+        AcpCommand::SetMode(_) | AcpCommand::SetModel(_) | AcpCommand::SetConfig { .. }
+    )
+}
+
 fn should_queue_while_prompts_active(
     active_prompt_count: usize,
     prompt_delivery_policy: AcpPromptDeliveryPolicy,
+    has_pending_session_mutation: bool,
     cmd: &AcpCommand,
 ) -> bool {
     if active_prompt_count == 0 {
@@ -619,10 +627,13 @@ fn should_queue_while_prompts_active(
 
     match cmd {
         AcpCommand::Cancel => false,
-        AcpCommand::Prompt(_) => !matches!(
-            prompt_delivery_policy,
-            AcpPromptDeliveryPolicy::AllowConcurrentPrompts
-        ),
+        AcpCommand::Prompt(_) => {
+            has_pending_session_mutation
+                || !matches!(
+                    prompt_delivery_policy,
+                    AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+                )
+        }
         AcpCommand::SetMode(_) | AcpCommand::SetModel(_) | AcpCommand::SetConfig { .. } => true,
     }
 }
@@ -879,9 +890,12 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
                         match maybe_cmd {
                             Some(cmd) => {
+                                let has_pending_session_mutation =
+                                    pending_commands.iter().any(is_session_mutation_command);
                                 if should_queue_while_prompts_active(
                                     active_prompt_count,
                                     prompt_delivery_policy,
+                                    has_pending_session_mutation,
                                     &cmd,
                                 ) {
                                     pending_commands.push_back(cmd);
@@ -1448,26 +1462,37 @@ mod tests {
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::StrictFifo,
+            false,
             &AcpCommand::Prompt("hello".to_string())
         ));
         assert!(!should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::Prompt("hello".to_string())
         ));
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            true,
+            &AcpCommand::Prompt("hello".to_string())
+        ));
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetMode("auto".to_string())
         ));
         assert!(should_queue_while_prompts_active(
             2,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetModel("gpt-5".to_string())
         ));
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             &AcpCommand::SetConfig {
                 config_id: "mode".to_string(),
                 value: "auto".to_string(),
@@ -1476,11 +1501,13 @@ mod tests {
         assert!(!should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            true,
             &AcpCommand::Cancel
         ));
         assert!(!should_queue_while_prompts_active(
             0,
             AcpPromptDeliveryPolicy::StrictFifo,
+            false,
             &AcpCommand::Prompt("hello".to_string())
         ));
     }

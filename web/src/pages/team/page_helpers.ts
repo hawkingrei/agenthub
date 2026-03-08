@@ -80,6 +80,14 @@ function isSharedThreadTask(task: TeamTaskRecord): boolean {
 
 export function resolveTeamConversationTask(
   tasks: TeamTaskRecord[],
+  teamId: string
+): TeamTaskRecord | null {
+  const teamTasks = sortTasksByActivity(tasks.filter((task) => task.team_id === teamId));
+  return teamTasks.find(isSharedThreadTask) ?? null;
+}
+
+export function resolveSelectedTeamTask(
+  tasks: TeamTaskRecord[],
   selectedTaskId: string,
   teamId: string
 ): TeamTaskRecord | null {
@@ -87,11 +95,11 @@ export function resolveTeamConversationTask(
   const selectedId = selectedTaskId.trim();
   if (selectedId) {
     const selected = teamTasks.find((task) => task.id === selectedId);
-    if (selected && isSharedThreadTask(selected)) {
+    if (selected) {
       return selected;
     }
   }
-  return teamTasks.find(isSharedThreadTask) ?? null;
+  return teamTasks[0] ?? null;
 }
 
 export function formatTs(ts?: number | null): string {

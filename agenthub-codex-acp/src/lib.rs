@@ -39,7 +39,7 @@ struct EventMessageVisitor {
 
 impl Visit for EventMessageVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
+        if field.name() == "message" && self.message.is_none() {
             self.message = Some(value.to_owned());
         }
     }

@@ -10,8 +10,8 @@ comments fell into three buckets:
 - one ACP defensive-runtime issue plus one larger ACP fairness concern.
 
 This follow-up intentionally fixes the correctness and maintainability items in-place, applies the
-ACP defensive fix, and leaves the broader ACP fairness/backpressure discussion as an explicit
-follow-up item instead of changing prompt-delivery semantics again late in the PR.
+ACP defensive fix, lands the minimal mutation-barrier fairness fix for concurrent Codex prompts,
+and trims one remaining tracing hot-path allocation.
 
 ## Changes
 
@@ -30,12 +30,16 @@ follow-up item instead of changing prompt-delivery semantics again late in the P
 - changed the ACP session loop to abort when the prompt-completion channel closes unexpectedly
   rather than forcing `active_prompt_count` to zero and releasing queued session mutations
   unsafely.
+- added a mutation barrier to concurrent Codex ACP prompt delivery so once a session mutation is
+  queued, later prompts queue behind it instead of overtaking it indefinitely;
+- changed `agenthub-codex-acp`'s tracing visitor to capture the `message` field only once, which
+  avoids redundant string allocations on later `record_str` visits in the same event.
 
 ## Deferred Follow-up
 
-- `AllowConcurrentPrompts` still needs a fairness/backpressure policy so queued ACP session
-  mutations cannot be starved indefinitely by a steady prompt stream. That work is tracked in
-  `docs/todo.md`.
+- `AllowConcurrentPrompts` still has no explicit max-concurrency cap, so a separate backpressure
+  limit may still be desirable if prompt fan-in grows large enough to stress the runtime. That
+  follow-up remains tracked in `docs/todo.md`.
 
 ## Validation
 

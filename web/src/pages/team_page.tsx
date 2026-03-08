@@ -89,6 +89,7 @@ import {
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
   pickNextWorkerAgentId,
+  resolveSelectedTeamTask,
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
@@ -1738,7 +1739,14 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) {
       return null;
     }
-    return resolveTeamConversationTask(taskList, selectedTaskId, selectedTeamId);
+    return resolveTeamConversationTask(taskList, selectedTeamId);
+  }, [selectedTeamId, taskList]);
+
+  const selectedTask = useMemo(() => {
+    if (!selectedTeamId) {
+      return null;
+    }
+    return resolveSelectedTeamTask(taskList, selectedTaskId, selectedTeamId);
   }, [selectedTaskId, selectedTeamId, taskList]);
 
   const refreshTasks = useCallback(
@@ -1749,7 +1757,7 @@ export function TeamPage(props: TeamPageProps) {
         const sorted = sortTasksByActivity(list);
         setTaskList(sorted);
         setSelectedTaskId((prev) => {
-          return resolveTeamConversationTask(sorted, prev, teamId)?.id ?? "";
+          return resolveSelectedTeamTask(sorted, prev, teamId)?.id ?? "";
         });
       } catch (err) {
         setError(parseErrorMessage(err));
@@ -1805,12 +1813,6 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId || !selectedConversation) {
       return null;
     }
-    setSelectedTaskId((current) => {
-      if (current === selectedConversation.id) {
-        return current;
-      }
-      return selectedConversation.id;
-    });
     return selectedConversation;
   }, [selectedConversation, selectedTeamId]);
 
@@ -1823,10 +1825,9 @@ export function TeamPage(props: TeamPageProps) {
       return existing;
     }
     const remoteTasks = sortTasksByActivity(await api.listTeamTasks(props.token, selectedTeamId, 100));
-    const remoteConversation = resolveTeamConversationTask(remoteTasks, selectedTaskId, selectedTeamId);
+    const remoteConversation = resolveTeamConversationTask(remoteTasks, selectedTeamId);
     if (remoteConversation) {
       setTaskList(remoteTasks);
-      setSelectedTaskId(remoteConversation.id);
       return remoteConversation;
     }
 
@@ -1840,10 +1841,9 @@ export function TeamPage(props: TeamPageProps) {
       },
     });
     setTaskList((prev) => sortTasksByActivity([created.task, ...prev.filter((task) => task.id !== created.task.id)]));
-    setSelectedTaskId(created.task.id);
     setTaskMessages([]);
     return created.task;
-  }, [props.token, resolveConversationForMessage, selectedTaskId, selectedTeamId]);
+  }, [props.token, resolveConversationForMessage, selectedTeamId]);
 
   const onSendTaskMessage = useCallback(async () => {
     if (!selectedTeamId) {
@@ -2062,7 +2062,7 @@ export function TeamPage(props: TeamPageProps) {
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
-  const canCompileTask = busy !== "compile-task" && selectedConversation !== null;
+  const canCompileTask = busy !== "compile-task" && selectedTask !== null;
   const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
   const teamSectionCardClassName =
     "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
@@ -2305,7 +2305,7 @@ export function TeamPage(props: TeamPageProps) {
       setError("Select a team first");
       return;
     }
-    const taskId = selectedTaskId.trim();
+    const taskId = selectedTask?.id ?? "";
     if (!taskId) {
       setError("Select a conversation first");
       return;
@@ -2330,7 +2330,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     compilePreviewContextId,
     props.token,
-    selectedTaskId,
+    selectedTask?.id,
     selectedTeamId,
     setBusy,
     setError,
@@ -2410,8 +2410,8 @@ export function TeamPage(props: TeamPageProps) {
           Compile Preview
         </button>
         <span className="mono text-xs text-ui-text-muted">
-          {selectedConversation
-            ? `selected_conversation=${selectedConversation.title} [${selectedConversation.status}]`
+          {selectedTask
+            ? `selected_conversation=${selectedTask.title} [${selectedTask.status}]`
             : "selected_conversation=-"}
         </span>
       </div>

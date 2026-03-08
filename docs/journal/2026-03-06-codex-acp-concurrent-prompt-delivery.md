@@ -28,11 +28,13 @@ was local to AgentHub's outer ACP session loop rather than Codex ACP itself.
 - Non-Codex ACP providers keep the previous conservative FIFO behavior.
 - unexpected prompt-completion channel shutdown now aborts the ACP session loop instead of forcing
   `active_prompt_count` to zero and releasing queued session mutations unsafely.
+- once a session mutation is queued behind active Codex prompts, later prompts now queue behind
+  that mutation barrier instead of continuing to overtake it indefinitely.
 
 ## Follow-up
 
-- `AllowConcurrentPrompts` still needs a barrier/backpressure policy so a steady prompt stream
-  cannot starve queued `SetMode`/`SetModel`/`SetConfig` mutations indefinitely.
+- `AllowConcurrentPrompts` still has no explicit max concurrency cap, so a separate backpressure
+  limit may still be desirable if prompt fan-in becomes large enough to stress the runtime.
 
 ## Validation
 

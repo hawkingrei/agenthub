@@ -11,6 +11,7 @@ import {
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
   pickNextWorkerAgentId,
+  resolveSelectedTeamTask,
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
@@ -169,11 +170,15 @@ describe("team page helpers", () => {
       "task-3",
       "task-2",
     ]);
-    expect(resolveTeamConversationTask(tasks, "task-3", "team-1")?.id).toBe("task-3");
-    expect(resolveTeamConversationTask(tasks, "task-2", "team-1")?.id).toBe("task-3");
-    expect(resolveTeamConversationTask(tasks, "missing", "team-1")?.id).toBe("task-3");
-    expect(resolveTeamConversationTask([buildTask("task-1", 100, 120)], "", "team-1")).toBeNull();
-    expect(resolveTeamConversationTask([], "", "team-1")).toBeNull();
+    expect(resolveSelectedTeamTask(tasks, "task-3", "team-1")?.id).toBe("task-3");
+    expect(resolveSelectedTeamTask(tasks, "task-2", "team-1")?.id).toBe("task-2");
+    expect(resolveSelectedTeamTask(tasks, "missing", "team-1")?.id).toBe("task-1");
+    expect(resolveTeamConversationTask(tasks, "team-1")?.id).toBe("task-3");
+    expect(resolveTeamConversationTask([buildTask("task-1", 100, 120)], "team-1")).toBeNull();
+    expect(resolveSelectedTeamTask([buildTask("task-1", 100, 120)], "", "team-1")?.id).toBe(
+      "task-1"
+    );
+    expect(resolveTeamConversationTask([], "team-1")).toBeNull();
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
   });
 
