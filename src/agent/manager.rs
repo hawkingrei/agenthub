@@ -473,6 +473,27 @@ impl AgentManager {
         Ok(agents)
     }
 
+    pub async fn reconcile_runtime_absence(&self, agent_id: &str) -> anyhow::Result<bool> {
+        let running: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM agents
+            WHERE id = ?1 AND status = 'running'
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_one(&self.db)
+        .await?;
+        if running == 0 {
+            return Ok(false);
+        }
+
+        let reconciled = self
+            .reconcile_running_agents_without_runtime_handles(vec![agent_id.to_string()])
+            .await?;
+        Ok(!reconciled.is_empty())
+    }
+
     async fn reconcile_stale_running_agents(&self) -> anyhow::Result<()> {
         let running_rows = sqlx::query(
             r#"
@@ -483,23 +504,36 @@ impl AgentManager {
         )
         .fetch_all(&self.db)
         .await?;
-        if running_rows.is_empty() {
-            return Ok(());
+        let running_ids = running_rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("id"))
+            .collect::<Vec<_>>();
+        let _ = self
+            .reconcile_running_agents_without_runtime_handles(running_ids)
+            .await?;
+        Ok(())
+    }
+
+    async fn reconcile_running_agents_without_runtime_handles(
+        &self,
+        running_ids: Vec<String>,
+    ) -> anyhow::Result<Vec<String>> {
+        if running_ids.is_empty() {
+            return Ok(Vec::new());
         }
 
         let stale_ids = {
             let active_guard = self.inner.read().await;
             let starting_guard = self.starting.lock().await;
-            running_rows
+            running_ids
                 .into_iter()
-                .map(|row| row.get::<String, _>("id"))
                 .filter(|agent_id| {
                     !active_guard.contains_key(agent_id) && !starting_guard.contains(agent_id)
                 })
                 .collect::<Vec<_>>()
         };
         if stale_ids.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let now = Utc::now().timestamp();
@@ -536,7 +570,7 @@ impl AgentManager {
             stale_agent_ids = ?stale_ids,
             "reconciled stale running agents without runtime handles"
         );
-        Ok(())
+        Ok(stale_ids)
     }
 
     async fn has_agents_source_column(&self) -> anyhow::Result<bool> {
@@ -1558,7 +1592,6 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
         let handle_snapshot = {
             let guard = self.inner.read().await;
             guard.get(agent_id).map(|handle| match &handle.input {
@@ -1590,40 +1623,11 @@ impl AgentManager {
                     );
                     return Err(anyhow::anyhow!("agent not running"));
                 }
-                if let Err(err) = sqlx::query(
-                    r#"
-                    UPDATE agent_sessions
-                    SET status = 'exited', ended_at = ?1
-                    WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
-                    "#,
-                )
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await
-                {
+                if let Err(err) = self.reconcile_runtime_absence(agent_id).await {
                     tracing::warn!(
                         agent_id = %agent_id,
                         error = %err,
-                        "send_input fallback failed to mark running sessions exited"
-                    );
-                }
-                if let Err(err) = sqlx::query(
-                    r#"
-                    UPDATE agents
-                    SET status = 'exited', updated_at = ?1
-                    WHERE id = ?2 AND status = 'running'
-                    "#,
-                )
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await
-                {
-                    tracing::warn!(
-                        agent_id = %agent_id,
-                        error = %err,
-                        "send_input fallback failed to update agent status to exited"
+                        "send_input fallback failed to reconcile stale running state"
                     );
                 }
                 return Err(anyhow::anyhow!("agent not running"));

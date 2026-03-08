@@ -280,6 +280,44 @@ fn build_app_router(
     app
 }
 
+async fn shutdown_signal(state: crate::state::AppState) {
+    let ctrl_c = async {
+        if let Err(err) = tokio::signal::ctrl_c().await {
+            tracing::error!(error = %err, "failed to listen for Ctrl+C");
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        match signal(SignalKind::terminate()) {
+            Ok(mut stream) => {
+                let _ = stream.recv().await;
+            }
+            Err(err) => {
+                tracing::error!(error = %err, "failed to listen for SIGTERM");
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+
+    tracing::warn!("shutdown signal received; marking running agents exited");
+    if let Err(err) = state.agents.mark_exited_on_startup().await {
+        tracing::error!(
+            error = %err,
+            "shutdown cleanup failed to mark running agents exited"
+        );
+    }
+}
+
 pub async fn run() -> anyhow::Result<()> {
     if let Some(result) = crate::actor_mcp::maybe_run_from_args().await {
         return result;
@@ -310,7 +348,9 @@ pub async fn run() -> anyhow::Result<()> {
     let addr: SocketAddr = config.listen_addr().parse()?;
 
     tracing::info!("listening on {}", addr);
-    axum::serve(tokio::net::TcpListener::bind(addr).await?, app).await?;
+    axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
+        .with_graceful_shutdown(shutdown_signal(state))
+        .await?;
     Ok(())
 }
 

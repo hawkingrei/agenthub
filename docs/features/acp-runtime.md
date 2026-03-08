@@ -52,6 +52,9 @@ Service bootstrap remains thin and keeps ACP contracts stable to callers.
 - Streaming path uses SSE for near-real-time updates.
 - Polling/history paths provide fallback/replay continuity.
 - Multi-agent subscriptions and bounded fan-in behavior should avoid stream overload.
+- When persisted agent state says `running` but the runtime handle is missing after abrupt shutdown/restart,
+  backend transport paths should reconcile stale state to `exited` instead of letting SSE retry indefinitely
+  against a non-existent runtime.
 
 ### 5) Permission Workflow
 
@@ -86,7 +89,13 @@ ACP permission requests are first-class runtime records:
 - Input/send paths must validate session alignment to avoid stale session writes.
 - Session mismatch and unavailable gateway states should surface deterministic, non-leaky errors.
 
-### 5) Provider Compatibility Contract
+### 5) Transport Recovery Contract
+
+- SSE subscription failure caused by missing runtime ownership should trigger stale-state reconciliation when safe.
+- Best-effort process shutdown should converge visible `running` agent/session rows before exit.
+- SSE `404 agent not running` responses should represent converged runtime truth, not stale DB state that keeps clients retrying forever.
+
+### 6) Provider Compatibility Contract
 
 - ACP protocol mapping must stay aligned with upstream provider schemas.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
@@ -105,6 +114,7 @@ ACP permission requests are first-class runtime records:
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
+- Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 
 ## Open Risks
 
@@ -120,3 +130,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-02-16-permission-history-agent-scope.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
+- `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
