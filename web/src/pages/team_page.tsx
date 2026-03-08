@@ -242,6 +242,74 @@ function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
+const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
+const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
+const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
+const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
+const teamSectionCardClassName =
+  "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
+const teamSectionCardLargeClassName =
+  "min-h-0 rounded-2xl border border-ui-border bg-ui-surface p-5 shadow-sm";
+const teamSectionHeadingClassName = "text-sm font-semibold text-ui-text-primary";
+const teamSectionTitleClassName = "text-base font-semibold text-ui-text-primary";
+const teamSectionBodyTextClassName = "mt-2 text-sm text-ui-text-muted";
+const teamSectionHintTextClassName = "mt-2 text-xs text-ui-text-muted";
+const teamDebugTabsClassName =
+  "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
+const teamDebugTabBaseClassName =
+  "rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm";
+const teamDebugTabActiveClassName =
+  `${teamDebugTabBaseClassName} bg-brand-primary text-ui-text-inverse shadow-sm`;
+const teamDebugTabIdleClassName =
+  `${teamDebugTabBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+const teamCreateModalHeaderClassName =
+  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
+const teamCreateModalTitleClassName =
+  "text-lg font-semibold tracking-tight text-ui-text-primary";
+const teamCreateStageClassName =
+  "team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition";
+const teamCreateStageActiveClassName =
+  `${teamCreateStageClassName} active border-brand-primary bg-brand-primary text-ui-text-inverse shadow-sm`;
+const teamCreateStageCompletedClassName =
+  `${teamCreateStageClassName} completed border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]`;
+const teamCreateStageLockedClassName =
+  `${teamCreateStageClassName} locked cursor-not-allowed border-ui-border bg-ui-surface-muted text-ui-text-muted`;
+const teamCreateStageIdleClassName =
+  `${teamCreateStageClassName} border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
+const teamCreateCheckItemReadyClassName =
+  "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
+const teamCreateCheckItemPendingClassName =
+  "team-create-check-item pending flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm text-ui-text-muted";
+const teamCreateAgentEntryClassName =
+  "team-create-agent-entry rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
+const teamCreateForgeMetaClassName =
+  "team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-muted";
+const teamCreateLaunchMetaClassName =
+  "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
+const teamCreateLaunchMetaItemClassName =
+  "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+const modalFieldClassName =
+  "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
+const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
+const teamRunMetaItemClassName =
+  "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
+const workspaceToolbarClassName =
+  "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+const workspaceToolbarButtonBaseClassName =
+  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
+const workspaceToolbarButtonActiveClassName =
+  `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
+const workspaceToolbarButtonIdleClassName =
+  `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+const workspaceNoticeClassName =
+  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
+const workspaceNoticeTextClassName =
+  "flex min-w-0 flex-1 items-center gap-2 text-xs text-ui-text-muted";
+const workspaceNoticeDotBaseClassName =
+  "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
+const workspaceMetaDropdownClassName =
+  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg";
+
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -2056,77 +2124,10 @@ export function TeamPage(props: TeamPageProps) {
     setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
   };
 
-  const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
-  const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
-  const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
   const canCreateRun = busy !== "create-run" && !runInputHasError;
   const canCompileTask = busy !== "compile-task" && selectedTask !== null;
-  const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
-  const teamSectionCardClassName =
-    "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
-  const teamSectionCardLargeClassName =
-    "min-h-0 rounded-2xl border border-ui-border bg-ui-surface p-5 shadow-sm";
-  const teamSectionHeadingClassName = "text-sm font-semibold text-ui-text-primary";
-  const teamSectionTitleClassName = "text-base font-semibold text-ui-text-primary";
-  const teamSectionBodyTextClassName = "mt-2 text-sm text-ui-text-muted";
-  const teamSectionHintTextClassName = "mt-2 text-xs text-ui-text-muted";
-  const teamDebugTabsClassName =
-    "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
-  const teamDebugTabBaseClassName =
-    "rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm";
-  const teamDebugTabActiveClassName =
-    `${teamDebugTabBaseClassName} bg-brand-primary text-ui-text-inverse shadow-sm`;
-  const teamDebugTabIdleClassName =
-    `${teamDebugTabBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
-  const teamCreateModalHeaderClassName =
-    "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
-  const teamCreateModalTitleClassName =
-    "text-lg font-semibold tracking-tight text-ui-text-primary";
-  const teamCreateStageClassName =
-    "team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition";
-  const teamCreateStageActiveClassName =
-    `${teamCreateStageClassName} active border-brand-primary bg-brand-primary text-ui-text-inverse shadow-sm`;
-  const teamCreateStageCompletedClassName =
-    `${teamCreateStageClassName} completed border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]`;
-  const teamCreateStageLockedClassName =
-    `${teamCreateStageClassName} locked cursor-not-allowed border-ui-border bg-ui-surface-muted text-ui-text-muted`;
-  const teamCreateStageIdleClassName =
-    `${teamCreateStageClassName} border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
-  const teamCreateCheckItemReadyClassName =
-    "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
-  const teamCreateCheckItemPendingClassName =
-    "team-create-check-item pending flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm text-ui-text-muted";
-  const teamCreateAgentEntryClassName =
-    "team-create-agent-entry rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
-  const teamCreateForgeMetaClassName =
-    "team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-muted";
-  const teamCreateLaunchMetaClassName =
-    "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
-  const teamCreateLaunchMetaItemClassName =
-    "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
-  const modalFieldClassName =
-    "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
-  const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
-  const teamRunMetaItemClassName =
-    "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
-  const workspaceToolbarClassName =
-    "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
-  const workspaceToolbarButtonBaseClassName =
-    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
-  const workspaceToolbarButtonActiveClassName =
-    `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
-  const workspaceToolbarButtonIdleClassName =
-    `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
-  const workspaceNoticeClassName =
-    "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
-  const workspaceNoticeTextClassName =
-    "flex min-w-0 flex-1 items-center gap-2 text-xs text-ui-text-muted";
-  const workspaceNoticeDotBaseClassName =
-    "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
-  const workspaceMetaDropdownClassName =
-    "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg";
   const tabNeedsActiveRun = tabRequiresActiveRun(tab);
   const showRunContextLoading = tab !== "runs" && tabNeedsActiveRun && runsLoading && !activeRunForSelectedTeam;
   const showNoActiveRunNotice = tab !== "runs" && tabNeedsActiveRun && !runsLoading && !activeRunForSelectedTeam;
@@ -2251,7 +2252,7 @@ export function TeamPage(props: TeamPageProps) {
       return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
     }
     return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-  }, [activeRunForSelectedTeam, workspaceMemberAvailability.missing, workspaceNoticeDotBaseClassName]);
+  }, [activeRunForSelectedTeam, workspaceMemberAvailability.missing]);
   const workspaceDetailItems = useMemo(
     () =>
       [

@@ -94,6 +94,13 @@ function resolveSidebarScope(tab: TeamTab): TeamSidebarScope {
   return OPERATIONS_FOCUS_TABS.has(tab) ? "operations" : "subjects";
 }
 
+const teamPickerItemBaseClass =
+  "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border border-transparent px-2 py-2 text-left transition";
+const teamPickerItemActiveClass =
+  `${teamPickerItemBaseClass} bg-ui-surface-soft text-ui-text-primary`;
+const teamPickerItemIdleClass =
+  `${teamPickerItemBaseClass} text-ui-text-secondary hover:bg-ui-surface-soft/80 hover:text-ui-text-primary`;
+
 export function TeamSidebar(props: TeamSidebarProps) {
   const {
     developerMode,
@@ -175,12 +182,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
       [section]: !current[section],
     }));
   }, []);
-  const teamPickerItemBaseClass =
-    "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border border-transparent px-2 py-2 text-left transition";
-  const teamPickerItemActiveClass =
-    `${teamPickerItemBaseClass} bg-ui-surface-soft text-ui-text-primary`;
-  const teamPickerItemIdleClass =
-    `${teamPickerItemBaseClass} text-ui-text-secondary hover:bg-ui-surface-soft/80 hover:text-ui-text-primary`;
 
   return (
     <aside className={TEAM_SIDEBAR_ROOT_CLASS}>
