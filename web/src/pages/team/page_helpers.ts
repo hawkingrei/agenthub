@@ -68,19 +68,30 @@ export function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
   });
 }
 
+function isSharedThreadTask(task: TeamTaskRecord): boolean {
+  if (task.title.trim().toLowerCase() === DEFAULT_TEAM_THREAD_TITLE) {
+    return true;
+  }
+  if (!task.context || typeof task.context !== "object" || Array.isArray(task.context)) {
+    return false;
+  }
+  return (task.context as { bootstrap_kind?: unknown }).bootstrap_kind === "shared_thread";
+}
+
 export function resolveTeamConversationTask(
   tasks: TeamTaskRecord[],
   selectedTaskId: string,
   teamId: string
 ): TeamTaskRecord | null {
+  const teamTasks = sortTasksByActivity(tasks.filter((task) => task.team_id === teamId));
   const selectedId = selectedTaskId.trim();
   if (selectedId) {
-    const selected = tasks.find((task) => task.id === selectedId && task.team_id === teamId);
-    if (selected) {
+    const selected = teamTasks.find((task) => task.id === selectedId);
+    if (selected && isSharedThreadTask(selected)) {
       return selected;
     }
   }
-  return sortTasksByActivity(tasks).find((task) => task.team_id === teamId) ?? null;
+  return teamTasks.find(isSharedThreadTask) ?? null;
 }
 
 export function formatTs(ts?: number | null): string {

@@ -51,4 +51,10 @@ describe("developer mode preferences", () => {
     expect(loadDeveloperModePreference(true)).toBe(false);
     expect(loadDeveloperModePreference(false)).toBe(true);
   });
+
+  it("ignores array payloads in storage", () => {
+    localStorage.setItem("agenthub_ui_prefs_v1", "[true]");
+    expect(loadDeveloperModePreference(true)).toBe(false);
+    expect(loadDeveloperModePreference(false)).toBe(true);
+  });
 });

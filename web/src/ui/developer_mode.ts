@@ -12,7 +12,7 @@ function parseUiPreferences(raw: string | null): UiPreferences | null {
   }
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
     return parsed as UiPreferences;

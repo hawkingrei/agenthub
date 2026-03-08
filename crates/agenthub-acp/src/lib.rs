@@ -872,8 +872,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     "acp prompt completion channel closed unexpectedly".to_string(),
                                 )
                                 .await;
-                            active_prompt_count = 0;
-                            continue;
+                            break;
                         }
                         active_prompt_count = active_prompt_count.saturating_sub(1);
                     }

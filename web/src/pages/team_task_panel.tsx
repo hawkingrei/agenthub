@@ -2,7 +2,6 @@ import React from "react";
 import {
   TeamActorMessageRecord,
   TeamConversationMessageRecord,
-  TeamTaskRecord,
 } from "../api";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
@@ -24,10 +23,7 @@ import {
 
 type TeamTaskPanelProps = {
   developerMode: boolean;
-  tasks: TeamTaskRecord[];
   tasksLoading: boolean;
-  selectedTaskId: string;
-  onSelectedTaskIdChange: (value: string) => void;
   onRefreshTasks: () => Promise<void> | void;
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;

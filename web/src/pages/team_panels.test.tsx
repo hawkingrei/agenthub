@@ -8,7 +8,6 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
-  TeamTaskRecord,
   TeamMemberSnapshot,
   TeamRunEventRecord,
   TeamRunRecord,
@@ -186,20 +185,6 @@ function buildMailboxMessage(
     status: "pending",
     created_at: 1_700_000_000 + messageId,
     delivered_at: null,
-    ...overrides,
-  };
-}
-
-function buildTask(overrides: Partial<TeamTaskRecord> = {}): TeamTaskRecord {
-  return {
-    id: "task-1",
-    team_id: "team-1",
-    title: "Investigate regression",
-    status: "open",
-    created_by_actor_id: "user:u-1",
-    context: {},
-    created_at: 1_700_000_010,
-    updated_at: 1_700_000_020,
     ...overrides,
   };
 }
@@ -1377,7 +1362,6 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel supports create/select/send workflow", () => {
-    const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
@@ -1388,17 +1372,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamTaskPanel
           developerMode={true}
-          tasks={[
-            buildTask(),
-            buildTask({
-              id: "task-2",
-              title: "Ship patch",
-              status: "in_progress",
-            }),
-          ]}
           tasksLoading={false}
-          selectedTaskId="task-1"
-          onSelectedTaskIdChange={onSelectedTaskIdChange}
           onRefreshTasks={onRefreshTasks}
           messageDraft="hello leader"
           onMessageDraftChange={onMessageDraftChange}
@@ -1462,7 +1436,6 @@ describe("team panels interactions", () => {
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onSelectedTaskIdChange).not.toHaveBeenCalled();
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
@@ -1494,10 +1467,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamTaskPanel
           developerMode={true}
-          tasks={[buildTask()]}
           tasksLoading={false}
-          selectedTaskId="task-1"
-          onSelectedTaskIdChange={vi.fn()}
           onRefreshTasks={vi.fn()}
           messageDraft=""
           onMessageDraftChange={vi.fn()}
@@ -1563,10 +1533,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamTaskPanel
           developerMode={true}
-          tasks={[buildTask()]}
           tasksLoading={false}
-          selectedTaskId="task-1"
-          onSelectedTaskIdChange={vi.fn()}
           onRefreshTasks={vi.fn()}
           messageDraft=""
           onMessageDraftChange={vi.fn()}
@@ -1603,10 +1570,7 @@ describe("team panels interactions", () => {
       root.render(
         <TeamTaskPanel
           developerMode={false}
-          tasks={[buildTask()]}
           tasksLoading={false}
-          selectedTaskId="task-1"
-          onSelectedTaskIdChange={vi.fn()}
           onRefreshTasks={vi.fn()}
           messageDraft=""
           onMessageDraftChange={vi.fn()}

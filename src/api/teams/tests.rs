@@ -663,7 +663,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             if has_run_id && has_actor_id && has_channel && has_actor_cli {
                 break;
             }
-            before_id = events.last().map(|event| event.event_id);
+            before_id = events.first().map(|event| event.event_id);
         }
         if has_run_id && has_actor_id && has_channel && has_actor_cli {
             break;

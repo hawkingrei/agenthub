@@ -191,7 +191,13 @@ export function TeamSidebar(props: TeamSidebarProps) {
           onClick={() => setTeamPickerOpen((current) => !current)}
           aria-expanded={teamPickerOpen}
           aria-label={`Toggle team switcher${selectedTeam ? `: ${selectedTeam.name}` : ""}`}
-          title={selectedTeam ? selectedTeam.id : "Toggle team switcher"}
+          title={
+            selectedTeam
+              ? developerMode
+                ? selectedTeam.id
+                : selectedTeam.name
+              : "Toggle team switcher"
+          }
         >
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-ui-text-primary">
@@ -324,7 +330,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   }}
                   aria-current={team.id === selectedTeamId ? "true" : undefined}
                   data-team-selected={team.id === selectedTeamId ? "true" : "false"}
-                  title={team.id}
+                  title={developerMode ? team.id : team.name}
                 >
                   <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{team.name}</span>
                   {developerMode && (
@@ -409,7 +415,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   aria-expanded={sectionOpen.channels}
                   aria-label="Toggle channels section"
                 >
-                  <span>Channels 1</span>
+                  <span>Channels</span>
                   <i
                     className={
                       sectionOpen.channels ? "bi bi-chevron-down" : "bi bi-chevron-right"
@@ -555,7 +561,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                         {item.label}
                       </span>
                       <span className={TEAM_SIDEBAR_NAV_ITEM_META_CLASS}>
-                        {item.value === "runs" ? "Browse runs" : "Browse runs"}
+                        Browse runs
                       </span>
                     </button>
                   ))}

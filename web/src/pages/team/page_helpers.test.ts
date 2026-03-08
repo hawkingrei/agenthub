@@ -159,15 +159,20 @@ describe("team page helpers", () => {
     const tasks = [
       buildTask("task-1", 100, 120),
       buildTask("task-2", 110, 110),
-      buildTask("task-3", 90, 120),
+      buildTask("task-3", 90, 120, {
+        title: DEFAULT_TEAM_THREAD_TITLE,
+        context: { bootstrap_kind: "shared_thread" },
+      }),
     ];
     expect(sortTasksByActivity(tasks).map((task) => task.id)).toEqual([
       "task-1",
       "task-3",
       "task-2",
     ]);
-    expect(resolveTeamConversationTask(tasks, "task-2", "team-1")?.id).toBe("task-2");
-    expect(resolveTeamConversationTask(tasks, "missing", "team-1")?.id).toBe("task-1");
+    expect(resolveTeamConversationTask(tasks, "task-3", "team-1")?.id).toBe("task-3");
+    expect(resolveTeamConversationTask(tasks, "task-2", "team-1")?.id).toBe("task-3");
+    expect(resolveTeamConversationTask(tasks, "missing", "team-1")?.id).toBe("task-3");
+    expect(resolveTeamConversationTask([buildTask("task-1", 100, 120)], "", "team-1")).toBeNull();
     expect(resolveTeamConversationTask([], "", "team-1")).toBeNull();
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
   });

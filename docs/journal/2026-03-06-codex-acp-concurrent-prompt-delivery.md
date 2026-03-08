@@ -26,6 +26,13 @@ was local to AgentHub's outer ACP session loop rather than Codex ACP itself.
 - Codex sessions can now accept a new user prompt while a previous turn is still working.
 - Session-level config mutations remain ordered behind active prompts.
 - Non-Codex ACP providers keep the previous conservative FIFO behavior.
+- unexpected prompt-completion channel shutdown now aborts the ACP session loop instead of forcing
+  `active_prompt_count` to zero and releasing queued session mutations unsafely.
+
+## Follow-up
+
+- `AllowConcurrentPrompts` still needs a barrier/backpressure policy so a steady prompt stream
+  cannot starve queued `SetMode`/`SetModel`/`SetConfig` mutations indefinitely.
 
 ## Validation
 

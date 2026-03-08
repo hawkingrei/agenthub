@@ -1734,10 +1734,12 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
-  const selectedConversation = useMemo(
-    () => taskList.find((task) => task.id === selectedTaskId) ?? null,
-    [taskList, selectedTaskId]
-  );
+  const selectedConversation = useMemo(() => {
+    if (!selectedTeamId) {
+      return null;
+    }
+    return resolveTeamConversationTask(taskList, selectedTaskId, selectedTeamId);
+  }, [selectedTaskId, selectedTeamId, taskList]);
 
   const refreshTasks = useCallback(
     async (teamId: string) => {
@@ -1747,11 +1749,7 @@ export function TeamPage(props: TeamPageProps) {
         const sorted = sortTasksByActivity(list);
         setTaskList(sorted);
         setSelectedTaskId((prev) => {
-          const selectedId = prev.trim();
-          const hasSelected =
-            selectedId.length > 0 && sorted.some((task) => task.id === selectedId);
-          const nextSelectedId = hasSelected ? selectedId : sorted[0]?.id ?? "";
-          return nextSelectedId;
+          return resolveTeamConversationTask(sorted, prev, teamId)?.id ?? "";
         });
       } catch (err) {
         setError(parseErrorMessage(err));
@@ -1765,7 +1763,7 @@ export function TeamPage(props: TeamPageProps) {
   const refreshTaskMessages = useCallback(
     async (taskIdOverride?: string) => {
       const teamId = selectedTeamId;
-      const taskId = (taskIdOverride ?? selectedTaskId).trim();
+      const taskId = (taskIdOverride ?? selectedConversation?.id ?? "").trim();
       if (!teamId || !taskId) {
         setTaskMessages([]);
         return;
@@ -1782,7 +1780,7 @@ export function TeamPage(props: TeamPageProps) {
         setTaskMessagesLoading(false);
       }
     },
-    [props.token, selectedTaskId, selectedTeamId]
+    [props.token, selectedConversation?.id, selectedTeamId]
   );
 
   useEffect(() => {
@@ -1796,31 +1794,25 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeamId) {
       return;
     }
-    const taskId = selectedTaskId.trim();
-    if (!taskId) {
+    if (!selectedConversation) {
       setTaskMessages([]);
       return;
     }
-    const matchesSelectedTeam = taskList.some(
-      (task) => task.id === taskId && task.team_id === selectedTeamId
-    );
-    if (!matchesSelectedTeam) {
-      setTaskMessages([]);
-      return;
-    }
-    void refreshTaskMessages(taskId);
-  }, [taskList, refreshTaskMessages, selectedTaskId, selectedTeamId]);
+    void refreshTaskMessages(selectedConversation.id);
+  }, [refreshTaskMessages, selectedConversation, selectedTeamId]);
 
   const resolveConversationForMessage = useCallback(() => {
-    if (!selectedTeamId) {
+    if (!selectedTeamId || !selectedConversation) {
       return null;
     }
-    const conversation = resolveTeamConversationTask(taskList, selectedTaskId, selectedTeamId);
-    if (conversation) {
-      setSelectedTaskId(conversation.id);
-    }
-    return conversation;
-  }, [taskList, selectedTaskId, selectedTeamId]);
+    setSelectedTaskId((current) => {
+      if (current === selectedConversation.id) {
+        return current;
+      }
+      return selectedConversation.id;
+    });
+    return selectedConversation;
+  }, [selectedConversation, selectedTeamId]);
 
   const ensureSharedConversation = useCallback(async () => {
     if (!selectedTeamId) {
@@ -2167,7 +2159,7 @@ export function TeamPage(props: TeamPageProps) {
   const workspaceTitle = !selectedTeam
     ? "Team Workbench"
     : tab === "conversation"
-      ? "all"
+      ? selectedConversation?.title ?? DEFAULT_TEAM_THREAD_TITLE
     : selectedMemberLiveState && isAgentWorkspace
       ? selectedAgentLabel
       : selectedTeam.name;
@@ -2384,10 +2376,7 @@ export function TeamPage(props: TeamPageProps) {
     <div className="space-y-3">
       <TeamTaskPanel
         developerMode={props.developerMode}
-        tasks={taskList}
         tasksLoading={tasksLoading}
-        selectedTaskId={selectedTaskId}
-        onSelectedTaskIdChange={setSelectedTaskId}
         onRefreshTasks={onRefreshTasks}
         messageDraft={taskMessageDraft}
         onMessageDraftChange={setTaskMessageDraft}
