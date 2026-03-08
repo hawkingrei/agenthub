@@ -2,6 +2,7 @@ import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  resolveDisplayName,
   renderPlainTextWithMentions,
   resolveChatMessageText,
 } from "./team/mailbox_helpers";
@@ -119,7 +120,7 @@ function resolveMailboxActorLabel(
   if (normalizedActorId === humanActorId.trim()) {
     return "You";
   }
-  return displayNameByActorId[normalizedActorId]?.trim() || normalizedActorId;
+  return resolveDisplayName(normalizedActorId, displayNameByActorId, normalizedActorId);
 }
 
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {

@@ -143,7 +143,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
             onClick={() => {
               void onRefreshTasks();
             }}
-            disabled={tasksLoading || busy === "refresh-task"}
+            disabled={tasksLoading}
             title="Refresh tasks"
             aria-label="Refresh tasks"
           >

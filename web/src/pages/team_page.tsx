@@ -62,6 +62,7 @@ import {
   buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
+  createDisplayNameLookup,
   countUnreadConversationMessages,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
@@ -2391,15 +2392,14 @@ export function TeamPage(props: TeamPageProps) {
     ]
   );
   const mailboxDisplayNameByActorId = useMemo(
-    () => ({
-      [HUMAN_MAILBOX_ACTOR_ID]: "You",
-      ...Object.fromEntries(
-        selectedTeamMemberLiveStates.map((member) => [
+    () =>
+      createDisplayNameLookup([
+        [HUMAN_MAILBOX_ACTOR_ID, "You"],
+        ...selectedTeamMemberLiveStates.map((member) => [
           member.member_id,
           member.agent_name?.trim() || member.member_id,
-        ])
-      ),
-    }),
+        ]),
+      ]),
     [selectedTeamMemberLiveStates]
   );
   const onOpenRunsWorkspace = useCallback(() => {

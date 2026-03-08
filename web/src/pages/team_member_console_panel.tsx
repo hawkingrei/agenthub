@@ -7,6 +7,9 @@ import {
   TeamRunSnapshotRecord,
 } from "../api";
 import {
+  resolveDisplayName,
+} from "./team/mailbox_helpers";
+import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_MUTED_TEXT_CLASS,
@@ -136,7 +139,8 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
           <option value="">Select member</option>
           {snapshot?.members.map((member) => (
             <option key={member.member_id} value={member.member_id}>
-              {(displayNameByActorId[member.member_id]?.trim() || member.member_id)} ({member.role})
+              {resolveDisplayName(member.member_id, displayNameByActorId, member.member_id)} (
+              {member.role})
             </option>
           ))}
         </select>

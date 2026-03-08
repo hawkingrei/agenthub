@@ -1445,7 +1445,6 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
     clickElement(findButtonByText(container, "Refresh Channel"));
     clickElement(findButtonByText(container, "Refresh Thread"));
-    clickElement(findButtonByText(container, "Send"));
     changeInputValue(
       required(
         container.querySelector(
@@ -1455,6 +1454,7 @@ describe("team panels interactions", () => {
       ),
       "please continue @WorkerAgent and review"
     );
+    clickElement(findButtonByText(container, "Send"));
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);

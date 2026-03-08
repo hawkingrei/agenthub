@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { resolveDisplayName } from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_LIST_ITEM_BASE_CLASS,
@@ -133,7 +134,8 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
                 <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                  {(displayNameByActorId[member.member_id]?.trim() || member.member_id)} ({member.role})
+                  {resolveDisplayName(member.member_id, displayNameByActorId, member.member_id)} (
+                  {member.role})
                 </span>
                 <StatusBadge
                   label={member.status}

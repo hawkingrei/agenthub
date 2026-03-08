@@ -33,6 +33,36 @@ export type MentionCandidate = {
   aliases: string[];
 };
 
+export function resolveDisplayName(
+  actorId: string,
+  displayNameByActorId?: Record<string, string>,
+  fallback?: string
+): string {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) {
+    return fallback ?? "-";
+  }
+  const candidate = displayNameByActorId?.[normalizedActorId];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : (fallback ?? normalizedActorId);
+}
+
+export function createDisplayNameLookup(
+  entries: Iterable<[string, string]>
+): Record<string, string> {
+  const lookup: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [rawActorId, rawLabel] of entries) {
+    const actorId = rawActorId.trim();
+    const label = rawLabel.trim();
+    if (!actorId || !label) {
+      continue;
+    }
+    lookup[actorId] = label;
+  }
+  return lookup;
+}
+
 function normalizeActorIds(actorIds: string[]): string[] {
   const seen = new Set<string>();
   const normalized: string[] = [];
@@ -183,7 +213,9 @@ function normalizeMentionCandidates(candidates: MentionCandidate[]): MentionCand
     normalized.push({
       actorId,
       label,
-      aliases: normalizeActorIds([label, actorId, ...(candidate.aliases ?? [])]),
+      aliases: normalizeActorIds([label, actorId, ...(candidate.aliases ?? [])]).sort(
+        (left, right) => right.length - left.length
+      ),
     });
   }
   return normalized;
@@ -207,7 +239,7 @@ export function canonicalizeMentionDraft(
   );
 
   for (const candidate of normalizedCandidates) {
-    for (const alias of [...candidate.aliases].sort((left, right) => right.length - left.length)) {
+    for (const alias of candidate.aliases) {
       if (!alias) {
         continue;
       }
@@ -331,7 +363,7 @@ export function buildMailboxChatPayload(
 }
 
 function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, string>): string {
-  const label = displayNameByActorId?.[actorId]?.trim() || actorId;
+  const label = resolveDisplayName(actorId, displayNameByActorId, actorId);
   return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeHtml(label)}</span>`;
 }
 

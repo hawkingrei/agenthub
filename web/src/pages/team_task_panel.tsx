@@ -7,10 +7,12 @@ import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
   canonicalizeMentionDraft,
+  createDisplayNameLookup,
   type MentionCandidate,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
   resolveChatMessageText,
+  resolveDisplayName,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
@@ -175,7 +177,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   );
   const memberDisplayNamesById = React.useMemo(
     () =>
-      Object.fromEntries(
+      createDisplayNameLookup(
         memberIds.map((memberId) => [memberId, resolveMentionLabel(memberId, liveStateByMemberId)])
       ),
     [liveStateByMemberId, memberIds]
@@ -346,7 +348,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             onClick={() => {
               void onRefreshTasks();
             }}
-            disabled={tasksLoading || busy === "refresh-task"}
+            disabled={tasksLoading}
             title="Refresh channel"
             aria-label="Refresh channel"
           >
@@ -359,7 +361,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             onClick={() => {
               void onRefreshMessages();
             }}
-            disabled={messagesLoading || busy === "refresh-task-messages"}
+            disabled={messagesLoading}
           >
             Refresh Thread
           </button>
@@ -422,7 +424,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                                   key={`${item.key}-${actorId}`}
                                   className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5"
                                 >
-                                  {memberDisplayNamesById[actorId] ?? actorId}
+                                  {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
                                 </span>
                               ))}
                             </div>
