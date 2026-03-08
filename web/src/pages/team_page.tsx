@@ -3788,7 +3788,7 @@ export function TeamPage(props: TeamPageProps) {
                   }
                   type="button"
                 >
-                  Guided Wizard
+                  Create Team
                 </button>
               )}
             </div>
