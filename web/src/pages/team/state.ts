@@ -7,6 +7,7 @@ import type { TeamRunStatusFilter } from "./run_helpers";
 export type TeamTab =
   | "runs"
   | "conversation"
+  | "tasks"
   | "agent_acp"
   | "overview"
   | "events"
@@ -17,6 +18,7 @@ export type TeamTab =
 
 export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   { value: "conversation", label: "Conversation" },
+  { value: "tasks", label: "Tasks" },
   { value: "runs", label: "Runs" },
   { value: "agent_acp", label: "Agent ACP" },
   { value: "overview", label: "Overview" },
@@ -27,7 +29,13 @@ export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = 
   { value: "debug", label: "Debug" },
 ];
 
-const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>(["runs", "conversation", "debug"]);
+const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>([
+  "runs",
+  "conversation",
+  "tasks",
+  "mailbox",
+  "debug",
+]);
 
 export function tabRequiresActiveRun(tab: TeamTab): boolean {
   return !TEAM_TABS_WITHOUT_ACTIVE_RUN.has(tab);

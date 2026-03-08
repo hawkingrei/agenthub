@@ -204,6 +204,33 @@ async function selectTeamFromSidebar(
   await expect(teamItem).toHaveAttribute("data-team-selected", "true");
 }
 
+async function selectAgentFromSidebar(
+  page: import("@playwright/test").Page,
+  agentLabel: string
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  const subjectsScopeButton = sidebar
+    .getByRole("button", { name: "Channels & Agents", exact: true })
+    .first();
+  if (await subjectsScopeButton.isVisible()) {
+    await subjectsScopeButton.click();
+  }
+
+  const agentsToggle = sidebar.getByRole("button", { name: "Toggle agents section" });
+  if ((await agentsToggle.getAttribute("aria-expanded")) !== "true") {
+    await agentsToggle.click();
+  }
+
+  const agentItem = sidebar
+    .locator("button", { hasText: agentLabel })
+    .first();
+  await expect(agentItem).toBeVisible();
+  await agentItem.click();
+  await expect(
+    page.getByPlaceholder("Type a message to selected agent")
+  ).toBeVisible();
+}
+
 async function openMainTeamAction(
   page: import("@playwright/test").Page,
   label: string
@@ -1099,7 +1126,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   await selectTeamFromSidebar(page, "Team Mobile");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Team Mobile" })).toBeVisible();
+  await expect(page.locator(".teams-main").getByText("Team Mobile", { exact: true })).toBeVisible();
 
   const layoutColumns = await page.locator(".teams-layout").evaluate((element) => {
     return window.getComputedStyle(element).gridTemplateColumns;
@@ -1290,7 +1317,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Team Desktop");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Team Desktop" })).toBeVisible();
+  await expect(page.locator(".teams-main").getByText("Team Desktop", { exact: true })).toBeVisible();
   await openAdvancedView(page, "Overview");
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
   await expect(page.locator(".teams-overview-meta")).toBeVisible();
@@ -1310,7 +1337,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(overviewLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(overviewLayout.overflowing).toEqual([]);
 
-  await page.locator(".teams-member-list .team-member-row", { hasText: longLeaderId }).click();
+  await selectAgentFromSidebar(page, longLeaderId);
   await openAdvancedView(page, "Member Console");
   const memberConsoleCard = page.locator(".card", { hasText: "Member Console" });
   await expect(memberConsoleCard).toBeVisible();
@@ -1333,7 +1360,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await openAdvancedView(page, "Mailbox");
+  await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -1745,16 +1772,17 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Compile Team");
-  await openAdvancedView(page, "Debug");
-  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
+  await openMainTeamAction(page, "Tasks");
+  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
-  await expect(page.getByText("conversation_id: conversation-compile-1")).toBeVisible();
-  await expect(page.getByText("context_id: ctx-task-compile-1")).toBeVisible();
+  await expect(page.getByText("conversation-compile-1", { exact: true })).toBeVisible();
+  await expect(page.getByText("ctx-task-compile-1", { exact: true })).toBeVisible();
   expect(compileRequests).toEqual([{}]);
 
   await page.getByRole("button", { name: "Use Payload in Create Run" }).click();
+  await openAdvancedView(page, "Debug");
   await expect(
     page.getByPlaceholder("context_id (optional, auto-generated when empty)")
   ).toHaveValue("ctx-task-compile-1");
@@ -2163,11 +2191,11 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Chat First Team");
-  await openAdvancedView(page, "Debug");
-  await expect(page.getByRole("heading", { name: "Compile Conversation", exact: true })).toBeVisible();
+  await openMainTeamAction(page, "Tasks");
+  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
-  await expect(page.getByText("conversation_id: conversation-chat-1")).toBeVisible();
+  await expect(page.getByText("conversation-chat-1", { exact: true })).toBeVisible();
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
@@ -2182,8 +2210,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
       ?.task_id
   ).toBe("task-chat-1");
 
-  await openAdvancedView(page, "Overview");
-  await page.locator(".teams-member-list .team-member-row", { hasText: "agent-worker-1" }).click();
+  await selectAgentFromSidebar(page, "Worker Agent");
   await expect(page.locator(".teams-chat-messages")).toContainText(
     "Please implement endpoint scaffolding and tests."
   );
@@ -2351,15 +2378,16 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   await expect(dialog).toBeHidden();
   await expect(page.locator(".team-item", { hasText: "virtual-tool-team" })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Conversation", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
   await page
-    .getByPlaceholder("Type planning message for the team (e.g. @worker-1 @worker-2 please verify)")
+    .getByPlaceholder("Message #all")
     .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
-  await page.getByRole("button", { name: "Send Message" }).click();
-  await expect(page.locator(".teams-message-list")).toContainText(
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".teams-main")).toContainText(
     "Please build a tiny JSON CLI with parse and pretty-print commands."
   );
 
+  await openMainTeamAction(page, "Tasks");
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
   await expect(page.locator(".teams-step-body")).toContainText(
@@ -2662,25 +2690,22 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await enableDeveloperMode(page);
   await page.goto("/teams");
   await selectTeamFromSidebar(page, "Team Mailbox");
-  await openAdvancedView(page, "Overview");
-  await page
-    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-1" })
-    .click();
+  await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
 
-  const unreadWorker2Before = await unreadFor("agent-worker-2");
+  const unreadWorker2Before = await unreadFor("Worker Agent Two");
   expect(unreadWorker2Before).toBeGreaterThan(0);
 
   await page
-    .locator(".teams-chat-members .team-item", { hasText: "agent-worker-1 (worker)" })
+    .locator(".teams-chat-members .team-item", { hasText: "Worker Agent (worker)" })
     .click();
   await expect(page.locator(".teams-chat-head")).toContainText(
-    "agent-leader-1 → agent-worker-1"
+    "Leader Agent → Worker Agent"
   );
   await page.getByRole("button", { name: "Jump to bottom" }).click();
   await expect(page.locator(".teams-chat-head")).toContainText("auto_follow=on");
-  await expect.poll(async () => unreadFor("agent-worker-1")).toBe(0);
-  expect(await unreadFor("agent-worker-2")).toBeGreaterThan(0);
+  await expect.poll(async () => unreadFor("Worker Agent")).toBe(0);
+  expect(await unreadFor("Worker Agent Two")).toBeGreaterThan(0);
 
   await page.locator(".teams-chat-messages").evaluate((element) => {
     const target = element as HTMLElement;
@@ -2689,13 +2714,11 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   });
   await expect(page.locator(".teams-chat-head")).toContainText("auto_follow=off");
 
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
-  await openAdvancedView(page, "Overview");
   await page
-    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
+    .locator(".teams-chat-members .team-item", { hasText: "Worker Agent Two (worker)" })
     .click();
   await expect(page.locator(".teams-chat-head")).toContainText(
-    "agent-leader-1 → agent-worker-2"
+    "Leader Agent → Worker Agent Two"
   );
 
   const eventsBeforePolling = counters.events;
@@ -2761,14 +2784,14 @@ test("team list supports deleting selected team", async ({ page }) => {
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
   await selectTeamFromSidebar(page, "Team Delete A");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Team Delete A" })).toBeVisible();
+  await expect(page.locator(".teams-main").getByText("Team Delete A", { exact: true })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Team" }).click();
 
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toHaveCount(0);
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Team Delete B" })).toBeVisible();
+  await expect(page.locator(".teams-main").getByText("Team Delete B", { exact: true })).toBeVisible();
 });
 
 test("team run list keeps per-team filters and uses before_created_at cursor paging", async ({

@@ -162,7 +162,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
     setSidebarScope("subjects");
     if (resolveSidebarScope(tab) === "operations") {
       if (selectedMemberId) {
-        onSelectAgentTab(selectedMemberId, "agent_acp");
+        onSelectAgentTab(selectedMemberId, "mailbox");
         return;
       }
       onSelectConversation();
@@ -491,7 +491,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                               ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
                               : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
                           }
-                          onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
+                          onClick={() => onSelectAgentTab(member.member_id, "mailbox")}
                           title={
                             [primaryLabel, developerMode ? member.member_id : null, member.current_work]
                               .filter((value) => value && value.trim().length > 0)

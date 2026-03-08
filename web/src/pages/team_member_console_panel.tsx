@@ -23,6 +23,7 @@ type TeamMemberConsolePanelProps = {
   selectedMemberId: string;
   onSelectedMemberIdChange: (memberId: string) => void;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
+  displayNameByActorId?: Record<string, string>;
   memberEvents: AgentEvent[];
   memberEventsHasMore: boolean;
   memberEventsLoading: boolean;
@@ -64,6 +65,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
     selectedMemberId,
     onSelectedMemberIdChange,
     selectedMemberSnapshot,
+    displayNameByActorId = {},
     memberEvents,
     memberEventsHasMore,
     memberEventsLoading,
@@ -134,7 +136,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
           <option value="">Select member</option>
           {snapshot?.members.map((member) => (
             <option key={member.member_id} value={member.member_id}>
-              {member.member_id} ({member.role})
+              {(displayNameByActorId[member.member_id]?.trim() || member.member_id)} ({member.role})
             </option>
           ))}
         </select>

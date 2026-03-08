@@ -19,6 +19,7 @@ type TeamOverviewPanelProps = {
   onRefreshSnapshot: () => Promise<void> | void;
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
+  displayNameByActorId?: Record<string, string>;
 };
 
 const OVERVIEW_META_CLASS =
@@ -44,6 +45,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
     onRefreshSnapshot,
     selectedMemberId,
     onOpenMailboxForMember,
+    displayNameByActorId = {},
   } = props;
 
   return (
@@ -131,7 +133,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
                 <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                  {member.member_id} ({member.role})
+                  {(displayNameByActorId[member.member_id]?.trim() || member.member_id)} ({member.role})
                 </span>
                 <StatusBadge
                   label={member.status}
@@ -140,7 +142,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                   title={`member status: ${member.status}`}
                 />
                 <span className={TEAM_LIST_ITEM_META_CLASS}>
-                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
+                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} id=${member.member_id}`}
                 </span>
               </button>
             ))}
