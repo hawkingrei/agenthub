@@ -395,6 +395,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("leader=leader-agent");
     expect(container.textContent).toContain("workers=2");
     clickElement(findButtonByText(container, "Team Two"));
+    expect(container.querySelector("input[aria-label='Filter teams']")).not.toBeNull();
+    expect(container.textContent).toContain("Team One");
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
     expect(container.textContent).not.toContain("Worker Agent");
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));

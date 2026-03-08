@@ -321,7 +321,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   }
                   onClick={() => {
                     onSelectTeam(team.id);
-                    setTeamPickerOpen(false);
                   }}
                   aria-current={team.id === selectedTeamId ? "true" : undefined}
                   data-team-selected={team.id === selectedTeamId ? "true" : "false"}

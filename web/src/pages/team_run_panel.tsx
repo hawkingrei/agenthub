@@ -82,7 +82,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h2>{selectedTeam.name}</h2>
+        <div className="text-lg font-semibold tracking-tight text-ui-text-primary">
+          {selectedTeam.name}
+        </div>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <span className="mono">{selectedTeam.id}</span>
           <button
