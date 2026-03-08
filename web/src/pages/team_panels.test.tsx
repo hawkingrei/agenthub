@@ -378,7 +378,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Create Team"));
+    clickElement(findButtonByText(document.body, "Guided Wizard"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findButtonByText(document.body, "Manual Spec"));
     const filterInput = required(
@@ -611,9 +611,9 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No teams yet.");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
-    clickElement(findButtonByText(container, "Create Team"));
+    clickElement(findButtonByText(container, "Guided Wizard"));
     clickElement(findButtonByText(container, "Manual Spec"));
-    expect(container.textContent).toContain("Create Team");
+    expect(container.textContent).toContain("Guided Wizard");
     expect(container.textContent).toContain("Manual Spec");
     expect(noTeamsCreateWizard).toHaveBeenCalledTimes(1);
     expect(noTeamsCreateManual).toHaveBeenCalledTimes(1);

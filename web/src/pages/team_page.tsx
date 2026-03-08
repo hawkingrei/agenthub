@@ -2719,7 +2719,7 @@ export function TeamPage(props: TeamPageProps) {
                   className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                   onClick={openCreateTeamWizardModal}
                 >
-                  Create Team
+                  Guided Wizard
                 </button>
                 <button
                   type="button"
@@ -3788,7 +3788,7 @@ export function TeamPage(props: TeamPageProps) {
                   }
                   type="button"
                 >
-                  Create Team
+                  Guided Wizard
                 </button>
               )}
             </div>

@@ -176,7 +176,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
     }));
   }, []);
   const teamPickerItemBaseClass =
-    "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border border-transparent px-2 py-2 text-left transition";
+    "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border border-transparent px-2 py-2 text-left transition";
   const teamPickerItemActiveClass =
     `${teamPickerItemBaseClass} bg-ui-surface-soft text-ui-text-primary`;
   const teamPickerItemIdleClass =
@@ -242,7 +242,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                     onOpenCreateTeamWizard();
                   }}
                 >
-                  Create Team
+                  Guided Wizard
                 </button>
                 <button
                   type="button"
@@ -348,7 +348,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 className={TEAM_PANEL_GHOST_BUTTON_CLASS}
                 onClick={onOpenCreateTeamWizard}
               >
-                Create Team
+                Guided Wizard
               </button>
               <button
                 type="button"
