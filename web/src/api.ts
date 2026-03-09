@@ -335,6 +335,18 @@ export type TeamTaskRunCompilePreviewRecord = {
   plan: TeamTaskCompiledPlanRecord;
 };
 
+export type TeamRuntimeMemberStatusResponse = {
+  member_id: string;
+  session_id: string;
+  action: string;
+};
+
+export type TeamRuntimeControlResponse = {
+  team_id: string;
+  status: string;
+  members: TeamRuntimeMemberStatusResponse[];
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -490,6 +502,18 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token),
+  startTeam: (token: string, id: string) =>
+    apiFetch<TeamRuntimeControlResponse>(
+      `/api/teams/${encodePathSegment(id)}/start`,
+      token,
+      { method: "POST" }
+    ),
+  stopTeam: (token: string, id: string) =>
+    apiFetch<TeamRuntimeControlResponse>(
+      `/api/teams/${encodePathSegment(id)}/stop`,
+      token,
+      { method: "POST" }
+    ),
   deleteTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",

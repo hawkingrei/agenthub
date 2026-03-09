@@ -7,12 +7,55 @@ import type {
   TeamRunRecord,
   TeamTaskRecord,
 } from "../../api";
+import type { StatusTone } from "../../components/status_badge";
+import type { TeamMemberAgentStatusSummary } from "./member_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
 }
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
+
+export type TeamRuntimeStatusView = {
+  status: "running" | "stopped" | "degraded";
+  label: string;
+  tone: StatusTone;
+  online: number;
+  total: number;
+};
+
+export function resolveTeamRuntimeStatus(
+  summary: TeamMemberAgentStatusSummary | null
+): TeamRuntimeStatusView {
+  const online = summary?.active ?? 0;
+  const total = summary?.total ?? 0;
+  const missing = summary?.missing ?? 0;
+  if (total === 0 || online === 0) {
+    return {
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+      online,
+      total,
+    };
+  }
+  if (online === total && missing === 0) {
+    return {
+      status: "running",
+      label: "team running",
+      tone: "active",
+      online,
+      total,
+    };
+  }
+  return {
+    status: "degraded",
+    label: "team degraded",
+    tone: "warning",
+    online,
+    total,
+  };
+}
 
 export function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
   const withoutCurrent = list.filter((run) => run.id !== nextRun.id);

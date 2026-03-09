@@ -13,6 +13,7 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
@@ -22,6 +23,7 @@ import {
   upsertEventList,
   upsertRun,
 } from "./page_helpers";
+import type { TeamMemberAgentStatusSummary } from "./member_helpers";
 
 function buildRun(
   id: string,
@@ -124,6 +126,18 @@ function buildTask(
     context: {},
     created_at: createdAt,
     updated_at: updatedAt,
+    ...overrides,
+  };
+}
+
+function buildMemberSummary(
+  overrides: Partial<TeamMemberAgentStatusSummary> = {}
+): TeamMemberAgentStatusSummary {
+  return {
+    active: 0,
+    inactive: 0,
+    missing: 0,
+    total: 0,
     ...overrides,
   };
 }
@@ -247,6 +261,32 @@ describe("team page helpers", () => {
 
     expect(seen).toEqual({
       7: ["worker-agent", "worker-agent-2"],
+    });
+  });
+
+  it("resolves team runtime status from member availability summary", () => {
+    expect(resolveTeamRuntimeStatus(buildMemberSummary())).toMatchObject({
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+    });
+    expect(
+      resolveTeamRuntimeStatus(
+        buildMemberSummary({ active: 3, inactive: 0, missing: 0, total: 3 })
+      )
+    ).toMatchObject({
+      status: "running",
+      label: "team running",
+      tone: "active",
+    });
+    expect(
+      resolveTeamRuntimeStatus(
+        buildMemberSummary({ active: 2, inactive: 1, missing: 0, total: 3 })
+      )
+    ).toMatchObject({
+      status: "degraded",
+      label: "team degraded",
+      tone: "warning",
     });
   });
 

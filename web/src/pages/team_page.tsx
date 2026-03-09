@@ -23,6 +23,7 @@ import {
 import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import { StatusBadge } from "../components/status_badge";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
@@ -92,6 +93,7 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
@@ -241,6 +243,21 @@ type RunInputValidation = {
   parsed: unknown | undefined;
   error: string | null;
 };
+
+function formatTeamRuntimeActionSummary(
+  action: "start" | "stop",
+  members: ReadonlyArray<{ action: string }>
+): string {
+  const counts = members.reduce<Record<string, number>>((acc, member) => {
+    acc[member.action] = (acc[member.action] ?? 0) + 1;
+    return acc;
+  }, {});
+  const parts = Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`);
+  const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
+  return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
+}
 
 function validateRunInputJson(raw: string): RunInputValidation {
   const trimmed = raw.trim();
@@ -803,6 +820,10 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberSummaryByTeamId.get(selectedTeam.id) ?? null;
   }, [selectedTeam, teamMemberSummaryByTeamId]);
+  const selectedTeamRuntimeStatus = useMemo(
+    () => resolveTeamRuntimeStatus(selectedTeamMemberSummary),
+    [selectedTeamMemberSummary]
+  );
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -2311,6 +2332,7 @@ export function TeamPage(props: TeamPageProps) {
     return { online, offline, missing };
   }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
   const workspaceNoticeText = useMemo(() => {
+    const runtimeLabel = selectedTeam ? selectedTeamRuntimeStatus.label : null;
     const runLabel = activeRunForSelectedTeam
       ? `run ${activeRunForSelectedTeam.status}`
       : "no active run";
@@ -2335,20 +2357,28 @@ export function TeamPage(props: TeamPageProps) {
       }
       return null;
     })();
-    return [runLabel, rosterLabel, availabilityLabel, agentLabel]
+    return [runtimeLabel, runLabel, rosterLabel, availabilityLabel, agentLabel]
       .filter((value): value is string => Boolean(value))
       .join(" · ");
   }, [
     activeRunForSelectedTeam,
     isAgentWorkspace,
+    selectedTeam,
     selectedAgentLabel,
     selectedMemberLiveState,
     selectedTeamMemberLiveStates.length,
+    selectedTeamRuntimeStatus.label,
     workspaceMemberAvailability,
   ]);
   const workspaceNoticeDotClassName = useMemo(() => {
     if (workspaceMemberAvailability.missing > 0) {
       return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+    }
+    if (selectedTeamRuntimeStatus.status === "degraded") {
+      return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
+    }
+    if (selectedTeamRuntimeStatus.status === "stopped") {
+      return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
     }
     if (!activeRunForSelectedTeam) {
       return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
@@ -2366,11 +2396,12 @@ export function TeamPage(props: TeamPageProps) {
       return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
     }
     return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-  }, [activeRunForSelectedTeam, workspaceMemberAvailability.missing]);
+  }, [activeRunForSelectedTeam, selectedTeamRuntimeStatus.status, workspaceMemberAvailability.missing]);
   const workspaceDetailItems = useMemo(
     () =>
       [
         `team=${selectedTeam?.id ?? "-"}`,
+        `team_runtime=${selectedTeamRuntimeStatus.status}`,
         `active_run=${activeRunIdForSelectedTeam ?? "-"}`,
         `run_status=${activeRunForSelectedTeam?.status ?? "-"}`,
         `context=${activeRunForSelectedTeam?.context_id ?? "-"}`,
@@ -2389,6 +2420,7 @@ export function TeamPage(props: TeamPageProps) {
       selectedMemberLiveState?.agent_name,
       selectedMemberLiveState?.member_id,
       selectedTeam?.id,
+      selectedTeamRuntimeStatus.status,
     ]
   );
   const mailboxDisplayNameByActorId = useMemo(
@@ -2418,6 +2450,42 @@ export function TeamPage(props: TeamPageProps) {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
+  const onStartTeamRuntime = useCallback(async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    setBusy("start-team");
+    setError(null);
+    setWarning(null);
+    try {
+      const runtime = await api.startTeam(props.token, selectedTeam.id);
+      await Promise.all([refreshTeams(), refreshAgents()]);
+      setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
+  const onStopTeamRuntime = useCallback(async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    setBusy("stop-team");
+    setError(null);
+    setWarning(null);
+    try {
+      const runtime = await api.stopTeam(props.token, selectedTeam.id);
+      await Promise.all([refreshTeams(), refreshAgents()]);
+      setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
   const onRefreshTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
@@ -2819,6 +2887,27 @@ export function TeamPage(props: TeamPageProps) {
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={selectedTeamRuntimeStatus.label}
+                      tone={selectedTeamRuntimeStatus.tone}
+                      title={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
+                    />
+                    <button
+                      type="button"
+                      className={panelSecondaryButtonClassName}
+                      onClick={onStartTeamRuntime}
+                      disabled={busy === "start-team" || selectedTeamRuntimeStatus.status === "running"}
+                    >
+                      {busy === "start-team" ? "Starting Team..." : "Start Team"}
+                    </button>
+                    <button
+                      type="button"
+                      className={panelSecondaryButtonClassName}
+                      onClick={onStopTeamRuntime}
+                      disabled={busy === "stop-team" || selectedTeamRuntimeStatus.status === "stopped"}
+                    >
+                      {busy === "stop-team" ? "Stopping Team..." : "Stop Team"}
+                    </button>
                     <div className={workspaceToolbarClassName}>
                       {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
                         <button
@@ -2955,7 +3044,7 @@ export function TeamPage(props: TeamPageProps) {
                   developerMode={props.developerMode}
                   busy={busy}
                   onDeleteTeam={onDeleteTeam}
-                  onStartTeam={onCreateRun}
+                  onStartRun={onCreateRun}
                   runStatusFilter={runStatusFilter}
                   runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                   onRunStatusFilterChange={onRunStatusFilterChange}
