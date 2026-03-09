@@ -20,6 +20,8 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Use stable `spec.members[].member_id` as teammate routing keys in mailbox coordination.\n",
     "- Treat `spec.members[].description` as A2A identity card source for each member.\n",
     "- Keep `/api/agents/:id/.well-known/agent-card` description aligned with team member role identity.\n",
+    "- Use the runtime `team_members` tool to inspect the live roster, identity-card descriptions, and current step/session status before routing work.\n",
+    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
     "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.\n",
     "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
@@ -56,6 +58,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n",
     "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n",
     "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
+    "- Use the runtime `team_members` tool to inspect the live roster, identity-card descriptions, and current step/session status before coordinating.\n",
+    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
     "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.\n",
     "- Always load `team-agents-index` before role-specific execution skills.\n",
@@ -125,8 +129,10 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".well-known/agent-card"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_members"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_members"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));

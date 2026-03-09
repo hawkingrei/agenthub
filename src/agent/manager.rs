@@ -593,24 +593,36 @@ impl AgentManager {
             SELECT COUNT(*)
             FROM sqlite_master
             WHERE type = 'table'
-              AND name IN ('team_runs', 'team_steps')
+              AND name IN ('team_runs', 'team_steps', 'team_run_member_sessions')
             "#,
         )
         .fetch_one(&self.db)
         .await?;
-        if has_team_tables < 2 {
+        if has_team_tables < 3 {
             return Ok(HashSet::new());
         }
 
         let rows = sqlx::query(
             r#"
-            SELECT DISTINCT sessions.agent_id
-            FROM team_steps AS steps
-            JOIN team_runs AS runs ON runs.id = steps.run_id
-            JOIN agent_sessions AS sessions ON sessions.id = steps.remote_task_id
-            WHERE steps.remote_task_id IS NOT NULL
-              AND steps.status IN ('working', 'input_required')
-              AND runs.status IN ('submitted', 'working', 'input_required')
+            SELECT DISTINCT agent_id
+            FROM (
+                SELECT sessions.agent_id AS agent_id
+                FROM team_steps AS steps
+                JOIN team_runs AS runs ON runs.id = steps.run_id
+                JOIN agent_sessions AS sessions ON sessions.id = steps.remote_task_id
+                WHERE steps.remote_task_id IS NOT NULL
+                  AND steps.status IN ('working', 'input_required')
+                  AND runs.status IN ('submitted', 'working', 'input_required')
+
+                UNION
+
+                SELECT sessions.agent_id AS agent_id
+                FROM team_run_member_sessions AS member_sessions
+                JOIN team_runs AS runs ON runs.id = member_sessions.run_id
+                JOIN agent_sessions AS sessions ON sessions.id = member_sessions.session_id
+                WHERE runs.status IN ('submitted', 'working', 'input_required')
+                  AND sessions.status = 'running'
+            )
             "#,
         )
         .fetch_all(&self.db)

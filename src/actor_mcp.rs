@@ -220,6 +220,15 @@ fn actor_tools() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "name": "team_members",
+            "description": "List current team members, identity-card descriptions, and run step/session status.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+            }
+        }),
     ]
 }
 
@@ -496,8 +505,21 @@ async fn tool_actor_send<S: ActorMailboxService>(
     }
 }
 
+async fn tool_team_members(manager: &TeamManager, context: &ActorMcpContext) -> Value {
+    match manager.describe_run_members(&context.run_id).await {
+        Ok(roster) => tool_result_success(json!({
+            "team_id": roster.team_id,
+            "team_name": roster.team_name,
+            "run_id": roster.run_id,
+            "members": roster.members,
+        })),
+        Err(err) => tool_result_error(format!("team_members failed: {err}"), None),
+    }
+}
+
 async fn handle_tool_call<S: ActorMailboxService>(
     service: &S,
+    manager: &TeamManager,
     context: &ActorMcpContext,
     params: Option<&Value>,
 ) -> Result<Value, Value> {
@@ -522,6 +544,7 @@ async fn handle_tool_call<S: ActorMailboxService>(
         "actor_inbox" => tool_actor_inbox(service, context, arguments).await,
         "actor_ack" => tool_actor_ack(service, context, arguments).await,
         "actor_send" => tool_actor_send(service, context, arguments).await,
+        "team_members" => tool_team_members(manager, context).await,
         other => tool_result_error(format!("unknown tool: {}", other), None),
     };
     Ok(result)
@@ -529,6 +552,7 @@ async fn handle_tool_call<S: ActorMailboxService>(
 
 async fn handle_jsonrpc_request<S: ActorMailboxService>(
     service: &S,
+    manager: &TeamManager,
     context: &ActorMcpContext,
     initialized: &mut bool,
     method: &str,
@@ -582,7 +606,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                 "tools": actor_tools()
             }),
         ),
-        "tools/call" => match handle_tool_call(service, context, params).await {
+        "tools/call" => match handle_tool_call(service, manager, context, params).await {
             Ok(result) => jsonrpc_response(id, result),
             Err(mut err) => {
                 err["id"] = id;
@@ -659,6 +683,7 @@ async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
         if let Some(id) = request_id(obj.get("id")) {
             let response = handle_jsonrpc_request(
                 &service,
+                &manager,
                 &context,
                 &mut initialized,
                 method,
@@ -787,7 +812,10 @@ mod tests {
             .iter()
             .filter_map(|tool| tool.get("name").and_then(Value::as_str))
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["actor_inbox", "actor_ack", "actor_send"]);
+        assert_eq!(
+            names,
+            vec!["actor_inbox", "actor_ack", "actor_send", "team_members"]
+        );
     }
 
     #[test]
@@ -937,6 +965,7 @@ mod tests {
         let mut initialized = false;
         let response = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &context,
             &mut initialized,
             "tools/list",
@@ -988,6 +1017,7 @@ mod tests {
         };
         let init_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &planner_context,
             &mut planner_initialized,
             "initialize",
@@ -1003,6 +1033,7 @@ mod tests {
 
         let list_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &planner_context,
             &mut planner_initialized,
             "tools/list",
@@ -1016,10 +1047,14 @@ mod tests {
             .iter()
             .filter_map(|tool| tool.get("name").and_then(Value::as_str))
             .collect::<Vec<_>>();
-        assert_eq!(tool_names, vec!["actor_inbox", "actor_ack", "actor_send"]);
+        assert_eq!(
+            tool_names,
+            vec!["actor_inbox", "actor_ack", "actor_send", "team_members"]
+        );
 
         let send_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &planner_context,
             &mut planner_initialized,
             "tools/call",
@@ -1050,6 +1085,7 @@ mod tests {
         let mut reviewer_initialized = false;
         let _ = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &reviewer_context,
             &mut reviewer_initialized,
             "initialize",
@@ -1061,6 +1097,7 @@ mod tests {
 
         let inbox_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1081,6 +1118,7 @@ mod tests {
 
         let ack_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1099,6 +1137,7 @@ mod tests {
 
         let delivered_resp = handle_jsonrpc_request(
             &service,
+            &state.teams,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1115,5 +1154,180 @@ mod tests {
             .expect("delivered messages");
         assert_eq!(delivered_messages.len(), 1);
         assert_eq!(delivered_messages[0]["status"], "delivered");
+    }
+
+    #[tokio::test]
+    async fn jsonrpc_team_members_returns_live_roster_view() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-members-{}", Uuid::new_v4()),
+                description: Some("actor mcp team members".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader","description":"Lead planner"},
+                        {"member_id":"worker","role":"worker","description":"Implements patches"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-team-members"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let leader_step = state
+            .teams
+            .submit_step(&run.id, "leader_plan", "leader", Vec::new(), None)
+            .await
+            .expect("submit leader step");
+        state
+            .teams
+            .submit_step(
+                &run.id,
+                "worker_exec",
+                "worker",
+                vec!["leader_plan".to_string()],
+                None,
+            )
+            .await
+            .expect("submit worker step");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+            "#,
+        )
+        .bind("leader")
+        .bind("Leader Agent")
+        .bind("/tmp/leader")
+        .bind("codex")
+        .bind("[]")
+        .bind("use_existing")
+        .bind("running")
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert leader agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, ?7, ?8, ?9)
+            "#,
+        )
+        .bind("worker")
+        .bind("Worker Agent")
+        .bind("/tmp/worker")
+        .bind("codex")
+        .bind("[]")
+        .bind("create_worktree")
+        .bind("idle")
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, NULL)
+            "#,
+        )
+        .bind("session-leader")
+        .bind("leader")
+        .bind("running")
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert leader session");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, NULL)
+            "#,
+        )
+        .bind("session-worker")
+        .bind("worker")
+        .bind("running")
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+
+        state
+            .teams
+            .start_step(&leader_step.id, Some("session-leader"))
+            .await
+            .expect("start leader step");
+        state
+            .teams
+            .bind_run_member_session(&run.id, "worker", "session-worker")
+            .await
+            .expect("bind worker session");
+
+        let service = state.teams.actor_mailbox_service();
+        let context = ActorMcpContext {
+            run_id: run.id,
+            actor_id: "leader".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+        let mut initialized = false;
+        let _ = handle_jsonrpc_request(
+            &service,
+            &state.teams,
+            &context,
+            &mut initialized,
+            "initialize",
+            json!(1),
+            Some(&json!({"protocolVersion":"2025-03-26"})),
+        )
+        .await;
+
+        let response = handle_jsonrpc_request(
+            &service,
+            &state.teams,
+            &context,
+            &mut initialized,
+            "tools/call",
+            json!(2),
+            Some(&json!({
+                "name":"team_members",
+                "arguments":{}
+            })),
+        )
+        .await;
+
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        assert_eq!(response["result"]["structuredContent"]["team_id"], team.id);
+        let members = response["result"]["structuredContent"]["members"]
+            .as_array()
+            .expect("members array");
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0]["display_name"], "Leader Agent");
+        assert_eq!(members[0]["session_id"], "session-leader");
+        assert_eq!(members[0]["session_status"], "running");
+        assert_eq!(members[0]["steps"][0]["session_id"], "session-leader");
+        assert_eq!(members[0]["steps"][0]["session_status"], "running");
+        assert_eq!(members[1]["display_name"], "Worker Agent");
+        assert_eq!(members[1]["description"], "Implements patches");
+        assert_eq!(members[1]["session_id"], "session-worker");
+        assert_eq!(members[1]["session_status"], "running");
+        assert_eq!(members[1]["steps"][0]["status"], "submitted");
     }
 }

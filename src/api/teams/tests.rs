@@ -344,6 +344,24 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_run_member_sessions (
+            run_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (run_id, member_id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_run_member_sessions");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_run_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,

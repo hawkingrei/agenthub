@@ -809,6 +809,11 @@ async fn get_team_run_snapshot(
         .await
         .map_err(map_team_internal_error)?;
     let latest_step_by_member = index_latest_steps_by_member(&steps);
+    let bound_session_by_member = state
+        .teams
+        .list_run_member_sessions(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
 
     let pending_counts = state
         .teams
@@ -840,10 +845,15 @@ async fn get_team_run_snapshot(
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
-        let session_status = if let Some(session_id) = latest_step
+        let bound_session_id = latest_step
             .as_ref()
             .and_then(|step| step.remote_task_id.as_deref())
-        {
+            .or_else(|| {
+                bound_session_by_member
+                    .get(member.member_id.as_str())
+                    .map(String::as_str)
+            });
+        let session_status = if let Some(session_id) = bound_session_id {
             state
                 .teams
                 .get_agent_session_status(session_id)

@@ -13,6 +13,9 @@ const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
 enum ActorCommand {
     Help,
+    TeamMembers {
+        run_id: String,
+    },
     Inbox {
         run_id: String,
         actor_id: String,
@@ -39,6 +42,7 @@ enum ActorCommand {
 
 fn actor_usage() -> &'static str {
     r#"Usage:
+  agenthub actor team-members [--run-id <run_id>]
   agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]
   agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]
   agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]
@@ -102,6 +106,29 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
         .first()
         .ok_or_else(|| anyhow::anyhow!("missing actor subcommand\n{}", actor_usage()))?;
     match sub.as_str() {
+        "team-members" => {
+            let mut run_id = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    other => {
+                        return Err(anyhow::anyhow!("unknown flag for team-members: {}", other));
+                    }
+                }
+                idx += 1;
+            }
+            Ok(ActorCommand::TeamMembers {
+                run_id: take_required_with_env_keys(run_id, &[ACTOR_RUNTIME_RUN_ID_ENV], "run_id")?,
+            })
+        }
         "inbox" => {
             let mut run_id = None;
             let mut actor_id = None;
@@ -395,6 +422,12 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
         ActorCommand::Help => {
             println!("{}", actor_usage());
         }
+        ActorCommand::TeamMembers { run_id } => {
+            let db = crate::db::init_db().await?;
+            let manager = TeamManager::new(db);
+            let roster = manager.describe_run_members(&run_id).await?;
+            println!("{}", serde_json::to_string(&roster)?);
+        }
         ActorCommand::Inbox {
             run_id,
             actor_id,
@@ -534,6 +567,40 @@ mod tests {
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_team_members_uses_env_fallback() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-team-members");
+        }
+        let args = vec!["team-members".to_string()];
+        let parsed = parse_actor_command(&args).expect("parse team-members");
+        match parsed {
+            ActorCommand::TeamMembers { run_id } => {
+                assert_eq!(run_id, "run-team-members");
+            }
+            _ => panic!("expected team-members command"),
+        }
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
+    }
+
+    #[test]
+    fn parse_team_members_accepts_run_id_flag() {
+        let args = vec![
+            "team-members".to_string(),
+            "--run-id".to_string(),
+            "run-explicit".to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse team-members");
+        match parsed {
+            ActorCommand::TeamMembers { run_id } => {
+                assert_eq!(run_id, "run-explicit");
+            }
+            _ => panic!("expected team-members command"),
+        }
     }
 
     #[test]

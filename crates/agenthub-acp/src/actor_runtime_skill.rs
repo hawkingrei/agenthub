@@ -29,11 +29,14 @@ Use MCP native actor mailbox tools (do not shell out to CLI):
    `actor_send` with `{{"to_actor_id":"worker","allow_duplicate":true,"payload":{{"text":"..."}}}}`
 6. Use explicit idempotency key when coordinating retries across workers:
    `actor_send` with `{{"to_actor_id":"worker","idempotency_key":"stable-key","payload":{{"text":"..."}}}}`
+7. Inspect the live team roster, member descriptions, and current step/session status:
+   `team_members` with `{{}}`
 
 Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
 - In each turn, the first mailbox action must be `actor_inbox` before planning/coding.
+- Before routing work based on teammate assumptions, inspect the live roster with `team_members`.
 - If inbox has pending items, process and `actor_ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
@@ -108,6 +111,7 @@ mod tests {
         assert!(skill.instructions.contains("actor_inbox"));
         assert!(skill.instructions.contains("actor_ack"));
         assert!(skill.instructions.contains("actor_send"));
+        assert!(skill.instructions.contains("team_members"));
         assert!(!skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
     }
 }

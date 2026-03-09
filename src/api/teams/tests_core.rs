@@ -3160,6 +3160,27 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 
     sqlx::query(
         r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+        "#,
+    )
+    .bind("worker-agent")
+    .bind("worker-agent")
+    .bind("/tmp")
+    .bind("/bin/sh")
+    .bind("[]")
+    .bind("create_worktree")
+    .bind("idle")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert worker agent row");
+
+    sqlx::query(
+        r#"
         INSERT INTO agent_sessions (id, agent_id, status, started_at)
         VALUES (?1, ?2, ?3, ?4)
         "#,
@@ -3171,6 +3192,34 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     .execute(&state.db)
     .await
     .expect("insert agent session for snapshot");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at)
+        VALUES (?1, ?2, ?3, ?4)
+        "#,
+    )
+    .bind("session-worker-1")
+    .bind("worker-agent")
+    .bind("running")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert worker session for snapshot");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_run_member_sessions (run_id, member_id, session_id, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?4)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("worker-agent")
+    .bind("session-worker-1")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("bind worker session for snapshot");
 
     let Json(_message) = send_team_run_message(
         State(state.clone()),
@@ -3260,6 +3309,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(worker.model.as_deref(), Some("gpt-4.1"));
     assert_eq!(worker.pending_inbox_count, 1);
     assert_eq!(worker.status, "idle");
+    assert_eq!(worker.session_status.as_deref(), Some("running"));
     assert!(worker.latest_step.is_none());
 }
 
