@@ -447,23 +447,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS team_run_member_sessions (
-            run_id TEXT NOT NULL,
-            member_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            PRIMARY KEY (run_id, member_id),
-            FOREIGN KEY(run_id) REFERENCES team_runs(id),
-            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        r#"
         CREATE TABLE IF NOT EXISTS team_run_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -731,21 +714,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_steps_run_status: {}",
-            err
-        );
-    }
-
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_team_run_member_sessions_run_updated
-        ON team_run_member_sessions(run_id, updated_at DESC);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_team_run_member_sessions_run_updated: {}",
             err
         );
     }
@@ -1548,7 +1516,6 @@ mod tests {
                 'team_definitions',
                 'team_runs',
                 'team_steps',
-                'team_run_member_sessions',
                 'team_run_events',
                 'team_tasks',
                 'team_conversations',
@@ -1563,7 +1530,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 12);
+        assert_eq!(table_count, 11);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)

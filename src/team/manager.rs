@@ -115,8 +115,9 @@ pub struct TeamRunMemberStepRecord {
 }
 
 #[derive(Debug, Clone)]
-struct TeamRunMemberSessionBinding {
+struct AgentRunningSessionRow {
     session_id: String,
+    session_status: String,
 }
 
 impl TeamManager {
@@ -277,18 +278,6 @@ impl TeamManager {
         sqlx::query(
             r#"
             DELETE FROM team_run_events
-            WHERE run_id IN (
-                SELECT id FROM team_runs WHERE team_id = ?1
-            )
-            "#,
-        )
-        .bind(team_id)
-        .execute(&mut *tx)
-        .await?;
-
-        sqlx::query(
-            r#"
-            DELETE FROM team_run_member_sessions
             WHERE run_id IN (
                 SELECT id FROM team_runs WHERE team_id = ?1
             )
@@ -786,7 +775,6 @@ impl TeamManager {
         let team = self.get_team(&run.team_id).await?;
         let members = parse_team_member_specs(&team.spec)?;
         let steps = self.list_steps(run_id).await?;
-        let bound_sessions = load_run_member_session_rows(&self.db, run_id).await?;
 
         let mut steps_by_member = HashMap::<String, Vec<TeamStepRecord>>::new();
         let mut session_ids = Vec::new();
@@ -804,16 +792,14 @@ impl TeamManager {
                 .or_default()
                 .push(step);
         }
-        for binding in bound_sessions.values() {
-            session_ids.push(binding.session_id.clone());
-        }
 
         let agent_runtime_by_id = load_agent_runtime_rows(&self.db, &members).await?;
+        let running_session_by_agent =
+            load_running_session_rows_by_agent(&self.db, &members).await?;
         let session_status_by_id = load_session_status_rows(&self.db, &session_ids).await?;
 
         let mut out = Vec::with_capacity(members.len());
         for member in members {
-            let bound_session = bound_sessions.get(member.member_id.as_str());
             let display_name = agent_runtime_by_id
                 .get(member.member_id.as_str())
                 .map(|agent| agent.name.clone())
@@ -821,25 +807,9 @@ impl TeamManager {
             let agent_status = agent_runtime_by_id
                 .get(member.member_id.as_str())
                 .and_then(|agent| agent.status.clone());
-            let session_id = bound_session
-                .map(|binding| binding.session_id.clone())
-                .or_else(|| {
-                    steps_by_member
-                        .get(member.member_id.as_str())
-                        .and_then(|items| {
-                            items.iter().find_map(|step| {
-                                step.remote_task_id
-                                    .as_deref()
-                                    .map(str::trim)
-                                    .filter(|value| !value.is_empty())
-                                    .map(str::to_string)
-                            })
-                        })
-                });
-            let session_status = session_id
-                .as_deref()
-                .and_then(|value| session_status_by_id.get(value))
-                .cloned();
+            let running_session = running_session_by_agent.get(member.member_id.as_str());
+            let session_id = running_session.map(|session| session.session_id.clone());
+            let session_status = running_session.map(|session| session.session_status.clone());
             let steps = steps_by_member
                 .remove(member.member_id.as_str())
                 .unwrap_or_default()
@@ -1000,71 +970,25 @@ impl TeamManager {
         Ok(row.map(|row| row.get("status")))
     }
 
-    pub async fn get_run_member_session(
+    pub async fn get_live_member_session(
         &self,
-        run_id: &str,
         member_id: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<(String, String)>> {
         let row = sqlx::query(
             r#"
-            SELECT session_id
-            FROM team_run_member_sessions
-            WHERE run_id = ?1 AND member_id = ?2
+            SELECT id, status
+            FROM agent_sessions
+            WHERE agent_id = ?1
+              AND ended_at IS NULL
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
             "#,
         )
-        .bind(run_id)
         .bind(member_id)
         .fetch_optional(&self.db)
         .await?;
 
-        Ok(row.and_then(|entry| {
-            entry
-                .get::<Option<String>, _>("session_id")
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
-        }))
-    }
-
-    pub async fn bind_run_member_session(
-        &self,
-        run_id: &str,
-        member_id: &str,
-        session_id: &str,
-    ) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO team_run_member_sessions (
-                run_id,
-                member_id,
-                session_id,
-                created_at,
-                updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?4)
-            ON CONFLICT(run_id, member_id) DO UPDATE
-            SET session_id = excluded.session_id,
-                updated_at = excluded.updated_at
-            "#,
-        )
-        .bind(run_id)
-        .bind(member_id)
-        .bind(session_id)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn list_run_member_sessions(
-        &self,
-        run_id: &str,
-    ) -> anyhow::Result<HashMap<String, String>> {
-        let rows = load_run_member_session_rows(&self.db, run_id).await?;
-        Ok(rows
-            .into_iter()
-            .map(|(member_id, binding)| (member_id, binding.session_id))
-            .collect())
+        Ok(row.map(|row| (row.get("id"), row.get("status"))))
     }
 
     pub async fn get_member_continuity_state(
@@ -3101,30 +3025,49 @@ async fn load_session_status_rows(
     Ok(out)
 }
 
-async fn load_run_member_session_rows(
+async fn load_running_session_rows_by_agent(
     db: &SqlitePool,
-    run_id: &str,
-) -> anyhow::Result<HashMap<String, TeamRunMemberSessionBinding>> {
-    let rows = sqlx::query(
+    members: &[TeamMemberSpecView],
+) -> anyhow::Result<HashMap<String, AgentRunningSessionRow>> {
+    if members.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut builder = QueryBuilder::<Sqlite>::new(
         r#"
-        SELECT member_id, session_id
-        FROM team_run_member_sessions
-        WHERE run_id = ?1
-        ORDER BY updated_at DESC, member_id ASC
+        SELECT agent_id, id, status
+        FROM agent_sessions
+        WHERE ended_at IS NULL
+          AND agent_id IN (
         "#,
-    )
-    .bind(run_id)
-    .fetch_all(db)
-    .await?;
+    );
+    let mut separated = builder.separated(", ");
+    for member in members {
+        separated.push_bind(member.member_id.as_str());
+    }
+    separated.push_unseparated(
+        r#")
+        ORDER BY started_at DESC, id DESC
+        "#,
+    );
+    let rows = builder.build().fetch_all(db).await?;
 
     let mut out = HashMap::with_capacity(rows.len());
     for row in rows {
-        let member_id: String = row.get("member_id");
-        let session_id = row.get::<String, _>("session_id").trim().to_string();
+        let member_id: String = row.get("agent_id");
+        let session_id = row.get::<String, _>("id").trim().to_string();
         if session_id.is_empty() {
             continue;
         }
-        out.insert(member_id, TeamRunMemberSessionBinding { session_id });
+        if out.contains_key(member_id.as_str()) {
+            continue;
+        }
+        out.insert(
+            member_id,
+            AgentRunningSessionRow {
+                session_id,
+                session_status: row.get("status"),
+            },
+        );
     }
     Ok(out)
 }

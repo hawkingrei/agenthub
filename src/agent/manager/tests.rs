@@ -172,7 +172,8 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
-        run_id: "run-leader".to_string(),
+        team_id: Some("team-leader".to_string()),
+        current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -207,7 +208,8 @@ fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
-        run_id: "run-worker".to_string(),
+        team_id: Some("team-worker".to_string()),
+        current_run_id: Some("run-worker".to_string()),
         actor_id: "worker-1".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -236,7 +238,8 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
     let agent =
         build_agent_record_for_policy(WorktreeMode::CreateWorktree, &workdir_str, Some(&repo_str));
     let ctx = AcpActorSkillContext {
-        run_id: "run-1234-5678".to_string(),
+        team_id: Some("team-worker".to_string()),
+        current_run_id: Some("run-1234-5678".to_string()),
         actor_id: "worker-alpha".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -271,7 +274,8 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
-        run_id: "run-leader".to_string(),
+        team_id: Some("team-leader".to_string()),
+        current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -293,7 +297,8 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
     let path = std::env::temp_dir().join(format!("agenthub-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        run_id: "run-leader".to_string(),
+        team_id: Some("team-leader".to_string()),
+        current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -313,7 +318,8 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
     let path = std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        run_id: "run-worker".to_string(),
+        team_id: Some("team-worker".to_string()),
+        current_run_id: Some("run-worker".to_string()),
         actor_id: "worker-1".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),
@@ -340,7 +346,8 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
     let impossible_dir = file_path.join("child");
     let workdir = impossible_dir.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        run_id: "run-leader".to_string(),
+        team_id: Some("team-leader".to_string()),
+        current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-2".to_string(),
         default_channel: "default".to_string(),
         actor_cli_path: "/tmp/agenthub".to_string(),

@@ -11,6 +11,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::team::TeamManager;
 
+const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
+const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
@@ -23,7 +25,8 @@ const JSONRPC_INVALID_PARAMS: i32 = -32602;
 
 #[derive(Debug, Clone)]
 struct ActorMcpContext {
-    run_id: String,
+    team_id: Option<String>,
+    current_run_id: Option<String>,
     actor_id: String,
     default_channel: String,
 }
@@ -31,6 +34,7 @@ struct ActorMcpContext {
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct ActorInboxToolArgs {
+    run_id: Option<String>,
     limit: Option<i64>,
     cursor: Option<i64>,
     include_delivered: Option<bool>,
@@ -38,12 +42,15 @@ struct ActorInboxToolArgs {
 
 #[derive(Debug, Deserialize)]
 struct ActorAckToolArgs {
+    #[serde(default)]
+    run_id: Option<String>,
     message_id: i64,
 }
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct ActorSendToolArgs {
+    run_id: Option<String>,
     to_actor_id: Option<String>,
     payload: Option<Value>,
     channel: Option<String>,
@@ -53,11 +60,19 @@ struct ActorSendToolArgs {
     allow_duplicate: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamMembersToolArgs {
+    run_id: Option<String>,
+}
+
 fn actor_mcp_usage() -> &'static str {
     r#"Usage:
-  agenthub actor-mcp [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--channel <name>]
+  agenthub actor-mcp [--team-id <team_id>] [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--channel <name>]
 
 Environment fallback:
+  AGENTHUB_ACTOR_TEAM_ID
+  AGENTHUB_ACTOR_CURRENT_RUN_ID
   AGENTHUB_ACTOR_RUN_ID
   AGENTHUB_ACTOR_ID
   AGENTHUB_ACTOR_AGENT_ID
@@ -103,6 +118,7 @@ fn parse_actor_mcp_context_with_env<F>(
 where
     F: FnMut(&str) -> Option<String>,
 {
+    let mut team_id = None;
     let mut run_id = None;
     let mut actor_id = None;
     let mut channel = None;
@@ -110,6 +126,14 @@ where
     let mut idx = 0;
     while idx < args.len() {
         match args[idx].as_str() {
+            "--team-id" => {
+                idx += 1;
+                team_id = Some(
+                    args.get(idx)
+                        .cloned()
+                        .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                );
+            }
             "--run-id" => {
                 idx += 1;
                 run_id = Some(
@@ -148,11 +172,10 @@ where
         idx += 1;
     }
 
-    let run_id = take_required(
-        run_id.or_else(|| env_lookup(ACTOR_RUNTIME_RUN_ID_ENV)),
-        &[],
-        "run_id",
-    )?;
+    let team_id = take_optional(team_id).or_else(|| env_lookup(ACTOR_RUNTIME_TEAM_ID_ENV));
+    let current_run_id = take_optional(run_id)
+        .or_else(|| env_lookup(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV))
+        .or_else(|| env_lookup(ACTOR_RUNTIME_RUN_ID_ENV));
     let actor_id = take_required(
         actor_id
             .or_else(|| env_lookup(ACTOR_RUNTIME_ACTOR_ID_ENV))
@@ -165,7 +188,8 @@ where
         .unwrap_or_else(|| DEFAULT_ACTOR_CHANNEL.to_string());
 
     Ok(ActorMcpContext {
-        run_id,
+        team_id,
+        current_run_id,
         actor_id,
         default_channel,
     })
@@ -185,6 +209,7 @@ fn actor_tools() -> Vec<Value> {
                 "additionalProperties": false,
                 "properties": {
                     "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 20 },
+                    "run_id": { "type": "string", "minLength": 1 },
                     "cursor": { "type": "integer" },
                     "include_delivered": { "type": "boolean", "default": false }
                 }
@@ -198,6 +223,7 @@ fn actor_tools() -> Vec<Value> {
                 "additionalProperties": false,
                 "required": ["message_id"],
                 "properties": {
+                    "run_id": { "type": "string", "minLength": 1 },
                     "message_id": { "type": "integer", "minimum": 1 }
                 }
             }
@@ -210,6 +236,7 @@ fn actor_tools() -> Vec<Value> {
                 "additionalProperties": false,
                 "required": ["to_actor_id", "payload"],
                 "properties": {
+                    "run_id": { "type": "string", "minLength": 1 },
                     "to_actor_id": { "type": "string", "minLength": 1 },
                     "payload": {},
                     "channel": { "type": "string" },
@@ -222,11 +249,13 @@ fn actor_tools() -> Vec<Value> {
         }),
         json!({
             "name": "team_members",
-            "description": "List current team members, identity-card descriptions, and run step/session status.",
+            "description": "List current team members, identity-card descriptions, and run step/session status for one run overlay.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
-                "properties": {}
+                "properties": {
+                    "run_id": { "type": "string", "minLength": 1 }
+                }
             }
         }),
     ]
@@ -309,6 +338,23 @@ where
     serde_json::from_value(raw).map_err(|err| format!("invalid tool arguments: {err}"))
 }
 
+fn resolve_tool_run_id(explicit: Option<String>, current: Option<&str>) -> Result<String, String> {
+    if let Some(run_id) = take_optional(explicit) {
+        return Ok(run_id);
+    }
+    if let Some(run_id) = current.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }) {
+        return Ok(run_id);
+    }
+    Err("run_id is required for this tool call".to_string())
+}
+
 struct ResolveIdempotencyKeyInput<'a> {
     run_id: &'a str,
     from_actor_id: &'a str,
@@ -370,6 +416,10 @@ async fn tool_actor_inbox<S: ActorMailboxService>(
         Err(err) => return tool_result_error(err, None),
     };
     let limit = args.limit.unwrap_or(20).clamp(1, 200);
+    let run_id = match resolve_tool_run_id(args.run_id, context.current_run_id.as_deref()) {
+        Ok(run_id) => run_id,
+        Err(err) => return tool_result_error(err, None),
+    };
     let states = if args.include_delivered.unwrap_or(false) {
         Some(vec![
             ActorMessageStatus::Pending,
@@ -381,7 +431,7 @@ async fn tool_actor_inbox<S: ActorMailboxService>(
     let response = actor_inbox_with_auto_ack(
         service,
         ActorInboxRequest {
-            run_id: context.run_id.clone(),
+            run_id,
             actor_id: context.actor_id.clone(),
             cursor: args.cursor,
             limit: Some(limit),
@@ -407,9 +457,13 @@ async fn tool_actor_ack<S: ActorMailboxService>(
         Ok(args) => args,
         Err(err) => return tool_result_error(err, None),
     };
+    let run_id = match resolve_tool_run_id(args.run_id, context.current_run_id.as_deref()) {
+        Ok(run_id) => run_id,
+        Err(err) => return tool_result_error(err, None),
+    };
     let response = service
         .actor_ack(ActorAckRequest {
-            run_id: context.run_id.clone(),
+            run_id,
             actor_id: context.actor_id.clone(),
             message_id: args.message_id,
             ack_token: None,
@@ -449,6 +503,10 @@ async fn tool_actor_send<S: ActorMailboxService>(
         Err(err) => return tool_result_error(err.to_string(), None),
     };
     let route = args.route;
+    let run_id = match resolve_tool_run_id(args.run_id, context.current_run_id.as_deref()) {
+        Ok(run_id) => run_id,
+        Err(err) => return tool_result_error(err, None),
+    };
     if transport == ActorMessageTransport::Remote && route.is_none() {
         return tool_result_error("route is required for remote transport", None);
     }
@@ -464,7 +522,7 @@ async fn tool_actor_send<S: ActorMailboxService>(
         ACTOR_MAIN_PEER_ID
     };
     let idempotency_key = match resolve_idempotency_key(ResolveIdempotencyKeyInput {
-        run_id: &context.run_id,
+        run_id: &run_id,
         from_actor_id: &context.actor_id,
         from_peer_id: ACTOR_MAIN_PEER_ID,
         to_actor_id: &to_actor_id,
@@ -481,7 +539,7 @@ async fn tool_actor_send<S: ActorMailboxService>(
     };
     let response = service
         .actor_send(ActorSendRequest {
-            run_id: context.run_id.clone(),
+            run_id,
             from_actor_id: context.actor_id.clone(),
             from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
             to_actor_id,
@@ -505,9 +563,22 @@ async fn tool_actor_send<S: ActorMailboxService>(
     }
 }
 
-async fn tool_team_members(manager: &TeamManager, context: &ActorMcpContext) -> Value {
-    match manager.describe_run_members(&context.run_id).await {
+async fn tool_team_members(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamMembersToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let run_id = match resolve_tool_run_id(args.run_id, context.current_run_id.as_deref()) {
+        Ok(run_id) => run_id,
+        Err(err) => return tool_result_error(err, None),
+    };
+    match manager.describe_run_members(&run_id).await {
         Ok(roster) => tool_result_success(json!({
+            "current_team_id": context.team_id,
             "team_id": roster.team_id,
             "team_name": roster.team_name,
             "run_id": roster.run_id,
@@ -544,7 +615,7 @@ async fn handle_tool_call<S: ActorMailboxService>(
         "actor_inbox" => tool_actor_inbox(service, context, arguments).await,
         "actor_ack" => tool_actor_ack(service, context, arguments).await,
         "actor_send" => tool_actor_send(service, context, arguments).await,
-        "team_members" => tool_team_members(manager, context).await,
+        "team_members" => tool_team_members(manager, context, arguments).await,
         other => tool_result_error(format!("unknown tool: {}", other), None),
     };
     Ok(result)
@@ -724,7 +795,11 @@ mod tests {
     #[test]
     fn parse_actor_mcp_context_uses_env_fallback() {
         let env = [
-            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (ACTOR_RUNTIME_TEAM_ID_ENV.to_string(), "team-x".to_string()),
+            (
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
+                "run-x".to_string(),
+            ),
             (
                 ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
                 "planner".to_string(),
@@ -735,7 +810,8 @@ mod tests {
         .collect::<std::collections::HashMap<_, _>>();
         let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
             .expect("parse actor mcp context");
-        assert_eq!(context.run_id, "run-x");
+        assert_eq!(context.team_id.as_deref(), Some("team-x"));
+        assert_eq!(context.current_run_id.as_deref(), Some("run-x"));
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.default_channel, "coord");
     }
@@ -743,7 +819,10 @@ mod tests {
     #[test]
     fn parse_actor_mcp_context_uses_agent_id_env_alias() {
         let env = [
-            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
+                "run-x".to_string(),
+            ),
             (
                 ACTOR_RUNTIME_AGENT_ID_ENV.to_string(),
                 "planner-agent".to_string(),
@@ -759,6 +838,8 @@ mod tests {
     #[test]
     fn parse_actor_mcp_context_accepts_agent_id_flag() {
         let args = vec![
+            "--team-id".to_string(),
+            "team-flag".to_string(),
             "--run-id".to_string(),
             "run-flag".to_string(),
             "--agent-id".to_string(),
@@ -766,15 +847,17 @@ mod tests {
         ];
         let context =
             parse_actor_mcp_context_with_env(&args, |_| None).expect("parse actor mcp context");
-        assert_eq!(context.run_id, "run-flag");
+        assert_eq!(context.team_id.as_deref(), Some("team-flag"));
+        assert_eq!(context.current_run_id.as_deref(), Some("run-flag"));
         assert_eq!(context.actor_id, "planner-agent");
     }
 
     #[test]
-    fn parse_actor_mcp_context_requires_run_id_without_env_fallback() {
-        let err = parse_actor_mcp_context_with_env(&[], |_| None).expect_err("run_id is required");
+    fn parse_actor_mcp_context_requires_actor_id_without_env_fallback() {
+        let err =
+            parse_actor_mcp_context_with_env(&[], |_| None).expect_err("actor_id is required");
         assert!(
-            err.to_string().contains("run_id is required"),
+            err.to_string().contains("actor_id is required"),
             "unexpected error: {err}"
         );
     }
@@ -782,7 +865,10 @@ mod tests {
     #[test]
     fn parse_actor_mcp_context_defaults_channel_when_missing() {
         let env = [
-            (ACTOR_RUNTIME_RUN_ID_ENV.to_string(), "run-x".to_string()),
+            (
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
+                "run-x".to_string(),
+            ),
             (
                 ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
                 "planner".to_string(),
@@ -835,6 +921,22 @@ mod tests {
         })
         .expect_err("allow_duplicate and explicit key should conflict");
         assert!(err.contains("allow_duplicate"));
+    }
+
+    #[test]
+    fn resolve_tool_run_id_prefers_explicit_then_current_context() {
+        assert_eq!(
+            resolve_tool_run_id(Some("run-explicit".to_string()), Some("run-current"))
+                .expect("resolve explicit"),
+            "run-explicit"
+        );
+        assert_eq!(
+            resolve_tool_run_id(None, Some("run-current")).expect("resolve current"),
+            "run-current"
+        );
+        let err = resolve_tool_run_id(Some("   ".to_string()), Some("   "))
+            .expect_err("run_id should be required");
+        assert!(err.contains("run_id is required"));
     }
 
     #[test]
@@ -957,7 +1059,8 @@ mod tests {
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
         let context = ActorMcpContext {
-            run_id: run.id,
+            team_id: Some(team.id),
+            current_run_id: Some(run.id),
             actor_id: "planner".to_string(),
             default_channel: "default".to_string(),
         };
@@ -1011,7 +1114,8 @@ mod tests {
 
         let mut planner_initialized = false;
         let planner_context = ActorMcpContext {
-            run_id: run.id.clone(),
+            team_id: Some(team.id.clone()),
+            current_run_id: Some(run.id.clone()),
             actor_id: "planner".to_string(),
             default_channel: "coordination".to_string(),
         };
@@ -1078,7 +1182,8 @@ mod tests {
         assert!(message_id > 0);
 
         let reviewer_context = ActorMcpContext {
-            run_id: run.id,
+            team_id: Some(team.id),
+            current_run_id: Some(run.id),
             actor_id: "reviewer".to_string(),
             default_channel: "coordination".to_string(),
         };
@@ -1202,7 +1307,7 @@ mod tests {
 
         sqlx::query(
             r#"
-            INSERT INTO agents (
+            INSERT OR REPLACE INTO agents (
                 id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
@@ -1223,7 +1328,7 @@ mod tests {
 
         sqlx::query(
             r#"
-            INSERT INTO agents (
+            INSERT OR REPLACE INTO agents (
                 id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, ?7, ?8, ?9)
@@ -1275,15 +1380,13 @@ mod tests {
             .start_step(&leader_step.id, Some("session-leader"))
             .await
             .expect("start leader step");
-        state
-            .teams
-            .bind_run_member_session(&run.id, "worker", "session-worker")
-            .await
-            .expect("bind worker session");
 
+        let team_id = team.id.clone();
+        let run_id = run.id.clone();
         let service = state.teams.actor_mailbox_service();
         let context = ActorMcpContext {
-            run_id: run.id,
+            team_id: Some(team_id.clone()),
+            current_run_id: Some(run_id),
             actor_id: "leader".to_string(),
             default_channel: "coordination".to_string(),
         };
@@ -1314,7 +1417,7 @@ mod tests {
         .await;
 
         assert_eq!(response["result"]["isError"], false, "{response}");
-        assert_eq!(response["result"]["structuredContent"]["team_id"], team.id);
+        assert_eq!(response["result"]["structuredContent"]["team_id"], team_id);
         let members = response["result"]["structuredContent"]["members"]
             .as_array()
             .expect("members array");

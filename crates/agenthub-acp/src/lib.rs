@@ -41,6 +41,8 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACTOR_MAILBOX_MCP_SERVER_NAME: &str = "agenthub-actor-mailbox";
+const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
+const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
@@ -56,7 +58,8 @@ pub struct AcpActorContinuityEnvelope {
 
 #[derive(Debug, Clone)]
 pub struct AcpActorSkillContext {
-    pub run_id: String,
+    pub team_id: Option<String>,
+    pub current_run_id: Option<String>,
     pub actor_id: String,
     pub default_channel: String,
     pub actor_cli_path: String,
@@ -222,8 +225,7 @@ fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
 }
 
 fn build_actor_mailbox_mcp_server(context: &AcpActorSkillContext) -> McpServer {
-    let env = vec![
-        EnvVariable::new(ACTOR_RUNTIME_RUN_ID_ENV.to_string(), context.run_id.clone()),
+    let mut env = vec![
         EnvVariable::new(
             ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
             context.actor_id.clone(),
@@ -233,15 +235,58 @@ fn build_actor_mailbox_mcp_server(context: &AcpActorSkillContext) -> McpServer {
             context.default_channel.clone(),
         ),
     ];
-    let args = vec![
+    if let Some(team_id) = context
+        .team_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        env.push(EnvVariable::new(
+            ACTOR_RUNTIME_TEAM_ID_ENV.to_string(),
+            team_id.to_string(),
+        ));
+    }
+    if let Some(run_id) = context
+        .current_run_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        env.push(EnvVariable::new(
+            ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
+            run_id.to_string(),
+        ));
+        // Compatibility fallback for existing actor tooling that still reads the legacy env key.
+        env.push(EnvVariable::new(
+            ACTOR_RUNTIME_RUN_ID_ENV.to_string(),
+            run_id.to_string(),
+        ));
+    }
+    let mut args = vec![
         "actor-mcp".to_string(),
-        "--run-id".to_string(),
-        context.run_id.clone(),
         "--actor-id".to_string(),
         context.actor_id.clone(),
         "--channel".to_string(),
         context.default_channel.clone(),
     ];
+    if let Some(team_id) = context
+        .team_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        args.push("--team-id".to_string());
+        args.push(team_id.to_string());
+    }
+    if let Some(run_id) = context
+        .current_run_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        args.push("--run-id".to_string());
+        args.push(run_id.to_string());
+    }
     let server = McpServerStdio::new(
         ACTOR_MAILBOX_MCP_SERVER_NAME.to_string(),
         PathBuf::from(context.actor_cli_path.clone()),
@@ -743,7 +788,8 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
             let has_actor_mailbox_mcp = mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
             tracing::info!(
-                run_id = %ctx.run_id,
+                team_id = %ctx.team_id.as_deref().unwrap_or("none"),
+                current_run_id = %ctx.current_run_id.as_deref().unwrap_or("none"),
                 actor_id = %ctx.actor_id,
                 member_role = %ctx.member_role.as_deref().unwrap_or("none"),
                 attached_team_role_skills,
@@ -1361,7 +1407,8 @@ mod tests {
 
     fn test_actor_context() -> AcpActorSkillContext {
         AcpActorSkillContext {
-            run_id: "run-1".to_string(),
+            team_id: Some("team-1".to_string()),
+            current_run_id: Some("run-1".to_string()),
             actor_id: "leader".to_string(),
             default_channel: "coordination".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),

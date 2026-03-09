@@ -10,11 +10,11 @@ The Team runtime originally treated `remote_task_id` as a generic external-execu
 - the returned `session_id` is written into `team_steps.remote_task_id`;
 - later reconciliation and step transitions use that value as the running session handle.
 
-With eager member startup, the mismatch is even clearer:
+After rolling back the run-scoped eager-startup experiment, the mismatch is still clear:
 
-- `team_steps.remote_task_id` now only represents the session bound to the actively dispatched step;
-- run-scoped member startup/session visibility lives in `team_run_member_sessions`;
-- the legacy field name no longer describes what the value actually means.
+- `team_steps.remote_task_id` only represents the runtime handle bound to the actively dispatched step;
+- Team member session ownership is being moved away from run state;
+- the legacy field name still does not describe what the value actually means.
 
 ## Why Not Rename Immediately
 
@@ -58,6 +58,6 @@ Recommended compatibility-safe rollout:
 When the rename work is implemented, validate at least:
 
 - Team step lifecycle APIs still start/reconcile/complete steps correctly;
-- eager member startup still keeps run-scoped session bindings distinct from step-level runtime handles;
+- Team member-scoped runtime lifecycle stays distinct from step-level runtime handles;
 - OpenAPI and internal proto payloads remain compatible during the transition window;
 - `/api/teams/:id/runs/:run_id/snapshot` and router tests preserve stable behavior.

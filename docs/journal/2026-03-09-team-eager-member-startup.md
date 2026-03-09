@@ -2,6 +2,8 @@
 
 Added run-scoped eager member session startup so leader and worker sessions come up when a Team run starts, while the step dependency graph still controls execution order.
 
+Superseded by `docs/journal/2026-03-09-team-member-runtime-model-reset.md`. The eager run-scoped session model was later rolled back after clarifying that Team member sessions should be persistent member runtimes rather than run-owned state.
+
 ## Why
 
 `team_members` can now expose live roster and identity-card state, but the previous runtime model still only started the leader session when `leader_plan` became ready. Worker sessions stayed offline until their dependent steps were dispatched, which meant:

@@ -130,7 +130,8 @@ mod tests {
 
     fn context_with_role(role: Option<&str>) -> AcpActorSkillContext {
         AcpActorSkillContext {
-            run_id: "run-1".to_string(),
+            team_id: Some("team-1".to_string()),
+            current_run_id: Some("run-1".to_string()),
             actor_id: "actor-1".to_string(),
             default_channel: "default".to_string(),
             actor_cli_path: "/tmp/agenthub".to_string(),

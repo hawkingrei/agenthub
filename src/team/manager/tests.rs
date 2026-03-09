@@ -97,24 +97,6 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
-        CREATE TABLE team_run_member_sessions (
-            run_id TEXT NOT NULL,
-            member_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            PRIMARY KEY (run_id, member_id),
-            FOREIGN KEY(run_id) REFERENCES team_runs(id),
-            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .expect("create team_run_member_sessions");
-
-    sqlx::query(
-        r#"
         CREATE TABLE team_run_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -2827,10 +2809,6 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
     .execute(&db)
     .await
     .expect("insert worker session");
-    manager
-        .bind_run_member_session(&run.id, "worker", "session-worker")
-        .await
-        .expect("bind worker eager session");
 
     let roster = manager
         .describe_run_members(&run.id)

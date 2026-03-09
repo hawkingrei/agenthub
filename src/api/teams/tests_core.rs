@@ -83,7 +83,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
 
     sqlx::query(
         r#"
-        INSERT INTO agents (
+        INSERT OR REPLACE INTO agents (
             id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
             code_mode, status, created_at, updated_at
         )
@@ -93,7 +93,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .bind(member_agent_id)
     .bind("planner-agent")
     .bind("/tmp")
-    .bind("/bin/sh")
+    .bind("/usr/bin/env")
     .bind("[]")
     .bind("use_existing")
     .bind("running")
@@ -280,6 +280,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
         .await
         .expect("delete team");
     assert_eq!(deleted.id, team.id);
+    drop(member_event_db);
 
     let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
@@ -356,8 +357,10 @@ async fn teams_api_delete_team_cascades_related_run_data() {
         .agents
         .test_event_pool_for_agent(member_agent_id)
         .await
-        .expect("open member event db");
-    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events")
+        .expect("reopen member event db");
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id = ?1")
+            .bind(&session_id)
         .fetch_one(&member_event_db)
         .await
         .expect("count member events");
@@ -370,6 +373,188 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .await
             .expect("count permission requests");
     assert_eq!(permission_count, 0);
+}
+
+#[tokio::test]
+async fn teams_api_create_team_auto_starts_member_runtime() {
+    let state = build_test_state().await;
+    configure_worker_team_member_agent(&state, "reviewer").await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "auto-start-team".to_string(),
+            description: Some("auto start runtime".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let session_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id IN ('planner', 'reviewer')",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("count auto-started member sessions");
+    assert_eq!(session_count, 2);
+
+    let failed_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agents WHERE id IN ('planner', 'reviewer') AND status = 'failed'")
+            .fetch_one(&state.db)
+            .await
+            .expect("count failed member agents");
+    assert_eq!(failed_count, 0);
+
+    let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("delete team");
+    assert_eq!(deleted.id, team.id);
+}
+
+#[tokio::test]
+async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
+    let state = build_test_state().await;
+    configure_worker_team_member_agent(&state, "reviewer").await;
+    let actor_cli_path = default_actor_cli_path().expect("resolve actor cli path");
+
+    let planner_session = state
+        .agents
+        .start_agent_with_actor_context(
+            "planner",
+            Some(AcpActorSkillContext {
+                team_id: Some("team-runtime-startup".to_string()),
+                current_run_id: None,
+                actor_id: "planner".to_string(),
+                default_channel: "default".to_string(),
+                actor_cli_path: actor_cli_path.clone(),
+                member_role: Some("leader".to_string()),
+                member_skills: Vec::new(),
+                continuity: None,
+            }),
+        )
+        .await
+        .expect("start planner runtime");
+
+    let reviewer_session = state
+        .agents
+        .start_agent_with_actor_context(
+            "reviewer",
+            Some(AcpActorSkillContext {
+                team_id: Some("team-runtime-startup".to_string()),
+                current_run_id: None,
+                actor_id: "reviewer".to_string(),
+                default_channel: "default".to_string(),
+                actor_cli_path,
+                member_role: Some("worker".to_string()),
+                member_skills: Vec::new(),
+                continuity: None,
+            }),
+        )
+        .await
+        .expect("start reviewer runtime");
+
+    assert!(!planner_session.is_empty());
+    assert!(!reviewer_session.is_empty());
+
+    let _ = state.agents.stop_agent("planner").await;
+    let _ = state.agents.stop_agent("reviewer").await;
+}
+
+#[tokio::test]
+async fn teams_api_start_and_stop_team_runtime() {
+    let state = build_test_state().await;
+    configure_worker_team_member_agent(&state, "reviewer").await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "team-runtime-control".to_string(),
+            description: Some("start stop runtime".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(stopped) = stop_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("stop team");
+    assert_eq!(stopped.team_id, team.id);
+    assert_eq!(stopped.status, "stopped");
+    assert!(
+        state
+            .agents
+            .running_session_id_for_agent("planner")
+            .await
+            .is_none()
+    );
+    assert!(
+        state
+            .agents
+            .running_session_id_for_agent("reviewer")
+            .await
+            .is_none()
+    );
+
+    let Json(started) = start_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("start team");
+    assert_eq!(started.team_id, team.id);
+    assert_eq!(started.status, "running");
+    assert_eq!(started.members.len(), 2);
+    assert!(
+        started
+            .members
+            .iter()
+            .all(|member| matches!(member.action.as_str(), "started" | "reused"))
+    );
+    let restarted_session_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_sessions WHERE agent_id IN ('planner', 'reviewer')",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("count restarted member sessions");
+    assert!(restarted_session_count >= 4);
+
+    let Json(stopped_again) = stop_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+        .await
+        .expect("stop team again");
+    assert_eq!(stopped_again.status, "stopped");
+    assert!(stopped_again.members.len() <= 2);
+
+    let Json(deleted) = delete_team(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("delete team");
+    assert_eq!(deleted.id, team.id);
 }
 
 #[tokio::test]
@@ -878,7 +1063,7 @@ async fn team_runs_api_supports_manual_context_flush() {
 
     sqlx::query(
         r#"
-        INSERT INTO agents (
+        INSERT OR REPLACE INTO agents (
             id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
             code_mode, status, created_at, updated_at
         )
@@ -888,7 +1073,7 @@ async fn team_runs_api_supports_manual_context_flush() {
     .bind("executor")
     .bind("executor-agent")
     .bind("/tmp")
-    .bind("/bin/sh")
+    .bind("/usr/bin/env")
     .bind("[]")
     .bind("use_existing")
     .bind("running")
@@ -3139,7 +3324,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     let now = Utc::now().timestamp();
     sqlx::query(
         r#"
-        INSERT INTO agents (
+        INSERT OR REPLACE INTO agents (
             id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
         )
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
@@ -3148,7 +3333,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     .bind("leader-agent")
     .bind("leader-agent")
     .bind("/tmp")
-    .bind("/bin/sh")
+    .bind("/usr/bin/env")
     .bind("[]")
     .bind("use_existing")
     .bind("running")
@@ -3160,7 +3345,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 
     sqlx::query(
         r#"
-        INSERT INTO agents (
+        INSERT OR REPLACE INTO agents (
             id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
         )
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
@@ -3169,7 +3354,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     .bind("worker-agent")
     .bind("worker-agent")
     .bind("/tmp")
-    .bind("/bin/sh")
+    .bind("/usr/bin/env")
     .bind("[]")
     .bind("create_worktree")
     .bind("idle")
@@ -3206,20 +3391,6 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     .execute(&state.db)
     .await
     .expect("insert worker session for snapshot");
-
-    sqlx::query(
-        r#"
-        INSERT INTO team_run_member_sessions (run_id, member_id, session_id, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?4)
-        "#,
-    )
-    .bind(&run.id)
-    .bind("worker-agent")
-    .bind("session-worker-1")
-    .bind(now)
-    .execute(&state.db)
-    .await
-    .expect("bind worker session for snapshot");
 
     let Json(_message) = send_team_run_message(
         State(state.clone()),

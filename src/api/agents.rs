@@ -71,7 +71,8 @@ pub struct StartAgentRequest {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct StartAgentActorRuntimeRequest {
-    pub run_id: String,
+    pub team_id: Option<String>,
+    pub run_id: Option<String>,
     pub actor_id: String,
     pub member_role: Option<String>,
     pub channel: Option<String>,
@@ -645,9 +646,22 @@ fn parse_start_actor_runtime_context(
         return Ok(None);
     };
 
-    let run_id = actor_runtime.run_id.trim();
-    if run_id.is_empty() {
-        return Err(ApiError::bad_request("actor_runtime.run_id is required"));
+    let team_id = actor_runtime
+        .team_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let current_run_id = actor_runtime
+        .run_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if team_id.is_none() && current_run_id.is_none() {
+        return Err(ApiError::bad_request(
+            "actor_runtime.team_id or actor_runtime.run_id is required",
+        ));
     }
     let actor_id = actor_runtime.actor_id.trim();
     if actor_id.is_empty() {
@@ -667,7 +681,8 @@ fn parse_start_actor_runtime_context(
     };
 
     Ok(Some(AcpActorSkillContext {
-        run_id: run_id.to_string(),
+        team_id,
+        current_run_id,
         actor_id: actor_id.to_string(),
         default_channel,
         actor_cli_path,
@@ -689,6 +704,7 @@ mod tests {
 
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
+    use axum::response::IntoResponse;
     use serde_json::{Value, json};
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -889,7 +905,8 @@ mod tests {
         let default_cli = default_actor_cli_path().expect("default actor cli path");
         let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
-                run_id: "run-7".to_string(),
+                team_id: Some("team-7".to_string()),
+                run_id: Some("run-7".to_string()),
                 actor_id: "planner".to_string(),
                 member_role: Some("leader".to_string()),
                 channel: Some("coordination".to_string()),
@@ -898,7 +915,8 @@ mod tests {
         }))
         .expect("parse actor runtime context")
         .expect("context");
-        assert_eq!(context.run_id, "run-7");
+        assert_eq!(context.team_id.as_deref(), Some("team-7"));
+        assert_eq!(context.current_run_id.as_deref(), Some("run-7"));
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.member_role.as_deref(), Some("leader"));
         assert_eq!(context.default_channel, "coordination");
@@ -909,7 +927,8 @@ mod tests {
     fn parse_start_actor_runtime_context_defaults_channel_and_cli_path() {
         let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
-                run_id: "run-9".to_string(),
+                team_id: Some("team-9".to_string()),
+                run_id: Some("run-9".to_string()),
                 actor_id: "planner".to_string(),
                 member_role: None,
                 channel: None,
@@ -927,21 +946,28 @@ mod tests {
 
     #[test]
     fn parse_start_actor_runtime_context_rejects_blank_required_fields() {
-        let run_id_err = parse_start_actor_runtime_context(Some(StartAgentRequest {
+        let scope_err = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
-                run_id: " ".to_string(),
+                team_id: Some(" ".to_string()),
+                run_id: Some(" ".to_string()),
                 actor_id: "planner".to_string(),
                 member_role: None,
                 channel: None,
                 actor_cli_path: None,
             }),
         }))
-        .expect_err("run_id should be required");
-        let _ = run_id_err;
+        .expect_err("team_id or run_id should be required");
+        assert!(
+            scope_err
+                .into_response()
+                .status()
+                .eq(&axum::http::StatusCode::BAD_REQUEST)
+        );
 
         let actor_id_err = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
-                run_id: "run-2".to_string(),
+                team_id: Some("team-2".to_string()),
+                run_id: Some("run-2".to_string()),
                 actor_id: " ".to_string(),
                 member_role: None,
                 channel: None,
@@ -956,7 +982,8 @@ mod tests {
     fn parse_start_actor_runtime_context_rejects_untrusted_actor_cli_path() {
         let err = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
-                run_id: "run-10".to_string(),
+                team_id: Some("team-10".to_string()),
+                run_id: Some("run-10".to_string()),
                 actor_id: "planner".to_string(),
                 member_role: None,
                 channel: None,
