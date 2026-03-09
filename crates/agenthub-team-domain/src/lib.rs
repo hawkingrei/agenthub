@@ -148,6 +148,11 @@ pub struct TeamStepRecord {
     pub run_id: String,
     pub step_key: String,
     pub member_id: String,
+    /// Runtime executor handle for this step.
+    ///
+    /// In the current ACP-backed implementation this stores the member agent
+    /// session id. The field name is legacy and is kept for compatibility with
+    /// existing DB/API/proto payloads until a broader rename can be rolled out.
     pub remote_task_id: Option<String>,
     pub status: TeamStepStatus,
     pub attempt: i64,

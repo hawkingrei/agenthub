@@ -202,6 +202,11 @@ pub struct SubmitTeamRunStepRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct StartTeamRunStepRequest {
+    /// Runtime executor handle supplied by external orchestrators.
+    ///
+    /// In the current implementation this is typically the member agent
+    /// session id. The request field keeps the legacy `remote_task_id` name for
+    /// wire compatibility.
     pub remote_task_id: Option<String>,
 }
 
