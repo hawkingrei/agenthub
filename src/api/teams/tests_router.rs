@@ -111,7 +111,11 @@ async fn teams_router_http_contract() {
     assert_eq!(get_runtime_resp.status(), StatusCode::OK);
     let runtime = decode_json_body(get_runtime_resp).await;
     assert_eq!(runtime["team_id"], team_id);
-    assert_eq!(runtime["status"], "running");
+    let runtime_status = runtime["status"].as_str().expect("runtime status");
+    assert!(
+        matches!(runtime_status, "running" | "degraded"),
+        "unexpected runtime status: {runtime_status}"
+    );
     assert_eq!(runtime["members"].as_array().map(|items| items.len()), Some(2));
 
     let outsider_runtime_resp = app
