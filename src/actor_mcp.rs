@@ -63,6 +63,7 @@ struct ActorSendToolArgs {
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct TeamMembersToolArgs {
+    team_id: Option<String>,
     run_id: Option<String>,
 }
 
@@ -249,11 +250,12 @@ fn actor_tools() -> Vec<Value> {
         }),
         json!({
             "name": "team_members",
-            "description": "List current team members, identity-card descriptions, and run step/session status for one run overlay.",
+            "description": "Return current team runtime summary, member roster/card details, and optional run step overlay.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
                     "run_id": { "type": "string", "minLength": 1 }
                 }
             }
@@ -572,18 +574,16 @@ async fn tool_team_members(
         Ok(args) => args,
         Err(err) => return tool_result_error(err, None),
     };
-    let run_id = match resolve_tool_run_id(args.run_id, context.current_run_id.as_deref()) {
-        Ok(run_id) => run_id,
-        Err(err) => return tool_result_error(err, None),
-    };
-    match manager.describe_run_members(&run_id).await {
-        Ok(roster) => tool_result_success(json!({
-            "current_team_id": context.team_id,
-            "team_id": roster.team_id,
-            "team_name": roster.team_name,
-            "run_id": roster.run_id,
-            "members": roster.members,
-        })),
+    let team_id = take_optional(args.team_id).or_else(|| context.team_id.clone());
+    let run_id = take_optional(args.run_id).or_else(|| context.current_run_id.clone());
+    if team_id.is_none() && run_id.is_none() {
+        return tool_result_error("team_id or run_id is required for this tool call", None);
+    }
+    match manager
+        .describe_team_context(team_id.as_deref(), run_id.as_deref())
+        .await
+    {
+        Ok(team_context) => tool_result_success(json!(team_context)),
         Err(err) => tool_result_error(format!("team_members failed: {err}"), None),
     }
 }
@@ -666,7 +666,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                         "title": "AgentHub Actor Mailbox",
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "instructions": "Use actor_inbox / actor_ack / actor_send for actor mailbox coordination."
+                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, and team_members for Team runtime context."
                 }),
             )
         }
@@ -1418,6 +1418,22 @@ mod tests {
 
         assert_eq!(response["result"]["isError"], false, "{response}");
         assert_eq!(response["result"]["structuredContent"]["team_id"], team_id);
+        assert_eq!(
+            response["result"]["structuredContent"]["runtime"]["status"],
+            "running"
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["runtime"]["online_count"],
+            2
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["runtime"]["member_count"],
+            2
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["run"]["run_id"],
+            run.id
+        );
         let members = response["result"]["structuredContent"]["members"]
             .as_array()
             .expect("members array");
@@ -1432,5 +1448,107 @@ mod tests {
         assert_eq!(members[1]["session_id"], "session-worker");
         assert_eq!(members[1]["session_status"], "running");
         assert_eq!(members[1]["steps"][0]["status"], "submitted");
+    }
+
+    #[tokio::test]
+    async fn jsonrpc_team_members_supports_runtime_only_context_without_run_overlay() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-runtime-{}", Uuid::new_v4()),
+                description: Some("actor mcp team runtime".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader","description":"Lead planner"},
+                        {"member_id":"worker","role":"worker","description":"Implements patches"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+            "#,
+        )
+        .bind("leader")
+        .bind("Leader Agent")
+        .bind("/tmp/leader-runtime-only")
+        .bind("codex")
+        .bind("[]")
+        .bind("use_existing")
+        .bind("running")
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert leader agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, NULL)
+            "#,
+        )
+        .bind("session-leader-runtime-only")
+        .bind("leader")
+        .bind("running")
+        .bind(1_i64)
+        .execute(&state.db)
+        .await
+        .expect("insert leader session");
+
+        let service = state.teams.actor_mailbox_service();
+        let context = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+        let mut initialized = false;
+        let _ = handle_jsonrpc_request(
+            &service,
+            &state.teams,
+            &context,
+            &mut initialized,
+            "initialize",
+            json!(1),
+            Some(&json!({"protocolVersion":"2025-03-26"})),
+        )
+        .await;
+
+        let response = handle_jsonrpc_request(
+            &service,
+            &state.teams,
+            &context,
+            &mut initialized,
+            "tools/call",
+            json!(2),
+            Some(&json!({
+                "name":"team_members",
+                "arguments":{}
+            })),
+        )
+        .await;
+
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        assert_eq!(response["result"]["structuredContent"]["team_id"], team.id);
+        assert_eq!(response["result"]["structuredContent"]["runtime"]["status"], "degraded");
+        assert_eq!(response["result"]["structuredContent"]["runtime"]["online_count"], 1);
+        assert!(response["result"]["structuredContent"]["run"].is_null());
+        let members = response["result"]["structuredContent"]["members"]
+            .as_array()
+            .expect("members array");
+        assert_eq!(members.len(), 2);
+        assert!(members[0]["steps"]
+            .as_array()
+            .expect("leader steps array")
+            .is_empty());
     }
 }

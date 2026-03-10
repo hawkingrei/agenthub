@@ -1,4 +1,4 @@
-.PHONY: build-web run run-web build test lint lint-web proto-gen proto-check
+.PHONY: build-web run run-server run-web build test lint lint-web proto-gen proto-check
 .PHONY: bazel-rust bazel-ci
 .PHONY: reset
 
@@ -11,9 +11,11 @@ build-web:
 build:
 	cargo build
 
-run: build-web
+run: run-server
+
+run-server: build-web
 	cargo build --workspace
-	cargo run
+	cargo run --
 
 test:
 	cargo test

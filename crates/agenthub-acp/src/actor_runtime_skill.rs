@@ -31,6 +31,8 @@ You are running inside an AgentHub actor session.
 
 Use MCP native actor mailbox tools (do not shell out to CLI):
 
+Team mailbox tools:
+
 1. Pull inbox:
    `actor_inbox` with `{{"run_id":"<run-id>","limit": 20}}`
 2. Acknowledge a message after processing:
@@ -43,14 +45,20 @@ Use MCP native actor mailbox tools (do not shell out to CLI):
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","allow_duplicate":true,"payload":{{"text":"..."}}}}`
 6. Use explicit idempotency key when coordinating retries across workers:
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","idempotency_key":"stable-key","payload":{{"text":"..."}}}}`
-7. Inspect the live team roster, member descriptions, and current step/session status:
+
+Team context tool:
+
+7. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
+   `team_members` with `{{}}`
+8. When you need step-level overlay for a specific run:
    `team_members` with `{{"run_id":"<run-id>"}}`
 
 Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
 - In each turn, the first mailbox action must be `actor_inbox` before planning/coding.
-- Before routing work based on teammate assumptions, inspect the live roster with `team_members`.
+- Before routing work based on teammate assumptions, inspect `team_members`.
+- Treat `team_members` as the single Team context snapshot tool: it returns runtime summary, roster/card data, and optional run overlay.
 - Treat `current_run_id` as a convenience default only; pass `run_id` explicitly whenever you are operating on a different run.
 - If inbox has pending items, process and `actor_ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
@@ -130,6 +138,11 @@ mod tests {
         assert!(skill.instructions.contains("actor_ack"));
         assert!(skill.instructions.contains("actor_send"));
         assert!(skill.instructions.contains("team_members"));
+        assert!(
+            skill
+                .instructions
+                .contains("single Team context snapshot tool")
+        );
         assert!(skill.instructions.contains("\"run_id\":\"<run-id>\""));
         assert!(!skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
     }

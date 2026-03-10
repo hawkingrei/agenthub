@@ -16,7 +16,8 @@ const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 enum ActorCommand {
     Help,
     TeamMembers {
-        run_id: String,
+        team_id: Option<String>,
+        run_id: Option<String>,
     },
     Inbox {
         run_id: String,
@@ -44,7 +45,7 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor team-members [--run-id <run_id>]\n  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_RUN_ID_ENV,
@@ -108,16 +109,29 @@ fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
     )
 }
 
+fn take_team_id(value: Option<String>) -> Option<String> {
+    take_optional(value).or_else(|| normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV))
+}
+
 fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
     let sub = args
         .first()
         .ok_or_else(|| anyhow::anyhow!("missing actor subcommand\n{}", actor_usage()))?;
     match sub.as_str() {
         "team-members" => {
+            let mut team_id = None;
             let mut run_id = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--team-id" => {
+                        idx += 1;
+                        team_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                        );
+                    }
                     "--run-id" => {
                         idx += 1;
                         run_id = Some(
@@ -132,9 +146,16 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 }
                 idx += 1;
             }
-            Ok(ActorCommand::TeamMembers {
-                run_id: take_run_id(run_id)?,
-            })
+            let team_id = take_team_id(team_id);
+            let run_id = take_optional(run_id)
+                .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV))
+                .or_else(|| normalized_env_var(ACTOR_RUNTIME_RUN_ID_ENV));
+            if team_id.is_none() && run_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-members requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
+            Ok(ActorCommand::TeamMembers { team_id, run_id })
         }
         "inbox" => {
             let mut run_id = None;
@@ -428,11 +449,13 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
         ActorCommand::Help => {
             println!("{}", actor_usage());
         }
-        ActorCommand::TeamMembers { run_id } => {
+        ActorCommand::TeamMembers { team_id, run_id } => {
             let db = crate::db::init_db().await?;
             let manager = TeamManager::new(db);
-            let roster = manager.describe_run_members(&run_id).await?;
-            println!("{}", serde_json::to_string(&roster)?);
+            let team_context = manager
+                .describe_team_context(team_id.as_deref(), run_id.as_deref())
+                .await?;
+            println!("{}", serde_json::to_string(&team_context)?);
         }
         ActorCommand::Inbox {
             run_id,
@@ -584,20 +607,24 @@ mod tests {
     #[test]
     fn parse_team_members_uses_env_fallback() {
         let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
         unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-members-team");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-team-members");
             std::env::remove_var(ACTOR_RUNTIME_RUN_ID_ENV);
         }
         let args = vec!["team-members".to_string()];
         let parsed = parse_actor_command(&args).expect("parse team-members");
         match parsed {
-            ActorCommand::TeamMembers { run_id } => {
-                assert_eq!(run_id, "run-team-members");
+            ActorCommand::TeamMembers { team_id, run_id } => {
+                assert_eq!(team_id.as_deref(), Some("team-members-team"));
+                assert_eq!(run_id.as_deref(), Some("run-team-members"));
             }
             _ => panic!("expected team-members command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
     }
@@ -611,8 +638,26 @@ mod tests {
         ];
         let parsed = parse_actor_command(&args).expect("parse team-members");
         match parsed {
-            ActorCommand::TeamMembers { run_id } => {
-                assert_eq!(run_id, "run-explicit");
+            ActorCommand::TeamMembers { team_id, run_id } => {
+                assert!(team_id.is_none());
+                assert_eq!(run_id.as_deref(), Some("run-explicit"));
+            }
+            _ => panic!("expected team-members command"),
+        }
+    }
+
+    #[test]
+    fn parse_team_members_accepts_team_id_flag_without_run() {
+        let args = vec![
+            "team-members".to_string(),
+            "--team-id".to_string(),
+            "team-explicit".to_string(),
+        ];
+        let parsed = parse_actor_command(&args).expect("parse team-members");
+        match parsed {
+            ActorCommand::TeamMembers { team_id, run_id } => {
+                assert_eq!(team_id.as_deref(), Some("team-explicit"));
+                assert!(run_id.is_none());
             }
             _ => panic!("expected team-members command"),
         }

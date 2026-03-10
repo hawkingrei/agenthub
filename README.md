@@ -55,12 +55,20 @@ cd web
 npm ci
 npm run build
 
-# 2) Run AgentHub
+# 2) Run AgentHub server
 cd ..
-cargo run
+make run
 ```
 
 Default UI address: `http://localhost:8080`.
+
+AgentHub stays single-binary. Runtime subcommands such as actor CLI and actor
+MCP are invoked from the same binary, for example:
+
+```bash
+cargo run -- actor --help
+cargo run -- actor-mcp --help
+```
 
 ## Configuration
 
@@ -85,6 +93,9 @@ Runtime state (database, local artifacts) defaults to `~/.agenthub/`.
 ## Common Development Commands
 
 ```bash
+# Run AgentHub server
+make run
+
 # Run Rust tests
 cargo test
 

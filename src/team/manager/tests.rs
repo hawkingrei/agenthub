@@ -2954,3 +2954,103 @@ async fn describe_team_runtime_returns_member_runtime_status() {
     assert!(worker.session_status.is_none());
     assert_eq!(worker.card.description, "Implements changes");
 }
+
+#[tokio::test]
+async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "describe-team-context".to_string(),
+            description: Some("team to verify merged context view".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"worker","role":"worker","description":"Implements changes"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-team-context"), json!({"prompt":"go"}))
+        .await
+        .expect("create run");
+    let leader_step = manager
+        .submit_step(&run.id, "leader_plan", "leader", Vec::new(), None)
+        .await
+        .expect("submit leader step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("leader")
+    .bind("Leader Agent")
+    .bind("/tmp/leader")
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader agent");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("session-leader")
+    .bind("leader")
+    .bind("running")
+    .bind(10_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader session");
+
+    manager
+        .start_step(&leader_step.id, Some("session-leader"))
+        .await
+        .expect("start leader step");
+
+    let team_context = manager
+        .describe_team_context(Some(&team.id), Some(&run.id))
+        .await
+        .expect("describe team context");
+
+    assert_eq!(team_context.team_id, team.id);
+    assert_eq!(team_context.runtime.status, "degraded");
+    assert_eq!(team_context.runtime.online_count, 1);
+    assert_eq!(team_context.runtime.member_count, 2);
+    assert_eq!(
+        team_context
+            .run
+            .as_ref()
+            .map(|overlay| overlay.run_id.as_str()),
+        Some(run.id.as_str())
+    );
+    assert_eq!(team_context.members.len(), 2);
+    assert_eq!(team_context.members[0].display_name, "Leader Agent");
+    assert_eq!(team_context.members[0].steps.len(), 1);
+
+    let runtime_only_context = manager
+        .describe_team_context(Some(&team.id), None)
+        .await
+        .expect("describe runtime-only team context");
+    assert_eq!(runtime_only_context.team_id, team.id);
+    assert_eq!(runtime_only_context.runtime.status, "degraded");
+    assert!(runtime_only_context.run.is_none());
+    assert_eq!(runtime_only_context.members.len(), 2);
+    assert!(runtime_only_context.members[0].steps.is_empty());
+}

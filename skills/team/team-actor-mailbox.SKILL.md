@@ -7,6 +7,9 @@ name: team-actor-mailbox
 Use this skill for Team mailbox communication. It is the protocol reference for
 `actor inbox`, `actor send`, and `actor ack`.
 
+For Team runtime/roster context, use the single `team_members` tool. Do not
+invent a second Team context query path.
+
 ## Scope
 
 - Team-internal agent<->agent communication
