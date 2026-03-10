@@ -21,13 +21,62 @@ export type TaskMailboxRoutePlan = {
 };
 
 const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
-const MENTION_RENDER_TOKEN_REGEX = /@@AGH_AT_MENTION:([A-Za-z0-9._:-]+)@@/g;
-
 export type MentionDraftQuery = {
   start: number;
   end: number;
   keyword: string;
 };
+
+export type MentionCandidate = {
+  actorId: string;
+  label: string;
+  aliases: string[];
+};
+
+export function resolveDisplayName(
+  actorId: string,
+  displayNameByActorId?: Record<string, string>,
+  fallback?: string
+): string {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) {
+    return fallback ?? "-";
+  }
+  const candidate = displayNameByActorId?.[normalizedActorId];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : (fallback ?? normalizedActorId);
+}
+
+export function createDisplayNameLookup(
+  entries: Iterable<[string, string]>
+): Record<string, string> {
+  const lookup: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [rawActorId, rawLabel] of entries) {
+    const actorId = rawActorId.trim();
+    const label = rawLabel.trim();
+    if (!actorId || !label) {
+      continue;
+    }
+    lookup[actorId] = label;
+  }
+  return lookup;
+}
+
+export function isHumanMailboxActor(
+  actorId: string | null | undefined,
+  humanActorId: string
+): boolean {
+  const normalizedActorId = (actorId ?? "").trim();
+  const normalizedHumanActorId = humanActorId.trim();
+  if (!normalizedActorId || !normalizedHumanActorId) {
+    return false;
+  }
+  return (
+    normalizedActorId === normalizedHumanActorId ||
+    normalizedActorId.startsWith(`${normalizedHumanActorId}:`)
+  );
+}
 
 function normalizeActorIds(actorIds: string[]): string[] {
   const seen = new Set<string>();
@@ -148,21 +197,84 @@ export function resolveMentionDraftQuery(
 export function applyMentionAtTag(
   draft: string,
   mention: MentionDraftQuery,
-  actorId: string
+  label: string
 ): { text: string; cursor: number } {
-  const normalizedActorId = actorId.trim();
-  if (!normalizedActorId) {
+  const normalizedLabel = label.trim();
+  if (!normalizedLabel) {
     return { text: draft, cursor: mention.end };
   }
   const prefix = draft.slice(0, mention.start);
   const suffix = draft.slice(mention.end);
-  const tag = `@${normalizedActorId}`;
+  const tag = `@${normalizedLabel}`;
   const needsSpace = suffix.length === 0 || /^\s/.test(suffix) ? "" : " ";
   const nextText = `${prefix}${tag}${needsSpace}${suffix}`;
   const nextCursor = prefix.length + tag.length + needsSpace.length;
   return {
     text: nextText,
     cursor: nextCursor,
+  };
+}
+
+function normalizeMentionCandidates(candidates: MentionCandidate[]): MentionCandidate[] {
+  const seenActorIds = new Set<string>();
+  const normalized: MentionCandidate[] = [];
+  for (const candidate of candidates) {
+    const actorId = candidate.actorId.trim();
+    const label = candidate.label.trim();
+    if (!actorId || !label || seenActorIds.has(actorId)) {
+      continue;
+    }
+    seenActorIds.add(actorId);
+    normalized.push({
+      actorId,
+      label,
+      aliases: normalizeActorIds([label, actorId, ...(candidate.aliases ?? [])]).sort(
+        (left, right) => right.length - left.length
+      ),
+    });
+  }
+  return normalized;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function canonicalizeMentionDraft(
+  draft: string,
+  candidates: MentionCandidate[]
+): { text: string; mentionActorIds: string[] } {
+  let nextText = draft;
+  const mentionActorIds: string[] = [];
+  const seen = new Set<string>();
+  const normalizedCandidates = normalizeMentionCandidates(candidates).sort(
+    (left, right) =>
+      Math.max(...right.aliases.map((alias) => alias.length)) -
+      Math.max(...left.aliases.map((alias) => alias.length))
+  );
+
+  for (const candidate of normalizedCandidates) {
+    for (const alias of candidate.aliases) {
+      if (!alias) {
+        continue;
+      }
+      const pattern = new RegExp(
+        `(^|[^A-Za-z0-9._%+-])@${escapeRegex(alias)}(?=$|[^A-Za-z0-9._:-]|:(?=[^A-Za-z0-9._-]|$))`,
+        "g"
+      );
+      nextText = nextText.replace(pattern, (_match, prefix: string) => {
+        if (!seen.has(candidate.actorId)) {
+          seen.add(candidate.actorId);
+          mentionActorIds.push(candidate.actorId);
+        }
+        return `${prefix}<at>${candidate.actorId}</at>`;
+      });
+    }
+  }
+
+  return {
+    text: nextText,
+    mentionActorIds,
   };
 }
 
@@ -235,6 +347,9 @@ function parseStructuredMailboxPayload(payload: unknown): unknown {
 
 export function resolveChatMessageText(payload: unknown): string | null {
   const parsed = parseStructuredMailboxPayload(payload);
+  if (typeof parsed === "string") {
+    return parsed;
+  }
   if (
     typeof parsed === "object" &&
     parsed !== null &&
@@ -265,36 +380,85 @@ export function buildMailboxChatPayload(
   return payload;
 }
 
-function mentionChipHtml(actorId: string): string {
-  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 mono text-[11px] text-brand-primary">@${escapeHtml(actorId)}</span>`;
+function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, string>): string {
+  const label = resolveDisplayName(actorId, displayNameByActorId, actorId);
+  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeHtml(label)}</span>`;
 }
 
-function tokenizeAtMentions(text: string): string {
+function isRawMentionBoundary(previous: string): boolean {
+  return previous.length === 0 || /[\s([{'"`]/.test(previous);
+}
+
+function replaceRawMentionsWithTokens(text: string): string {
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (text.charAt(cursor) !== "@") {
+      chunks.push(text.charAt(cursor));
+      cursor += 1;
+      continue;
+    }
+    const previous = cursor > 0 ? text.charAt(cursor - 1) : "";
+    if (!isRawMentionBoundary(previous)) {
+      chunks.push("@");
+      cursor += 1;
+      continue;
+    }
+    let end = cursor + 1;
+    while (end < text.length && /[A-Za-z0-9._:-]/.test(text.charAt(end))) {
+      end += 1;
+    }
+    if (end === cursor + 1) {
+      chunks.push("@");
+      cursor += 1;
+      continue;
+    }
+    const actorId = text.slice(cursor + 1, end).trim();
+    chunks.push(`%%AGH_AT_MENTION:${actorId}%%`);
+    cursor = end;
+  }
+  return chunks.join("");
+}
+
+function replaceCanonicalMentionsWithTokens(text: string): string {
   return text.replace(MENTION_TAG_REGEX, (_match, rawActorId: string) => {
     const actorId = (rawActorId ?? "").trim();
     if (!/^[A-Za-z0-9._:-]+$/.test(actorId)) {
       return "";
     }
-    return `@@AGH_AT_MENTION:${actorId}@@`;
+    return `%%AGH_AT_MENTION:${actorId}%%`;
   });
 }
 
-function renderMentionTokensIntoHtml(text: string): string {
-  return text.replace(MENTION_RENDER_TOKEN_REGEX, (_match, actorId: string) =>
-    mentionChipHtml(actorId)
+function tokenizePlainTextMentions(text: string): string {
+  return replaceCanonicalMentionsWithTokens(replaceRawMentionsWithTokens(text));
+}
+
+function renderMentionTokensIntoHtml(
+  text: string,
+  displayNameByActorId?: Record<string, string>
+): string {
+  return text.replace(/%%AGH_AT_MENTION:([A-Za-z0-9._:-]+)%%/g, (_match, actorId: string) =>
+    mentionChipHtml(actorId, displayNameByActorId)
   );
 }
 
-export function renderMarkdownWithMentions(text: string): string {
-  const tokenized = tokenizeAtMentions(text);
+export function renderMarkdownWithMentions(
+  text: string,
+  displayNameByActorId?: Record<string, string>
+): string {
+  const tokenized = replaceCanonicalMentionsWithTokens(text);
   const rendered = renderMarkdown(tokenized);
-  return renderMentionTokensIntoHtml(rendered);
+  return renderMentionTokensIntoHtml(rendered, displayNameByActorId);
 }
 
-export function renderPlainTextWithMentions(text: string): string {
-  const tokenized = tokenizeAtMentions(text);
+export function renderPlainTextWithMentions(
+  text: string,
+  displayNameByActorId?: Record<string, string>
+): string {
+  const tokenized = tokenizePlainTextMentions(text);
   const escaped = escapeHtml(tokenized).replace(/\n/g, "<br/>");
-  return renderMentionTokensIntoHtml(escaped);
+  return renderMentionTokensIntoHtml(escaped, displayNameByActorId);
 }
 
 export function buildMailboxForwardChatPayload(

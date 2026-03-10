@@ -37,7 +37,7 @@ type TeamRunPanelProps = {
   developerMode: boolean;
   busy: string | null;
   onDeleteTeam: () => Promise<void> | void;
-  onStartTeam: () => Promise<void> | void;
+  onStartRun: () => Promise<void> | void;
   runStatusFilter: TeamRunStatusFilter;
   runStatusFilterOptions: TeamRunStatusFilterOption[];
   onRunStatusFilterChange: (value: TeamRunStatusFilter) => void;
@@ -61,7 +61,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     developerMode,
     busy,
     onDeleteTeam,
-    onStartTeam,
+    onStartRun,
     runStatusFilter,
     runStatusFilterOptions,
     onRunStatusFilterChange,
@@ -114,14 +114,14 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>Quick start a new run for this team.</span>
           <button
             onClick={() => {
-              void onStartTeam();
+              void onStartRun();
             }}
             disabled={busy === "create-run" || !selectedTeamId}
             className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
             title="Start a new run for the selected team"
-            aria-label="Start team"
+            aria-label="Start run"
           >
-            {busy === "create-run" ? "Starting..." : "Start Team"}
+            {busy === "create-run" ? "Starting..." : "Start Run"}
           </button>
         </div>
         <div className={RUN_PANEL_LIST_HEAD_CLASS}>

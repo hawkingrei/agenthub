@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::auth::UserRecord;
@@ -202,6 +203,11 @@ pub struct SubmitTeamRunStepRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct StartTeamRunStepRequest {
+    /// Runtime executor handle supplied by external orchestrators.
+    ///
+    /// In the current implementation this is typically the member agent
+    /// session id. The request field keeps the legacy `remote_task_id` name for
+    /// wire compatibility.
     pub remote_task_id: Option<String>,
 }
 
@@ -353,10 +359,26 @@ pub struct TeamCompiledRoleAssignment {
     pub step_keys: Vec<String>,
 }
 
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct TeamRuntimeMemberStatusResponse {
+    pub member_id: String,
+    pub session_id: String,
+    pub action: String,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct TeamRuntimeControlResponse {
+    pub team_id: String,
+    pub status: String,
+    pub members: Vec<TeamRuntimeMemberStatusResponse>,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team).delete(delete_team))
+        .route("/:id/start", post(start_team))
+        .route("/:id/stop", post(stop_team))
         .route("/:id/tasks", post(create_team_task).get(list_team_tasks))
         .route("/:id/tasks/:task_id", get(get_team_task))
         .route(
@@ -433,7 +455,34 @@ async fn create_team(
         )
         .await
         .map_err(map_create_team_error)?;
+    if let Err(err) = ensure_team_runtime_started(&state, &team).await {
+        let member_ids = parse_member_ids(team.spec.get("members"))?;
+        let _ = state.teams.delete_team(&team.id, &member_ids).await;
+        return Err(err);
+    }
     Ok(Json(team))
+}
+
+async fn start_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    let runtime = ensure_team_runtime_started(&state, &team).await?;
+    Ok(Json(runtime))
+}
+
+async fn stop_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    let runtime = stop_team_runtime(&state, &team).await?;
+    Ok(Json(runtime))
 }
 
 async fn list_teams(
@@ -809,7 +858,6 @@ async fn get_team_run_snapshot(
         .await
         .map_err(map_team_internal_error)?;
     let latest_step_by_member = index_latest_steps_by_member(&steps);
-
     let pending_counts = state
         .teams
         .list_actor_pending_counts_by_actor(&run_id)
@@ -840,18 +888,12 @@ async fn get_team_run_snapshot(
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
-        let session_status = if let Some(session_id) = latest_step
-            .as_ref()
-            .and_then(|step| step.remote_task_id.as_deref())
-        {
-            state
-                .teams
-                .get_agent_session_status(session_id)
-                .await
-                .map_err(map_team_internal_error)?
-        } else {
-            None
-        };
+        let session_status = state
+            .teams
+            .get_live_member_session(member.member_id.as_str())
+            .await
+            .map_err(map_team_internal_error)?
+            .map(|(_session_id, status)| status);
         let status = latest_step
             .as_ref()
             .map(|step| step_status_to_str(&step.status).to_string())
@@ -1280,6 +1322,140 @@ async fn append_actor_mailbox_type_hint_event(state: &AppState, run_id: &str, pa
             err
         );
     }
+}
+
+fn build_team_member_actor_context(
+    team_id: &str,
+    member: &TeamMemberSpec,
+) -> anyhow::Result<AcpActorSkillContext> {
+    Ok(AcpActorSkillContext {
+        team_id: Some(team_id.to_string()),
+        current_run_id: None,
+        actor_id: member.member_id.clone(),
+        default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        actor_cli_path: default_actor_cli_path()?,
+        member_role: Some(member.role.clone()),
+        member_skills: member.skills.clone(),
+        continuity: None,
+    })
+}
+
+fn team_member_actor_context_matches(
+    current: Option<&AcpActorSkillContext>,
+    expected: &AcpActorSkillContext,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    current.team_id == expected.team_id
+        && current.current_run_id == expected.current_run_id
+        && current.actor_id == expected.actor_id
+        && current.default_channel == expected.default_channel
+        && current.member_role == expected.member_role
+        && current.member_skills == expected.member_skills
+}
+
+async fn ensure_team_runtime_started(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+) -> Result<TeamRuntimeControlResponse, ApiError> {
+    let member_specs = parse_member_specs(team.spec.get("members"))?;
+    let mut started_member_ids = Vec::new();
+    let mut members = Vec::with_capacity(member_specs.len());
+
+    for member in &member_specs {
+        let actor_context = build_team_member_actor_context(team.id.as_str(), member)
+            .map_err(map_team_internal_error)?;
+        let mut action = "started";
+        if let Some(session_id) = state
+            .agents
+            .running_session_id_for_agent(member.member_id.as_str())
+            .await
+        {
+            let running_context = state
+                .agents
+                .running_actor_context_for_agent(member.member_id.as_str())
+                .await;
+            if team_member_actor_context_matches(running_context.as_ref(), &actor_context) {
+                members.push(TeamRuntimeMemberStatusResponse {
+                    member_id: member.member_id.clone(),
+                    session_id,
+                    action: "reused".to_string(),
+                });
+                continue;
+            }
+            action = "restarted";
+            state
+                .agents
+                .stop_agent(member.member_id.as_str())
+                .await
+                .map_err(map_team_internal_error)?;
+        }
+
+        match state
+            .agents
+            .start_agent_with_actor_context(member.member_id.as_str(), Some(actor_context))
+            .await
+        {
+            Ok(session_id) => {
+                started_member_ids.push(member.member_id.clone());
+                members.push(TeamRuntimeMemberStatusResponse {
+                    member_id: member.member_id.clone(),
+                    session_id,
+                    action: action.to_string(),
+                });
+            }
+            Err(err) => {
+                for started_member_id in &started_member_ids {
+                    let _ = state.agents.stop_agent(started_member_id.as_str()).await;
+                }
+                return Err(map_team_internal_error(anyhow::anyhow!(
+                    "failed to start team member runtime '{}' for team '{}': {}",
+                    member.member_id,
+                    team.id,
+                    err
+                )));
+            }
+        }
+    }
+
+    Ok(TeamRuntimeControlResponse {
+        team_id: team.id.clone(),
+        status: "running".to_string(),
+        members,
+    })
+}
+
+async fn stop_team_runtime(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+) -> Result<TeamRuntimeControlResponse, ApiError> {
+    let member_specs = parse_member_specs(team.spec.get("members"))?;
+    let mut members = Vec::new();
+    for member in &member_specs {
+        let Some(session_id) = state
+            .agents
+            .running_session_id_for_agent(member.member_id.as_str())
+            .await
+        else {
+            continue;
+        };
+        state
+            .agents
+            .stop_agent(member.member_id.as_str())
+            .await
+            .map_err(map_team_internal_error)?;
+        members.push(TeamRuntimeMemberStatusResponse {
+            member_id: member.member_id.clone(),
+            session_id,
+            action: "stopped".to_string(),
+        });
+    }
+    Ok(TeamRuntimeControlResponse {
+        team_id: team.id.clone(),
+        status: "stopped".to_string(),
+        members,
+    })
 }
 
 fn extract_mailbox_payload_type(payload: &Value) -> Option<String> {

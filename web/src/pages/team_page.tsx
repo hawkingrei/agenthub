@@ -23,6 +23,7 @@ import {
 import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import { StatusBadge } from "../components/status_badge";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
@@ -34,6 +35,7 @@ import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import { TeamTaskPanel } from "./team_task_panel";
+import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -61,6 +63,7 @@ import {
   buildMailboxChatPayload,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
+  createDisplayNameLookup,
   countUnreadConversationMessages,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
@@ -88,8 +91,11 @@ import {
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
+  listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
+  resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
@@ -211,8 +217,17 @@ type TeamPageProps = {
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
-const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
-const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>(["member_console", "mailbox", "debug"]);
+const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
+  "conversation",
+  "tasks",
+  "mailbox",
+]);
+const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
+const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
+  "agent_acp",
+  "member_console",
+  "debug",
+]);
 const TEAM_AGENT_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
   TEAM_AGENT_ADVANCED_TABS.has(item.value)
 );
@@ -228,6 +243,21 @@ type RunInputValidation = {
   parsed: unknown | undefined;
   error: string | null;
 };
+
+function formatTeamRuntimeActionSummary(
+  action: "start" | "stop",
+  members: ReadonlyArray<{ action: string }>
+): string {
+  const counts = members.reduce<Record<string, number>>((acc, member) => {
+    acc[member.action] = (acc[member.action] ?? 0) + 1;
+    return acc;
+  }, {});
+  const parts = Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`);
+  const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
+  return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
+}
 
 function validateRunInputJson(raw: string): RunInputValidation {
   const trimmed = raw.trim();
@@ -309,6 +339,15 @@ const workspaceNoticeDotBaseClassName =
   "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
 const workspaceMetaDropdownClassName =
   "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg";
+const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
+  value: TeamTab;
+  label: string;
+  icon: string;
+}> = [
+  { value: "conversation", label: "Conversation", icon: "bi bi-chat-square-text" },
+  { value: "tasks", label: "Tasks", icon: "bi bi-list-check" },
+  { value: "mailbox", label: "Mailbox", icon: "bi bi-inboxes" },
+];
 
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
@@ -594,6 +633,7 @@ export function TeamPage(props: TeamPageProps) {
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
   const [taskMessagesLoading, setTaskMessagesLoading] = useState(false);
   const [taskMessageDraft, setTaskMessageDraft] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamTaskRunCompilePreviewRecord | null>(null);
@@ -717,6 +757,7 @@ export function TeamPage(props: TeamPageProps) {
     setTaskMessages([]);
     setTaskMessagesLoading(false);
     setTaskMessageDraft("");
+    setNewTaskTitle("");
     setSelectedMemberId("");
   }, [selectedTeamId, setSelectedMemberId]);
   const teamSpecMemberIds = useMemo(() => {
@@ -779,6 +820,10 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberSummaryByTeamId.get(selectedTeam.id) ?? null;
   }, [selectedTeam, teamMemberSummaryByTeamId]);
+  const selectedTeamRuntimeStatus = useMemo(
+    () => resolveTeamRuntimeStatus(selectedTeamMemberSummary),
+    [selectedTeamMemberSummary]
+  );
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -791,6 +836,19 @@ export function TeamPage(props: TeamPageProps) {
       setSelectedMemberId("");
     }
   }, [selectedMemberId, selectedTeamMemberLiveStates, setSelectedMemberId]);
+  useEffect(() => {
+    if (tab !== "mailbox" || !snapshot || selectedMemberId.trim()) {
+      return;
+    }
+    const defaultMailboxMemberId =
+      snapshot.members.find((member) => member.member_id !== snapshot.leader_member_id)
+        ?.member_id ??
+      snapshot.members[0]?.member_id ??
+      "";
+    if (defaultMailboxMemberId) {
+      setSelectedMemberId(defaultMailboxMemberId);
+    }
+  }, [selectedMemberId, setSelectedMemberId, snapshot, tab]);
   const teamForgeAgents = useMemo(
     () => selectTeamForgeAgents(agents, teamForgeAgentIds),
     [agents, teamForgeAgentIds]
@@ -1809,6 +1867,12 @@ export function TeamPage(props: TeamPageProps) {
     }
     return resolveTeamConversationTask(taskList, selectedTeamId);
   }, [selectedTeamId, taskList]);
+  const workspaceTasks = useMemo(() => {
+    if (!selectedTeamId) {
+      return [];
+    }
+    return listTeamWorkspaceTasks(taskList, selectedTeamId);
+  }, [selectedTeamId, taskList]);
 
   const selectedTask = useMemo(() => {
     if (!selectedTeamId) {
@@ -1816,6 +1880,15 @@ export function TeamPage(props: TeamPageProps) {
     }
     return resolveSelectedTeamTask(taskList, selectedTaskId, selectedTeamId);
   }, [selectedTaskId, selectedTeamId, taskList]);
+  const conversationSeenByMessageId = useMemo(
+    () =>
+      resolveTaskMessageSeenByActors(
+        snapshot?.mailbox.recent_messages ?? [],
+        taskMessages[0]?.conversation_id ?? "",
+        taskConversationMemberIds
+      ),
+    [snapshot?.mailbox.recent_messages, taskConversationMemberIds, taskMessages]
+  );
 
   const refreshTasks = useCallback(
     async (teamId: string) => {
@@ -1835,6 +1908,11 @@ export function TeamPage(props: TeamPageProps) {
     },
     [props.token]
   );
+
+  useEffect(() => {
+    setCompiledRunPreview(null);
+    setCompilePreviewContextId("");
+  }, [selectedTaskId, selectedTeamId]);
 
   const refreshTaskMessages = useCallback(
     async (taskIdOverride?: string) => {
@@ -1913,12 +1991,50 @@ export function TeamPage(props: TeamPageProps) {
     return created.task;
   }, [props.token, resolveConversationForMessage, selectedTeamId]);
 
-  const onSendTaskMessage = useCallback(async () => {
+  const onCreateTask = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
       return;
     }
-    const text = taskMessageDraft.trim();
+    const title = newTaskTitle.trim();
+    if (!title) {
+      setError("Task title is required");
+      return;
+    }
+    setBusy("create-task");
+    setError(null);
+    try {
+      const created = await api.createTeamTask(props.token, selectedTeamId, {
+        title,
+        conversation_mode: "to_leader",
+        topic: title,
+        context: {
+          bootstrap_kind: "task_workspace",
+        },
+      });
+      setTaskList((prev) =>
+        sortTasksByActivity([created.task, ...prev.filter((task) => task.id !== created.task.id)])
+      );
+      setSelectedTaskId(created.task.id);
+      setCompiledRunPreview(null);
+      setNewTaskTitle("");
+      setTab("tasks");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [newTaskTitle, props.token, selectedTeamId, setBusy, setTab]);
+
+  const onSendTaskMessage = useCallback(async (payload: {
+    text: string;
+    mentionActorIds: string[];
+  }) => {
+    if (!selectedTeamId) {
+      setError("Select a team first");
+      return;
+    }
+    const text = payload.text.trim();
     if (!text) {
       setError("Conversation message is required");
       return;
@@ -1929,7 +2045,9 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const conversation = await ensureSharedConversation();
       const taskId = conversation?.id;
-      const chatPayload = buildMailboxChatPayload(text);
+      const chatPayload = buildMailboxChatPayload(text, {
+        mention_actor_ids: payload.mentionActorIds,
+      });
       if (taskId) {
         const message = await api.sendTeamTaskMessage(props.token, selectedTeamId, taskId, {
           route: "group_chat",
@@ -1956,7 +2074,6 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     activeRunIdForSelectedTeam,
     ensureSharedConversation,
-    taskMessageDraft,
     props.token,
     refreshEvents,
     refreshSnapshot,
@@ -1999,7 +2116,7 @@ export function TeamPage(props: TeamPageProps) {
     setTab("conversation");
   }, [setTab]);
   const onSelectAgentWorkspace = useCallback(
-    (memberId: string, nextTab: TeamTab = "agent_acp") => {
+    (memberId: string, nextTab: TeamTab = "mailbox") => {
       setSelectedMemberId(memberId);
       setTab(nextTab);
     },
@@ -2136,7 +2253,9 @@ export function TeamPage(props: TeamPageProps) {
       selectedTeamMemberLiveStates.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, selectedTeamMemberLiveStates]
   );
-  const isAgentWorkspace = TEAM_AGENT_WORKSPACE_TABS.has(tab);
+  const hasSelectedAgentContext = selectedMemberId.trim().length > 0;
+  const isAgentWorkspace =
+    hasSelectedAgentContext && (TEAM_AGENT_WORKSPACE_TABS.has(tab) || tab === "mailbox");
   const workspaceAdvancedTabItems = (isAgentWorkspace
     ? TEAM_AGENT_ADVANCED_TAB_ITEMS
     : TEAM_UTILITY_ADVANCED_TAB_ITEMS
@@ -2147,7 +2266,9 @@ export function TeamPage(props: TeamPageProps) {
     ? "Team Workbench"
     : tab === "runs"
       ? "Run Workspace"
-      : !isAgentWorkspace && tab !== "conversation"
+      : TEAM_PRIMARY_WORKSPACE_TABS.has(tab)
+        ? "Team Workspace"
+        : !isAgentWorkspace && tab !== "conversation"
         ? "Team Utility"
         : null;
   const selectedAgentLabel = useMemo(() => {
@@ -2161,13 +2282,27 @@ export function TeamPage(props: TeamPageProps) {
     ? "Team Workbench"
     : tab === "conversation"
       ? selectedConversation?.title ?? DEFAULT_TEAM_THREAD_TITLE
+    : tab === "tasks"
+      ? "Tasks"
+    : tab === "mailbox"
+      ? selectedMemberLiveState
+        ? selectedAgentLabel
+        : "Mailbox"
     : selectedMemberLiveState && isAgentWorkspace
       ? selectedAgentLabel
-      : selectedTeam.name;
+      : tab === "runs"
+        ? "Runs"
+        : selectedTeam.name;
   const workspaceDescription = !selectedTeam
     ? "Select a team from the left rail to start team conversations and supervise execution."
     : tab === "conversation"
       ? "Shared planning and broadcast thread."
+    : tab === "tasks"
+        ? "Plan work, inspect compile preview, and create runs from selected tasks."
+      : tab === "mailbox"
+        ? selectedMemberLiveState
+          ? "Direct mailbox thread for the selected agent."
+          : "Inspect mailbox delivery and direct member conversations."
       : tab === "runs"
         ? "Browse runs and choose the active execution context."
         : isAgentWorkspace
@@ -2197,6 +2332,7 @@ export function TeamPage(props: TeamPageProps) {
     return { online, offline, missing };
   }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
   const workspaceNoticeText = useMemo(() => {
+    const runtimeLabel = selectedTeam ? selectedTeamRuntimeStatus.label : null;
     const runLabel = activeRunForSelectedTeam
       ? `run ${activeRunForSelectedTeam.status}`
       : "no active run";
@@ -2221,20 +2357,28 @@ export function TeamPage(props: TeamPageProps) {
       }
       return null;
     })();
-    return [runLabel, rosterLabel, availabilityLabel, agentLabel]
+    return [runtimeLabel, runLabel, rosterLabel, availabilityLabel, agentLabel]
       .filter((value): value is string => Boolean(value))
       .join(" · ");
   }, [
     activeRunForSelectedTeam,
     isAgentWorkspace,
+    selectedTeam,
     selectedAgentLabel,
     selectedMemberLiveState,
     selectedTeamMemberLiveStates.length,
+    selectedTeamRuntimeStatus.label,
     workspaceMemberAvailability,
   ]);
   const workspaceNoticeDotClassName = useMemo(() => {
     if (workspaceMemberAvailability.missing > 0) {
       return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+    }
+    if (selectedTeamRuntimeStatus.status === "degraded") {
+      return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
+    }
+    if (selectedTeamRuntimeStatus.status === "stopped") {
+      return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
     }
     if (!activeRunForSelectedTeam) {
       return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
@@ -2252,11 +2396,12 @@ export function TeamPage(props: TeamPageProps) {
       return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
     }
     return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-  }, [activeRunForSelectedTeam, workspaceMemberAvailability.missing]);
+  }, [activeRunForSelectedTeam, selectedTeamRuntimeStatus.status, workspaceMemberAvailability.missing]);
   const workspaceDetailItems = useMemo(
     () =>
       [
         `team=${selectedTeam?.id ?? "-"}`,
+        `team_runtime=${selectedTeamRuntimeStatus.status}`,
         `active_run=${activeRunIdForSelectedTeam ?? "-"}`,
         `run_status=${activeRunForSelectedTeam?.status ?? "-"}`,
         `context=${activeRunForSelectedTeam?.context_id ?? "-"}`,
@@ -2275,7 +2420,19 @@ export function TeamPage(props: TeamPageProps) {
       selectedMemberLiveState?.agent_name,
       selectedMemberLiveState?.member_id,
       selectedTeam?.id,
+      selectedTeamRuntimeStatus.status,
     ]
+  );
+  const mailboxDisplayNameByActorId = useMemo(
+    () =>
+      createDisplayNameLookup([
+        [HUMAN_MAILBOX_ACTOR_ID, "You"],
+        ...selectedTeamMemberLiveStates.map((member) => [
+          member.member_id,
+          member.agent_name?.trim() || member.member_id,
+        ]),
+      ]),
+    [selectedTeamMemberLiveStates]
   );
   const onOpenRunsWorkspace = useCallback(() => {
     setTab("runs");
@@ -2293,6 +2450,42 @@ export function TeamPage(props: TeamPageProps) {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
+  const onStartTeamRuntime = useCallback(async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    setBusy("start-team");
+    setError(null);
+    setWarning(null);
+    try {
+      const runtime = await api.startTeam(props.token, selectedTeam.id);
+      await Promise.all([refreshTeams(), refreshAgents()]);
+      setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
+  const onStopTeamRuntime = useCallback(async () => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    setBusy("stop-team");
+    setError(null);
+    setWarning(null);
+    try {
+      const runtime = await api.stopTeam(props.token, selectedTeam.id);
+      await Promise.all([refreshTeams(), refreshAgents()]);
+      setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
   const onRefreshTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
@@ -2308,7 +2501,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     const taskId = selectedTask?.id ?? "";
     if (!taskId) {
-      setError("Select a conversation first");
+      setError("Select a task first");
       return;
     }
     setBusy("compile-task");
@@ -2385,6 +2578,7 @@ export function TeamPage(props: TeamPageProps) {
         onRefreshMessages={refreshTaskMessages}
         messages={taskMessages}
         mailboxMessages={snapshot?.mailbox.recent_messages ?? []}
+        seenByMessageId={conversationSeenByMessageId}
         humanActorId={HUMAN_MAILBOX_ACTOR_ID}
         memberLiveStates={selectedTeamMemberLiveStates}
         memberIds={taskConversationMemberIds}
@@ -2396,72 +2590,28 @@ export function TeamPage(props: TeamPageProps) {
     </div>
   );
 
-  const compilePreviewPanel = (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <h4 className={teamSectionHeadingClassName}>Compile Conversation</h4>
-      <p className={teamSectionBodyTextClassName}>
-        Internal debug entry for compiling conversation into deterministic run payload preview.
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          className={panelPrimaryButtonClassName}
-          onClick={onCompileTaskRunPreview}
-          disabled={!canCompileTask}
-        >
-          Compile Preview
-        </button>
-        <span className="mono text-xs text-ui-text-muted">
-          {selectedTask
-            ? `selected_conversation=${selectedTask.title} [${selectedTask.status}]`
-            : "selected_conversation=-"}
-        </span>
-      </div>
-      <input
-        className={`${panelInputClassName} mt-2`}
-        placeholder="context_id override (optional)"
-        value={compilePreviewContextId}
-        onChange={(event) => setCompilePreviewContextId(event.target.value)}
-      />
-      {compiledRunPreview ? (
-        <div className="mt-3 space-y-2 rounded-lg border border-ui-border bg-ui-surface-soft p-3">
-          <div className="mono text-xs text-ui-text-secondary">
-            <div>
-              <strong>conversation_id:</strong> {compiledRunPreview.conversation_id}
-            </div>
-            <div>
-              <strong>context_id:</strong> {compiledRunPreview.run_payload.context_id}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={panelSecondaryButtonClassName}
-              onClick={onUseCompiledRunPayload}
-            >
-              Use Payload in Create Run
-            </button>
-            <button
-              type="button"
-              className={panelPrimaryButtonClassName}
-              onClick={onCreateRunFromCompiledPreview}
-              disabled={busy === "create-run"}
-            >
-              Create Run from Preview
-            </button>
-          </div>
-          <pre className="teams-step-body mono max-h-72 overflow-auto rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-secondary">
-            {toPrettyJson({
-              conversation_id: compiledRunPreview.conversation_id,
-              run_payload: compiledRunPreview.run_payload,
-            })}
-          </pre>
-        </div>
-      ) : (
-        <p className={teamSectionHintTextClassName}>
-          Select a conversation to preview compiled run payload.
-        </p>
-      )}
-    </div>
+  const tasksPanel = (
+    <TeamTasksPanel
+      developerMode={props.developerMode}
+      tasks={workspaceTasks}
+      tasksLoading={tasksLoading}
+      selectedTaskId={selectedTaskId}
+      onSelectedTaskIdChange={setSelectedTaskId}
+      onRefreshTasks={onRefreshTasks}
+      newTaskTitle={newTaskTitle}
+      onNewTaskTitleChange={setNewTaskTitle}
+      onCreateTask={onCreateTask}
+      busy={busy}
+      compilePreviewContextId={compilePreviewContextId}
+      onCompilePreviewContextIdChange={setCompilePreviewContextId}
+      onCompileTaskRunPreview={onCompileTaskRunPreview}
+      canCompileTask={canCompileTask}
+      compiledRunPreview={compiledRunPreview}
+      onUseCompiledRunPayload={onUseCompiledRunPayload}
+      onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
+      formatTs={formatTs}
+      toPrettyJson={toPrettyJson}
+    />
   );
 
   const runOpsPanel = (
@@ -2593,7 +2743,6 @@ export function TeamPage(props: TeamPageProps) {
           </button>
         </div>
       </div>
-      {compilePreviewPanel}
     </div>
   );
 
@@ -2738,7 +2887,43 @@ export function TeamPage(props: TeamPageProps) {
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={selectedTeamRuntimeStatus.label}
+                      tone={selectedTeamRuntimeStatus.tone}
+                      title={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
+                    />
+                    <button
+                      type="button"
+                      className={panelSecondaryButtonClassName}
+                      onClick={onStartTeamRuntime}
+                      disabled={busy === "start-team" || selectedTeamRuntimeStatus.status === "running"}
+                    >
+                      {busy === "start-team" ? "Starting Team..." : "Start Team"}
+                    </button>
+                    <button
+                      type="button"
+                      className={panelSecondaryButtonClassName}
+                      onClick={onStopTeamRuntime}
+                      disabled={busy === "stop-team" || selectedTeamRuntimeStatus.status === "stopped"}
+                    >
+                      {busy === "stop-team" ? "Stopping Team..." : "Stop Team"}
+                    </button>
                     <div className={workspaceToolbarClassName}>
+                      {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          className={
+                            tab === item.value
+                              ? workspaceToolbarButtonActiveClassName
+                              : workspaceToolbarButtonIdleClassName
+                          }
+                          onClick={() => setTab(item.value)}
+                        >
+                          <i className={item.icon} aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
                       <button
                         type="button"
                         className={
@@ -2859,7 +3044,7 @@ export function TeamPage(props: TeamPageProps) {
                   developerMode={props.developerMode}
                   busy={busy}
                   onDeleteTeam={onDeleteTeam}
-                  onStartTeam={onCreateRun}
+                  onStartRun={onCreateRun}
                   runStatusFilter={runStatusFilter}
                   runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                   onRunStatusFilterChange={onRunStatusFilterChange}
@@ -2919,6 +3104,8 @@ export function TeamPage(props: TeamPageProps) {
                     </>
                   )}
 
+                  {tab === "tasks" && tasksPanel}
+
                   {tab === "agent_acp" && activeRunForSelectedTeam && (
                     <TeamMemberAcpPanel
                       developerMode={props.developerMode}
@@ -2935,13 +3122,14 @@ export function TeamPage(props: TeamPageProps) {
                   )}
 
                   {tab === "overview" && activeRunForSelectedTeam && (
-                    <TeamOverviewPanel
-                      snapshot={snapshot}
-                      snapshotLoading={snapshotLoading}
-                      onRefreshSnapshot={onRefreshOverviewSnapshot}
-                      selectedMemberId={selectedMemberId}
-                      onOpenMailboxForMember={onOpenMailboxForMember}
-                    />
+                  <TeamOverviewPanel
+                    snapshot={snapshot}
+                    snapshotLoading={snapshotLoading}
+                    onRefreshSnapshot={onRefreshOverviewSnapshot}
+                    selectedMemberId={selectedMemberId}
+                    onOpenMailboxForMember={onOpenMailboxForMember}
+                    displayNameByActorId={mailboxDisplayNameByActorId}
+                  />
                   )}
 
                   {tab === "events" && activeRunForSelectedTeam && (
@@ -2999,6 +3187,25 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   )}
 
+                  {tab === "mailbox" && !activeRunForSelectedTeam && (
+                    <div className={teamSectionCardClassName}>
+                      <h3 className={teamSectionTitleClassName}>Mailbox</h3>
+                      <p className={teamSectionBodyTextClassName}>
+                        Start or select a run to inspect mailbox delivery and direct member
+                        conversations.
+                      </p>
+                      <div className="mt-3">
+                        <button
+                          className={panelSecondaryButtonClassName}
+                          type="button"
+                          onClick={() => setTab("runs")}
+                        >
+                          Go to Runs
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {tab === "mailbox" && activeRunForSelectedTeam && (
                     <TeamMailboxPanel
                       developerMode={props.developerMode}
@@ -3014,6 +3221,7 @@ export function TeamPage(props: TeamPageProps) {
                       onConversationScroll={onConversationScroll}
                       onJumpToBottom={onJumpConversationToBottom}
                       conversationMessages={conversationMessages}
+                      displayNameByActorId={mailboxDisplayNameByActorId}
                       toPrettyJson={toPrettyJson}
                       formatTs={formatTs}
                       busy={busy}
@@ -3055,12 +3263,13 @@ export function TeamPage(props: TeamPageProps) {
                   )}
 
                   {tab === "member_console" && activeRunForSelectedTeam && (
-                    <TeamMemberConsolePanel
-                      snapshot={snapshot}
-                      selectedMemberId={selectedMemberId}
-                      onSelectedMemberIdChange={setSelectedMemberId}
-                      selectedMemberSnapshot={selectedMemberSnapshot}
-                      memberEvents={memberEvents}
+                  <TeamMemberConsolePanel
+                    snapshot={snapshot}
+                    selectedMemberId={selectedMemberId}
+                    onSelectedMemberIdChange={setSelectedMemberId}
+                    selectedMemberSnapshot={selectedMemberSnapshot}
+                    displayNameByActorId={mailboxDisplayNameByActorId}
+                    memberEvents={memberEvents}
                       memberEventsHasMore={memberEventsHasMore}
                       memberEventsLoading={memberEventsLoading}
                       eventsLoading={eventsLoading}
@@ -3209,6 +3418,7 @@ export function TeamPage(props: TeamPageProps) {
                           onConversationScroll={onConversationScroll}
                           onJumpToBottom={onJumpConversationToBottom}
                           conversationMessages={conversationMessages}
+                          displayNameByActorId={mailboxDisplayNameByActorId}
                           toPrettyJson={toPrettyJson}
                           formatTs={formatTs}
                           busy={busy}

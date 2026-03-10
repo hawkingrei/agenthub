@@ -56,6 +56,8 @@ pub struct AgentManager {
 const ACP_PROVIDER_CODEX: &str = "codex";
 const ACP_PROVIDER_GEMINI: &str = "gemini";
 const ACP_PROVIDER_KIMI: &str = "kimi";
+const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
+const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
@@ -152,11 +154,16 @@ fn derive_leader_runtime_workdir(
     session_id: &str,
 ) -> String {
     let actor_token = compact_token(&actor_context.actor_id, "leader", 24);
-    let run_token = compact_token(&actor_context.run_id, "run", 24);
+    let scope_token = actor_context
+        .current_run_id
+        .as_deref()
+        .or(actor_context.team_id.as_deref())
+        .map(|value| compact_token(value, "scope", 24))
+        .unwrap_or_else(|| "scope".to_string());
     let session_token = compact_token(session_id, "session", 24);
     Path::new(workdir)
         .join(".agenthub-team-leader")
-        .join(format!("{actor_token}-{run_token}-{session_token}"))
+        .join(format!("{actor_token}-{scope_token}-{session_token}"))
         .to_string_lossy()
         .to_string()
 }
@@ -221,10 +228,15 @@ fn build_runtime_start_policy(
             let context = actor_context
                 .ok_or_else(|| anyhow::anyhow!("worker role policy requires actor context"))?;
             let actor_token = compact_token(&context.actor_id, "worker", 24);
-            let run_token = compact_token(&context.run_id, "run", 24);
+            let scope_token = context
+                .current_run_id
+                .as_deref()
+                .or(context.team_id.as_deref())
+                .map(|value| compact_token(value, "scope", 24))
+                .unwrap_or_else(|| "scope".to_string());
             let root = derive_worker_runtime_root(expanded_workdir);
             let workdir = Path::new(&root)
-                .join(format!("{actor_token}-{run_token}"))
+                .join(format!("{actor_token}-{scope_token}"))
                 .to_string_lossy()
                 .to_string();
             let branch = format!("worker-{actor_token}-{}", short_random_token());
@@ -266,6 +278,7 @@ pub struct AgentHandle {
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
+    actor_context: Option<AcpActorSkillContext>,
 }
 
 pub enum AgentInput {
@@ -604,13 +617,16 @@ impl AgentManager {
 
         let rows = sqlx::query(
             r#"
-            SELECT DISTINCT sessions.agent_id
-            FROM team_steps AS steps
-            JOIN team_runs AS runs ON runs.id = steps.run_id
-            JOIN agent_sessions AS sessions ON sessions.id = steps.remote_task_id
-            WHERE steps.remote_task_id IS NOT NULL
-              AND steps.status IN ('working', 'input_required')
-              AND runs.status IN ('submitted', 'working', 'input_required')
+            SELECT DISTINCT agent_id
+            FROM (
+                SELECT sessions.agent_id AS agent_id
+                FROM team_steps AS steps
+                JOIN team_runs AS runs ON runs.id = steps.run_id
+                JOIN agent_sessions AS sessions ON sessions.id = steps.remote_task_id
+                WHERE steps.remote_task_id IS NOT NULL
+                  AND steps.status IN ('working', 'input_required')
+                  AND runs.status IN ('submitted', 'working', 'input_required')
+            )
             "#,
         )
         .fetch_all(&self.db)
@@ -890,6 +906,23 @@ impl AgentManager {
         }
     }
 
+    pub async fn running_session_id_for_agent(&self, agent_id: &str) -> Option<String> {
+        self.get_running_session_id(agent_id).await
+    }
+
+    pub async fn running_actor_context_for_agent(
+        &self,
+        agent_id: &str,
+    ) -> Option<AcpActorSkillContext> {
+        let session_id = self.get_running_session_id(agent_id).await?;
+        let guard = self.inner.read().await;
+        let handle = guard.get(agent_id)?;
+        if handle.session_id != session_id {
+            return None;
+        }
+        handle.actor_context.clone()
+    }
+
     async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
         {
             let guard = self.inner.read().await;
@@ -1103,10 +1136,26 @@ impl AgentManager {
             command.env(key, value);
         }
         if let Some(context) = actor_context.as_ref() {
-            command.env(ACTOR_RUNTIME_RUN_ID_ENV, &context.run_id);
             command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
             command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
             command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
+            if let Some(team_id) = context
+                .team_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                command.env(ACTOR_RUNTIME_TEAM_ID_ENV, team_id);
+            }
+            if let Some(run_id) = context
+                .current_run_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                command.env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, run_id);
+                command.env(ACTOR_RUNTIME_RUN_ID_ENV, run_id);
+            }
         }
 
         let mut child = match command.spawn() {
@@ -1356,6 +1405,7 @@ impl AgentManager {
             output_tx: output_tx.clone(),
             input,
             session_id: session_id.clone(),
+            actor_context,
         };
 
         {

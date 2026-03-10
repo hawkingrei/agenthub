@@ -6,9 +6,14 @@ import {
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
+  canonicalizeMentionDraft,
+  createDisplayNameLookup,
+  isHumanMailboxActor,
+  type MentionCandidate,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
   resolveChatMessageText,
+  resolveDisplayName,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
@@ -27,10 +32,11 @@ type TeamTaskPanelProps = {
   onRefreshTasks: () => Promise<void> | void;
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
-  onSendMessage: () => Promise<void> | void;
+  onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
   onRefreshMessages: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   mailboxMessages?: TeamActorMessageRecord[];
+  seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
@@ -71,6 +77,11 @@ const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
   "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-medium text-ui-text-secondary";
+const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
+  "inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "mt-2 flex flex-wrap items-center gap-2";
+const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
+  "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
@@ -94,15 +105,6 @@ function resolveMailboxMessageText(
   return toPrettyJson(message.payload);
 }
 
-function isHumanMailboxActor(actorId: string | null | undefined, humanActorId: string): boolean {
-  const normalized = (actorId ?? "").trim();
-  const human = humanActorId.trim();
-  if (!normalized || !human) {
-    return false;
-  }
-  return normalized === human || normalized.startsWith(`${human}:`);
-}
-
 function resolveThreadAuthorLabel(
   actorId: string,
   humanActorId: string,
@@ -111,6 +113,18 @@ function resolveThreadAuthorLabel(
   if (isHumanMailboxActor(actorId, humanActorId)) {
     return "You";
   }
+  const state = liveStateByMemberId.get(actorId);
+  const agentName = state?.agent_name?.trim();
+  if (agentName) {
+    return agentName;
+  }
+  return actorId;
+}
+
+function resolveMentionLabel(
+  actorId: string,
+  liveStateByMemberId: Map<string, TeamMemberLiveState>
+): string {
   const state = liveStateByMemberId.get(actorId);
   const agentName = state?.agent_name?.trim();
   if (agentName) {
@@ -130,6 +144,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     onRefreshMessages,
     messages,
     mailboxMessages = [],
+    seenByMessageId = {},
     humanActorId = "user",
     memberLiveStates = [],
     memberIds = [],
@@ -143,31 +158,51 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
+  const [expandedSeenKeys, setExpandedSeenKeys] = React.useState<Record<string, boolean>>({});
+  const liveStateByMemberId = React.useMemo(
+    () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
+    [memberLiveStates]
+  );
+  const memberDisplayNamesById = React.useMemo(
+    () =>
+      createDisplayNameLookup(
+        memberIds.map((memberId) => [memberId, resolveMentionLabel(memberId, liveStateByMemberId)])
+      ),
+    [liveStateByMemberId, memberIds]
+  );
 
-  const mentionableMemberIds = React.useMemo(() => {
+  const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
     const seen = new Set<string>();
-    const ids: string[] = [];
+    const items: MentionCandidate[] = [];
     for (const memberId of [...memberIds, ...memberLiveStates.map((member) => member.member_id)]) {
       const normalized = memberId.trim();
       if (!normalized || seen.has(normalized)) {
         continue;
       }
       seen.add(normalized);
-      ids.push(normalized);
+      items.push({
+        actorId: normalized,
+        label: resolveMentionLabel(normalized, liveStateByMemberId),
+        aliases: [normalized],
+      });
     }
-    return ids;
-  }, [memberIds, memberLiveStates]);
-  const mentionCandidates = React.useMemo(() => {
+    return items;
+  }, [liveStateByMemberId, memberIds, memberLiveStates]);
+  const filteredMentionCandidates = React.useMemo(() => {
     if (!activeMention) {
       return [];
     }
     const keyword = activeMention.keyword.trim().toLowerCase();
-    return mentionableMemberIds
-      .filter((memberId) =>
-        keyword.length === 0 ? true : memberId.toLowerCase().startsWith(keyword)
+    return mentionCandidates
+      .filter((candidate) =>
+        keyword.length === 0
+          ? true
+          : [candidate.label, candidate.actorId, ...candidate.aliases].some((value) =>
+              value.toLowerCase().startsWith(keyword)
+            )
       )
       .slice(0, 8);
-  }, [activeMention, mentionableMemberIds]);
+  }, [activeMention, mentionCandidates]);
 
   const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
     if (cursor === null || Number.isNaN(cursor)) {
@@ -181,11 +216,11 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   }, []);
 
   const applyMentionSelection = React.useCallback(
-    (actorId: string) => {
+    (candidate: MentionCandidate) => {
       if (!activeMention) {
         return;
       }
-      const applied = applyMentionAtTag(messageDraft, activeMention, actorId);
+      const applied = applyMentionAtTag(messageDraft, activeMention, candidate.label);
       onMessageDraftChange(applied.text);
       setActiveMention(null);
       setActiveMentionIndex(0);
@@ -202,10 +237,16 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   );
 
   const canSendMessage = messageDraft.trim().length > 0 && busy !== "send-task-message";
-  const liveStateByMemberId = React.useMemo(
-    () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
-    [memberLiveStates]
-  );
+  const sendCurrentMessage = React.useCallback(() => {
+    const normalizedDraft = canonicalizeMentionDraft(messageDraft, mentionCandidates);
+    if (!normalizedDraft.text.trim()) {
+      return;
+    }
+    void onSendMessage({
+      text: normalizedDraft.text,
+      mentionActorIds: normalizedDraft.mentionActorIds,
+    });
+  }, [mentionCandidates, messageDraft, onSendMessage]);
   const waterfallItems = React.useMemo(() => {
     const conversationItems = messages
       .map((message) => ({
@@ -266,9 +307,9 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       })
       .map((item) => ({
         ...item,
-        renderedHtml: renderMarkdownWithMentions(item.markdownText),
+        renderedHtml: renderMarkdownWithMentions(item.markdownText, memberDisplayNamesById),
       }));
-  }, [humanActorId, mailboxMessages, messages, toPrettyJson]);
+  }, [humanActorId, mailboxMessages, memberDisplayNamesById, messages, toPrettyJson]);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -295,7 +336,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             onClick={() => {
               void onRefreshTasks();
             }}
-            disabled={tasksLoading || busy === "refresh-task"}
+            disabled={tasksLoading}
             title="Refresh channel"
             aria-label="Refresh channel"
           >
@@ -308,7 +349,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             onClick={() => {
               void onRefreshMessages();
             }}
-            disabled={messagesLoading || busy === "refresh-task-messages"}
+            disabled={messagesLoading}
           >
             Refresh Thread
           </button>
@@ -339,6 +380,48 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                   className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                   dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
                 />
+                {item.streamLabel === "conversation" && (
+                  <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
+                    {(() => {
+                      const seenActorIds = seenByMessageId[item.sequence] ?? [];
+                      if (seenActorIds.length === 0) {
+                        return (
+                          <span className="text-xs text-ui-text-muted">Seen by 0 agents</span>
+                        );
+                      }
+                      const expanded = Boolean(expandedSeenKeys[item.key]);
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                            onClick={() =>
+                              setExpandedSeenKeys((current) => ({
+                                ...current,
+                                [item.key]: !current[item.key],
+                              }))
+                            }
+                            aria-expanded={expanded}
+                          >
+                            {`Seen by ${seenActorIds.length} agent${seenActorIds.length === 1 ? "" : "s"}`}
+                          </button>
+                          {expanded && (
+                            <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                              {seenActorIds.map((actorId) => (
+                                <span
+                                  key={`${item.key}-${actorId}`}
+                                  className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5"
+                                >
+                                  {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
                 {developerMode && (
                   <button
                     type="button"
@@ -439,22 +522,23 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             }, 0);
           }}
           onKeyDown={(event) => {
-            if (activeMention && mentionCandidates.length > 0) {
+            if (activeMention && filteredMentionCandidates.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                setActiveMentionIndex((prev) => (prev + 1) % mentionCandidates.length);
+                setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
                 return;
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
                 setActiveMentionIndex((prev) =>
-                  prev === 0 ? mentionCandidates.length - 1 : prev - 1
+                  prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
                 );
                 return;
               }
               if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
                 event.preventDefault();
-                const selected = mentionCandidates[activeMentionIndex] ?? mentionCandidates[0];
+                const selected =
+                  filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
                 if (selected) {
                   applyMentionSelection(selected);
                 }
@@ -469,19 +553,19 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSendMessage) {
               event.preventDefault();
-              void onSendMessage();
+              sendCurrentMessage();
             }
           }}
         />
-        {activeMention && mentionCandidates.length > 0 && (
+        {activeMention && filteredMentionCandidates.length > 0 && (
           <div className="mt-2 rounded-lg border border-ui-border bg-ui-surface shadow-sm">
             <div className="px-3 py-1 text-xs text-ui-text-muted">
               Select teammate mention (`@` without selection stays plain text)
             </div>
             <div className="max-h-44 overflow-auto py-1">
-              {mentionCandidates.map((memberId, index) => (
+              {filteredMentionCandidates.map((candidate, index) => (
                 <button
-                  key={memberId}
+                  key={candidate.actorId}
                   type="button"
                   className={`flex w-full items-center justify-between px-3 py-1 text-left text-sm ${
                     index === activeMentionIndex
@@ -490,11 +574,11 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                   }`}
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    applyMentionSelection(memberId);
+                    applyMentionSelection(candidate);
                   }}
                 >
-                  <span className="mono">{memberId}</span>
-                  <span className="text-[11px] text-ui-text-muted">{`@${memberId}`}</span>
+                  <span>{candidate.label}</span>
+                  <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
                 </button>
               ))}
             </div>
@@ -502,13 +586,13 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         )}
         <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
-            {`Use @member_id for direct replies · Ctrl/Cmd + Enter to send`}
+            {`Use @name for direct replies · Ctrl/Cmd + Enter to send`}
           </span>
           <button
             type="button"
             className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
             onClick={() => {
-              void onSendMessage();
+              sendCurrentMessage();
             }}
             disabled={!canSendMessage}
           >

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AgentEvent,
   AgentRecord,
+  TeamActorMessageRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamTaskRecord,
@@ -10,8 +11,11 @@ import {
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
+  listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
+  resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
@@ -19,6 +23,7 @@ import {
   upsertEventList,
   upsertRun,
 } from "./page_helpers";
+import type { TeamMemberAgentStatusSummary } from "./member_helpers";
 
 function buildRun(
   id: string,
@@ -81,6 +86,31 @@ function buildAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
   };
 }
 
+function buildMailboxMessage(
+  messageId: number,
+  overrides: Partial<TeamActorMessageRecord> = {}
+): TeamActorMessageRecord {
+  return {
+    message_id: messageId,
+    run_id: "run-1",
+    from_actor_id: "leader-agent",
+    to_actor_id: "worker-agent",
+    channel: "default",
+    transport: "local",
+    route: null,
+    payload: {
+      type: "chat_message",
+      text: "hello",
+      task_conversation_id: "conv-1",
+      task_message_id: 7,
+    },
+    status: "delivered",
+    created_at: 1_700_000_001,
+    delivered_at: 1_700_000_010,
+    ...overrides,
+  };
+}
+
 function buildTask(
   id: string,
   createdAt: number,
@@ -96,6 +126,18 @@ function buildTask(
     context: {},
     created_at: createdAt,
     updated_at: updatedAt,
+    ...overrides,
+  };
+}
+
+function buildMemberSummary(
+  overrides: Partial<TeamMemberAgentStatusSummary> = {}
+): TeamMemberAgentStatusSummary {
+  return {
+    active: 0,
+    inactive: 0,
+    missing: 0,
+    total: 0,
     ...overrides,
   };
 }
@@ -156,7 +198,7 @@ describe("team page helpers", () => {
     expect(pickNextWorkerAgentId(agents, new Set(["a1", "a2"]))).toBe("");
   });
 
-  it("sorts team tasks by recent activity and resolves conversation task", () => {
+  it("sorts team tasks by recent activity and resolves workspace versus conversation tasks", () => {
     const tasks = [
       buildTask("task-1", 100, 120),
       buildTask("task-2", 110, 110),
@@ -170,16 +212,82 @@ describe("team page helpers", () => {
       "task-3",
       "task-2",
     ]);
-    expect(resolveSelectedTeamTask(tasks, "task-3", "team-1")?.id).toBe("task-3");
+    expect(resolveSelectedTeamTask(tasks, "task-3", "team-1")?.id).toBe("task-1");
     expect(resolveSelectedTeamTask(tasks, "task-2", "team-1")?.id).toBe("task-2");
     expect(resolveSelectedTeamTask(tasks, "missing", "team-1")?.id).toBe("task-1");
     expect(resolveTeamConversationTask(tasks, "team-1")?.id).toBe("task-3");
+    expect(listTeamWorkspaceTasks(tasks, "team-1").map((task) => task.id)).toEqual([
+      "task-1",
+      "task-2",
+    ]);
     expect(resolveTeamConversationTask([buildTask("task-1", 100, 120)], "team-1")).toBeNull();
     expect(resolveSelectedTeamTask([buildTask("task-1", 100, 120)], "", "team-1")?.id).toBe(
       "task-1"
     );
     expect(resolveTeamConversationTask([], "team-1")).toBeNull();
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
+  });
+
+  it("resolves seen-by coverage from delivered mailbox fan-out", () => {
+    const seen = resolveTaskMessageSeenByActors(
+      [
+        buildMailboxMessage(1),
+        buildMailboxMessage(2, {
+          to_actor_id: "worker-agent-2",
+          payload: JSON.stringify({
+            type: "chat_message",
+            text: "hello",
+            task_conversation_id: "conv-1",
+            task_message_id: 7,
+          }),
+        }),
+        buildMailboxMessage(3, {
+          status: "pending",
+          to_actor_id: "worker-agent-3",
+        }),
+        buildMailboxMessage(4, {
+          to_actor_id: "worker-agent",
+          payload: {
+            type: "chat_message",
+            text: "other",
+            task_conversation_id: "conv-2",
+            task_message_id: 9,
+          },
+        }),
+      ],
+      "conv-1",
+      ["worker-agent", "worker-agent-2", "worker-agent-3"]
+    );
+
+    expect(seen).toEqual({
+      7: ["worker-agent", "worker-agent-2"],
+    });
+  });
+
+  it("resolves team runtime status from member availability summary", () => {
+    expect(resolveTeamRuntimeStatus(buildMemberSummary())).toMatchObject({
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+    });
+    expect(
+      resolveTeamRuntimeStatus(
+        buildMemberSummary({ active: 3, inactive: 0, missing: 0, total: 3 })
+      )
+    ).toMatchObject({
+      status: "running",
+      label: "team running",
+      tone: "active",
+    });
+    expect(
+      resolveTeamRuntimeStatus(
+        buildMemberSummary({ active: 2, inactive: 1, missing: 0, total: 3 })
+      )
+    ).toMatchObject({
+      status: "degraded",
+      label: "team degraded",
+      tone: "warning",
+    });
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {

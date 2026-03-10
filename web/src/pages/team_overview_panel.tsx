@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { resolveDisplayName } from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_LIST_ITEM_BASE_CLASS,
@@ -19,6 +20,7 @@ type TeamOverviewPanelProps = {
   onRefreshSnapshot: () => Promise<void> | void;
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
+  displayNameByActorId?: Record<string, string>;
 };
 
 const OVERVIEW_META_CLASS =
@@ -44,6 +46,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
     onRefreshSnapshot,
     selectedMemberId,
     onOpenMailboxForMember,
+    displayNameByActorId = {},
   } = props;
 
   return (
@@ -131,7 +134,8 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
                 <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                  {member.member_id} ({member.role})
+                  {resolveDisplayName(member.member_id, displayNameByActorId, member.member_id)} (
+                  {member.role})
                 </span>
                 <StatusBadge
                   label={member.status}
@@ -140,7 +144,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                   title={`member status: ${member.status}`}
                 />
                 <span className={TEAM_LIST_ITEM_META_CLASS}>
-                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
+                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} id=${member.member_id}`}
                 </span>
               </button>
             ))}

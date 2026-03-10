@@ -2,6 +2,8 @@ import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  isHumanMailboxActor,
+  resolveDisplayName,
   renderPlainTextWithMentions,
   resolveChatMessageText,
 } from "./team/mailbox_helpers";
@@ -37,6 +39,7 @@ type TeamMailboxPanelProps = {
   mode?: "full" | "advanced_only";
   snapshot: TeamRunSnapshotRecord | null;
   humanActorId?: string;
+  displayNameByActorId?: Record<string, string>;
   selectedMemberId: string;
   unreadByMemberId: Record<string, number>;
   onSelectMember: (memberId: string) => void;
@@ -106,12 +109,28 @@ const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 te
 const MAILBOX_ADVANCED_HINT_CLASS =
   "mt-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
+function resolveMailboxActorLabel(
+  actorId: string,
+  displayNameByActorId: Record<string, string>,
+  humanActorId: string
+): string {
+  const normalizedActorId = actorId.trim();
+  if (!normalizedActorId) {
+    return "-";
+  }
+  if (isHumanMailboxActor(normalizedActorId, humanActorId)) {
+    return "You";
+  }
+  return resolveDisplayName(normalizedActorId, displayNameByActorId, normalizedActorId);
+}
+
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
     developerMode,
     snapshot,
     humanActorId = "",
+    displayNameByActorId = {},
     selectedMemberId,
     unreadByMemberId,
     onSelectMember,
@@ -344,7 +363,12 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   onClick={() => onSelectMember(member.member_id)}
                 >
                   <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                    {member.member_id} ({member.role})
+                    {resolveMailboxActorLabel(
+                      member.member_id,
+                      displayNameByActorId,
+                      normalizedHumanActorId
+                    )}{" "}
+                    ({member.role})
                   </span>
                   {isHuman ? (
                     <span className={TEAM_LIST_ITEM_META_CLASS}>human actor</span>
@@ -372,7 +396,17 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             <div className="teams-chat-head">
               <div>
                 <strong>
-                  {chatActors.fromActorId || "-"} → {chatActors.toActorId || "-"}
+                  {resolveMailboxActorLabel(
+                    chatActors.fromActorId,
+                    displayNameByActorId,
+                    normalizedHumanActorId
+                  )}{" "}
+                  →{" "}
+                  {resolveMailboxActorLabel(
+                    chatActors.toActorId,
+                    displayNameByActorId,
+                    normalizedHumanActorId
+                  )}
                 </strong>
               </div>
               {developerMode && (
@@ -408,7 +442,17 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     <div className="teams-message-head">
                       <span className="mono">#{message.message_id}</span>
                       <span>
-                        {message.from_actor_id} → {message.to_actor_id}
+                        {resolveMailboxActorLabel(
+                          message.from_actor_id,
+                          displayNameByActorId,
+                          normalizedHumanActorId
+                        )}{" "}
+                        →{" "}
+                        {resolveMailboxActorLabel(
+                          message.to_actor_id,
+                          displayNameByActorId,
+                          normalizedHumanActorId
+                        )}
                       </span>
                       <span>{message.status}</span>
                       <span>{formatTs(message.created_at)}</span>
@@ -416,7 +460,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     {chatText !== null ? (
                       <div
                         className={`${TEAM_PANEL_PRE_CLASS} whitespace-pre-wrap`}
-                        dangerouslySetInnerHTML={{ __html: renderPlainTextWithMentions(payload) }}
+                        dangerouslySetInnerHTML={{
+                          __html: renderPlainTextWithMentions(payload, displayNameByActorId),
+                        }}
                       />
                     ) : (
                       <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>

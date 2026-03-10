@@ -7,9 +7,6 @@ use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::acp::{
-    AcpActorContinuityEnvelope, AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
-};
 use crate::agent::AgentManager;
 
 use super::{TeamManager, TeamRunRecord, TeamStepRecord, TeamStepStatus};
@@ -49,28 +46,30 @@ struct OrchestratorStepSpec {
 
 #[async_trait]
 pub trait TeamMemberAgentStarter: Send + Sync {
-    async fn start_member_agent(
+    async fn running_member_session(&self, member_id: &str) -> Option<String>;
+
+    async fn notify_member_agent(
         &self,
         member_id: &str,
-        actor_context: AcpActorSkillContext,
-    ) -> anyhow::Result<String>;
-
-    async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()>;
+        expected_session_id: &str,
+        prompt: &str,
+    ) -> anyhow::Result<()>;
 }
 
 #[async_trait]
 impl TeamMemberAgentStarter for AgentManager {
-    async fn start_member_agent(
-        &self,
-        member_id: &str,
-        actor_context: AcpActorSkillContext,
-    ) -> anyhow::Result<String> {
-        self.start_agent_with_actor_context(member_id, Some(actor_context))
-            .await
+    async fn running_member_session(&self, member_id: &str) -> Option<String> {
+        self.running_session_id_for_agent(member_id).await
     }
 
-    async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()> {
-        self.stop_agent(member_id).await
+    async fn notify_member_agent(
+        &self,
+        member_id: &str,
+        expected_session_id: &str,
+        prompt: &str,
+    ) -> anyhow::Result<()> {
+        self.send_input(member_id, prompt, None, Some(expected_session_id))
+            .await
     }
 }
 
@@ -322,176 +321,33 @@ impl TeamOrchestratorWorker {
 
     async fn dispatch_step(&self, run_id: &str, step: &TeamStepRecord) -> anyhow::Result<()> {
         let run = self.teams.get_run(run_id).await?;
-        let continuity_mode = parse_run_continuity_mode(&run.input);
-        let continuity_max_chars = parse_run_continuity_max_chars(&run.input);
-        let member_role = match self
-            .resolve_member_role_for_step(&run.team_id, &step.member_id)
+        let Some(session_id) = self
+            .agent_starter
+            .running_member_session(&step.member_id)
             .await
-        {
-            Ok(role) => role,
-            Err(err) => {
-                let err_text = format!(
-                    "orchestrator failed to resolve member role '{}' for step '{}': {}",
-                    step.member_id, step.step_key, err
-                );
-                if let Err(fail_err) = self.teams.fail_step(&step.id, &err_text).await {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_id = %step.id,
-                        "team orchestrator failed to mark step as failed after role resolution failure: {}",
-                        fail_err
-                    );
-                }
-                return Err(err.context(err_text));
-            }
-        };
-        let member_skills = match self
-            .resolve_member_skills_for_step(&run.team_id, &step.member_id)
-            .await
-        {
-            Ok(skills) => skills,
-            Err(err) => {
-                let err_text = format!(
-                    "orchestrator failed to resolve member skills '{}' for step '{}': {}",
-                    step.member_id, step.step_key, err
-                );
-                if let Err(fail_err) = self.teams.fail_step(&step.id, &err_text).await {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_id = %step.id,
-                        "team orchestrator failed to mark step as failed after skills resolution failure: {}",
-                        fail_err
-                    );
-                }
-                return Err(err.context(err_text));
-            }
-        };
-        let continuity = if continuity_mode == "reset" {
-            self.emit_continuity_event(
-                run_id,
-                "continuity_reset",
-                serde_json::json!({
-                    "step_id": step.id,
-                    "step_key": step.step_key,
-                    "member_id": step.member_id,
-                    "mode": continuity_mode,
-                }),
-            )
-            .await;
-            None
-        } else {
-            match self
+        else {
+            let reason = format!(
+                "member runtime '{}' is not running; start team '{}' first",
+                step.member_id, run.team_id
+            );
+            if let Err(input_err) = self
                 .teams
-                .get_member_continuity_state(&run.team_id, &step.member_id)
+                .set_step_input_required(&step.id, Some(reason.as_str()), None)
                 .await
             {
-                Ok(Some(state)) => {
-                    self.emit_continuity_event(
-                        run_id,
-                        "continuity_attached",
-                        serde_json::json!({
-                            "step_id": step.id,
-                            "step_key": step.step_key,
-                            "member_id": step.member_id,
-                            "mode": continuity_mode,
-                            "source_run_id": state.source_run_id,
-                            "source_session_id": state.source_session_id,
-                        }),
-                    )
-                    .await;
-                    Some(AcpActorContinuityEnvelope {
-                        mode: continuity_mode.to_string(),
-                        source_run_id: state.source_run_id,
-                        source_session_id: state.source_session_id,
-                        summary_text: truncate_chars(
-                            state.summary_text.as_str(),
-                            continuity_max_chars,
-                        ),
-                        history_window: state.history_window,
-                    })
-                }
-                Ok(None) => {
-                    self.emit_continuity_event(
-                        run_id,
-                        "continuity_fallback",
-                        serde_json::json!({
-                            "step_id": step.id,
-                            "step_key": step.step_key,
-                            "member_id": step.member_id,
-                            "mode": continuity_mode,
-                            "reason": "missing_state",
-                        }),
-                    )
-                    .await;
-                    None
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_id = %step.id,
-                        member_id = %step.member_id,
-                        "team orchestrator continuity lookup failed: {}",
-                        err
-                    );
-                    self.emit_continuity_event(
-                        run_id,
-                        "continuity_fallback",
-                        serde_json::json!({
-                            "step_id": step.id,
-                            "step_key": step.step_key,
-                            "member_id": step.member_id,
-                            "mode": continuity_mode,
-                            "reason": "state_lookup_failed",
-                        }),
-                    )
-                    .await;
-                    None
-                }
-            }
-        };
-        let actor_context = AcpActorSkillContext {
-            run_id: run_id.to_string(),
-            actor_id: step.member_id.clone(),
-            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-            actor_cli_path: default_actor_cli_path()?,
-            member_role: Some(member_role),
-            member_skills,
-            continuity,
-        };
-        let start_result = self
-            .agent_starter
-            .start_member_agent(&step.member_id, actor_context)
-            .await;
-        let session_id = match start_result {
-            Ok(session_id) => session_id,
-            Err(err) => {
-                let err_text = format!(
-                    "orchestrator failed to start member agent '{}' for step '{}': {}",
-                    step.member_id, step.step_key, err
+                tracing::warn!(
+                    run_id = %run_id,
+                    step_id = %step.id,
+                    member_id = %step.member_id,
+                    "team orchestrator failed to mark missing member runtime as input_required: {}",
+                    input_err
                 );
-                if let Err(fail_err) = self.teams.fail_step(&step.id, &err_text).await {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_id = %step.id,
-                        "team orchestrator failed to mark step as failed: {}",
-                        fail_err
-                    );
-                }
-                return Err(err.context(err_text));
             }
+            return Err(anyhow::anyhow!(reason));
         };
         let started = match self.teams.start_step(&step.id, Some(&session_id)).await {
             Ok(started) => started,
             Err(err) => {
-                if let Err(stop_err) = self.agent_starter.stop_member_agent(&step.member_id).await {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_id = %step.id,
-                        member_id = %step.member_id,
-                        "team orchestrator failed to stop member agent after start_step error: {}",
-                        stop_err
-                    );
-                }
                 return Err(err.context(format!(
                     "failed to start step '{}' for run '{}'",
                     step.step_key, run_id
@@ -499,15 +355,6 @@ impl TeamOrchestratorWorker {
             }
         };
         if started.status != TeamStepStatus::Working {
-            if let Err(err) = self.agent_starter.stop_member_agent(&step.member_id).await {
-                tracing::warn!(
-                    run_id = %run_id,
-                    step_id = %started.id,
-                    member_id = %step.member_id,
-                    "team orchestrator failed to stop member agent after non-working step start: {}",
-                    err
-                );
-            }
             tracing::warn!(
                 run_id = %run_id,
                 step_id = %started.id,
@@ -520,7 +367,118 @@ impl TeamOrchestratorWorker {
                 started.status
             ));
         }
+        let prompt = self.build_step_dispatch_prompt(&run, &started).await;
+        if let Err(err) = self
+            .agent_starter
+            .notify_member_agent(&step.member_id, &session_id, prompt.as_str())
+            .await
+        {
+            let reason = format!(
+                "failed to notify member '{}' for run '{}' step '{}': {}",
+                step.member_id, run_id, step.step_key, err
+            );
+            if let Err(input_err) = self
+                .teams
+                .set_step_input_required(&step.id, Some(reason.as_str()), None)
+                .await
+            {
+                tracing::warn!(
+                    run_id = %run_id,
+                    step_id = %step.id,
+                    member_id = %step.member_id,
+                    "team orchestrator failed to downgrade step to input_required after notify failure: {}",
+                    input_err
+                );
+            }
+            return Err(anyhow::anyhow!(reason));
+        }
         Ok(())
+    }
+
+    async fn build_step_dispatch_prompt(
+        &self,
+        run: &TeamRunRecord,
+        step: &TeamStepRecord,
+    ) -> String {
+        let base_prompt = format!(
+            "Team step '{step_key}' for run '{run_id}' is ready. Use actor_inbox with {{\"run_id\":\"{run_id}\",\"limit\":20}} to inspect pending mailbox work for this run, process your assigned task, ack delivered messages, and report progress or completion back through actor_send.",
+            step_key = step.step_key,
+            run_id = run.id
+        );
+        let continuity_mode = parse_run_continuity_mode(&run.input);
+        if continuity_mode == "reset" {
+            self.emit_continuity_event(
+                &run.id,
+                "continuity_reset",
+                serde_json::json!({
+                    "member_id": step.member_id,
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                }),
+            )
+            .await;
+            return base_prompt;
+        }
+
+        match self
+            .teams
+            .get_member_continuity_state(&run.team_id, &step.member_id)
+            .await
+        {
+            Ok(Some(state)) => {
+                let max_chars = parse_run_continuity_max_chars(&run.input);
+                let summary = truncate_chars(state.summary_text.trim(), max_chars);
+                self.emit_continuity_event(
+                    &run.id,
+                    "continuity_attached",
+                    serde_json::json!({
+                        "member_id": step.member_id,
+                        "step_id": step.id,
+                        "step_key": step.step_key,
+                        "source_run_id": state.source_run_id,
+                        "source_session_id": state.source_session_id,
+                        "summary_chars": summary.chars().count(),
+                    }),
+                )
+                .await;
+                format!("{base_prompt}\n\nContinuity summary from previous work:\n{summary}",)
+            }
+            Ok(None) => {
+                self.emit_continuity_event(
+                    &run.id,
+                    "continuity_fallback",
+                    serde_json::json!({
+                        "member_id": step.member_id,
+                        "step_id": step.id,
+                        "step_key": step.step_key,
+                        "reason": "missing_state",
+                    }),
+                )
+                .await;
+                base_prompt
+            }
+            Err(err) => {
+                tracing::warn!(
+                    run_id = %run.id,
+                    step_id = %step.id,
+                    member_id = %step.member_id,
+                    "team orchestrator failed to load member continuity state: {}",
+                    err
+                );
+                self.emit_continuity_event(
+                    &run.id,
+                    "continuity_fallback",
+                    serde_json::json!({
+                        "member_id": step.member_id,
+                        "step_id": step.id,
+                        "step_key": step.step_key,
+                        "reason": "state_lookup_failed",
+                    }),
+                )
+                .await;
+                base_prompt
+            }
+        }
     }
 
     async fn emit_continuity_event(&self, run_id: &str, event_type: &str, payload: Value) {
@@ -536,37 +494,6 @@ impl TeamOrchestratorWorker {
                 err
             );
         }
-    }
-
-    async fn resolve_member_role_for_step(
-        &self,
-        team_id: &str,
-        member_id: &str,
-    ) -> anyhow::Result<String> {
-        let team = self.teams.get_team(team_id).await?;
-        if let Some(role) = parse_member_role(&team.spec, member_id)
-            && is_supported_member_role(role.as_str())
-        {
-            return Ok(role);
-        }
-
-        let inferred_role = infer_member_role(&team.spec, member_id)?;
-        tracing::warn!(
-            team_id = %team_id,
-            member_id = %member_id,
-            inferred_role = %inferred_role,
-            "team orchestrator member role missing or unsupported, inferred fallback role"
-        );
-        Ok(inferred_role)
-    }
-
-    async fn resolve_member_skills_for_step(
-        &self,
-        team_id: &str,
-        member_id: &str,
-    ) -> anyhow::Result<Vec<String>> {
-        let team = self.teams.get_team(team_id).await?;
-        Ok(parse_member_skills(&team.spec, member_id))
     }
 }
 
@@ -702,6 +629,7 @@ fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
     }])
 }
 
+#[cfg(test)]
 fn parse_member_role(spec: &Value, member_id: &str) -> Option<String> {
     let normalized_member_id = member_id.trim();
     if normalized_member_id.is_empty() {
@@ -731,59 +659,7 @@ fn parse_member_role(spec: &Value, member_id: &str) -> Option<String> {
         })
 }
 
-fn parse_member_skills(spec: &Value, member_id: &str) -> Vec<String> {
-    let normalized_member_id = member_id.trim();
-    if normalized_member_id.is_empty() {
-        return Vec::new();
-    }
-    let Some(member_obj) = spec
-        .as_object()
-        .and_then(|spec_obj| spec_obj.get("members"))
-        .and_then(Value::as_array)
-        .and_then(|members| {
-            members.iter().find_map(|member| {
-                let member = member.as_object()?;
-                let id = member
-                    .get("member_id")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())?;
-                if id != normalized_member_id {
-                    return None;
-                }
-                Some(member)
-            })
-        })
-    else {
-        return Vec::new();
-    };
-
-    let mut out = Vec::new();
-    let Some(skills) = member_obj.get("skills").and_then(Value::as_array) else {
-        return out;
-    };
-    for skill in skills {
-        let Some(raw) = skill.as_str() else {
-            continue;
-        };
-        let normalized = raw.trim();
-        if normalized.is_empty() {
-            continue;
-        }
-        if !out
-            .iter()
-            .any(|item: &String| item.eq_ignore_ascii_case(normalized))
-        {
-            out.push(normalized.to_string());
-        }
-    }
-    out
-}
-
-fn is_supported_member_role(role: &str) -> bool {
-    matches!(role, "leader" | "worker")
-}
-
+#[cfg(test)]
 fn infer_member_role(spec: &Value, member_id: &str) -> anyhow::Result<String> {
     let normalized_member_id = member_id.trim();
     if normalized_member_id.is_empty() {
@@ -940,7 +816,6 @@ mod tests {
         infer_member_role, is_step_ready, is_terminal_failure_session_status, parse_member_role,
         parse_step_specs,
     };
-    use crate::acp::AcpActorSkillContext;
     use crate::team::{
         SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport,
         TeamDefinitionConfig, TeamManager, TeamStepRecord, TeamStepStatus,
@@ -1157,19 +1032,39 @@ mod tests {
     }
 
     #[derive(Debug, Clone)]
-    struct FakeStartCall {
+    struct FakeNotifyCall {
         member_id: String,
-        actor_context: AcpActorSkillContext,
+        expected_session_id: String,
+        prompt: String,
     }
 
     #[derive(Clone, Default)]
     struct FakeAgentStarter {
-        calls: Arc<Mutex<Vec<FakeStartCall>>>,
-        stop_calls: Arc<Mutex<Vec<String>>>,
+        calls: Arc<Mutex<Vec<FakeNotifyCall>>>,
         fail_members: Arc<Mutex<HashSet<String>>>,
+        running_sessions: Arc<Mutex<HashMap<String, String>>>,
     }
 
     impl FakeAgentStarter {
+        fn with_running_members<I, K, V>(members: I) -> Self
+        where
+            I: IntoIterator<Item = (K, V)>,
+            K: Into<String>,
+            V: Into<String>,
+        {
+            let starter = Self::default();
+            {
+                let mut running_sessions = starter
+                    .running_sessions
+                    .lock()
+                    .expect("lock running_sessions");
+                for (member_id, session_id) in members {
+                    running_sessions.insert(member_id.into(), session_id.into());
+                }
+            }
+            starter
+        }
+
         fn mark_fail_for(&self, member_id: &str) {
             self.fail_members
                 .lock()
@@ -1177,25 +1072,31 @@ mod tests {
                 .insert(member_id.to_string());
         }
 
-        fn calls(&self) -> Vec<FakeStartCall> {
+        fn calls(&self) -> Vec<FakeNotifyCall> {
             self.calls.lock().expect("lock calls").clone()
-        }
-
-        fn stop_calls(&self) -> Vec<String> {
-            self.stop_calls.lock().expect("lock stop_calls").clone()
         }
     }
 
     #[async_trait]
     impl TeamMemberAgentStarter for FakeAgentStarter {
-        async fn start_member_agent(
+        async fn running_member_session(&self, member_id: &str) -> Option<String> {
+            self.running_sessions
+                .lock()
+                .expect("lock running_sessions")
+                .get(member_id)
+                .cloned()
+        }
+
+        async fn notify_member_agent(
             &self,
             member_id: &str,
-            actor_context: AcpActorSkillContext,
-        ) -> anyhow::Result<String> {
-            self.calls.lock().expect("lock calls").push(FakeStartCall {
+            expected_session_id: &str,
+            prompt: &str,
+        ) -> anyhow::Result<()> {
+            self.calls.lock().expect("lock calls").push(FakeNotifyCall {
                 member_id: member_id.to_string(),
-                actor_context,
+                expected_session_id: expected_session_id.to_string(),
+                prompt: prompt.to_string(),
             });
             if self
                 .fail_members
@@ -1203,16 +1104,8 @@ mod tests {
                 .expect("lock fail_members")
                 .contains(member_id)
             {
-                return Err(anyhow::anyhow!("forced starter failure for {}", member_id));
+                return Err(anyhow::anyhow!("forced notify failure for {}", member_id));
             }
-            Ok(format!("session-{member_id}"))
-        }
-
-        async fn stop_member_agent(&self, member_id: &str) -> anyhow::Result<()> {
-            self.stop_calls
-                .lock()
-                .expect("lock stop_calls")
-                .push(member_id.to_string());
             Ok(())
         }
     }
@@ -1433,7 +1326,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_once_injects_actor_runtime_and_supports_inbox_ack_flow() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-team".to_string(),
@@ -1463,7 +1356,10 @@ mod tests {
             .await
             .expect("submit step");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let summary = worker.dispatch_once(10).await.expect("dispatch once");
 
@@ -1474,14 +1370,14 @@ mod tests {
         let calls = starter.calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].member_id, "planner");
-        assert_eq!(calls[0].actor_context.run_id, run.id);
-        assert_eq!(calls[0].actor_context.actor_id, "planner");
-        assert_eq!(calls[0].actor_context.default_channel, "default");
-        assert_eq!(
-            calls[0].actor_context.member_role.as_deref(),
-            Some("leader")
+        assert_eq!(calls[0].expected_session_id, "session-planner");
+        assert!(calls[0].prompt.contains(&run.id));
+        assert!(calls[0].prompt.contains("actor_inbox"));
+        assert!(
+            !calls[0]
+                .prompt
+                .contains("Continuity summary from previous work")
         );
-        assert!(calls[0].actor_context.continuity.is_none());
 
         let started_step = teams.get_step(&step.id).await.expect("get started step");
         assert_eq!(started_step.status, TeamStepStatus::Working);
@@ -1495,7 +1391,7 @@ mod tests {
                 run_id: &run.id,
                 from_actor_id: "reviewer",
                 from_peer_id: ACTOR_MAIN_PEER_ID,
-                to_actor_id: &calls[0].actor_context.actor_id,
+                to_actor_id: "planner",
                 to_peer_id: ACTOR_MAIN_PEER_ID,
                 channel: "default",
                 transport: TeamActorMessageTransport::Local,
@@ -1507,7 +1403,7 @@ mod tests {
             .expect("send actor message");
 
         let inbox = teams
-            .list_actor_inbox(&run.id, &calls[0].actor_context.actor_id, 10, None, false)
+            .list_actor_inbox(&run.id, "planner", 10, None, false)
             .await
             .expect("list inbox");
         assert_eq!(inbox.len(), 1);
@@ -1515,7 +1411,7 @@ mod tests {
         assert_eq!(inbox[0].status, TeamActorMessageStatus::Pending);
 
         let acked = teams
-            .ack_actor_message(&run.id, &calls[0].actor_context.actor_id, sent.message_id)
+            .ack_actor_message(&run.id, "planner", sent.message_id)
             .await
             .expect("ack message");
         assert_eq!(acked.status, TeamActorMessageStatus::Delivered);
@@ -1524,7 +1420,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_once_attaches_continuity_when_available() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-continuity-team".to_string(),
@@ -1584,25 +1480,23 @@ mod tests {
             .await
             .expect("submit next step");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let summary = worker.dispatch_once(10).await.expect("dispatch once");
         assert_eq!(summary.dispatched, 1);
 
         let calls = starter.calls();
         assert_eq!(calls.len(), 1);
-        let continuity = calls[0]
-            .actor_context
-            .continuity
-            .as_ref()
-            .expect("continuity should be attached");
-        assert_eq!(continuity.mode, "inherit_recent");
-        assert_eq!(continuity.source_run_id, previous_run.id);
-        assert_eq!(
-            continuity.source_session_id.as_deref(),
-            Some("session-prev-planner")
+        assert_eq!(calls[0].expected_session_id, "session-planner");
+        assert!(
+            calls[0]
+                .prompt
+                .contains("Continuity summary from previous work")
         );
-        assert!(continuity.summary_text.contains("previous synthesis"));
+        assert!(calls[0].prompt.contains("previous synthesis"));
 
         let events = teams
             .list_run_events(&run.id, 100, None)
@@ -1622,7 +1516,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_once_respects_continuity_reset_mode() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-continuity-reset-team".to_string(),
@@ -1682,7 +1576,10 @@ mod tests {
             .await
             .expect("submit next step");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let summary = worker.dispatch_once(10).await.expect("dispatch once");
         assert_eq!(summary.dispatched, 1);
@@ -1690,7 +1587,9 @@ mod tests {
         let calls = starter.calls();
         assert_eq!(calls.len(), 1);
         assert!(
-            calls[0].actor_context.continuity.is_none(),
+            !calls[0]
+                .prompt
+                .contains("Continuity summary from previous work"),
             "reset mode should not attach continuity"
         );
 
@@ -1707,9 +1606,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_once_marks_step_failed_when_member_start_fails() {
+    async fn dispatch_once_marks_step_input_required_when_member_notify_fails() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-fail-team".to_string(),
@@ -1733,7 +1632,10 @@ mod tests {
             .await
             .expect("submit step");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         starter.mark_fail_for("planner");
 
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter);
@@ -1744,19 +1646,19 @@ mod tests {
         assert_eq!(summary.failed, 1);
 
         let failed_step = teams.get_step(&step.id).await.expect("get failed step");
-        assert_eq!(failed_step.status, TeamStepStatus::Failed);
+        assert_eq!(failed_step.status, TeamStepStatus::InputRequired);
         assert!(
             failed_step
                 .error_text
                 .as_deref()
-                .is_some_and(|text| text.contains("failed to start member agent"))
+                .is_some_and(|text| text.contains("failed to notify member"))
         );
     }
 
     #[tokio::test]
     async fn dispatch_once_stops_run_dispatch_after_first_failure_in_tick() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-stop-after-failure-team".to_string(),
@@ -1794,7 +1696,10 @@ mod tests {
             .await
             .expect("submit deferred step");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([
+            ("planner", "session-planner"),
+            ("reviewer", "session-reviewer"),
+        ]));
         starter.mark_fail_for("planner");
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let summary = worker.dispatch_once(10).await.expect("dispatch once");
@@ -1802,14 +1707,19 @@ mod tests {
         assert_eq!(summary.failed, 1);
         assert_eq!(summary.dispatched, 0);
         let calls = starter.calls();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].member_id, "planner");
+        assert_eq!(
+            calls
+                .iter()
+                .map(|call| call.member_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["planner"]
+        );
 
         let failed_step_after = teams
             .get_step(&failed_step.id)
             .await
             .expect("get failed step");
-        assert_eq!(failed_step_after.status, TeamStepStatus::Failed);
+        assert_eq!(failed_step_after.status, TeamStepStatus::InputRequired);
         let deferred_step_after = teams
             .get_step(&deferred_step.id)
             .await
@@ -1818,9 +1728,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_step_returns_error_and_stops_member_when_step_is_not_working() {
+    async fn dispatch_step_returns_error_when_step_is_not_working() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-non-working-start-team".to_string(),
@@ -1848,7 +1758,10 @@ mod tests {
             .await
             .expect("fail step before dispatch");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let err = worker
             .dispatch_step(&run.id, &step)
@@ -1859,12 +1772,11 @@ mod tests {
             message.contains("transitioned"),
             "unexpected dispatch error: {message}"
         );
-        assert_eq!(starter.calls().len(), 1);
-        assert_eq!(starter.stop_calls(), vec!["planner".to_string()]);
+        assert!(starter.calls().is_empty());
     }
 
     #[tokio::test]
-    async fn dispatch_step_stops_member_when_start_step_returns_error() {
+    async fn dispatch_step_returns_error_when_start_step_returns_error() {
         let db = setup_test_db().await;
         let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
@@ -1898,7 +1810,10 @@ mod tests {
             .await
             .expect("drop team_steps to force start_step error");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([(
+            "planner",
+            "session-planner",
+        )]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let err = worker
             .dispatch_step(&run.id, &step)
@@ -1909,14 +1824,13 @@ mod tests {
             message.contains("failed to start step"),
             "unexpected error: {message}"
         );
-        assert_eq!(starter.calls().len(), 1);
-        assert_eq!(starter.stop_calls(), vec!["planner".to_string()]);
+        assert!(starter.calls().is_empty());
     }
 
     #[tokio::test]
     async fn dispatch_once_bootstraps_spec_steps_and_respects_dependencies() {
         let db = setup_test_db().await;
-        let teams = Arc::new(TeamManager::new(db));
+        let teams = Arc::new(TeamManager::new(db.clone()));
         let team = teams
             .create_team(TeamDefinitionConfig {
                 name: "orchestrator-bootstrap-team".to_string(),
@@ -1937,7 +1851,10 @@ mod tests {
             .await
             .expect("create run");
 
-        let starter = Arc::new(FakeAgentStarter::default());
+        let starter = Arc::new(FakeAgentStarter::with_running_members([
+            ("planner", "session-planner"),
+            ("reviewer", "session-reviewer"),
+        ]));
         let worker = TeamOrchestratorWorker::with_agent_starter(teams.clone(), starter.clone());
         let first_summary = worker.dispatch_once(10).await.expect("first dispatch");
         assert_eq!(first_summary.dispatched, 1);
@@ -1954,7 +1871,6 @@ mod tests {
             .expect("find step_review");
         assert_eq!(step_plan.status, TeamStepStatus::Working);
         assert_eq!(step_review.status, TeamStepStatus::Submitted);
-
         let _ = teams
             .complete_step(&step_plan.id, Some(json!({"result":"planned"})))
             .await
@@ -1973,15 +1889,9 @@ mod tests {
         let calls = starter.calls();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].member_id, "planner");
-        assert_eq!(
-            calls[0].actor_context.member_role.as_deref(),
-            Some("leader")
-        );
+        assert_eq!(calls[0].expected_session_id, "session-planner");
         assert_eq!(calls[1].member_id, "reviewer");
-        assert_eq!(
-            calls[1].actor_context.member_role.as_deref(),
-            Some("worker")
-        );
+        assert_eq!(calls[1].expected_session_id, "session-reviewer");
     }
 
     #[tokio::test]

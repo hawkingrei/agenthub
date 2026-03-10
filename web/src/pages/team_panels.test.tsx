@@ -21,6 +21,7 @@ import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamTaskPanel } from "./team_task_panel";
+import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
@@ -203,6 +204,28 @@ function buildTaskMessage(
     payload: { type: "chat_message", text: `plan-${messageId}` },
     created_at: 1_700_000_100 + messageId,
     ...overrides,
+  };
+}
+
+function buildPanelTask(
+  id: string,
+  overrides: Partial<{
+    title: string;
+    status: "open" | "in_progress" | "completed" | "canceled";
+    context: Record<string, unknown>;
+    created_at: number;
+    updated_at: number;
+  }> = {}
+) {
+  return {
+    id,
+    team_id: "team-1",
+    title: overrides.title ?? id,
+    status: overrides.status ?? "open",
+    created_by_actor_id: "user",
+    context: overrides.context ?? {},
+    created_at: overrides.created_at ?? 1_700_000_000,
+    updated_at: overrides.updated_at ?? 1_700_000_100,
   };
 }
 
@@ -394,7 +417,7 @@ describe("team panels interactions", () => {
     expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
-    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
     expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("Agents");
     expect(container.textContent).not.toContain("Utilities 1");
@@ -529,7 +552,7 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByText(container, "Channels & Agents"));
-    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
 
     act(() => {
       root.render(
@@ -608,7 +631,7 @@ describe("team panels interactions", () => {
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
     const onDeleteTeam = vi.fn();
-    const onStartTeam = vi.fn();
+    const onStartRun = vi.fn();
     const onRunStatusFilterChange = vi.fn();
     const onRefreshRuns = vi.fn();
     const onActiveRunChange = vi.fn();
@@ -623,7 +646,7 @@ describe("team panels interactions", () => {
           developerMode={true}
           busy={null}
           onDeleteTeam={onDeleteTeam}
-          onStartTeam={onStartTeam}
+          onStartRun={onStartRun}
           runStatusFilter="all"
           runStatusFilterOptions={[
             { value: "all", label: "All" },
@@ -655,13 +678,13 @@ describe("team panels interactions", () => {
     );
 
     clickElement(findButtonByText(container, "Delete Team"));
-    clickElement(findButtonByText(container, "Start Team"));
+    clickElement(findButtonByText(container, "Start Run"));
     clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
     expect(onDeleteTeam).toHaveBeenCalledTimes(1);
-    expect(onStartTeam).toHaveBeenCalledTimes(1);
+    expect(onStartRun).toHaveBeenCalledTimes(1);
     expect(onRunStatusFilterChange).toHaveBeenCalledWith("working");
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
@@ -674,7 +697,7 @@ describe("team panels interactions", () => {
           developerMode={true}
           busy={null}
           onDeleteTeam={() => {}}
-          onStartTeam={() => {}}
+          onStartRun={() => {}}
           runStatusFilter="completed"
           runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
           onRunStatusFilterChange={() => {}}
@@ -708,7 +731,7 @@ describe("team panels interactions", () => {
           developerMode={false}
           busy={null}
           onDeleteTeam={() => {}}
-          onStartTeam={() => {}}
+          onStartRun={() => {}}
           runStatusFilter="all"
           runStatusFilterOptions={[{ value: "all", label: "All" }]}
           onRunStatusFilterChange={() => {}}
@@ -730,7 +753,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Developer Mode");
     expect(container.textContent).not.toContain("Debug → Run Ops");
-    expect(container.textContent).toContain("Start Team");
+    expect(container.textContent).toContain("Start Run");
     expect(container.textContent).not.toContain("Create Run");
     expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
   });
@@ -1368,14 +1391,18 @@ describe("team panels interactions", () => {
     const onRefreshMessages = vi.fn();
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
-    act(() => {
-      root.render(
+    function TeamTaskPanelHarness() {
+      const [draft, setDraft] = React.useState("please continue @Worker Agent");
+      return (
         <TeamTaskPanel
           developerMode={true}
           tasksLoading={false}
           onRefreshTasks={onRefreshTasks}
-          messageDraft="hello leader"
-          onMessageDraftChange={onMessageDraftChange}
+          messageDraft={draft}
+          onMessageDraftChange={(value) => {
+            onMessageDraftChange(value);
+            setDraft(value);
+          }}
           onSendMessage={onSendMessage}
           onRefreshMessages={onRefreshMessages}
           messages={[
@@ -1391,7 +1418,7 @@ describe("team panels interactions", () => {
             {
               member_id: "leader-agent",
               role: "leader",
-              agent_name: "leader-agent",
+              agent_name: "Leader Agent",
               lifecycle_status: "running",
               lifecycle_tone: "active",
               run_status: "working",
@@ -1402,7 +1429,7 @@ describe("team panels interactions", () => {
             {
               member_id: "worker-agent",
               role: "worker",
-              agent_name: "worker-agent",
+              agent_name: "Worker Agent",
               lifecycle_status: "running",
               lifecycle_tone: "active",
               run_status: "working",
@@ -1417,12 +1444,15 @@ describe("team panels interactions", () => {
           toPrettyJson={toPrettyJson}
         />
       );
+    }
+
+    act(() => {
+      root.render(<TeamTaskPanelHarness />);
     });
 
     clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
     clickElement(findButtonByText(container, "Refresh Channel"));
     clickElement(findButtonByText(container, "Refresh Thread"));
-    clickElement(findButtonByText(container, "Send"));
     changeInputValue(
       required(
         container.querySelector(
@@ -1430,13 +1460,18 @@ describe("team panels interactions", () => {
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),
-      "please continue"
+      "please continue @Worker Agent and review"
     );
+    clickElement(findButtonByText(container, "Send"));
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
-    expect(onMessageDraftChange).toHaveBeenCalledWith("please continue");
+    expect(onSendMessage).toHaveBeenCalledWith({
+      text: "please continue <at>worker-agent</at> and review",
+      mentionActorIds: ["worker-agent"],
+    });
+    expect(onMessageDraftChange).toHaveBeenCalledWith("please continue @Worker Agent and review");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
@@ -1445,7 +1480,7 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "Use @member_id for direct replies · Ctrl/Cmd + Enter to send"
+      "Use @name for direct replies · Ctrl/Cmd + Enter to send"
     );
     expect(container.textContent).not.toContain("worker update");
     expect(container.textContent).not.toContain("work:working");
@@ -1495,12 +1530,13 @@ describe("team panels interactions", () => {
               payload: { type: "chat_message", text: "worker-only mailbox message" },
             }),
           ]}
+          seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
           humanActorId="user"
           memberLiveStates={[
             {
               member_id: "leader-agent",
               role: "leader",
-              agent_name: "leader-agent",
+              agent_name: "LeaderAgent",
               lifecycle_status: "working",
               lifecycle_tone: "active",
               run_status: "working",
@@ -1518,12 +1554,14 @@ describe("team panels interactions", () => {
       );
     });
 
+    clickElement(findButtonByText(container, "Seen by 2 agents"));
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
     expect(container.textContent).not.toContain("worker-only mailbox message");
     expect(container.textContent).toContain("reply");
     expect(container.textContent).toContain("You");
-    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("LeaderAgent");
+    expect(container.textContent).toContain("worker-agent");
   });
 
   it("TeamTaskPanel renders mailbox chat_message payload strings as thread text", () => {
@@ -1565,6 +1603,45 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
+  it("TeamTaskPanel renders plain markdown string mailbox payloads without JSON escaping", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={true}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[]}
+          mailboxMessages={[
+            buildMailboxMessage(12, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user",
+              status: "delivered",
+              payload: "line one\n\n- line two",
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("line one");
+    expect(container.textContent).toContain("line two");
+    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
   it("TeamTaskPanel hides message details when developer mode is off", () => {
     act(() => {
       root.render(
@@ -1588,6 +1665,138 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Show details");
     expect(container.textContent).not.toContain("source");
     expect(container.textContent).not.toContain("route");
+  });
+
+  it("TeamTasksPanel supports task filters, creation, and compile preview actions", () => {
+    const onSelectedTaskIdChange = vi.fn();
+    const onRefreshTasks = vi.fn();
+    const onNewTaskTitleChange = vi.fn();
+    const onCreateTask = vi.fn();
+    const onCompilePreviewContextIdChange = vi.fn();
+    const onCompileTaskRunPreview = vi.fn();
+    const onUseCompiledRunPayload = vi.fn();
+    const onCreateRunFromCompiledPreview = vi.fn();
+
+    act(() => {
+      root.render(
+        <TeamTasksPanel
+          developerMode={true}
+          tasks={[
+            buildPanelTask("task-1", {
+              title: "Investigate bug",
+              status: "open",
+              created_at: 100,
+              updated_at: 200,
+            }),
+            buildPanelTask("task-2", {
+              title: "Prepare rollout",
+              status: "in_progress",
+              context: { owner: "leader" },
+              created_at: 90,
+              updated_at: 220,
+            }),
+          ]}
+          tasksLoading={false}
+          selectedTaskId="task-2"
+          onSelectedTaskIdChange={onSelectedTaskIdChange}
+          onRefreshTasks={onRefreshTasks}
+          newTaskTitle="New task draft"
+          onNewTaskTitleChange={onNewTaskTitleChange}
+          onCreateTask={onCreateTask}
+          busy={null}
+          compilePreviewContextId="ctx-preview"
+          onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
+          onCompileTaskRunPreview={onCompileTaskRunPreview}
+          canCompileTask={true}
+          compiledRunPreview={{
+            conversation_id: "conv-77",
+            run_payload: {
+              context_id: "ctx-preview",
+              input: { objective: "ship" },
+            },
+            plan: { steps: ["review", "ship"] },
+          }}
+          onUseCompiledRunPayload={onUseCompiledRunPayload}
+          onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
+    clickElement(findButtonByText(container, "Investigate bug"));
+    clickElement(findButtonByText(container, "In progress"));
+    changeInputValue(
+      required(
+        container.querySelector('input[placeholder="New task title"]') as HTMLInputElement | null,
+        "new task input missing"
+      ),
+      "Create changelog"
+    );
+    clickElement(findButtonByText(container, "New Task"));
+    changeInputValue(
+      required(
+        container.querySelector(
+          'input[placeholder="context_id override (optional)"]'
+        ) as HTMLInputElement | null,
+        "context input missing"
+      ),
+      "ctx-next"
+    );
+    clickElement(findButtonByText(container, "Compile Preview"));
+    clickElement(findButtonByText(container, "Use Payload in Create Run"));
+    clickElement(findButtonByText(container, "Create Run from Preview"));
+
+    expect(onRefreshTasks).toHaveBeenCalledTimes(1);
+    expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
+    expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
+    expect(onCreateTask).toHaveBeenCalledTimes(1);
+    expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
+    expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
+    expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
+    expect(onCreateRunFromCompiledPreview).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Tasks");
+    expect(container.textContent).toContain("Prepare rollout");
+    expect(container.textContent).toContain("Task context");
+  });
+
+  it("TeamTasksPanel keeps details aligned with the active filter", () => {
+    act(() => {
+      root.render(
+        <TeamTasksPanel
+          developerMode={false}
+          tasks={[
+            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+            buildPanelTask("task-progress", {
+              title: "Prepare rollout",
+              status: "in_progress",
+            }),
+          ]}
+          tasksLoading={false}
+          selectedTaskId="task-progress"
+          onSelectedTaskIdChange={vi.fn()}
+          onRefreshTasks={vi.fn()}
+          newTaskTitle=""
+          onNewTaskTitleChange={vi.fn()}
+          onCreateTask={vi.fn()}
+          busy={null}
+          compilePreviewContextId=""
+          onCompilePreviewContextIdChange={vi.fn()}
+          onCompileTaskRunPreview={vi.fn()}
+          canCompileTask={false}
+          compiledRunPreview={null}
+          onUseCompiledRunPayload={vi.fn()}
+          onCreateRunFromCompiledPreview={vi.fn()}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    });
+
+    clickElement(findButtonByText(container, "Open"));
+    expect(container.textContent).toContain("Investigate bug");
+    expect(container.textContent).not.toContain("Prepare rolloutCompile this task");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
@@ -1725,6 +1934,11 @@ describe("team panels interactions", () => {
           developerMode={true}
           snapshot={buildSnapshot()}
           humanActorId="user"
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+            user: "You",
+          }}
           selectedMemberId="worker-agent"
           unreadByMemberId={{ "worker-agent": 2, user: 1 }}
           onSelectMember={onSelectMember}
@@ -1809,7 +2023,7 @@ describe("team panels interactions", () => {
       );
     });
     clickElement(findButtonByText(container, "Send Chat"));
-    clickElement(findButtonByText(container, "user (human)"));
+    clickElement(findButtonByText(container, "You (human)"));
 
     expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
     expect(onSelectMember).toHaveBeenCalledWith("user");
@@ -1819,6 +2033,8 @@ describe("team panels interactions", () => {
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
+    expect(container.textContent).toContain("Leader Agent → Worker Agent");
+    expect(container.textContent).toContain("Worker Agent (worker)");
 
     act(() => {
       root.render(
@@ -1826,6 +2042,10 @@ describe("team panels interactions", () => {
           developerMode={true}
           mode="advanced_only"
           snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
           selectedMemberId="worker-agent"
           unreadByMemberId={{ "worker-agent": 2 }}
           onSelectMember={onSelectMember}
@@ -2026,6 +2246,10 @@ describe("team panels interactions", () => {
         <TeamMailboxPanel
           developerMode={true}
           snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
           selectedMemberId="worker-agent"
           unreadByMemberId={{}}
           onSelectMember={vi.fn()}
@@ -2088,7 +2312,157 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("mailbox string payload text");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
+    expect(container.textContent).toContain("Worker Agent → Leader Agent");
     expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamMailboxPanel renders plain markdown string payloads without JSON escaping", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={true}
+          snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{}}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[
+            buildMailboxMessage(31, {
+              from_actor_id: "worker-agent",
+              to_actor_id: "leader-agent",
+              status: "delivered",
+              payload: "line one\n\n- line two",
+            }),
+          ]}
+          toPrettyJson={toPrettyJson}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel="default"
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute="{}"
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("line one");
+    expect(container.textContent).toContain("line two");
+    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamMailboxPanel renders user sub-identities as You", () => {
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={false}
+          snapshot={buildSnapshot()}
+          humanActorId="user"
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+          }}
+          selectedMemberId="user"
+          unreadByMemberId={{ user: 1 }}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "user:root",
+            inboxActorId: "user:root",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[
+            buildMailboxMessage(31, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user:root",
+              status: "delivered",
+              payload: { type: "chat_message", text: "hello" },
+            }),
+          ]}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId=""
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId=""
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel=""
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute=""
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId=""
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("Leader Agent → You");
   });
 
   it("TeamMailboxPanel hides raw mailbox tools when developer mode is off", () => {
@@ -2098,6 +2472,10 @@ describe("team panels interactions", () => {
           developerMode={false}
           mode="advanced_only"
           snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
           selectedMemberId="worker-agent"
           unreadByMemberId={{}}
           onSelectMember={vi.fn()}

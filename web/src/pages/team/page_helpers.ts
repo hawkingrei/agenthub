@@ -2,16 +2,60 @@ import { formatAgentModelLabel } from "../../agent_presets";
 import type {
   AgentEvent,
   AgentRecord,
+  TeamActorMessageRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamTaskRecord,
 } from "../../api";
+import type { StatusTone } from "../../components/status_badge";
+import type { TeamMemberAgentStatusSummary } from "./member_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
 }
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
+
+export type TeamRuntimeStatusView = {
+  status: "running" | "stopped" | "degraded";
+  label: string;
+  tone: StatusTone;
+  online: number;
+  total: number;
+};
+
+export function resolveTeamRuntimeStatus(
+  summary: TeamMemberAgentStatusSummary | null
+): TeamRuntimeStatusView {
+  const online = summary?.active ?? 0;
+  const total = summary?.total ?? 0;
+  const missing = summary?.missing ?? 0;
+  if (total === 0 || online === 0) {
+    return {
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+      online,
+      total,
+    };
+  }
+  if (online === total && missing === 0) {
+    return {
+      status: "running",
+      label: "team running",
+      tone: "active",
+      online,
+      total,
+    };
+  }
+  return {
+    status: "degraded",
+    label: "team degraded",
+    tone: "warning",
+    online,
+    total,
+  };
+}
 
 export function upsertRun(list: TeamRunRecord[], nextRun: TeamRunRecord): TeamRunRecord[] {
   const withoutCurrent = list.filter((run) => run.id !== nextRun.id);
@@ -68,7 +112,7 @@ export function sortTasksByActivity(tasks: TeamTaskRecord[]): TeamTaskRecord[] {
   });
 }
 
-function isSharedThreadTask(task: TeamTaskRecord): boolean {
+export function isSharedThreadTask(task: TeamTaskRecord): boolean {
   if (task.title.trim().toLowerCase() === DEFAULT_TEAM_THREAD_TITLE) {
     return true;
   }
@@ -86,12 +130,21 @@ export function resolveTeamConversationTask(
   return teamTasks.find(isSharedThreadTask) ?? null;
 }
 
+export function listTeamWorkspaceTasks(
+  tasks: TeamTaskRecord[],
+  teamId: string
+): TeamTaskRecord[] {
+  return sortTasksByActivity(
+    tasks.filter((task) => task.team_id === teamId && !isSharedThreadTask(task))
+  );
+}
+
 export function resolveSelectedTeamTask(
   tasks: TeamTaskRecord[],
   selectedTaskId: string,
   teamId: string
 ): TeamTaskRecord | null {
-  const teamTasks = sortTasksByActivity(tasks.filter((task) => task.team_id === teamId));
+  const teamTasks = listTeamWorkspaceTasks(tasks, teamId);
   const selectedId = selectedTaskId.trim();
   if (selectedId) {
     const selected = teamTasks.find((task) => task.id === selectedId);
@@ -100,6 +153,75 @@ export function resolveSelectedTeamTask(
     }
   }
   return teamTasks[0] ?? null;
+}
+
+function parseMailboxPayload(payload: unknown): unknown {
+  if (typeof payload !== "string") {
+    return payload;
+  }
+  const trimmed = payload.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return payload;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return payload;
+  }
+}
+
+export function resolveTaskMessageSeenByActors(
+  mailboxMessages: TeamActorMessageRecord[],
+  conversationId: string,
+  memberIds: string[]
+): Record<number, string[]> {
+  const conversationKey = conversationId.trim();
+  if (!conversationKey) {
+    return {};
+  }
+  const memberSet = new Set(memberIds.map((memberId) => memberId.trim()).filter(Boolean));
+  if (memberSet.size === 0) {
+    return {};
+  }
+  const seenByMessageId = new Map<number, Set<string>>();
+  for (const mailboxMessage of mailboxMessages) {
+    if (mailboxMessage.status !== "delivered") {
+      continue;
+    }
+    const toActorId = mailboxMessage.to_actor_id.trim();
+    if (!memberSet.has(toActorId)) {
+      continue;
+    }
+    const payload = parseMailboxPayload(mailboxMessage.payload);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      continue;
+    }
+    const taskConversationId = String(
+      (payload as { task_conversation_id?: unknown }).task_conversation_id ?? ""
+    ).trim();
+    if (taskConversationId !== conversationKey) {
+      continue;
+    }
+    const rawTaskMessageId = (payload as { task_message_id?: unknown }).task_message_id;
+    const taskMessageId =
+      typeof rawTaskMessageId === "number"
+        ? rawTaskMessageId
+        : typeof rawTaskMessageId === "string"
+          ? Number.parseInt(rawTaskMessageId, 10)
+          : Number.NaN;
+    if (!Number.isFinite(taskMessageId)) {
+      continue;
+    }
+    const seenActors = seenByMessageId.get(taskMessageId) ?? new Set<string>();
+    seenActors.add(toActorId);
+    seenByMessageId.set(taskMessageId, seenActors);
+  }
+  return Object.fromEntries(
+    [...seenByMessageId.entries()].map(([messageId, actorIds]) => [
+      messageId,
+      [...actorIds].sort((left, right) => left.localeCompare(right)),
+    ])
+  );
 }
 
 export function formatTs(ts?: number | null): string {

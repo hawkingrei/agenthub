@@ -86,7 +86,18 @@ pub(crate) fn normalize_actor_context(
         }
     }
     Ok(AcpActorSkillContext {
-        run_id: context.run_id.trim().to_string(),
+        team_id: context
+            .team_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        current_run_id: context
+            .current_run_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
         actor_id: context.actor_id.trim().to_string(),
         default_channel,
         actor_cli_path,

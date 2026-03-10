@@ -1009,27 +1009,12 @@ async fn teams_router_delete_team_cleans_member_session_dependents_without_500()
     let member_agent_id = "planner";
     let now = Utc::now().timestamp();
 
-    sqlx::query(
-        r#"
-        INSERT INTO agents (
-            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
-            code_mode, status, created_at, updated_at
-        )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
-        "#,
-    )
-    .bind(member_agent_id)
-    .bind("planner-agent")
-    .bind("/tmp")
-    .bind("/bin/sh")
-    .bind("[]")
-    .bind("use_existing")
-    .bind("running")
-    .bind(now)
-    .bind(now)
+    sqlx::query("UPDATE agents SET status = 'running', updated_at = ?2 WHERE id = ?1")
+        .bind(member_agent_id)
+        .bind(now)
     .execute(&state.db)
     .await
-    .expect("insert member agent");
+    .expect("mark seeded member agent running");
 
     let session_id = Uuid::new_v4().to_string();
     sqlx::query(
@@ -1136,17 +1121,6 @@ async fn teams_router_delete_team_cleans_member_session_dependents_without_500()
             .await
             .expect("count member sessions");
     assert_eq!(session_count, 0);
-
-    let member_event_db = state
-        .agents
-        .test_event_pool_for_agent(member_agent_id)
-        .await
-        .expect("open member event db");
-    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events")
-        .fetch_one(&member_event_db)
-        .await
-        .expect("count member events");
-    assert_eq!(event_count, 0);
 
     let permission_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM acp_permission_requests WHERE agent_id = ?1")
@@ -1466,7 +1440,7 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
 }
 
 #[tokio::test]
-async fn teams_router_orchestrator_converges_with_real_executor() {
+async fn teams_router_orchestrator_marks_input_required_when_team_runtime_is_stopped() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
     let app = super::router(state.clone());
@@ -1492,8 +1466,8 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
         .create_agent(crate::agent::AgentConfig {
             name: "router-orchestrator-member".to_string(),
             workdir: workdir_str.clone(),
-            command: "/bin/sh".to_string(),
-            args: vec!["-lc".to_string(), "sleep 2".to_string()],
+            command: "/usr/bin/env".to_string(),
+            args: vec![],
             worktree_mode: crate::agent::WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,
@@ -1524,6 +1498,18 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let team = decode_json_body(create_team_resp).await;
     let team_id = team["id"].as_str().expect("team id").to_string();
 
+    let stop_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/stop"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("stop team runtime");
+    assert_eq!(stop_team_resp.status(), StatusCode::OK);
+
     let create_run_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1545,33 +1531,10 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let worker =
         crate::team::TeamOrchestratorWorker::new(state.teams.clone(), state.agents.clone());
     let first_summary = worker.dispatch_once(64).await.expect("first dispatch");
-    assert_eq!(first_summary.dispatched, 1);
+    assert_eq!(first_summary.dispatched, 0);
+    assert_eq!(first_summary.failed, 1);
 
-    let mut step_remote_task_id = None;
-    for _ in 0..20 {
-        let db_steps = state
-            .teams
-            .list_steps(&run_id)
-            .await
-            .expect("list db steps");
-        if let Some(step) = db_steps.first()
-            && step.status == crate::team::TeamStepStatus::Working
-        {
-            step_remote_task_id = step.remote_task_id.clone();
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    let remote_task_id = step_remote_task_id.expect("step should reach working state");
-    assert!(!remote_task_id.is_empty());
-
-    state
-        .agents
-        .stop_agent(&member_agent.id)
-        .await
-        .expect("stop member agent");
-
-    let mut converged_failed = false;
+    let mut converged_input_required = false;
     let mut last_run_status = String::new();
     for _ in 0..200 {
         let _ = worker.dispatch_once(64).await.expect("tick dispatch");
@@ -1591,30 +1554,22 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
             .as_str()
             .unwrap_or("unknown")
             .to_string();
-        if last_run_status == "failed" {
-            converged_failed = true;
+        if last_run_status == "input_required" {
+            converged_input_required = true;
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    if !converged_failed {
+    if !converged_input_required {
         let db_steps = state
             .teams
             .list_steps(&run_id)
             .await
             .expect("list db steps");
         let db_step = db_steps.first().expect("first db step");
-        let session_status = match db_step.remote_task_id.as_deref() {
-            Some(session_id) => state
-                .teams
-                .get_agent_session_status(session_id)
-                .await
-                .expect("query session status"),
-            None => None,
-        };
         panic!(
-            "run did not converge to failed in time: run_status={}, step_status={:?}, remote_task_id={:?}, session_status={:?}",
-            last_run_status, db_step.status, db_step.remote_task_id, session_status
+            "run did not converge to input_required in time: run_status={}, step_status={:?}, remote_task_id={:?}",
+            last_run_status, db_step.status, db_step.remote_task_id
         );
     }
 
@@ -1632,9 +1587,13 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
     let steps_payload = decode_json_body(steps_resp).await;
     let steps = steps_payload.as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["status"], "failed");
-    let final_remote_task_id = steps[0]["remote_task_id"].as_str().expect("remote task id");
-    assert_eq!(final_remote_task_id, remote_task_id);
+    assert_eq!(steps[0]["status"], "input_required");
+    assert_eq!(steps[0]["remote_task_id"], Value::Null);
+    assert!(
+        steps[0]["error_text"]
+            .as_str()
+            .is_some_and(|message| message.contains("start team"))
+    );
 
     let events_resp = app
         .clone()
@@ -1655,10 +1614,8 @@ async fn teams_router_orchestrator_converges_with_real_executor() {
         .collect::<Vec<_>>();
     assert!(event_types.contains(&"run_submitted"));
     assert!(event_types.contains(&"step_submitted"));
-    assert!(event_types.contains(&"run_working"));
-    assert!(event_types.contains(&"step_working"));
-    assert!(event_types.contains(&"step_failed"));
-    assert!(event_types.contains(&"run_failed"));
+    assert!(event_types.contains(&"run_input_required"));
+    assert!(event_types.contains(&"step_input_required"));
 
     let _ = std::fs::remove_dir_all(&workdir);
 }

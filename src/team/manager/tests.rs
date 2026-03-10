@@ -286,6 +286,22 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE agent_sessions (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create agent_sessions");
+
+    sqlx::query(
+        r#"
         CREATE TABLE agent_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL,
@@ -294,7 +310,8 @@ async fn setup_test_db() -> SqlitePool {
             ts INTEGER NOT NULL,
             stream TEXT NOT NULL,
             message BLOB NOT NULL,
-            FOREIGN KEY(agent_id) REFERENCES agents(id)
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
         );
         "#,
     )
@@ -2676,4 +2693,161 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list runs with cursor");
     assert_eq!(cursor_runs.len(), 1);
     assert_eq!(cursor_runs[0].id, first_run.id);
+}
+
+#[tokio::test]
+async fn describe_run_members_returns_live_roster_and_session_state() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "describe-run-members-team".to_string(),
+            description: Some("team to verify run member roster".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"worker","role":"worker","description":"Implements changes"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-team-members"), json!({"prompt":"go"}))
+        .await
+        .expect("create run");
+    let leader_step = manager
+        .submit_step(&run.id, "leader_plan", "leader", Vec::new(), None)
+        .await
+        .expect("submit leader step");
+    let worker_step = manager
+        .submit_step(
+            &run.id,
+            "worker_exec",
+            "worker",
+            vec!["leader_plan".to_string()],
+            None,
+        )
+        .await
+        .expect("submit worker step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("leader")
+    .bind("Leader Agent")
+    .bind("/tmp/leader")
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader agent");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("worker")
+    .bind("Worker Agent")
+    .bind("/tmp/worker")
+    .bind("codex")
+    .bind("[]")
+    .bind("create_worktree")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert worker agent");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("session-leader")
+    .bind("leader")
+    .bind("running")
+    .bind(10_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader session");
+
+    manager
+        .start_step(&leader_step.id, Some("session-leader"))
+        .await
+        .expect("start leader step");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("session-worker")
+    .bind("worker")
+    .bind("running")
+    .bind(11_i64)
+    .execute(&db)
+    .await
+    .expect("insert worker session");
+
+    let roster = manager
+        .describe_run_members(&run.id)
+        .await
+        .expect("describe run members");
+
+    assert_eq!(roster.team_id, team.id);
+    assert_eq!(roster.run_id, run.id);
+    assert_eq!(roster.members.len(), 2);
+
+    let leader = &roster.members[0];
+    assert_eq!(leader.member_id, "leader");
+    assert_eq!(leader.display_name, "Leader Agent");
+    assert_eq!(leader.role, "leader");
+    assert_eq!(leader.description.as_deref(), Some("Lead planner"));
+    assert_eq!(leader.agent_status.as_deref(), Some("running"));
+    assert_eq!(leader.session_id.as_deref(), Some("session-leader"));
+    assert_eq!(leader.session_status.as_deref(), Some("running"));
+    assert_eq!(leader.card.description, "Lead planner");
+    assert_eq!(leader.steps.len(), 1);
+    assert_eq!(leader.steps[0].step_id, leader_step.id);
+    assert_eq!(leader.steps[0].status, TeamStepStatus::Working);
+    assert_eq!(
+        leader.steps[0].session_id.as_deref(),
+        Some("session-leader")
+    );
+    assert_eq!(leader.steps[0].session_status.as_deref(), Some("running"));
+
+    let worker = &roster.members[1];
+    assert_eq!(worker.member_id, "worker");
+    assert_eq!(worker.display_name, "Worker Agent");
+    assert_eq!(worker.role, "worker");
+    assert_eq!(worker.description.as_deref(), Some("Implements changes"));
+    assert_eq!(worker.agent_status.as_deref(), Some("idle"));
+    assert_eq!(worker.session_id.as_deref(), Some("session-worker"));
+    assert_eq!(worker.session_status.as_deref(), Some("running"));
+    assert_eq!(worker.steps.len(), 1);
+    assert_eq!(worker.steps[0].step_id, worker_step.id);
+    assert_eq!(worker.steps[0].status, TeamStepStatus::Submitted);
+    assert!(worker.steps[0].session_id.is_none());
+    assert!(worker.steps[0].session_status.is_none());
 }

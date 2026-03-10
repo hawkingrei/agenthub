@@ -1,5 +1,7 @@
 use std::path::Path as StdPath;
+use std::process::Command as StdCommand;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::Json;
@@ -31,15 +33,18 @@ use super::{
     FlushTeamRunContextRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
     ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
-    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamRunSnapshotQuery, ack_team_run_message,
-    cancel_team_run, compile_team_task_run_preview, complete_team_run_step, create_team,
-    create_team_run, create_team_task, delete_team, fail_team_run_step, flush_team_run_context,
-    get_team, get_team_run, get_team_run_snapshot, get_team_task, list_team_run_events,
-    list_team_run_inbox, list_team_run_steps, list_team_runs, list_team_task_messages,
-    list_team_tasks, list_teams, restart_team_run, resume_team_run, resume_team_run_step,
-    send_team_run_message, send_team_task_message, set_team_run_step_input_required,
-    start_team_run_step, submit_team_run_step,
+    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery,
+    ack_team_run_message, build_team_member_actor_context, cancel_team_run,
+    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_run,
+    create_team_task, delete_team, fail_team_run_step, flush_team_run_context, get_team,
+    get_team_run, get_team_run_snapshot, get_team_task, list_team_run_events, list_team_run_inbox,
+    list_team_run_steps, list_team_runs, list_team_task_messages, list_team_tasks, list_teams,
+    restart_team_run, resume_team_run, resume_team_run_step, send_team_run_message,
+    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
+    stop_team, submit_team_run_step, team_member_actor_context_matches,
 };
+
+static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 
 pub(crate) async fn build_test_state() -> AppState {
     build_test_state_with_db_source(None, true).await
@@ -102,7 +107,7 @@ async fn build_test_state_with_db_source(
         auth.clone(),
     ));
     let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
-    AppState {
+    let state = AppState {
         db,
         agents,
         teams,
@@ -110,7 +115,11 @@ async fn build_test_state_with_db_source(
         auth,
         acp_permissions: permissions,
         default_worktree_root: config.default_worktree_root(),
+    };
+    if initialize_schema {
+        seed_default_team_member_agents(&state).await;
     }
+    state
 }
 
 async fn create_test_db() -> SqlitePool {
@@ -521,6 +530,149 @@ async fn init_test_schema(db: &SqlitePool) {
     .expect("create team_context_flush_checkpoint");
 }
 
+const DEFAULT_TEST_TEAM_MEMBER_IDS: &[&str] = &[
+    "planner",
+    "reviewer",
+    "leader",
+    "leader-agent",
+    "executor",
+    "qa-review",
+    "worker-1",
+    "worker-2",
+    "worker-agent",
+    "worker-agent-a",
+    "worker-agent-b",
+    "worker-dev",
+];
+
+const DEFAULT_TEST_WORKER_MEMBER_IDS: &[&str] = &[
+    "reviewer",
+    "qa-review",
+    "worker-1",
+    "worker-2",
+    "worker-agent",
+    "worker-agent-a",
+    "worker-agent-b",
+    "worker-dev",
+];
+
+async fn seed_default_team_member_agents(state: &AppState) {
+    let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
+    std::fs::create_dir_all(&workdir).expect("create team member workdir");
+    let workdir = workdir.to_string_lossy().to_string();
+    let now = Utc::now().timestamp();
+    for safe_path in [&workdir, "/tmp"] {
+        sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(safe_path)
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path for team member agents");
+    }
+
+    for member_id in DEFAULT_TEST_TEAM_MEMBER_IDS {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+            "#,
+        )
+        .bind(member_id)
+        .bind(format!("{member_id}-agent"))
+        .bind(&workdir)
+        .bind("/usr/bin/env")
+        .bind("[]")
+        .bind("use_existing")
+        .bind("created")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("seed default team member agent");
+    }
+
+    for member_id in DEFAULT_TEST_WORKER_MEMBER_IDS {
+        configure_worker_team_member_agent(state, member_id).await;
+    }
+}
+
+pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_id: &str) {
+    let now = Utc::now().timestamp();
+    let repo = worker_test_repo().clone();
+    let worktree_root = std::env::temp_dir()
+        .join("agenthub-team-api-test-worker-worktrees")
+        .to_string_lossy()
+        .to_string();
+    std::fs::create_dir_all(&worktree_root).expect("create worker runtime root");
+    let workdir = StdPath::new(&worktree_root).join(agent_id);
+    if workdir.exists() {
+        std::fs::remove_dir_all(&workdir).expect("clear stale worker workdir");
+    }
+    let workdir = workdir.to_string_lossy().to_string();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&repo)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert repo safe path for worker team member agent");
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&worktree_root)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker runtime root safe path");
+    sqlx::query(
+        r#"
+        UPDATE agents
+        SET workdir = ?2,
+            worktree_mode = 'create_worktree',
+            worktree_repo = ?3,
+            worktree_ref = 'HEAD',
+            status = 'created',
+            updated_at = ?4
+        WHERE id = ?1
+        "#,
+    )
+    .bind(agent_id)
+    .bind(&workdir)
+    .bind(repo)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("configure worker team member agent");
+}
+
+fn worker_test_repo() -> &'static String {
+    WORKER_TEST_REPO.get_or_init(|| {
+        let base =
+            std::env::temp_dir().join(format!("agenthub-team-worker-repo-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&base).expect("create worker test repo dir");
+        run_git(&base, &["init"]);
+        run_git(
+            &base,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&base, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(base.join("README.md"), "seed\n").expect("write worker repo seed");
+        run_git(&base, &["add", "README.md"]);
+        run_git(&base, &["commit", "-m", "init"]);
+        base.to_string_lossy().to_string()
+    })
+}
+
+fn run_git(repo_dir: &StdPath, args: &[&str]) {
+    let status = StdCommand::new("git")
+        .arg("-C")
+        .arg(repo_dir)
+        .args(args)
+        .status()
+        .expect("failed to execute `git`; ensure it is available on PATH");
+    assert!(status.success(), "git command failed: {:?}", args);
+}
+
 async fn auth_headers(state: &AppState) -> HeaderMap {
     let token = create_auth_token(state).await;
     let mut headers = HeaderMap::new();
@@ -616,7 +768,8 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
 
     let actor_cli_path = default_actor_cli_path().expect("resolve actor cli path");
     let actor_context = AcpActorSkillContext {
-        run_id: "run-env-check".to_string(),
+        team_id: Some("team-env-check".to_string()),
+        current_run_id: Some("run-env-check".to_string()),
         actor_id: "planner".to_string(),
         default_channel: "coordination".to_string(),
         actor_cli_path: actor_cli_path.clone(),
@@ -631,6 +784,8 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .await
         .expect("start agent with actor context");
 
+    let mut has_team_id = false;
+    let mut has_current_run_id = false;
     let mut has_run_id = false;
     let mut has_actor_id = false;
     let mut has_channel = false;
@@ -649,7 +804,11 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             }
             for event in &events {
                 let line = event.message.as_str();
-                if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
+                if line == "AGENTHUB_ACTOR_TEAM_ID=team-env-check" {
+                    has_team_id = true;
+                } else if line == "AGENTHUB_ACTOR_CURRENT_RUN_ID=run-env-check" {
+                    has_current_run_id = true;
+                } else if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
                     has_run_id = true;
                 } else if line == "AGENTHUB_ACTOR_ID=planner" {
                     has_actor_id = true;
@@ -660,17 +819,37 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
                     has_actor_cli = true;
                 }
             }
-            if has_run_id && has_actor_id && has_channel && has_actor_cli {
+            if has_team_id
+                && has_current_run_id
+                && has_run_id
+                && has_actor_id
+                && has_channel
+                && has_actor_cli
+            {
                 break;
             }
             before_id = events.first().map(|event| event.event_id);
         }
-        if has_run_id && has_actor_id && has_channel && has_actor_cli {
+        if has_team_id
+            && has_current_run_id
+            && has_run_id
+            && has_actor_id
+            && has_channel
+            && has_actor_cli
+        {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    assert!(
+        has_team_id,
+        "missing AGENTHUB_ACTOR_TEAM_ID in process env output"
+    );
+    assert!(
+        has_current_run_id,
+        "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output"
+    );
     assert!(
         has_run_id,
         "missing AGENTHUB_ACTOR_RUN_ID in process env output"

@@ -7,11 +7,15 @@ import {
   buildMailboxConversationKey,
   buildMailboxForwardChatPayload,
   buildMailboxPayloadTemplate,
+  canonicalizeMentionDraft,
+  createDisplayNameLookup,
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
   renderMarkdownWithMentions,
   renderPlainTextWithMentions,
+  resolveChatMessageText,
+  resolveDisplayName,
   resolveMentionDraftQuery,
   resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
@@ -125,6 +129,55 @@ describe("mailbox helpers", () => {
     expect(applied.cursor).toBe("please check @worker-1".length);
   });
 
+  it("canonicalizes mentions without dropping trailing text", () => {
+    expect(
+      canonicalizeMentionDraft("please continue @Worker Agent and review", [
+        {
+          actorId: "worker-agent",
+          label: "Worker Agent",
+          aliases: ["Worker Agent"],
+        },
+      ])
+    ).toEqual({
+      text: "please continue <at>worker-agent</at> and review",
+      mentionActorIds: ["worker-agent"],
+    });
+  });
+
+  it("canonicalizes mentions followed by punctuation without truncating punctuation", () => {
+    expect(
+      canonicalizeMentionDraft(
+        "please continue @Worker Agent, then escalate @Worker Agent:",
+        [
+          {
+            actorId: "worker-agent",
+            label: "Worker Agent",
+            aliases: ["Worker Agent"],
+          },
+        ]
+      )
+    ).toEqual({
+      text:
+        "please continue <at>worker-agent</at>, then escalate <at>worker-agent</at>:",
+      mentionActorIds: ["worker-agent"],
+    });
+  });
+
+  it("does not tokenize raw mentions inside url-like plain text", () => {
+    const rendered = renderPlainTextWithMentions(
+      "see https://example.com/@worker-1 and /tmp/@worker-2"
+    );
+    expect(rendered).not.toContain("team-mention");
+    expect(rendered).toContain("https://example.com/@worker-1");
+    expect(rendered).toContain("/tmp/@worker-2");
+  });
+
+  it("still tokenizes raw mentions after whitespace in plain text", () => {
+    const rendered = renderPlainTextWithMentions("hello @worker-1");
+    expect(rendered).toContain("team-mention");
+    expect(rendered).toContain("@worker-1");
+  });
+
   it("renders <at> mention as visual chip in markdown/plain text output", () => {
     const markdown = renderMarkdownWithMentions("hello <at>worker-1</at>");
     expect(markdown).toContain("team-mention");
@@ -133,6 +186,48 @@ describe("mailbox helpers", () => {
     const plain = renderPlainTextWithMentions("hello <at>worker-1</at>");
     expect(plain).toContain("team-mention");
     expect(plain).toContain("@worker-1");
+  });
+
+  it("treats plain string mailbox payloads as chat text", () => {
+    expect(resolveChatMessageText("line one\n\n- line two")).toBe("line one\n\n- line two");
+  });
+
+  it("renders raw mentions as chips in plain text only", () => {
+    const plain = renderPlainTextWithMentions("hello @worker-1");
+    expect(plain).toContain("team-mention");
+    expect(plain).toContain("@worker-1");
+
+    const markdown = renderMarkdownWithMentions("hello @worker-1");
+    expect(markdown).not.toContain("team-mention");
+    expect(markdown).toContain("@worker-1");
+  });
+
+  it("does not convert raw mentions inside markdown code spans or links into chips", () => {
+    const rendered = renderMarkdownWithMentions(
+      "`@worker-1` and [profile](https://example.com/@worker-1)"
+    );
+    expect(rendered).not.toContain("team-mention");
+    expect(rendered).toContain("@worker-1");
+    expect(rendered).toContain("https://example.com/@worker-1");
+  });
+
+  it("uses null-prototype lookups and falls back safely for reserved property names", () => {
+    const lookup = createDisplayNameLookup([
+      ["worker-1", "Worker One"],
+      ["toString", "String Agent"],
+    ]);
+    expect(Object.getPrototypeOf(lookup)).toBeNull();
+    expect(resolveDisplayName("worker-1", lookup)).toBe("Worker One");
+    expect(resolveDisplayName("toString", lookup)).toBe("String Agent");
+    expect(resolveDisplayName("valueOf", lookup, "valueOf")).toBe("valueOf");
+  });
+
+  it("renders mention chips with safe display-name lookup values only", () => {
+    const markdown = renderMarkdownWithMentions("hello <at>toString</at>", {
+      worker: "Worker",
+    });
+    expect(markdown).toContain("@toString");
+    expect(markdown).not.toContain("function toString");
   });
 
   it("builds chat payload with normalized mention ids", () => {
