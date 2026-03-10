@@ -1571,12 +1571,14 @@ mod tests {
                     server.args,
                     vec![
                         "actor-mcp".to_string(),
-                        "--run-id".to_string(),
-                        "run-1".to_string(),
                         "--actor-id".to_string(),
                         "leader".to_string(),
                         "--channel".to_string(),
                         "coordination".to_string(),
+                        "--team-id".to_string(),
+                        "team-1".to_string(),
+                        "--run-id".to_string(),
+                        "run-1".to_string(),
                     ]
                 );
             }
