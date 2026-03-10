@@ -673,7 +673,7 @@ async function mockTeamPageApis(
         status: action === "start" ? "running" : "stopped",
         members: team.spec.members.map((member) => ({
           member_id: member.member_id,
-          session_id: action === "start" ? `session-${team.id}-${member.member_id}` : null,
+          session_id: `session-${team.id}-${member.member_id}`,
           action: action === "start" ? "started" : "stopped",
         })),
       })

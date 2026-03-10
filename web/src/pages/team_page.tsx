@@ -272,13 +272,16 @@ function updateCachedTeamRuntimeStatus(
   if (!previousRuntime) {
     return undefined;
   }
+  const memberUpdates = new Map(
+    members.map((member) => [member.member_id, member] as const)
+  );
   return {
     ...previousRuntime,
     team_id: teamId,
     team_name: teamName,
     status,
     members: previousRuntime.members.map((member) => {
-      const updated = members.find((item) => item.member_id === member.member_id);
+      const updated = memberUpdates.get(member.member_id);
       return {
         ...member,
         session_id: updated?.session_id ?? (nextSessionStatus ? member.session_id : undefined),
@@ -2489,9 +2492,11 @@ export function TeamPage(props: TeamPageProps) {
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const refreshTeamRuntime = useCallback(
-    async (teamId: string) => {
+    async (teamId: string, options?: { apply?: boolean }) => {
       const runtime = await api.getTeamRuntime(props.token, teamId);
-      setTeamRuntimeByTeamId((prev) => ({ ...prev, [teamId]: runtime }));
+      if (options?.apply !== false) {
+        setTeamRuntimeByTeamId((prev) => ({ ...prev, [teamId]: runtime }));
+      }
       return runtime;
     },
     [props.token]
@@ -2501,7 +2506,13 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     let active = true;
-    void refreshTeamRuntime(selectedTeamId)
+    void refreshTeamRuntime(selectedTeamId, { apply: false })
+      .then((runtime) => {
+        if (!active) {
+          return;
+        }
+        setTeamRuntimeByTeamId((prev) => ({ ...prev, [selectedTeamId]: runtime }));
+      })
       .catch((err) => {
         if (!active) {
           return;

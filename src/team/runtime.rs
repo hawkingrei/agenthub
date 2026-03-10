@@ -74,13 +74,14 @@ fn parse_runtime_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamRuntimeMem
 fn build_team_member_actor_context(
     team_id: &str,
     member: &TeamRuntimeMemberSpec,
+    actor_cli_path: &str,
 ) -> anyhow::Result<AcpActorSkillContext> {
     Ok(AcpActorSkillContext {
         team_id: Some(team_id.to_string()),
         current_run_id: None,
         actor_id: member.member_id.clone(),
         default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-        actor_cli_path: default_actor_cli_path()?,
+        actor_cli_path: actor_cli_path.to_string(),
         member_role: Some(member.role.clone()),
         member_skills: member.skills.clone(),
         continuity: None,
@@ -107,12 +108,16 @@ pub async fn ensure_team_runtime_started(
     team: &TeamDefinitionRecord,
 ) -> anyhow::Result<TeamRuntimeControlRecord> {
     let member_specs = parse_runtime_member_specs(&team.spec)?;
+    let actor_cli_path = default_actor_cli_path()?;
     let mut started_member_ids = Vec::new();
     let mut members = Vec::with_capacity(member_specs.len());
 
     for member in &member_specs {
-        let actor_context = build_team_member_actor_context(team.id.as_str(), member)
-            .with_context(|| format!("build actor context for member '{}'", member.member_id))?;
+        let actor_context =
+            build_team_member_actor_context(team.id.as_str(), member, actor_cli_path.as_str())
+                .with_context(|| {
+                    format!("build actor context for member '{}'", member.member_id)
+                })?;
         let mut action = "started";
         if let Some(session_id) = agents
             .running_session_id_for_agent(member.member_id.as_str())

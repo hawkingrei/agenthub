@@ -1539,16 +1539,24 @@ mod tests {
 
         assert_eq!(response["result"]["isError"], false, "{response}");
         assert_eq!(response["result"]["structuredContent"]["team_id"], team.id);
-        assert_eq!(response["result"]["structuredContent"]["runtime"]["status"], "degraded");
-        assert_eq!(response["result"]["structuredContent"]["runtime"]["online_count"], 1);
+        assert_eq!(
+            response["result"]["structuredContent"]["runtime"]["status"],
+            "degraded"
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["runtime"]["online_count"],
+            1
+        );
         assert!(response["result"]["structuredContent"]["run"].is_null());
         let members = response["result"]["structuredContent"]["members"]
             .as_array()
             .expect("members array");
         assert_eq!(members.len(), 2);
-        assert!(members[0]["steps"]
-            .as_array()
-            .expect("leader steps array")
-            .is_empty());
+        assert!(
+            members[0]["steps"]
+                .as_array()
+                .expect("leader steps array")
+                .is_empty()
+        );
     }
 }
