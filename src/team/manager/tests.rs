@@ -2851,3 +2851,106 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
     assert!(worker.steps[0].session_id.is_none());
     assert!(worker.steps[0].session_status.is_none());
 }
+
+#[tokio::test]
+async fn describe_team_runtime_returns_member_runtime_status() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "describe-team-runtime".to_string(),
+            description: Some("team to verify runtime status".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"worker","role":"worker","description":"Implements changes"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("leader")
+    .bind("Leader Agent")
+    .bind("/tmp/leader")
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader agent");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("worker")
+    .bind("Worker Agent")
+    .bind("/tmp/worker")
+    .bind("codex")
+    .bind("[]")
+    .bind("create_worktree")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert worker agent");
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("session-leader")
+    .bind("leader")
+    .bind("running")
+    .bind(10_i64)
+    .execute(&db)
+    .await
+    .expect("insert leader session");
+
+    let runtime = manager
+        .describe_team_runtime(&team.id)
+        .await
+        .expect("describe team runtime");
+
+    assert_eq!(runtime.team_id, team.id);
+    assert_eq!(runtime.team_name, team.name);
+    assert_eq!(runtime.status, "degraded");
+    assert_eq!(runtime.members.len(), 2);
+
+    let leader = &runtime.members[0];
+    assert_eq!(leader.member_id, "leader");
+    assert_eq!(leader.display_name, "Leader Agent");
+    assert_eq!(leader.session_id.as_deref(), Some("session-leader"));
+    assert_eq!(leader.session_status.as_deref(), Some("running"));
+    assert_eq!(leader.card.description, "Lead planner");
+
+    let worker = &runtime.members[1];
+    assert_eq!(worker.member_id, "worker");
+    assert_eq!(worker.display_name, "Worker Agent");
+    assert!(worker.session_id.is_none());
+    assert!(worker.session_status.is_none());
+    assert_eq!(worker.card.description, "Implements changes");
+}

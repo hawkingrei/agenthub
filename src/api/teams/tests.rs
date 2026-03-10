@@ -560,6 +560,8 @@ async fn seed_default_team_member_agents(state: &AppState) {
     let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
+    let actor_cli = default_actor_cli_path().expect("resolve actor cli path");
+    let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
     let now = Utc::now().timestamp();
     for safe_path in [&workdir, "/tmp"] {
         sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
@@ -583,8 +585,8 @@ async fn seed_default_team_member_agents(state: &AppState) {
         .bind(member_id)
         .bind(format!("{member_id}-agent"))
         .bind(&workdir)
-        .bind("/usr/bin/env")
-        .bind("[]")
+        .bind(&actor_cli)
+        .bind(&actor_args)
         .bind("use_existing")
         .bind("created")
         .bind(now)

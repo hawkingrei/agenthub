@@ -98,6 +98,34 @@ async fn teams_router_http_contract() {
         .expect("get team via router");
     assert_eq!(get_team_resp.status(), StatusCode::OK);
 
+    let get_runtime_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/runtime"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get team runtime via router");
+    assert_eq!(get_runtime_resp.status(), StatusCode::OK);
+    let runtime = decode_json_body(get_runtime_resp).await;
+    assert_eq!(runtime["team_id"], team_id);
+    assert_eq!(runtime["status"], "running");
+    assert_eq!(runtime["members"].as_array().map(|items| items.len()), Some(2));
+
+    let outsider_runtime_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/runtime"),
+            Some(&outsider_token),
+            None,
+        ))
+        .await
+        .expect("outsider get runtime");
+    assert_eq!(outsider_runtime_resp.status(), StatusCode::NOT_FOUND);
+
     let create_task_resp = app
         .clone()
         .oneshot(build_json_request(

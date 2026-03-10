@@ -1,5 +1,6 @@
 mod manager;
 mod orchestrator;
+mod runtime;
 
 pub use agenthub_team_actor::{
     ActorMessageRecord as TeamActorMessageRecord, ActorMessageStatus as TeamActorMessageStatus,
@@ -14,5 +15,7 @@ pub use agenthub_team_domain::{
 };
 pub use manager::{
     SendActorMessageInput, TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings,
+    TeamRuntimeRecord,
 };
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
+pub use runtime::{TeamRuntimeControlRecord, ensure_team_runtime_started, stop_team_runtime};
