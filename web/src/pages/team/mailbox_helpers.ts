@@ -385,6 +385,10 @@ function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, 
   return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeHtml(label)}</span>`;
 }
 
+function isRawMentionBoundary(previous: string): boolean {
+  return previous.length === 0 || /[\s([{'"`]/.test(previous);
+}
+
 function replaceRawMentionsWithTokens(text: string): string {
   const chunks: string[] = [];
   let cursor = 0;
@@ -395,7 +399,7 @@ function replaceRawMentionsWithTokens(text: string): string {
       continue;
     }
     const previous = cursor > 0 ? text.charAt(cursor - 1) : "";
-    if (/[A-Za-z0-9._%+-]/.test(previous)) {
+    if (!isRawMentionBoundary(previous)) {
       chunks.push("@");
       cursor += 1;
       continue;

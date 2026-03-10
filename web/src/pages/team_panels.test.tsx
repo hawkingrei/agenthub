@@ -1392,7 +1392,7 @@ describe("team panels interactions", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     function TeamTaskPanelHarness() {
-      const [draft, setDraft] = React.useState("please continue @WorkerAgent");
+      const [draft, setDraft] = React.useState("please continue @Worker Agent");
       return (
         <TeamTaskPanel
           developerMode={true}
@@ -1418,7 +1418,7 @@ describe("team panels interactions", () => {
             {
               member_id: "leader-agent",
               role: "leader",
-              agent_name: "LeaderAgent",
+              agent_name: "Leader Agent",
               lifecycle_status: "running",
               lifecycle_tone: "active",
               run_status: "working",
@@ -1429,7 +1429,7 @@ describe("team panels interactions", () => {
             {
               member_id: "worker-agent",
               role: "worker",
-              agent_name: "WorkerAgent",
+              agent_name: "Worker Agent",
               lifecycle_status: "running",
               lifecycle_tone: "active",
               run_status: "working",
@@ -1460,7 +1460,7 @@ describe("team panels interactions", () => {
         ) as HTMLTextAreaElement | null,
         "draft textarea missing"
       ),
-      "please continue @WorkerAgent and review"
+      "please continue @Worker Agent and review"
     );
     clickElement(findButtonByText(container, "Send"));
 
@@ -1471,7 +1471,7 @@ describe("team panels interactions", () => {
       text: "please continue <at>worker-agent</at> and review",
       mentionActorIds: ["worker-agent"],
     });
-    expect(onMessageDraftChange).toHaveBeenCalledWith("please continue @WorkerAgent and review");
+    expect(onMessageDraftChange).toHaveBeenCalledWith("please continue @Worker Agent and review");
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
@@ -1480,7 +1480,7 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "Use @agent_name for direct replies · Ctrl/Cmd + Enter to send"
+      "Use @name for direct replies · Ctrl/Cmd + Enter to send"
     );
     expect(container.textContent).not.toContain("worker update");
     expect(container.textContent).not.toContain("work:working");

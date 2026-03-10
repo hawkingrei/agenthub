@@ -131,11 +131,11 @@ describe("mailbox helpers", () => {
 
   it("canonicalizes mentions without dropping trailing text", () => {
     expect(
-      canonicalizeMentionDraft("please continue @WorkerAgent and review", [
+      canonicalizeMentionDraft("please continue @Worker Agent and review", [
         {
           actorId: "worker-agent",
-          label: "WorkerAgent",
-          aliases: ["WorkerAgent"],
+          label: "Worker Agent",
+          aliases: ["Worker Agent"],
         },
       ])
     ).toEqual({
@@ -146,18 +146,36 @@ describe("mailbox helpers", () => {
 
   it("canonicalizes mentions followed by punctuation without truncating punctuation", () => {
     expect(
-      canonicalizeMentionDraft("please continue @WorkerAgent, then escalate @WorkerAgent:", [
-        {
-          actorId: "worker-agent",
-          label: "WorkerAgent",
-          aliases: ["WorkerAgent"],
-        },
-      ])
+      canonicalizeMentionDraft(
+        "please continue @Worker Agent, then escalate @Worker Agent:",
+        [
+          {
+            actorId: "worker-agent",
+            label: "Worker Agent",
+            aliases: ["Worker Agent"],
+          },
+        ]
+      )
     ).toEqual({
       text:
         "please continue <at>worker-agent</at>, then escalate <at>worker-agent</at>:",
       mentionActorIds: ["worker-agent"],
     });
+  });
+
+  it("does not tokenize raw mentions inside url-like plain text", () => {
+    const rendered = renderPlainTextWithMentions(
+      "see https://example.com/@worker-1 and /tmp/@worker-2"
+    );
+    expect(rendered).not.toContain("team-mention");
+    expect(rendered).toContain("https://example.com/@worker-1");
+    expect(rendered).toContain("/tmp/@worker-2");
+  });
+
+  it("still tokenizes raw mentions after whitespace in plain text", () => {
+    const rendered = renderPlainTextWithMentions("hello @worker-1");
+    expect(rendered).toContain("team-mention");
+    expect(rendered).toContain("@worker-1");
   });
 
   it("renders <at> mention as visual chip in markdown/plain text output", () => {

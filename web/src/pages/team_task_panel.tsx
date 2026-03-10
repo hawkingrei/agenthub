@@ -83,10 +83,6 @@ const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "mt-2 flex flex-wrap items-center gap
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
 
-function isSafeMentionLabel(value: string): boolean {
-  return /^[A-Za-z0-9._:-]+$/.test(value);
-}
-
 function resolveMessageText(
   message: TeamConversationMessageRecord,
   toPrettyJson: (value: unknown) => string
@@ -131,7 +127,7 @@ function resolveMentionLabel(
 ): string {
   const state = liveStateByMemberId.get(actorId);
   const agentName = state?.agent_name?.trim();
-  if (agentName && isSafeMentionLabel(agentName)) {
+  if (agentName) {
     return agentName;
   }
   return actorId;
@@ -590,7 +586,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         )}
         <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
-            {`Use @agent_name for direct replies · Ctrl/Cmd + Enter to send`}
+            {`Use @name for direct replies · Ctrl/Cmd + Enter to send`}
           </span>
           <button
             type="button"
