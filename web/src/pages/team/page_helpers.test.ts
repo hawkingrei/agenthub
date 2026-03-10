@@ -290,6 +290,25 @@ describe("team page helpers", () => {
     });
   });
 
+  it("prefers explicit backend team runtime status when present", () => {
+    expect(
+      resolveTeamRuntimeStatus(buildMemberSummary({ active: 0, inactive: 3, missing: 0, total: 3 }), {
+        status: "running",
+        members: [
+          { member_id: "leader", session_id: "session-leader" },
+          { member_id: "worker-1", session_id: "session-worker-1" },
+          { member_id: "worker-2", session_id: "session-worker-2" },
+        ],
+      })
+    ).toMatchObject({
+      status: "running",
+      label: "team running",
+      tone: "active",
+      online: 3,
+      total: 3,
+    });
+  });
+
   it("formats timestamps and pretty prints JSON safely", () => {
     expect(formatTs(null)).toBe("-");
     expect(formatTs(0)).toBe("-");

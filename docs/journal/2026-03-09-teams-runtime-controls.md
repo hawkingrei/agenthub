@@ -10,7 +10,9 @@ Added explicit Team runtime controls to `/teams` so the UI matches the backend l
 ## Frontend Changes
 
 - Added `api.startTeam()` and `api.stopTeam()` plus `TeamRuntimeControlResponse`.
-- Added a `resolveTeamRuntimeStatus(...)` helper to derive `running/stopped/degraded` from live member status summary.
+- Added `api.getTeamRuntime()` plus `TeamRuntimeRecord`.
+- `/teams` now prefers the explicit backend `GET /api/teams/:id/runtime` read model for runtime badge and controls.
+- `resolveTeamRuntimeStatus(...)` is now only a fallback path when the explicit Team runtime record is not yet loaded.
 - Updated `/teams` workspace header to show:
   - runtime status badge
   - `Start Team`
@@ -35,5 +37,4 @@ Chrome DevTools MCP:
 
 ## Follow-up
 
-- Wire `/teams` header controls to richer Team runtime state once backend exposes explicit Team runtime health beyond member online/offline inference.
 - Add Team runtime controls to CLI and eventual `/teams` runtime summary panels in a consistent way.

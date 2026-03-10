@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamTaskRecord,
@@ -25,8 +26,38 @@ export type TeamRuntimeStatusView = {
 };
 
 export function resolveTeamRuntimeStatus(
-  summary: TeamMemberAgentStatusSummary | null
+  summary: TeamMemberAgentStatusSummary | null,
+  runtime?: Pick<TeamRuntimeRecord, "status" | "members"> | null
 ): TeamRuntimeStatusView {
+  if (runtime) {
+    const total = runtime.members.length;
+    const online = runtime.members.filter((member) => member.session_id?.trim()).length;
+    if (runtime.status === "running") {
+      return {
+        status: "running",
+        label: "team running",
+        tone: "active",
+        online,
+        total,
+      };
+    }
+    if (runtime.status === "degraded") {
+      return {
+        status: "degraded",
+        label: "team degraded",
+        tone: "warning",
+        online,
+        total,
+      };
+    }
+    return {
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+      online,
+      total,
+    };
+  }
   const online = summary?.active ?? 0;
   const total = summary?.total ?? 0;
   const missing = summary?.missing ?? 0;

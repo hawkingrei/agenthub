@@ -347,6 +347,29 @@ export type TeamRuntimeControlResponse = {
   members: TeamRuntimeMemberStatusResponse[];
 };
 
+export type TeamRuntimeMemberRecord = {
+  member_id: string;
+  display_name: string;
+  role: string;
+  description?: string | null;
+  agent_status?: string | null;
+  session_id?: string | null;
+  session_status?: string | null;
+  card: {
+    card_id: string;
+    schema_version: string;
+    description: string;
+    capability_tags: string[];
+  };
+};
+
+export type TeamRuntimeRecord = {
+  team_id: string;
+  team_name: string;
+  status: "running" | "stopped" | "degraded";
+  members: TeamRuntimeMemberRecord[];
+};
+
 function parseApiErrorText(raw: string): string | null {
   if (!raw) return null;
   if (!raw.trim().startsWith("{")) return raw;
@@ -502,6 +525,8 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token),
+  getTeamRuntime: (token: string, id: string) =>
+    apiFetch<TeamRuntimeRecord>(`/api/teams/${encodePathSegment(id)}/runtime`, token),
   startTeam: (token: string, id: string) =>
     apiFetch<TeamRuntimeControlResponse>(
       `/api/teams/${encodePathSegment(id)}/start`,
