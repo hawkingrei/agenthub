@@ -557,6 +557,37 @@ async fn teams_api_start_and_stop_team_runtime() {
     assert_eq!(deleted.id, team.id);
 }
 
+#[test]
+fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
+    let expected = build_team_member_actor_context(
+        "team-runtime-startup",
+        &TeamMemberSpec {
+            member_id: "planner".to_string(),
+            role: "leader".to_string(),
+            model: None,
+            description: None,
+            skills: vec!["team-leader-orchestrator".to_string()],
+            prompt: None,
+        },
+    )
+    .expect("expected team member actor context");
+
+    let mismatched = AcpActorSkillContext {
+        team_id: Some("other-team".to_string()),
+        current_run_id: None,
+        actor_id: "planner".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: default_actor_cli_path().expect("actor cli path"),
+        member_role: Some("leader".to_string()),
+        member_skills: vec!["team-leader-orchestrator".to_string()],
+        continuity: None,
+    };
+
+    assert!(!team_member_actor_context_matches(Some(&mismatched), &expected));
+    assert!(team_member_actor_context_matches(Some(&expected), &expected));
+    assert!(!team_member_actor_context_matches(None, &expected));
+}
+
 #[tokio::test]
 async fn teams_api_enforces_required_role_skills() {
     let state = build_test_state().await;

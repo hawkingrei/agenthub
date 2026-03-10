@@ -278,6 +278,7 @@ pub struct AgentHandle {
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
+    actor_context: Option<AcpActorSkillContext>,
 }
 
 pub enum AgentInput {
@@ -909,6 +910,19 @@ impl AgentManager {
         self.get_running_session_id(agent_id).await
     }
 
+    pub async fn running_actor_context_for_agent(
+        &self,
+        agent_id: &str,
+    ) -> Option<AcpActorSkillContext> {
+        let session_id = self.get_running_session_id(agent_id).await?;
+        let guard = self.inner.read().await;
+        let handle = guard.get(agent_id)?;
+        if handle.session_id != session_id {
+            return None;
+        }
+        handle.actor_context.clone()
+    }
+
     async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
         {
             let guard = self.inner.read().await;
@@ -1391,6 +1405,7 @@ impl AgentManager {
             output_tx: output_tx.clone(),
             input,
             session_id: session_id.clone(),
+            actor_context,
         };
 
         {

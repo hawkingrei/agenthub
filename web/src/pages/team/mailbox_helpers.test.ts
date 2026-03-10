@@ -143,6 +143,22 @@ describe("mailbox helpers", () => {
     });
   });
 
+  it("canonicalizes mentions followed by punctuation without truncating punctuation", () => {
+    expect(
+      canonicalizeMentionDraft("please continue @WorkerAgent, then escalate @WorkerAgent:", [
+        {
+          actorId: "worker-agent",
+          label: "WorkerAgent",
+          aliases: ["WorkerAgent"],
+        },
+      ])
+    ).toEqual({
+      text:
+        "please continue <at>worker-agent</at>, then escalate <at>worker-agent</at>:",
+      mentionActorIds: ["worker-agent"],
+    });
+  });
+
   it("renders <at> mention as visual chip in markdown/plain text output", () => {
     const markdown = renderMarkdownWithMentions("hello <at>worker-1</at>");
     expect(markdown).toContain("team-mention");
@@ -151,6 +167,25 @@ describe("mailbox helpers", () => {
     const plain = renderPlainTextWithMentions("hello <at>worker-1</at>");
     expect(plain).toContain("team-mention");
     expect(plain).toContain("@worker-1");
+  });
+
+  it("renders raw mentions as chips in plain text only", () => {
+    const plain = renderPlainTextWithMentions("hello @worker-1");
+    expect(plain).toContain("team-mention");
+    expect(plain).toContain("@worker-1");
+
+    const markdown = renderMarkdownWithMentions("hello @worker-1");
+    expect(markdown).not.toContain("team-mention");
+    expect(markdown).toContain("@worker-1");
+  });
+
+  it("does not convert raw mentions inside markdown code spans or links into chips", () => {
+    const rendered = renderMarkdownWithMentions(
+      "`@worker-1` and [profile](https://example.com/@worker-1)"
+    );
+    expect(rendered).not.toContain("team-mention");
+    expect(rendered).toContain("@worker-1");
+    expect(rendered).toContain("https://example.com/@worker-1");
   });
 
   it("uses null-prototype lookups and falls back safely for reserved property names", () => {

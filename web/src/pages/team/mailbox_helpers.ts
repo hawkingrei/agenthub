@@ -63,6 +63,21 @@ export function createDisplayNameLookup(
   return lookup;
 }
 
+export function isHumanMailboxActor(
+  actorId: string | null | undefined,
+  humanActorId: string
+): boolean {
+  const normalizedActorId = (actorId ?? "").trim();
+  const normalizedHumanActorId = humanActorId.trim();
+  if (!normalizedActorId || !normalizedHumanActorId) {
+    return false;
+  }
+  return (
+    normalizedActorId === normalizedHumanActorId ||
+    normalizedActorId.startsWith(`${normalizedHumanActorId}:`)
+  );
+}
+
 function normalizeActorIds(actorIds: string[]): string[] {
   const seen = new Set<string>();
   const normalized: string[] = [];
@@ -244,7 +259,7 @@ export function canonicalizeMentionDraft(
         continue;
       }
       const pattern = new RegExp(
-        `(^|[^A-Za-z0-9._%+-])@${escapeRegex(alias)}(?=$|[^A-Za-z0-9._:-])`,
+        `(^|[^A-Za-z0-9._%+-])@${escapeRegex(alias)}(?=$|[^A-Za-z0-9._:-]|:(?=[^A-Za-z0-9._-]|$))`,
         "g"
       );
       nextText = nextText.replace(pattern, (_match, prefix: string) => {
@@ -368,17 +383,17 @@ function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, 
 }
 
 function replaceRawMentionsWithTokens(text: string): string {
-  let out = "";
+  const chunks: string[] = [];
   let cursor = 0;
   while (cursor < text.length) {
     if (text.charAt(cursor) !== "@") {
-      out += text.charAt(cursor);
+      chunks.push(text.charAt(cursor));
       cursor += 1;
       continue;
     }
     const previous = cursor > 0 ? text.charAt(cursor - 1) : "";
     if (/[A-Za-z0-9._%+-]/.test(previous)) {
-      out += "@";
+      chunks.push("@");
       cursor += 1;
       continue;
     }
@@ -387,25 +402,29 @@ function replaceRawMentionsWithTokens(text: string): string {
       end += 1;
     }
     if (end === cursor + 1) {
-      out += "@";
+      chunks.push("@");
       cursor += 1;
       continue;
     }
     const actorId = text.slice(cursor + 1, end).trim();
-    out += `%%AGH_AT_MENTION:${actorId}%%`;
+    chunks.push(`%%AGH_AT_MENTION:${actorId}%%`);
     cursor = end;
   }
-  return out;
+  return chunks.join("");
 }
 
-function tokenizeAtMentions(text: string): string {
-  return replaceRawMentionsWithTokens(text).replace(MENTION_TAG_REGEX, (_match, rawActorId: string) => {
+function replaceCanonicalMentionsWithTokens(text: string): string {
+  return text.replace(MENTION_TAG_REGEX, (_match, rawActorId: string) => {
     const actorId = (rawActorId ?? "").trim();
     if (!/^[A-Za-z0-9._:-]+$/.test(actorId)) {
       return "";
     }
     return `%%AGH_AT_MENTION:${actorId}%%`;
   });
+}
+
+function tokenizePlainTextMentions(text: string): string {
+  return replaceCanonicalMentionsWithTokens(replaceRawMentionsWithTokens(text));
 }
 
 function renderMentionTokensIntoHtml(
@@ -421,7 +440,7 @@ export function renderMarkdownWithMentions(
   text: string,
   displayNameByActorId?: Record<string, string>
 ): string {
-  const tokenized = tokenizeAtMentions(text);
+  const tokenized = replaceCanonicalMentionsWithTokens(text);
   const rendered = renderMarkdown(tokenized);
   return renderMentionTokensIntoHtml(rendered, displayNameByActorId);
 }
@@ -430,7 +449,7 @@ export function renderPlainTextWithMentions(
   text: string,
   displayNameByActorId?: Record<string, string>
 ): string {
-  const tokenized = tokenizeAtMentions(text);
+  const tokenized = tokenizePlainTextMentions(text);
   const escaped = escapeHtml(tokenized).replace(/\n/g, "<br/>");
   return renderMentionTokensIntoHtml(escaped, displayNameByActorId);
 }

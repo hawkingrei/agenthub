@@ -123,11 +123,10 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
 
   const selectedTask = React.useMemo(
     () =>
-      tasks.find((task) => task.id === selectedTaskId) ??
+      visibleTasks.find((task) => task.id === selectedTaskId) ??
       visibleTasks[0] ??
-      tasks[0] ??
       null,
-    [selectedTaskId, tasks, visibleTasks]
+    [selectedTaskId, visibleTasks]
   );
 
   const canCreateTask = newTaskTitle.trim().length > 0 && busy !== "create-task";

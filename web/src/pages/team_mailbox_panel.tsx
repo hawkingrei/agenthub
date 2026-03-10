@@ -2,6 +2,7 @@ import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  isHumanMailboxActor,
   resolveDisplayName,
   renderPlainTextWithMentions,
   resolveChatMessageText,
@@ -117,7 +118,7 @@ function resolveMailboxActorLabel(
   if (!normalizedActorId) {
     return "-";
   }
-  if (normalizedActorId === humanActorId.trim()) {
+  if (isHumanMailboxActor(normalizedActorId, humanActorId)) {
     return "You";
   }
   return resolveDisplayName(normalizedActorId, displayNameByActorId, normalizedActorId);

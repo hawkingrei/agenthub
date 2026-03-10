@@ -8,6 +8,7 @@ import {
   applyMentionAtTag,
   canonicalizeMentionDraft,
   createDisplayNameLookup,
+  isHumanMailboxActor,
   type MentionCandidate,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
@@ -106,15 +107,6 @@ function resolveMailboxMessageText(
     return chatText;
   }
   return toPrettyJson(message.payload);
-}
-
-function isHumanMailboxActor(actorId: string | null | undefined, humanActorId: string): boolean {
-  const normalized = (actorId ?? "").trim();
-  const human = humanActorId.trim();
-  if (!normalized || !human) {
-    return false;
-  }
-  return normalized === human || normalized.startsWith(`${human}:`);
 }
 
 function resolveThreadAuthorLabel(

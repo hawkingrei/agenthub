@@ -1340,6 +1340,21 @@ fn build_team_member_actor_context(
     })
 }
 
+fn team_member_actor_context_matches(
+    current: Option<&AcpActorSkillContext>,
+    expected: &AcpActorSkillContext,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    current.team_id == expected.team_id
+        && current.current_run_id == expected.current_run_id
+        && current.actor_id == expected.actor_id
+        && current.default_channel == expected.default_channel
+        && current.member_role == expected.member_role
+        && current.member_skills == expected.member_skills
+}
+
 async fn ensure_team_runtime_started(
     state: &AppState,
     team: &TeamDefinitionRecord,
@@ -1349,21 +1364,34 @@ async fn ensure_team_runtime_started(
     let mut members = Vec::with_capacity(member_specs.len());
 
     for member in &member_specs {
+        let actor_context = build_team_member_actor_context(team.id.as_str(), member)
+            .map_err(map_team_internal_error)?;
+        let mut action = "started";
         if let Some(session_id) = state
             .agents
             .running_session_id_for_agent(member.member_id.as_str())
             .await
         {
-            members.push(TeamRuntimeMemberStatusResponse {
-                member_id: member.member_id.clone(),
-                session_id,
-                action: "reused".to_string(),
-            });
-            continue;
+            let running_context = state
+                .agents
+                .running_actor_context_for_agent(member.member_id.as_str())
+                .await;
+            if team_member_actor_context_matches(running_context.as_ref(), &actor_context) {
+                members.push(TeamRuntimeMemberStatusResponse {
+                    member_id: member.member_id.clone(),
+                    session_id,
+                    action: "reused".to_string(),
+                });
+                continue;
+            }
+            action = "restarted";
+            state
+                .agents
+                .stop_agent(member.member_id.as_str())
+                .await
+                .map_err(map_team_internal_error)?;
         }
 
-        let actor_context = build_team_member_actor_context(team.id.as_str(), member)
-            .map_err(map_team_internal_error)?;
         match state
             .agents
             .start_agent_with_actor_context(member.member_id.as_str(), Some(actor_context))
@@ -1374,7 +1402,7 @@ async fn ensure_team_runtime_started(
                 members.push(TeamRuntimeMemberStatusResponse {
                     member_id: member.member_id.clone(),
                     session_id,
-                    action: "started".to_string(),
+                    action: action.to_string(),
                 });
             }
             Err(err) => {

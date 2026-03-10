@@ -1391,14 +1391,18 @@ describe("team panels interactions", () => {
     const onRefreshMessages = vi.fn();
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
-    act(() => {
-      root.render(
+    function TeamTaskPanelHarness() {
+      const [draft, setDraft] = React.useState("please continue @WorkerAgent");
+      return (
         <TeamTaskPanel
           developerMode={true}
           tasksLoading={false}
           onRefreshTasks={onRefreshTasks}
-          messageDraft="please continue @WorkerAgent"
-          onMessageDraftChange={onMessageDraftChange}
+          messageDraft={draft}
+          onMessageDraftChange={(value) => {
+            onMessageDraftChange(value);
+            setDraft(value);
+          }}
           onSendMessage={onSendMessage}
           onRefreshMessages={onRefreshMessages}
           messages={[
@@ -1440,6 +1444,10 @@ describe("team panels interactions", () => {
           toPrettyJson={toPrettyJson}
         />
       );
+    }
+
+    act(() => {
+      root.render(<TeamTaskPanelHarness />);
     });
 
     clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
@@ -1460,7 +1468,7 @@ describe("team panels interactions", () => {
     expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledWith({
-      text: "please continue <at>worker-agent</at>",
+      text: "please continue <at>worker-agent</at> and review",
       mentionActorIds: ["worker-agent"],
     });
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue @WorkerAgent and review");
@@ -1712,6 +1720,44 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Tasks");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("Task context");
+  });
+
+  it("TeamTasksPanel keeps details aligned with the active filter", () => {
+    act(() => {
+      root.render(
+        <TeamTasksPanel
+          developerMode={false}
+          tasks={[
+            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+            buildPanelTask("task-progress", {
+              title: "Prepare rollout",
+              status: "in_progress",
+            }),
+          ]}
+          tasksLoading={false}
+          selectedTaskId="task-progress"
+          onSelectedTaskIdChange={vi.fn()}
+          onRefreshTasks={vi.fn()}
+          newTaskTitle=""
+          onNewTaskTitleChange={vi.fn()}
+          onCreateTask={vi.fn()}
+          busy={null}
+          compilePreviewContextId=""
+          onCompilePreviewContextIdChange={vi.fn()}
+          onCompileTaskRunPreview={vi.fn()}
+          canCompileTask={false}
+          compiledRunPreview={null}
+          onUseCompiledRunPayload={vi.fn()}
+          onCreateRunFromCompiledPreview={vi.fn()}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    });
+
+    clickElement(findButtonByText(container, "Open"));
+    expect(container.textContent).toContain("Investigate bug");
+    expect(container.textContent).not.toContain("Prepare rolloutCompile this task");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
@@ -2229,6 +2275,78 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain('{"type":"chat_message"');
     expect(container.textContent).toContain("Worker Agent → Leader Agent");
     expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamMailboxPanel renders user sub-identities as You", () => {
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={false}
+          snapshot={buildSnapshot()}
+          humanActorId="user"
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+          }}
+          selectedMemberId="user"
+          unreadByMemberId={{ user: 1 }}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "user:root",
+            inboxActorId: "user:root",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[
+            buildMailboxMessage(31, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user:root",
+              status: "delivered",
+              payload: { type: "chat_message", text: "hello" },
+            }),
+          ]}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId=""
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId=""
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel=""
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute=""
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId=""
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("Leader Agent → You");
   });
 
   it("TeamMailboxPanel hides raw mailbox tools when developer mode is off", () => {
