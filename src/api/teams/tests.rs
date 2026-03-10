@@ -1,4 +1,5 @@
 use std::path::Path as StdPath;
+use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -45,6 +46,43 @@ use super::{
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
+static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
+
+fn resolve_test_agenthub_binary_path() -> String {
+    TEST_AGENTHUB_BIN
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthub") {
+                return std::fs::canonicalize(path)
+                    .expect("canonicalize cargo-provided agenthub binary path")
+                    .to_string_lossy()
+                    .to_string();
+            }
+
+            let current = std::env::current_exe().expect("resolve current test executable path");
+            let sibling = current
+                .parent()
+                .and_then(|parent| parent.parent())
+                .map(|dir| dir.join(format!("agenthub{}", std::env::consts::EXE_SUFFIX)))
+                .expect("resolve target dir for agenthub binary");
+            if sibling.exists() {
+                return std::fs::canonicalize(&sibling)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "canonicalize derived agenthub binary path {}: {err}",
+                            sibling.display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .to_string();
+            }
+
+            panic!(
+                "resolve real agenthub binary path for tests from {}",
+                current.display()
+            );
+        })
+        .clone()
+}
 
 pub(crate) async fn build_test_state() -> AppState {
     build_test_state_with_db_source(None, true).await
@@ -560,7 +598,7 @@ async fn seed_default_team_member_agents(state: &AppState) {
     let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    let actor_cli = default_actor_cli_path().expect("resolve actor cli path");
+    let actor_cli = resolve_test_agenthub_binary_path();
     let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
     let now = Utc::now().timestamp();
     for safe_path in [&workdir, "/tmp"] {
@@ -645,6 +683,25 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     .execute(&state.db)
     .await
     .expect("configure worker team member agent");
+}
+
+#[test]
+fn resolve_test_agenthub_binary_path_prefers_real_binary() {
+    let path = resolve_test_agenthub_binary_path();
+    let path_buf = PathBuf::from(&path);
+    assert!(path_buf.exists(), "expected binary path to exist: {path}");
+    let file_name = path_buf
+        .file_name()
+        .and_then(|value| value.to_str())
+        .expect("binary file name");
+    assert_eq!(
+        file_name,
+        format!("agenthub{}", std::env::consts::EXE_SUFFIX)
+    );
+    assert!(
+        !path.contains("/deps/"),
+        "expected real binary path, got test harness path: {path}"
+    );
 }
 
 fn worker_test_repo() -> &'static String {

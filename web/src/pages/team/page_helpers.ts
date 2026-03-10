@@ -27,7 +27,7 @@ export type TeamRuntimeStatusView = {
 
 type TeamRuntimeStatusRecord = {
   status: TeamRuntimeRecord["status"];
-  members: Array<Pick<TeamRuntimeRecord["members"][number], "session_id">>;
+  members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
 };
 
 export function resolveTeamRuntimeStatus(
