@@ -14,6 +14,7 @@ import {
   mergeMailboxMessages,
   renderMarkdownWithMentions,
   renderPlainTextWithMentions,
+  resolveChatMessageText,
   resolveDisplayName,
   resolveMentionDraftQuery,
   resolveTaskMailboxRoutePlan,
@@ -167,6 +168,10 @@ describe("mailbox helpers", () => {
     const plain = renderPlainTextWithMentions("hello <at>worker-1</at>");
     expect(plain).toContain("team-mention");
     expect(plain).toContain("@worker-1");
+  });
+
+  it("treats plain string mailbox payloads as chat text", () => {
+    expect(resolveChatMessageText("line one\n\n- line two")).toBe("line one\n\n- line two");
   });
 
   it("renders raw mentions as chips in plain text only", () => {

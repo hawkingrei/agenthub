@@ -347,6 +347,9 @@ function parseStructuredMailboxPayload(payload: unknown): unknown {
 
 export function resolveChatMessageText(payload: unknown): string | null {
   const parsed = parseStructuredMailboxPayload(payload);
+  if (typeof parsed === "string") {
+    return parsed;
+  }
   if (
     typeof parsed === "object" &&
     parsed !== null &&

@@ -1603,6 +1603,45 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
+  it("TeamTaskPanel renders plain markdown string mailbox payloads without JSON escaping", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={true}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[]}
+          mailboxMessages={[
+            buildMailboxMessage(12, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "user",
+              status: "delivered",
+              payload: "line one\n\n- line two",
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("line one");
+    expect(container.textContent).toContain("line two");
+    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
   it("TeamTaskPanel hides message details when developer mode is off", () => {
     act(() => {
       root.render(
@@ -2274,6 +2313,83 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("mailbox string payload text");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
     expect(container.textContent).toContain("Worker Agent → Leader Agent");
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamMailboxPanel renders plain markdown string payloads without JSON escaping", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={true}
+          snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{}}
+          onSelectMember={vi.fn()}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={vi.fn()}
+          onJumpToBottom={vi.fn()}
+          conversationMessages={[
+            buildMailboxMessage(31, {
+              from_actor_id: "worker-agent",
+              to_actor_id: "leader-agent",
+              status: "delivered",
+              payload: "line one\n\n- line two",
+            }),
+          ]}
+          toPrettyJson={toPrettyJson}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          busy={null}
+          onAckMessage={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={vi.fn()}
+          onSendChatMessage={vi.fn()}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={vi.fn()}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={vi.fn()}
+          msgChannel="default"
+          onMsgChannelChange={vi.fn()}
+          msgTransport="local"
+          onMsgTransportChange={vi.fn()}
+          msgRoute="{}"
+          onMsgRouteChange={vi.fn()}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={vi.fn()}
+          onApplyMessageTemplate={vi.fn()}
+          msgPayload="{}"
+          onMsgPayloadChange={vi.fn()}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={vi.fn()}
+          inboxLimit="20"
+          onInboxLimitChange={vi.fn()}
+          inboxAfterId=""
+          onInboxAfterIdChange={vi.fn()}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={vi.fn()}
+          onRefreshInbox={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("line one");
+    expect(container.textContent).toContain("line two");
+    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
