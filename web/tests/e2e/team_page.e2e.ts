@@ -73,6 +73,8 @@ type TeamRunRecord = {
   ended_at: number | null;
 };
 
+type TeamRuntimeStatus = "running" | "stopped" | "degraded";
+
 type TeamTaskRecord = {
   id: string;
   team_id: string;
@@ -460,6 +462,41 @@ async function mockTeamPageApis(
     };
   };
 
+  const buildTeamRuntime = (team: TeamDefinitionRecord) => {
+    const members = team.spec.members.map((member) => {
+      const agent = agents.find((item) => item.id === member.member_id);
+      const sessionId = agent ? `session-${team.id}-${member.member_id}` : null;
+      return {
+        member_id: member.member_id,
+        display_name: agent?.name ?? member.member_id,
+        role: member.role ?? "worker",
+        description: member.description ?? null,
+        agent_status: agent?.status ?? "created",
+        session_id: sessionId,
+        session_status: sessionId ? "running" : null,
+        card: {
+          card_id: `agenthub://agents/${member.member_id}`,
+          schema_version: "agenthub.a2a.discovery_card.v1",
+          description: member.description ?? `${member.member_id} runtime`,
+          capability_tags: ["team_mailbox_v1"],
+        },
+      };
+    });
+    const onlineCount = members.filter((member) => member.session_id).length;
+    const status: TeamRuntimeStatus =
+      onlineCount === 0
+        ? "stopped"
+        : onlineCount === members.length
+          ? "running"
+          : "degraded";
+    return {
+      team_id: team.id,
+      team_name: team.name,
+      status,
+      members,
+    };
+  };
+
   await page.addInitScript((storedAuth: StoredAuthState) => {
     window.localStorage.setItem("agenthub_auth", JSON.stringify(storedAuth));
   }, auth);
@@ -599,6 +636,48 @@ async function mockTeamPageApis(
       return;
     }
     await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/runtime$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runtime$/)?.[1] ?? "";
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) {
+      await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+      return;
+    }
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(buildTeamRuntime(team)));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/(start|stop)$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const matched = url.pathname.match(/\/api\/teams\/([^/]+)\/(start|stop)$/);
+    const teamId = matched?.[1] ?? "";
+    const action = matched?.[2] ?? "";
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) {
+      await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+      return;
+    }
+    await route.fulfill(
+      jsonResponse({
+        team_id: team.id,
+        status: action === "start" ? "running" : "stopped",
+        members: team.spec.members.map((member) => ({
+          member_id: member.member_id,
+          session_id: action === "start" ? `session-${team.id}-${member.member_id}` : null,
+          action: action === "start" ? "started" : "stopped",
+        })),
+      })
+    );
   });
 
   await page.route(/\/api\/teams\/[^/]+\/tasks(?:\?.*)?$/, async (route, request) => {

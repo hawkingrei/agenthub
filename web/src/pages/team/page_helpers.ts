@@ -25,9 +25,14 @@ export type TeamRuntimeStatusView = {
   total: number;
 };
 
+type TeamRuntimeStatusRecord = {
+  status: TeamRuntimeRecord["status"];
+  members: Array<Pick<TeamRuntimeRecord["members"][number], "session_id">>;
+};
+
 export function resolveTeamRuntimeStatus(
   summary: TeamMemberAgentStatusSummary | null,
-  runtime?: Pick<TeamRuntimeRecord, "status" | "members"> | null
+  runtime?: TeamRuntimeStatusRecord | null
 ): TeamRuntimeStatusView {
   if (runtime) {
     const total = runtime.members.length;

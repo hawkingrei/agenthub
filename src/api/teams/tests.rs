@@ -805,7 +805,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
                 break;
             }
             for event in &events {
-                let line = event.message.as_str();
+                let line = event.message.trim();
                 if line == "AGENTHUB_ACTOR_TEAM_ID=team-env-check" {
                     has_team_id = true;
                 } else if line == "AGENTHUB_ACTOR_CURRENT_RUN_ID=run-env-check" {

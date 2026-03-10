@@ -8,6 +8,7 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
+  TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -258,6 +259,33 @@ function formatTeamRuntimeActionSummary(
     .map(([key, value]) => `${key}=${value}`);
   const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
+}
+
+function updateCachedTeamRuntimeStatus(
+  previousRuntime: TeamRuntimeRecord | undefined,
+  teamId: string,
+  teamName: string,
+  status: TeamRuntimeRecord["status"],
+  members: TeamRuntimeControlResponse["members"],
+  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
+): TeamRuntimeRecord | undefined {
+  if (!previousRuntime) {
+    return undefined;
+  }
+  return {
+    ...previousRuntime,
+    team_id: teamId,
+    team_name: teamName,
+    status,
+    members: previousRuntime.members.map((member) => {
+      const updated = members.find((item) => item.member_id === member.member_id);
+      return {
+        ...member,
+        session_id: updated?.session_id ?? (nextSessionStatus ? member.session_id : undefined),
+        session_status: nextSessionStatus ? nextSessionStatus(member.session_status) : undefined,
+      };
+    }),
+  };
 }
 
 function validateRunInputJson(raw: string): RunInputValidation {
@@ -2495,30 +2523,29 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const runtime = await api.startTeam(props.token, selectedTeam.id);
       await Promise.all([refreshTeams(), refreshAgents()]);
-      setTeamRuntimeByTeamId((prev) => ({
-        ...prev,
-        [selectedTeam.id]: {
-          ...(prev[selectedTeam.id] ?? {
-            team_id: selectedTeam.id,
-            team_name: selectedTeam.name,
-            members: [],
-          }),
-          team_id: selectedTeam.id,
-          team_name: selectedTeam.name,
-          status: runtime.status as TeamRuntimeRecord["status"],
-          members: (prev[selectedTeam.id]?.members ?? []).map((member) => {
-            const updated = runtime.members.find((item) => item.member_id === member.member_id);
-            if (!updated) {
-              return member;
+      setTeamRuntimeByTeamId((prev) => {
+        const previousRuntime = prev[selectedTeam.id];
+        const optimisticRuntime = updateCachedTeamRuntimeStatus(
+          previousRuntime,
+          selectedTeam.id,
+          selectedTeam.name,
+          runtime.status as TeamRuntimeRecord["status"],
+          runtime.members,
+          (sessionStatus) => {
+            if (runtime.status !== "running") {
+              return sessionStatus ?? undefined;
             }
-            return {
-              ...member,
-              session_id: updated.session_id,
-              session_status: runtime.status === "running" ? "running" : member.session_status,
-            };
-          }),
-        },
-      }));
+            return "running";
+          }
+        );
+        if (!optimisticRuntime) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [selectedTeam.id]: optimisticRuntime,
+        };
+      });
       void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
     } catch (err) {
@@ -2547,24 +2574,24 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const runtime = await api.stopTeam(props.token, selectedTeam.id);
       await Promise.all([refreshTeams(), refreshAgents()]);
-      setTeamRuntimeByTeamId((prev) => ({
-        ...prev,
-        [selectedTeam.id]: {
-          ...(prev[selectedTeam.id] ?? {
-            team_id: selectedTeam.id,
-            team_name: selectedTeam.name,
-            members: [],
-          }),
-          team_id: selectedTeam.id,
-          team_name: selectedTeam.name,
-          status: runtime.status as TeamRuntimeRecord["status"],
-          members: (prev[selectedTeam.id]?.members ?? []).map((member) => ({
-            ...member,
-            session_id: undefined,
-            session_status: undefined,
-          })),
-        },
-      }));
+      setTeamRuntimeByTeamId((prev) => {
+        const previousRuntime = prev[selectedTeam.id];
+        const optimisticRuntime = updateCachedTeamRuntimeStatus(
+          previousRuntime,
+          selectedTeam.id,
+          selectedTeam.name,
+          runtime.status as TeamRuntimeRecord["status"],
+          runtime.members,
+          null
+        );
+        if (!optimisticRuntime) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [selectedTeam.id]: optimisticRuntime,
+        };
+      });
       void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
     } catch (err) {
