@@ -1,5 +1,7 @@
 use std::path::Path as StdPath;
+use std::process::Command as StdCommand;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::Json;
@@ -40,6 +42,8 @@ use super::{
     send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
     start_team_run_step, stop_team, submit_team_run_step,
 };
+
+static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 
 pub(crate) async fn build_test_state() -> AppState {
     build_test_state_with_db_source(None, true).await
@@ -596,20 +600,17 @@ async fn seed_default_team_member_agents(state: &AppState) {
 
 pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_id: &str) {
     let now = Utc::now().timestamp();
-    let repo = std::env::current_dir()
-        .expect("resolve current repo dir")
+    let repo = worker_test_repo().clone();
+    let worktree_root = std::env::temp_dir()
+        .join("agenthub-team-api-test-worker-worktrees")
         .to_string_lossy()
         .to_string();
-    let workdir: String = sqlx::query_scalar("SELECT workdir FROM agents WHERE id = ?1")
-        .bind(agent_id)
-        .fetch_one(&state.db)
-        .await
-        .expect("load worker team member workdir");
-    let worktree_root = StdPath::new(&workdir)
-        .parent()
-        .unwrap_or_else(|| StdPath::new(&workdir))
-        .to_string_lossy()
-        .to_string();
+    std::fs::create_dir_all(&worktree_root).expect("create worker runtime root");
+    let workdir = StdPath::new(&worktree_root).join(agent_id);
+    if workdir.exists() {
+        std::fs::remove_dir_all(&workdir).expect("clear stale worker workdir");
+    }
+    let workdir = workdir.to_string_lossy().to_string();
     sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
         .bind(&repo)
         .bind(now)
@@ -625,20 +626,50 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     sqlx::query(
         r#"
         UPDATE agents
-        SET worktree_mode = 'create_worktree',
-            worktree_repo = ?2,
+        SET workdir = ?2,
+            worktree_mode = 'create_worktree',
+            worktree_repo = ?3,
             worktree_ref = 'HEAD',
             status = 'created',
-            updated_at = ?3
+            updated_at = ?4
         WHERE id = ?1
         "#,
     )
     .bind(agent_id)
+    .bind(&workdir)
     .bind(repo)
     .bind(now)
     .execute(&state.db)
     .await
     .expect("configure worker team member agent");
+}
+
+fn worker_test_repo() -> &'static String {
+    WORKER_TEST_REPO.get_or_init(|| {
+        let base =
+            std::env::temp_dir().join(format!("agenthub-team-worker-repo-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&base).expect("create worker test repo dir");
+        run_git(&base, &["init"]);
+        run_git(
+            &base,
+            &["config", "user.email", "agenthub-test@example.com"],
+        );
+        run_git(&base, &["config", "user.name", "AgentHub Test"]);
+        std::fs::write(base.join("README.md"), "seed\n").expect("write worker repo seed");
+        run_git(&base, &["add", "README.md"]);
+        run_git(&base, &["commit", "-m", "init"]);
+        base.to_string_lossy().to_string()
+    })
+}
+
+fn run_git(repo_dir: &StdPath, args: &[&str]) {
+    let status = StdCommand::new("git")
+        .arg("-C")
+        .arg(repo_dir)
+        .args(args)
+        .status()
+        .expect("failed to execute `git`; ensure it is available on PATH");
+    assert!(status.success(), "git command failed: {:?}", args);
 }
 
 async fn auth_headers(state: &AppState) -> HeaderMap {
