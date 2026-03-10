@@ -2,6 +2,9 @@
 
 Shared baseline injected to both leader and worker at startup.
 This file is index-only; detailed procedures live in skill files.
+Shared routing, mention, human-facing reply, and startup contracts are
+canonical here. Downstream Team skills should reference this file instead of
+restating the same rules.
 
 ## Mission
 

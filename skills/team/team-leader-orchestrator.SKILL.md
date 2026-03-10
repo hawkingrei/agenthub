@@ -29,21 +29,12 @@ You are the coordinator for a multi-agent team run.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
-## Routing Key Contract
+## Shared Contract Usage
 
-- Use `spec.members[].member_id` as the canonical teammate identity for mailbox routing.
-- Prefer stable member names/ids from team spec; do not rely on opaque runtime UUID/process identifiers in planning artifacts.
-- In coordination notes and payload examples, always reference workers by `member_id`.
-
-## Discovery Identity Card Contract
-
-- Treat `spec.members[].description` as the authoritative A2A identity-card description for each member.
-- Keep `AGENTS.md` aligned with discovery identity policy:
-  - who owns each member profile
-  - when identity description is updated
-  - why the change is needed for current run
-- Use `/api/agents/:id/.well-known/agent-card` as the runtime identity check before delegation/synthesis if role ownership is ambiguous.
-- Never leave identity description blank after role assignment is finalized.
+- Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
+- In planning artifacts and payload examples, always reference teammates by stable `member_id`.
+- Treat `spec.members[].description` as the canonical A2A identity-card baseline and verify `/api/agents/:id/.well-known/agent-card` when role ownership is ambiguous.
+- Record any required identity-card update checkpoints in leader coordination artifacts instead of duplicating policy here.
 
 ## Team TODO Lifecycle (Leader)
 

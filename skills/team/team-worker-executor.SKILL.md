@@ -21,16 +21,12 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
-## Routing Key Contract
+## Shared Contract Usage
 
-- Use `spec.members[].member_id` as routing identity when communicating with teammates.
-- Prefer stable teammate names/ids from team spec; avoid opaque runtime UUID/process identifiers in worker messages.
-
-## Discovery Identity Card Contract
-
-- Keep worker identity in `spec.members[].description` up to date with current specialization/ownership.
-- Treat `/api/agents/:id/.well-known/agent-card` as the externally visible identity card; ensure status reports match that profile.
-- If description is stale/empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
+- Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
+- Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
+- Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
+- If description is stale or empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
 - Do not overwrite another member's identity description from worker context.
 
 ## Team TODO Lifecycle (Worker)

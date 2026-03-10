@@ -9,6 +9,8 @@ Use this skill for Team mailbox communication. It is the protocol reference for
 
 For Team runtime/roster context, use the single `team_members` tool. Do not
 invent a second Team context query path.
+Shared routing, mention, and human-visible reply policy remain canonical in
+`skills/team/AGENTS.md`; this skill only defines mailbox transport behavior.
 
 ## Scope
 
@@ -57,11 +59,8 @@ Recommended fields:
   - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
   - include phase metadata only when it helps internal coordination
 - Human-facing team conversation replies:
-  - visible reply text must contain final answer content only
-  - do not echo mailbox transport status, `current_phase`, or raw JSON envelope fields into chat text
+  - follow the shared human-facing reply contract from `skills/team/AGENTS.md`
   - if transport requires a chat envelope, keep it minimal and put only the natural-language reply in `text`
-  - in shared group chat, workers may reply directly with implementation progress, facts, and scoped answers
-  - keep leader as the owner of planning decisions and final synthesis
   - bad visible reply example: `{"type":"chat_message","current_phase":"Team formation","text":"..."}`
   - good visible reply example: `已收到你的消息。当前 mailbox 收发正常；如果有具体任务，直接发目标、约束和期望输出即可。`
 
@@ -75,9 +74,7 @@ Recommended fields:
 ## Escalation Rules
 
 - Worker reports blockers to leader first.
-- Worker may reply in shared group chat for implementation progress, facts, and scoped answers.
-- Worker contacts human actor directly outside shared group chat only when explicitly routed or when escalation policy requires it.
-- Leader remains default human-facing coordinator for planning decisions and synthesis.
+- Shared group chat and direct-human reply boundaries follow `skills/team/AGENTS.md`.
 - For collaboration-intensive work, proactively mention impacted peers (`@member_id`) instead of relying on broadcast.
 
 ## Output Contract Examples
