@@ -540,6 +540,17 @@ const DEFAULT_TEST_TEAM_MEMBER_IDS: &[&str] = &[
     "worker-dev",
 ];
 
+const DEFAULT_TEST_WORKER_MEMBER_IDS: &[&str] = &[
+    "reviewer",
+    "qa-review",
+    "worker-1",
+    "worker-2",
+    "worker-agent",
+    "worker-agent-a",
+    "worker-agent-b",
+    "worker-dev",
+];
+
 async fn seed_default_team_member_agents(state: &AppState) {
     let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
@@ -576,6 +587,10 @@ async fn seed_default_team_member_agents(state: &AppState) {
         .execute(&state.db)
         .await
         .expect("seed default team member agent");
+    }
+
+    for member_id in DEFAULT_TEST_WORKER_MEMBER_IDS {
+        configure_worker_team_member_agent(state, member_id).await;
     }
 }
 
