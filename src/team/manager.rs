@@ -84,6 +84,55 @@ pub struct TeamRunMembersRecord {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamContextRunOverlayRecord {
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamRuntimeStatus {
+    Running,
+    Stopped,
+    Degraded,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamContextRecord {
+    pub team_id: String,
+    pub team_name: String,
+    pub runtime: TeamRuntimeSummaryRecord,
+    pub members: Vec<TeamRunMemberRecord>,
+    pub run: Option<TeamContextRunOverlayRecord>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamRuntimeRecord {
+    pub team_id: String,
+    pub team_name: String,
+    pub status: TeamRuntimeStatus,
+    pub members: Vec<TeamRuntimeMemberRecord>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamRuntimeSummaryRecord {
+    pub status: TeamRuntimeStatus,
+    pub online_count: usize,
+    pub member_count: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeamRuntimeMemberRecord {
+    pub member_id: String,
+    pub display_name: String,
+    pub role: String,
+    pub description: Option<String>,
+    pub agent_status: Option<String>,
+    pub session_id: Option<String>,
+    pub session_status: Option<String>,
+    pub card: TeamMemberCardRecord,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRunMemberRecord {
     pub member_id: String,
     pub display_name: String,
@@ -850,6 +899,117 @@ impl TeamManager {
             team_name: team.name,
             run_id: run.id,
             members: out,
+        })
+    }
+
+    pub async fn describe_team_runtime(&self, team_id: &str) -> anyhow::Result<TeamRuntimeRecord> {
+        let team = self.get_team(team_id).await?;
+        let members = parse_team_member_specs(&team.spec)?;
+        let agent_runtime_by_id = load_agent_runtime_rows(&self.db, &members).await?;
+        let running_session_by_agent =
+            load_running_session_rows_by_agent(&self.db, &members).await?;
+
+        let mut online = 0_usize;
+        let mut out = Vec::with_capacity(members.len());
+        for member in members {
+            let display_name = agent_runtime_by_id
+                .get(member.member_id.as_str())
+                .map(|agent| agent.name.clone())
+                .unwrap_or_else(|| member.member_id.clone());
+            let agent_status = agent_runtime_by_id
+                .get(member.member_id.as_str())
+                .and_then(|agent| agent.status.clone());
+            let running_session = running_session_by_agent.get(member.member_id.as_str());
+            let session_id = running_session.map(|session| session.session_id.clone());
+            let session_status = running_session.map(|session| session.session_status.clone());
+            if session_id.is_some() {
+                online += 1;
+            }
+            let card = build_team_member_card(
+                &member,
+                agent_runtime_by_id.get(member.member_id.as_str()),
+                &display_name,
+            );
+            out.push(TeamRuntimeMemberRecord {
+                member_id: member.member_id,
+                display_name,
+                role: member.role,
+                description: member.description,
+                agent_status,
+                session_id,
+                session_status,
+                card,
+            });
+        }
+
+        let status = if out.is_empty() || online == 0 {
+            TeamRuntimeStatus::Stopped
+        } else if online == out.len() {
+            TeamRuntimeStatus::Running
+        } else {
+            TeamRuntimeStatus::Degraded
+        };
+
+        Ok(TeamRuntimeRecord {
+            team_id: team.id,
+            team_name: team.name,
+            status,
+            members: out,
+        })
+    }
+
+    pub async fn describe_team_context(
+        &self,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> anyhow::Result<TeamContextRecord> {
+        let normalized_team_id = team_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let normalized_run_id = run_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+
+        if let Some(run_id) = normalized_run_id.as_deref() {
+            let roster = self.describe_run_members(run_id).await?;
+            if let Some(explicit_team_id) = normalized_team_id.as_deref() {
+                anyhow::ensure!(
+                    explicit_team_id == roster.team_id,
+                    "run_id {} belongs to team {}, not {}",
+                    run_id,
+                    roster.team_id,
+                    explicit_team_id
+                );
+            }
+            let runtime = self.describe_team_runtime(&roster.team_id).await?;
+            return Ok(TeamContextRecord {
+                team_id: roster.team_id,
+                team_name: roster.team_name,
+                runtime: build_team_runtime_summary(&runtime),
+                members: roster.members,
+                run: Some(TeamContextRunOverlayRecord {
+                    run_id: roster.run_id,
+                }),
+            });
+        }
+
+        let team_id =
+            normalized_team_id.ok_or_else(|| anyhow::anyhow!("team_id or run_id is required"))?;
+        let runtime = self.describe_team_runtime(&team_id).await?;
+        let runtime_summary = build_team_runtime_summary(&runtime);
+        let members = runtime
+            .members
+            .into_iter()
+            .map(team_run_member_from_runtime_member)
+            .collect::<Vec<_>>();
+        Ok(TeamContextRecord {
+            team_id: runtime.team_id,
+            team_name: runtime.team_name,
+            runtime: runtime_summary,
+            members,
+            run: None,
         })
     }
 
@@ -3108,5 +3268,31 @@ fn build_team_member_card(
         schema_version: "agenthub.a2a.discovery_card.v1".to_string(),
         description,
         capability_tags,
+    }
+}
+
+fn build_team_runtime_summary(runtime: &TeamRuntimeRecord) -> TeamRuntimeSummaryRecord {
+    TeamRuntimeSummaryRecord {
+        status: runtime.status,
+        online_count: runtime
+            .members
+            .iter()
+            .filter(|member| member.session_id.is_some())
+            .count(),
+        member_count: runtime.members.len(),
+    }
+}
+
+fn team_run_member_from_runtime_member(member: TeamRuntimeMemberRecord) -> TeamRunMemberRecord {
+    TeamRunMemberRecord {
+        member_id: member.member_id,
+        display_name: member.display_name,
+        role: member.role,
+        description: member.description,
+        agent_status: member.agent_status,
+        session_id: member.session_id,
+        session_status: member.session_status,
+        card: member.card,
+        steps: Vec::new(),
     }
 }

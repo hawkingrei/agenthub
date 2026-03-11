@@ -501,7 +501,7 @@ async fn teams_api_start_and_stop_team_runtime() {
     .await
     .expect("stop team");
     assert_eq!(stopped.team_id, team.id);
-    assert_eq!(stopped.status, "stopped");
+    assert_eq!(stopped.status, crate::team::TeamRuntimeStatus::Stopped);
     assert!(
         state
             .agents
@@ -525,7 +525,7 @@ async fn teams_api_start_and_stop_team_runtime() {
     .await
     .expect("start team");
     assert_eq!(started.team_id, team.id);
-    assert_eq!(started.status, "running");
+    assert_eq!(started.status, crate::team::TeamRuntimeStatus::Running);
     assert_eq!(started.members.len(), 2);
     assert!(
         started
@@ -548,7 +548,10 @@ async fn teams_api_start_and_stop_team_runtime() {
     )
         .await
         .expect("stop team again");
-    assert_eq!(stopped_again.status, "stopped");
+    assert_eq!(
+        stopped_again.status,
+        crate::team::TeamRuntimeStatus::Stopped
+    );
     assert!(stopped_again.members.len() <= 2);
 
     let Json(deleted) = delete_team(State(state.clone()), headers, Path(team.id.clone()))
@@ -1418,8 +1421,8 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
     );
 
     let missing_team_err = list_team_runs(
-        State(state),
-        headers,
+        State(state.clone()),
+        headers.clone(),
         Path("missing-team".to_string()),
         Query(ListTeamRunsQuery {
             limit: Some(100),
@@ -1433,6 +1436,24 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         missing_team_err.into_response().status(),
         StatusCode::NOT_FOUND
     );
+
+    let Json(deleted_team) = delete_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("delete runs-list team");
+    assert_eq!(deleted_team.id, team.id);
+
+    let Json(deleted_other_team) = delete_team(
+        State(state.clone()),
+        headers,
+        Path(other_team.id.clone()),
+    )
+    .await
+    .expect("delete runs-list other team");
+    assert_eq!(deleted_other_team.id, other_team.id);
 }
 
 #[tokio::test]

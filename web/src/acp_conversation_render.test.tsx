@@ -125,7 +125,8 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("acp-explore-group-fold");
     expect(html).toContain("Explore (2 tools)");
-    expect(html).toContain("Explore #1");
+    expect(html).toContain("Explore #1 · explore repo layout");
+    expect(html).toContain("acp-thinking-fold");
     expect(html).toContain("<strong>repo</strong>");
     expect(html).toContain("#1 Search");
     expect(html).toContain("#2 Read");
@@ -759,12 +760,12 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("p-2");
   });
 
-  it("keeps thinking expanded while still rendering plan summary folds", () => {
+  it("renders thinking inside collapsed folds while preserving the first-line title", () => {
     const html = renderConversation(
       [
         {
           kind: "agent_thinking",
-          text: "thinking details for summary",
+          text: "Plan next step\nthinking details for summary",
           live: false,
           event_id: 1,
         },
@@ -781,9 +782,9 @@ describe("AcpConversation rendering", () => {
       }
     );
 
-    expect(html).toContain("acp-thinking-title");
-    expect(html).toContain("Thinking");
-    expect(html).not.toContain("agent_thinking\"><details");
+    expect(html).toContain("acp-thinking-fold");
+    expect(html).toContain("THINKING · Plan next step");
+    expect(html).not.toContain("acp-thinking-title");
     expect(html).toContain("Plan:");
   });
 
@@ -797,6 +798,8 @@ describe("AcpConversation rendering", () => {
       },
     ]);
 
+    expect(html).toContain("THINKING · inspect query (live)");
+    expect(html).toContain("acp-thinking-fold");
     expect(html).toContain("<strong>inspect</strong>");
     expect(html).toContain("<code>query</code>");
   });

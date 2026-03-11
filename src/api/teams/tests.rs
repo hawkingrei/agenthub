@@ -1,4 +1,5 @@
 use std::path::Path as StdPath;
+use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -18,6 +19,7 @@ use uuid::Uuid;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
+use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::default_actor_cli_path;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
@@ -34,17 +36,85 @@ use super::{
     ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery,
-    ack_team_run_message, build_team_member_actor_context, cancel_team_run,
-    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_run,
-    create_team_task, delete_team, fail_team_run_step, flush_team_run_context, get_team,
-    get_team_run, get_team_run_snapshot, get_team_task, list_team_run_events, list_team_run_inbox,
-    list_team_run_steps, list_team_runs, list_team_task_messages, list_team_tasks, list_teams,
-    restart_team_run, resume_team_run, resume_team_run_step, send_team_run_message,
-    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
-    stop_team, submit_team_run_step, team_member_actor_context_matches,
+    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
+    create_team, create_team_run, create_team_task, delete_team, fail_team_run_step,
+    flush_team_run_context, get_team, get_team_run, get_team_run_snapshot, get_team_task,
+    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
+    list_team_task_messages, list_team_tasks, list_teams, restart_team_run, resume_team_run,
+    resume_team_run_step, send_team_run_message, send_team_task_message,
+    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
+    submit_team_run_step,
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
+static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
+
+fn build_team_member_actor_context(
+    team_id: &str,
+    member: &TeamMemberSpec,
+) -> anyhow::Result<AcpActorSkillContext> {
+    Ok(AcpActorSkillContext {
+        team_id: Some(team_id.to_string()),
+        current_run_id: None,
+        actor_id: member.member_id.clone(),
+        default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        actor_cli_path: default_actor_cli_path()?,
+        member_role: Some(member.role.clone()),
+        member_skills: member.skills.clone(),
+        continuity: None,
+    })
+}
+
+fn team_member_actor_context_matches(
+    current: Option<&AcpActorSkillContext>,
+    expected: &AcpActorSkillContext,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    current.team_id == expected.team_id
+        && current.current_run_id == expected.current_run_id
+        && current.actor_id == expected.actor_id
+        && current.default_channel == expected.default_channel
+        && current.member_role == expected.member_role
+        && current.member_skills == expected.member_skills
+}
+
+fn resolve_test_agenthub_binary_path() -> String {
+    TEST_AGENTHUB_BIN
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthub") {
+                return std::fs::canonicalize(path)
+                    .expect("canonicalize cargo-provided agenthub binary path")
+                    .to_string_lossy()
+                    .to_string();
+            }
+
+            let current = std::env::current_exe().expect("resolve current test executable path");
+            let sibling = current
+                .parent()
+                .and_then(|parent| parent.parent())
+                .map(|dir| dir.join(format!("agenthub{}", std::env::consts::EXE_SUFFIX)))
+                .expect("resolve target dir for agenthub binary");
+            if sibling.exists() {
+                return std::fs::canonicalize(&sibling)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "canonicalize derived agenthub binary path {}: {err}",
+                            sibling.display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .to_string();
+            }
+
+            panic!(
+                "resolve real agenthub binary path for tests from {}",
+                current.display()
+            );
+        })
+        .clone()
+}
 
 pub(crate) async fn build_test_state() -> AppState {
     build_test_state_with_db_source(None, true).await
@@ -557,9 +627,12 @@ const DEFAULT_TEST_WORKER_MEMBER_IDS: &[&str] = &[
 ];
 
 async fn seed_default_team_member_agents(state: &AppState) {
-    let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
+    let workdir =
+        std::env::temp_dir().join(format!("agenthub-team-api-test-members-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
+    let actor_cli = resolve_test_agenthub_binary_path();
+    let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
     let now = Utc::now().timestamp();
     for safe_path in [&workdir, "/tmp"] {
         sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
@@ -583,8 +656,8 @@ async fn seed_default_team_member_agents(state: &AppState) {
         .bind(member_id)
         .bind(format!("{member_id}-agent"))
         .bind(&workdir)
-        .bind("/usr/bin/env")
-        .bind("[]")
+        .bind(&actor_cli)
+        .bind(&actor_args)
         .bind("use_existing")
         .bind("created")
         .bind(now)
@@ -603,7 +676,10 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     let now = Utc::now().timestamp();
     let repo = worker_test_repo().clone();
     let worktree_root = std::env::temp_dir()
-        .join("agenthub-team-api-test-worker-worktrees")
+        .join(format!(
+            "agenthub-team-api-test-worker-worktrees-{}",
+            Uuid::new_v4()
+        ))
         .to_string_lossy()
         .to_string();
     std::fs::create_dir_all(&worktree_root).expect("create worker runtime root");
@@ -643,6 +719,25 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     .execute(&state.db)
     .await
     .expect("configure worker team member agent");
+}
+
+#[test]
+fn resolve_test_agenthub_binary_path_prefers_real_binary() {
+    let path = resolve_test_agenthub_binary_path();
+    let path_buf = PathBuf::from(&path);
+    assert!(path_buf.exists(), "expected binary path to exist: {path}");
+    let file_name = path_buf
+        .file_name()
+        .and_then(|value| value.to_str())
+        .expect("binary file name");
+    assert_eq!(
+        file_name,
+        format!("agenthub{}", std::env::consts::EXE_SUFFIX)
+    );
+    assert!(
+        !path.contains("/deps/"),
+        "expected real binary path, got test harness path: {path}"
+    );
 }
 
 fn worker_test_repo() -> &'static String {
@@ -756,8 +851,11 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .create_agent(crate::agent::AgentConfig {
             name: format!("actor-env-{}", Uuid::new_v4()),
             workdir: workdir_str.clone(),
-            command: "env".to_string(),
-            args: vec![],
+            command: "/bin/sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
+            ],
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,
@@ -784,12 +882,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .await
         .expect("start agent with actor context");
 
-    let mut has_team_id = false;
-    let mut has_current_run_id = false;
-    let mut has_run_id = false;
-    let mut has_actor_id = false;
-    let mut has_channel = false;
-    let mut has_actor_cli = false;
+    let mut actor_env_snapshot = None;
 
     for _ in 0..40 {
         let mut before_id = None;
@@ -803,68 +896,46 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
                 break;
             }
             for event in &events {
-                let line = event.message.as_str();
-                if line == "AGENTHUB_ACTOR_TEAM_ID=team-env-check" {
-                    has_team_id = true;
-                } else if line == "AGENTHUB_ACTOR_CURRENT_RUN_ID=run-env-check" {
-                    has_current_run_id = true;
-                } else if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
-                    has_run_id = true;
-                } else if line == "AGENTHUB_ACTOR_ID=planner" {
-                    has_actor_id = true;
-                } else if line == "AGENTHUB_ACTOR_CHANNEL=coordination" {
-                    has_channel = true;
-                } else if line.starts_with("AGENTHUB_ACTOR_CLI=") && line.ends_with(&actor_cli_path)
-                {
-                    has_actor_cli = true;
+                let line = event.message.trim();
+                if line.starts_with("ACTOR_ENV_SNAPSHOT|") {
+                    actor_env_snapshot = Some(line.to_string());
                 }
             }
-            if has_team_id
-                && has_current_run_id
-                && has_run_id
-                && has_actor_id
-                && has_channel
-                && has_actor_cli
-            {
+            if actor_env_snapshot.is_some() {
                 break;
             }
             before_id = events.first().map(|event| event.event_id);
         }
-        if has_team_id
-            && has_current_run_id
-            && has_run_id
-            && has_actor_id
-            && has_channel
-            && has_actor_cli
-        {
+        if actor_env_snapshot.is_some() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    let snapshot = actor_env_snapshot.unwrap_or_default();
     assert!(
-        has_team_id,
-        "missing AGENTHUB_ACTOR_TEAM_ID in process env output"
+        snapshot.contains("team=team-env-check"),
+        "missing AGENTHUB_ACTOR_TEAM_ID in process env output: {snapshot}"
     );
     assert!(
-        has_current_run_id,
-        "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output"
+        snapshot.contains("current_run=run-env-check"),
+        "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output: {snapshot}"
     );
     assert!(
-        has_run_id,
-        "missing AGENTHUB_ACTOR_RUN_ID in process env output"
+        snapshot.contains("run=run-env-check"),
+        "missing AGENTHUB_ACTOR_RUN_ID in process env output: {snapshot}"
     );
     assert!(
-        has_actor_id,
-        "missing AGENTHUB_ACTOR_ID in process env output"
+        snapshot.contains("actor=planner"),
+        "missing AGENTHUB_ACTOR_ID in process env output: {snapshot}"
     );
     assert!(
-        has_channel,
-        "missing AGENTHUB_ACTOR_CHANNEL in process env output"
+        snapshot.contains("channel=coordination"),
+        "missing AGENTHUB_ACTOR_CHANNEL in process env output: {snapshot}"
     );
     assert!(
-        has_actor_cli,
-        "missing AGENTHUB_ACTOR_CLI in process env output"
+        snapshot.contains(&format!("cli={actor_cli_path}")),
+        "missing AGENTHUB_ACTOR_CLI in process env output: {snapshot}"
     );
 
     let _ = std::fs::remove_dir_all(&workdir);

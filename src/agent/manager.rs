@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
@@ -62,6 +63,7 @@ const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
+const AGENT_STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
@@ -1552,15 +1554,35 @@ impl AgentManager {
                 "cancelled",
             )
             .await;
+            if let Some(idle_gc) = &self.idle_gc {
+                idle_gc.remove_agent(agent_id).await;
+            }
             let mut child_guard = handle.child.lock().await;
-            if let Some(child) = child_guard.as_mut()
-                && let Err(err) = child.kill().await
-            {
-                tracing::warn!(
-                    agent_id = %agent_id,
-                    error = %err,
-                    "failed to kill agent child process during stop"
-                );
+            if let Some(mut child) = child_guard.take() {
+                if let Err(err) = child.kill().await {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %err,
+                        "failed to kill agent child process during stop"
+                    );
+                }
+                match tokio::time::timeout(AGENT_STOP_WAIT_TIMEOUT, child.wait()).await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(err)) => {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            error = %err,
+                            "failed to wait for agent child process during stop"
+                        );
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            timeout_secs = AGENT_STOP_WAIT_TIMEOUT.as_secs(),
+                            "timed out waiting for agent child process during stop"
+                        );
+                    }
+                }
             }
         }
         Ok(())

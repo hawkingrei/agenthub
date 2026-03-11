@@ -3,6 +3,8 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamRuntimeControlResponse,
+  TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamTaskRecord,
@@ -19,6 +21,7 @@ import {
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
+  updateCachedTeamRuntimeStatus,
   upsertAgentEventList,
   upsertEventList,
   upsertRun,
@@ -138,6 +141,49 @@ function buildMemberSummary(
     inactive: 0,
     missing: 0,
     total: 0,
+    ...overrides,
+  };
+}
+
+function buildRuntime(
+  overrides: Partial<TeamRuntimeRecord> = {}
+): TeamRuntimeRecord {
+  return {
+    team_id: "team-1",
+    team_name: "Team One",
+    status: "running",
+    members: [
+      {
+        member_id: "leader-agent",
+        display_name: "Leader Agent",
+        role: "leader",
+        description: "lead",
+        agent_status: "running",
+        session_id: "session-leader",
+        session_status: "running",
+        card: {
+          card_id: "card-leader",
+          schema_version: "1",
+          description: "lead",
+          capability_tags: [],
+        },
+      },
+      {
+        member_id: "worker-agent",
+        display_name: "Worker Agent",
+        role: "worker",
+        description: "worker",
+        agent_status: "running",
+        session_id: "session-worker",
+        session_status: "running",
+        card: {
+          card_id: "card-worker",
+          schema_version: "1",
+          description: "worker",
+          capability_tags: [],
+        },
+      },
+    ],
     ...overrides,
   };
 }
@@ -288,6 +334,43 @@ describe("team page helpers", () => {
       label: "team degraded",
       tone: "warning",
     });
+  });
+
+  it("prefers explicit backend team runtime status when present", () => {
+    expect(
+      resolveTeamRuntimeStatus(buildMemberSummary({ active: 0, inactive: 3, missing: 0, total: 3 }), {
+        status: "running",
+        members: [
+          { member_id: "leader", session_id: "session-leader" },
+          { member_id: "worker-1", session_id: "session-worker-1" },
+          { member_id: "worker-2", session_id: "session-worker-2" },
+        ],
+      })
+    ).toMatchObject({
+      status: "running",
+      label: "team running",
+      tone: "active",
+      online: 3,
+      total: 3,
+    });
+  });
+
+  it("clears cached runtime session ids when stop-team optimistic update applies", () => {
+    const control: TeamRuntimeControlResponse["members"] = [
+      { member_id: "leader-agent", session_id: "session-leader", action: "stopped" },
+      { member_id: "worker-agent", session_id: "session-worker", action: "stopped" },
+    ];
+    const updated = updateCachedTeamRuntimeStatus(
+      buildRuntime(),
+      "team-1",
+      "Team One",
+      "stopped",
+      control,
+      null
+    );
+    expect(updated?.status).toBe("stopped");
+    expect(updated?.members.every((member) => member.session_id == null)).toBe(true);
+    expect(updated?.members.every((member) => member.session_status === "stopped")).toBe(true);
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
@@ -267,15 +268,29 @@ impl AgentManager {
             };
 
             if let Some(child_mutex) = child {
-                let success = {
-                    let mut child_guard = child_mutex.lock().await;
-                    let child = match child_guard.as_mut() {
-                        Some(child) => child,
-                        None => return,
+                let success = loop {
+                    let poll_result = {
+                        let mut child_guard = child_mutex.lock().await;
+                        let child = match child_guard.as_mut() {
+                            Some(child) => child,
+                            None => return,
+                        };
+                        child.try_wait()
                     };
-                    match child.wait().await {
-                        Ok(status) => status.success(),
-                        Err(_) => false,
+                    match poll_result {
+                        Ok(Some(status)) => break status.success(),
+                        Ok(None) => {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                agent_id = %agent_id_clone,
+                                session_id = %session_id,
+                                error = %err,
+                                "spawn_exit_watcher failed to poll child status"
+                            );
+                            break false;
+                        }
                     }
                 };
                 Self::finalize_process_exit(
@@ -842,6 +857,29 @@ mod tests {
     use tokio::time::{Duration, timeout};
     use uuid::Uuid;
 
+    async fn build_test_state_with_idle_gc() -> crate::state::AppState {
+        let state = crate::api::team_tests::build_test_state().await;
+        let idle_gc = crate::db::AgentEventIdleGc::new(
+            state.agents.event_dbs.clone(),
+            5,
+            false,
+            100,
+            Duration::from_millis(60),
+        );
+        let agents = std::sync::Arc::new(crate::agent::AgentManager::new(
+            state.db.clone(),
+            state.agents.event_dbs.clone(),
+            Some(idle_gc),
+            state.push.clone(),
+            Vec::new(),
+            "agenthub-codex-acp".to_string(),
+            None,
+            state.acp_permissions.clone(),
+            state.auth.clone(),
+        ));
+        crate::state::AppState { agents, ..state }
+    }
+
     async fn insert_agent_and_session(db: &SqlitePool, suffix: &str) -> (String, String) {
         let now = Utc::now().timestamp();
         let agent_id = format!("agent-runtime-{suffix}-{}", Uuid::new_v4());
@@ -878,6 +916,37 @@ mod tests {
         .execute(db)
         .await
         .expect("insert test session");
+        (agent_id, session_id)
+    }
+
+    async fn insert_running_handle(
+        state: &crate::state::AppState,
+        suffix: &str,
+    ) -> (String, String) {
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, suffix).await;
+        let mut command = tokio::process::Command::new("cat");
+        command
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        let mut child = command.spawn().expect("spawn test child");
+        let stdin = child.stdin.take();
+        let (output_tx, _output_rx) = tokio::sync::broadcast::channel(8);
+        let handle = super::super::AgentHandle {
+            child: std::sync::Arc::new(tokio::sync::Mutex::new(Some(child))),
+            output_tx,
+            input: super::super::AgentInput::Stdin(std::sync::Arc::new(tokio::sync::Mutex::new(
+                stdin,
+            ))),
+            session_id: session_id.clone(),
+            actor_context: None,
+        };
+        state
+            .agents
+            .inner
+            .write()
+            .await
+            .insert(agent_id.clone(), handle);
         (agent_id, session_id)
     }
 
@@ -1361,5 +1430,27 @@ branch refs/heads/agent-a
             false,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn stop_agent_removes_idle_gc_state_even_when_exit_watcher_exits_early() {
+        let state = build_test_state_with_idle_gc().await;
+        let idle_gc = state
+            .agents
+            .idle_gc
+            .clone()
+            .expect("test state should enable idle gc");
+        let (agent_id, _session_id) = insert_running_handle(&state, "stop-idle-gc").await;
+
+        idle_gc.record_activity(&agent_id).await;
+        assert_eq!(idle_gc.tracked_agent_count().await, 1);
+
+        state
+            .agents
+            .stop_agent(&agent_id)
+            .await
+            .expect("stop agent should succeed");
+
+        assert_eq!(idle_gc.tracked_agent_count().await, 0);
     }
 }

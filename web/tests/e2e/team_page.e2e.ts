@@ -73,6 +73,12 @@ type TeamRunRecord = {
   ended_at: number | null;
 };
 
+type TeamRuntimeStatus = "running" | "stopped" | "degraded";
+
+type MockTeamRuntimeState = {
+  status: TeamRuntimeStatus;
+};
+
 type TeamTaskRecord = {
   id: string;
   team_id: string;
@@ -204,6 +210,10 @@ async function selectTeamFromSidebar(
   await expect(teamItem).toHaveAttribute("data-team-selected", "true");
 }
 
+async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/teams", { waitUntil: "domcontentloaded" });
+}
+
 async function selectAgentFromSidebar(
   page: import("@playwright/test").Page,
   agentLabel: string
@@ -319,6 +329,7 @@ async function mockTeamPageApis(
     },
   ];
   const teams: TeamDefinitionRecord[] = [];
+  const teamRuntimeStateById = new Map<string, MockTeamRuntimeState>();
   const tasksByTeamId = new Map<string, TeamTaskRecord[]>();
   const taskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
   const taskCounterByTeamId = new Map<string, number>();
@@ -460,6 +471,48 @@ async function mockTeamPageApis(
     };
   };
 
+  const buildTeamRuntime = (team: TeamDefinitionRecord) => {
+    const override = teamRuntimeStateById.get(team.id);
+    const members = team.spec.members.map((member) => {
+      const agent = agents.find((item) => item.id === member.member_id);
+      const agentStatus = override
+        ? override.status === "running"
+          ? "running"
+          : "stopped"
+        : agent?.status ?? "created";
+      const isRunning = agentStatus === "running";
+      const sessionId = isRunning ? `session-${team.id}-${member.member_id}` : null;
+      return {
+        member_id: member.member_id,
+        display_name: agent?.name ?? member.member_id,
+        role: member.role ?? "worker",
+        description: member.description ?? null,
+        agent_status: agentStatus,
+        session_id: sessionId,
+        session_status: isRunning ? "running" : agentStatus === "stopped" ? "stopped" : null,
+        card: {
+          card_id: `agenthub://agents/${member.member_id}`,
+          schema_version: "agenthub.a2a.discovery_card.v1",
+          description: member.description ?? `${member.member_id} runtime`,
+          capability_tags: ["team_mailbox_v1"],
+        },
+      };
+    });
+    const onlineCount = members.filter((member) => member.session_id).length;
+    const status: TeamRuntimeStatus = override?.status ??
+      (onlineCount === 0
+        ? "stopped"
+        : onlineCount === members.length
+          ? "running"
+          : "degraded");
+    return {
+      team_id: team.id,
+      team_name: team.name,
+      status,
+      members,
+    };
+  };
+
   await page.addInitScript((storedAuth: StoredAuthState) => {
     window.localStorage.setItem("agenthub_auth", JSON.stringify(storedAuth));
   }, auth);
@@ -570,6 +623,7 @@ async function mockTeamPageApis(
         updated_at: now,
       };
       teams.push(created);
+      teamRuntimeStateById.set(created.id, { status: "running" });
       await route.fulfill(jsonResponse(created));
       return;
     }
@@ -595,10 +649,56 @@ async function mockTeamPageApis(
         return;
       }
       const [deleted] = teams.splice(index, 1);
+      teamRuntimeStateById.delete(teamId);
       await route.fulfill(jsonResponse(deleted));
       return;
     }
     await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/runtime$/, async (route, request) => {
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runtime$/)?.[1] ?? "";
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) {
+      await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+      return;
+    }
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(buildTeamRuntime(team)));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/(start|stop)$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const matched = url.pathname.match(/\/api\/teams\/([^/]+)\/(start|stop)$/);
+    const teamId = matched?.[1] ?? "";
+    const action = matched?.[2] ?? "";
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) {
+      await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+      return;
+    }
+    teamRuntimeStateById.set(team.id, {
+      status: action === "start" ? "running" : "stopped",
+    });
+    await route.fulfill(
+      jsonResponse({
+        team_id: team.id,
+        status: action === "start" ? "running" : "stopped",
+        members: team.spec.members.map((member) => ({
+          member_id: member.member_id,
+          session_id: `session-${team.id}-${member.member_id}`,
+          action: action === "start" ? "started" : "stopped",
+        })),
+      })
+    );
   });
 
   await page.route(/\/api\/teams\/[^/]+\/tasks(?:\?.*)?$/, async (route, request) => {
@@ -936,12 +1036,41 @@ async function mockTeamPageApis(
   };
 }
 
+test("team runtime controls update shared runtime badge", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push({
+    id: "team-runtime-controls",
+    name: "runtime controls team",
+    description: "runtime badge coverage",
+    spec: {
+      leader_member_id: "agent-leader-1",
+      members: [
+        { member_id: "agent-leader-1", role: "leader", description: "lead" },
+        { member_id: "agent-worker-1", role: "worker", description: "worker" },
+      ],
+      steps: [{ step_key: "leader_plan" }, { step_key: "worker_exec" }],
+    },
+    created_at: fixture.now + 20,
+    updated_at: fixture.now + 20,
+  });
+
+  await gotoTeams(page);
+  await selectTeamFromSidebar(page, "runtime controls team");
+  await expect(page.getByText("team running", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Stop Team", exact: true }).click();
+  await expect(page.getByText("team stopped", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Start Team", exact: true }).click();
+  await expect(page.getByText("team running", { exact: true })).toBeVisible();
+});
+
 test("team forge modal creates team with leader/worker presets", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
 
   await expect(page.getByRole("heading", { name: "AgentHub Teams" })).toBeVisible();
   await openMainTeamAction(page, "Guided Wizard");
@@ -1020,7 +1149,7 @@ test("team forge manual spec mode skips leader/worker stages", async ({
 }) => {
   const fixture = await mockTeamPageApis(page);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1058,7 +1187,7 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   page,
 }) => {
   await mockTeamPageApis(page);
-  await page.goto("/teams");
+  await gotoTeams(page);
 
   await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1122,7 +1251,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Mobile");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 
@@ -1314,7 +1443,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   });
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Desktop");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-main").getByText("Team Desktop", { exact: true })).toBeVisible();
@@ -1384,7 +1513,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
   const fixture = await mockTeamPageApis(page);
   fixture.agents.splice(0, fixture.agents.length);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("forge-team");
@@ -1653,7 +1782,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     ],
   };
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1770,7 +1899,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
     }
   );
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Compile Team");
   await openMainTeamAction(page, "Tasks");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
@@ -2189,7 +2318,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Chat First Team");
   await openMainTeamAction(page, "Tasks");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
@@ -2347,7 +2476,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -2688,7 +2817,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   };
 
   await enableDeveloperMode(page);
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Mailbox");
   await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
@@ -2779,7 +2908,7 @@ test("team list supports deleting selected team", async ({ page }) => {
     }
   );
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
   await selectTeamFromSidebar(page, "Team Delete A");
@@ -2857,7 +2986,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     await route.fulfill(jsonResponse(payload));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team A");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 

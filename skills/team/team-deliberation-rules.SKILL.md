@@ -36,12 +36,10 @@ Phase rules:
 2. Separate facts, inferences, and proposals.
 3. Include concrete evidence for claims (file path, test name, command).
 4. Report blockers with a specific unblock request and next action.
-5. Leader communicates planning decisions to human actor directly; workers may reply in shared group chat for implementation progress, facts, and scoped answers.
+5. Shared routing and human-facing reply boundaries follow `skills/team/AGENTS.md`.
 6. During `Consensus formation`, summarize accepted and rejected options with reasons.
 7. During `Result integration`, ensure output is unified and non-contradictory before sending to human actor.
 8. Keep `AGENTS.md` as index-level communication; attach deep implementation guidance in relevant skills/docs.
-9. Human-facing chat replies should present final answer content only; do not surface mailbox transport status, `current_phase`, or raw JSON wrapper fields.
-10. In shared group chat, worker replies are allowed, but they must stay within assigned scope and must not override leader planning decisions or final synthesis.
 
 ## Conflict Resolution
 

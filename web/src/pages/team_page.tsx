@@ -8,6 +8,7 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
+  TeamRuntimeRecord,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
   TeamRunEventRecord,
@@ -99,6 +100,7 @@ import {
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
+  updateCachedTeamRuntimeStatus,
   upsertRun,
 } from "./team/page_helpers";
 import {
@@ -353,6 +355,9 @@ export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [teamRuntimeByTeamId, setTeamRuntimeByTeamId] = useState<Record<string, TeamRuntimeRecord>>(
+    {}
+  );
   const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
@@ -820,9 +825,15 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberSummaryByTeamId.get(selectedTeam.id) ?? null;
   }, [selectedTeam, teamMemberSummaryByTeamId]);
+  const selectedTeamRuntime = useMemo(() => {
+    if (!selectedTeam) {
+      return null;
+    }
+    return teamRuntimeByTeamId[selectedTeam.id] ?? null;
+  }, [selectedTeam, teamRuntimeByTeamId]);
   const selectedTeamRuntimeStatus = useMemo(
-    () => resolveTeamRuntimeStatus(selectedTeamMemberSummary),
-    [selectedTeamMemberSummary]
+    () => resolveTeamRuntimeStatus(selectedTeamMemberSummary, selectedTeamRuntime),
+    [selectedTeamMemberSummary, selectedTeamRuntime]
   );
   useEffect(() => {
     const memberId = selectedMemberId.trim();
@@ -2450,6 +2461,38 @@ export function TeamPage(props: TeamPageProps) {
     if (!activeRunIdForSelectedTeam) return;
     void refreshRun(activeRunIdForSelectedTeam).catch((err) => setError(parseErrorMessage(err)));
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
+  const refreshTeamRuntime = useCallback(
+    async (teamId: string, options?: { apply?: boolean }) => {
+      const runtime = await api.getTeamRuntime(props.token, teamId);
+      if (options?.apply !== false) {
+        setTeamRuntimeByTeamId((prev) => ({ ...prev, [teamId]: runtime }));
+      }
+      return runtime;
+    },
+    [props.token]
+  );
+  useEffect(() => {
+    if (!selectedTeamId) {
+      return;
+    }
+    let active = true;
+    void refreshTeamRuntime(selectedTeamId, { apply: false })
+      .then((runtime) => {
+        if (!active) {
+          return;
+        }
+        setTeamRuntimeByTeamId((prev) => ({ ...prev, [selectedTeamId]: runtime }));
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setError(parseErrorMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [refreshTeamRuntime, selectedTeamId, setError]);
   const onStartTeamRuntime = useCallback(async () => {
     if (!selectedTeam) {
       setError("Select a team first");
@@ -2461,13 +2504,46 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const runtime = await api.startTeam(props.token, selectedTeam.id);
       await Promise.all([refreshTeams(), refreshAgents()]);
+      setTeamRuntimeByTeamId((prev) => {
+        const previousRuntime = prev[selectedTeam.id];
+        const optimisticRuntime = updateCachedTeamRuntimeStatus(
+          previousRuntime,
+          selectedTeam.id,
+          selectedTeam.name,
+          runtime.status as TeamRuntimeRecord["status"],
+          runtime.members,
+          (sessionStatus) => {
+            if (runtime.status !== "running") {
+              return sessionStatus ?? undefined;
+            }
+            return "running";
+          }
+        );
+        if (!optimisticRuntime) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [selectedTeam.id]: optimisticRuntime,
+        };
+      });
+      void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
-  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    refreshTeams,
+    selectedTeam,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
   const onStopTeamRuntime = useCallback(async () => {
     if (!selectedTeam) {
       setError("Select a team first");
@@ -2479,13 +2555,41 @@ export function TeamPage(props: TeamPageProps) {
     try {
       const runtime = await api.stopTeam(props.token, selectedTeam.id);
       await Promise.all([refreshTeams(), refreshAgents()]);
+      setTeamRuntimeByTeamId((prev) => {
+        const previousRuntime = prev[selectedTeam.id];
+        const optimisticRuntime = updateCachedTeamRuntimeStatus(
+          previousRuntime,
+          selectedTeam.id,
+          selectedTeam.name,
+          runtime.status as TeamRuntimeRecord["status"],
+          runtime.members,
+          null
+        );
+        if (!optimisticRuntime) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [selectedTeam.id]: optimisticRuntime,
+        };
+      });
+      void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
-  }, [props.token, refreshAgents, refreshTeams, selectedTeam, setBusy, setError, setWarning]);
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    refreshTeams,
+    selectedTeam,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
   const onRefreshTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");

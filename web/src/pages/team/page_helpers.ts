@@ -3,6 +3,8 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamRuntimeControlResponse,
+  TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamTaskRecord,
@@ -24,9 +26,44 @@ export type TeamRuntimeStatusView = {
   total: number;
 };
 
+type TeamRuntimeStatusRecord = {
+  status: TeamRuntimeRecord["status"];
+  members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
+};
+
 export function resolveTeamRuntimeStatus(
-  summary: TeamMemberAgentStatusSummary | null
+  summary: TeamMemberAgentStatusSummary | null,
+  runtime?: TeamRuntimeStatusRecord | null
 ): TeamRuntimeStatusView {
+  if (runtime) {
+    const total = runtime.members.length;
+    const online = runtime.members.filter((member) => member.session_id?.trim()).length;
+    if (runtime.status === "running") {
+      return {
+        status: "running",
+        label: "team running",
+        tone: "active",
+        online,
+        total,
+      };
+    }
+    if (runtime.status === "degraded") {
+      return {
+        status: "degraded",
+        label: "team degraded",
+        tone: "warning",
+        online,
+        total,
+      };
+    }
+    return {
+      status: "stopped",
+      label: "team stopped",
+      tone: "inactive",
+      online,
+      total,
+    };
+  }
   const online = summary?.active ?? 0;
   const total = summary?.total ?? 0;
   const missing = summary?.missing ?? 0;
@@ -54,6 +91,45 @@ export function resolveTeamRuntimeStatus(
     tone: "warning",
     online,
     total,
+  };
+}
+
+export function updateCachedTeamRuntimeStatus(
+  previousRuntime: TeamRuntimeRecord | undefined,
+  teamId: string,
+  teamName: string,
+  status: TeamRuntimeRecord["status"],
+  members: TeamRuntimeControlResponse["members"],
+  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
+): TeamRuntimeRecord | undefined {
+  if (!previousRuntime) {
+    return undefined;
+  }
+  const memberUpdates = new Map(
+    members.map((member) => [member.member_id, member] as const)
+  );
+  const stopped = status === "stopped";
+  return {
+    ...previousRuntime,
+    team_id: teamId,
+    team_name: teamName,
+    status,
+    members: previousRuntime.members.map((member) => {
+      const updated = memberUpdates.get(member.member_id);
+      return {
+        ...member,
+        session_id: stopped
+          ? undefined
+          : updated
+            ? (updated.session_id ?? undefined)
+            : (member.session_id ?? undefined),
+        session_status: stopped
+          ? "stopped"
+          : nextSessionStatus
+            ? nextSessionStatus(member.session_status)
+            : (member.session_status ?? undefined),
+      };
+    }),
   };
 }
 
