@@ -851,8 +851,11 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .create_agent(crate::agent::AgentConfig {
             name: format!("actor-env-{}", Uuid::new_v4()),
             workdir: workdir_str.clone(),
-            command: "env".to_string(),
-            args: vec![],
+            command: "/bin/sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
+            ],
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,
@@ -879,12 +882,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .await
         .expect("start agent with actor context");
 
-    let mut has_team_id = false;
-    let mut has_current_run_id = false;
-    let mut has_run_id = false;
-    let mut has_actor_id = false;
-    let mut has_channel = false;
-    let mut has_actor_cli = false;
+    let mut actor_env_snapshot = None;
 
     for _ in 0..40 {
         let mut before_id = None;
@@ -899,67 +897,45 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             }
             for event in &events {
                 let line = event.message.trim();
-                if line == "AGENTHUB_ACTOR_TEAM_ID=team-env-check" {
-                    has_team_id = true;
-                } else if line == "AGENTHUB_ACTOR_CURRENT_RUN_ID=run-env-check" {
-                    has_current_run_id = true;
-                } else if line == "AGENTHUB_ACTOR_RUN_ID=run-env-check" {
-                    has_run_id = true;
-                } else if line == "AGENTHUB_ACTOR_ID=planner" {
-                    has_actor_id = true;
-                } else if line == "AGENTHUB_ACTOR_CHANNEL=coordination" {
-                    has_channel = true;
-                } else if line.starts_with("AGENTHUB_ACTOR_CLI=") && line.ends_with(&actor_cli_path)
-                {
-                    has_actor_cli = true;
+                if line.starts_with("ACTOR_ENV_SNAPSHOT|") {
+                    actor_env_snapshot = Some(line.to_string());
                 }
             }
-            if has_team_id
-                && has_current_run_id
-                && has_run_id
-                && has_actor_id
-                && has_channel
-                && has_actor_cli
-            {
+            if actor_env_snapshot.is_some() {
                 break;
             }
             before_id = events.first().map(|event| event.event_id);
         }
-        if has_team_id
-            && has_current_run_id
-            && has_run_id
-            && has_actor_id
-            && has_channel
-            && has_actor_cli
-        {
+        if actor_env_snapshot.is_some() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    let snapshot = actor_env_snapshot.unwrap_or_default();
     assert!(
-        has_team_id,
-        "missing AGENTHUB_ACTOR_TEAM_ID in process env output"
+        snapshot.contains("team=team-env-check"),
+        "missing AGENTHUB_ACTOR_TEAM_ID in process env output: {snapshot}"
     );
     assert!(
-        has_current_run_id,
-        "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output"
+        snapshot.contains("current_run=run-env-check"),
+        "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output: {snapshot}"
     );
     assert!(
-        has_run_id,
-        "missing AGENTHUB_ACTOR_RUN_ID in process env output"
+        snapshot.contains("run=run-env-check"),
+        "missing AGENTHUB_ACTOR_RUN_ID in process env output: {snapshot}"
     );
     assert!(
-        has_actor_id,
-        "missing AGENTHUB_ACTOR_ID in process env output"
+        snapshot.contains("actor=planner"),
+        "missing AGENTHUB_ACTOR_ID in process env output: {snapshot}"
     );
     assert!(
-        has_channel,
-        "missing AGENTHUB_ACTOR_CHANNEL in process env output"
+        snapshot.contains("channel=coordination"),
+        "missing AGENTHUB_ACTOR_CHANNEL in process env output: {snapshot}"
     );
     assert!(
-        has_actor_cli,
-        "missing AGENTHUB_ACTOR_CLI in process env output"
+        snapshot.contains(&format!("cli={actor_cli_path}")),
+        "missing AGENTHUB_ACTOR_CLI in process env output: {snapshot}"
     );
 
     let _ = std::fs::remove_dir_all(&workdir);
