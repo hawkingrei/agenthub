@@ -6,7 +6,6 @@ import {
   ToolCallGroupConversationItem,
   flattenExploreGroupToolCalls,
   formatConversationPreview,
-  isExploreThinkingText,
   isToolCallLive,
 } from "../conversation";
 import { renderMarkdown } from "../markdown";
@@ -333,19 +332,7 @@ const ConversationBubble = React.memo(
       shouldAutoCollapse && !isFrozenView && globalIndex < collapseCutoff;
 
     if (msg.kind === "agent_thinking") {
-      const thinkingLabel = deriveThinkingLabel(msg.text);
-      const label = msg.live ? `${thinkingLabel} (live)` : thinkingLabel;
-      return (
-        <div className={ACP_BUBBLE_THINKING_CLASS}>
-          <div className="acp-thinking-title text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {label}
-          </div>
-          <div
-            className="acp-text mt-1 text-sm text-slate-700"
-            dangerouslySetInnerHTML={{ __html: renderMarkdownCached(msg.text) }}
-          />
-        </div>
-      );
+      return <ThinkingBubble text={msg.text} live={msg.live} />;
     }
 
     if (msg.kind === "agent_plan") {
@@ -799,18 +786,14 @@ function ExploreThinkingEntry({
   item: Extract<ConversationItem, { kind: "agent_thinking" }>;
   index: number;
 }) {
-  const label = item.live ? `Explore #${index} (live)` : `Explore #${index}`;
   return (
     <div className="acp-tool-group-item acp-explore-thinking-item">
-      <div className="acp-bubble agent_thinking acp-tool-group-entry">
-        <div className="acp-thinking-title">
-          {label}
-        </div>
-        <div
-          className="acp-text"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownCached(item.text) }}
-        />
-      </div>
+      <ThinkingBubble
+        text={item.text}
+        live={item.live}
+        summaryPrefix={`Explore #${index}`}
+        grouped={true}
+      />
     </div>
   );
 }
@@ -907,17 +890,71 @@ export function isRunTerminalStatus(status?: string | null): boolean {
   );
 }
 
-function deriveThinkingLabel(text: string): string {
-  if (isExploreThinkingText(text)) return "Explore";
-  const firstLine = text
+type ThinkingBubbleProps = {
+  text: string;
+  live?: boolean;
+  summaryPrefix?: string;
+  grouped?: boolean;
+};
+
+const ThinkingBubble = React.memo(function ThinkingBubble({
+  text,
+  live = false,
+  summaryPrefix,
+  grouped = false,
+}: ThinkingBubbleProps) {
+  const summary = deriveThinkingSummary(text, {
+    live,
+    summaryPrefix,
+  });
+  const entryClassName = grouped ? " acp-tool-group-entry" : "";
+
+  return (
+    <div className={`${ACP_BUBBLE_THINKING_CLASS}${entryClassName}`}>
+      <details className="acp-thought-fold acp-thinking-fold">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+          {summary}
+        </summary>
+        <div
+          className="acp-text mt-2 text-sm text-slate-700"
+          dangerouslySetInnerHTML={{ __html: renderMarkdownCached(text) }}
+        />
+      </details>
+    </div>
+  );
+});
+
+function deriveThinkingSummary(
+  text: string,
+  {
+    live,
+    summaryPrefix,
+  }: {
+    live?: boolean;
+    summaryPrefix?: string;
+  } = {}
+): string {
+  const normalizedText = unescapeLineBreaks(text);
+  const firstLine = normalizedText
     .split("\n")
     .map((line) => line.trim())
-    .find((line) => line.length > 0)
-    ?.toLowerCase();
-  if (!firstLine) return "Thinking";
-  if (firstLine.startsWith("plan")) return "Plan";
-  if (firstLine.startsWith("reflect")) return "Reflection";
-  return "Thinking";
+    .find((line) => line.length > 0);
+  const preview = firstLine
+    ? formatConversationPreview(normalizeThinkingSummaryLine(firstLine), 96)
+    : "THINKING";
+  const prefix = summaryPrefix ?? "THINKING";
+  const base = preview === prefix ? prefix : `${prefix} · ${preview}`;
+  return live ? `${base} (live)` : base;
+}
+
+function normalizeThinkingSummaryLine(line: string): string {
+  const normalized = line
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_~>#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized || line.trim();
 }
 
 type PlanBubbleProps = {
