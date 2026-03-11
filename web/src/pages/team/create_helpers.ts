@@ -1,3 +1,4 @@
+import type { AgentRecord } from "../../api";
 import { listAgentPresets } from "../../agent_presets";
 import {
   DEFAULT_TEAM_LEADER_PROMPT,
@@ -38,9 +39,11 @@ export function buildTeamSpecFromForm(
   leaderPrompt: string,
   leaderSkills: string[],
   leaderCustomSkills: string,
-  workers: WorkerDraft[]
+  workers: WorkerDraft[],
+  teamForgeAgents: AgentRecord[]
 ): unknown {
   const leaderId = leaderMemberId.trim();
+  const forgeAgentById = new Map(teamForgeAgents.map((agent) => [agent.id, agent]));
   const normalizedWorkers = workers
     .map((worker) => ({
       member_id: worker.member_id.trim(),
@@ -66,6 +69,7 @@ export function buildTeamSpecFromForm(
       role: "leader",
       model: leaderModel.trim() || undefined,
       prompt: leaderPrompt.trim() || DEFAULT_TEAM_LEADER_PROMPT,
+      runtime: buildMemberRuntimeHint(forgeAgentById.get(leaderId)),
       skills: normalizeSkillSelection(
         leaderSkills,
         leaderCustomSkills,
@@ -79,6 +83,7 @@ export function buildTeamSpecFromForm(
       description: worker.description || undefined,
       model: worker.model || undefined,
       prompt: worker.prompt,
+      runtime: buildMemberRuntimeHint(forgeAgentById.get(worker.member_id)),
       skills: worker.skills,
     })),
   ];
@@ -89,6 +94,20 @@ export function buildTeamSpecFromForm(
     leader_member_id: leaderId,
     members,
     steps,
+  };
+}
+
+function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, unknown> | undefined {
+  if (!agent) {
+    return undefined;
+  }
+  return {
+    name: agent.name,
+    workdir: agent.workdir,
+    worktree_mode: agent.worktree_mode,
+    worktree_repo: agent.worktree_repo ?? null,
+    worktree_ref: agent.worktree_ref ?? null,
+    code_mode: agent.code_mode,
   };
 }
 

@@ -53,6 +53,23 @@ pub(super) fn map_resume_run_error(err: anyhow::Error) -> ApiError {
     map_not_found_error(err, "run not found")
 }
 
+pub(super) fn map_runtime_start_error(err: anyhow::Error) -> ApiError {
+    let full_chain = err
+        .chain()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ");
+    if full_chain.contains("team member runtime config")
+        || full_chain.contains("team member agent")
+        || full_chain.contains("team worker policy requires")
+        || full_chain.contains("worktree_repo")
+    {
+        tracing::warn!("team runtime start rejected: {}", full_chain);
+        return ApiError::bad_request(&full_chain);
+    }
+    map_team_internal_error(err)
+}
+
 pub(super) fn map_team_internal_error(err: anyhow::Error) -> ApiError {
     tracing::error!("team api internal error: {}", err);
     ApiError::from(anyhow::anyhow!("internal server error"))

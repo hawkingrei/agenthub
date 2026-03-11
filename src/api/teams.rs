@@ -4,7 +4,7 @@ mod errors;
 
 use self::errors::{
     map_actor_service_api_error, map_create_team_error, map_not_found_error, map_resume_run_error,
-    map_submit_step_error, map_team_internal_error,
+    map_runtime_start_error, map_submit_step_error, map_team_internal_error,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
@@ -447,7 +447,7 @@ async fn create_team(
     if let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await {
         let member_ids = parse_member_ids(team.spec.get("members"))?;
         let _ = state.teams.delete_team(&team.id, &member_ids).await;
-        return Err(map_team_internal_error(err));
+        return Err(map_runtime_start_error(err));
     }
     Ok(Json(team))
 }
@@ -461,7 +461,7 @@ async fn start_team(
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
         .await
-        .map_err(map_team_internal_error)?;
+        .map_err(map_runtime_start_error)?;
     Ok(Json(runtime))
 }
 

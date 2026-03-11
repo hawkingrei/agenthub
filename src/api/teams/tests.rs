@@ -27,7 +27,7 @@ use crate::auth::AuthService;
 use crate::config::{AppConfig, PushConfig, WebConfig};
 use crate::push::PushService;
 use crate::state::AppState;
-use crate::team::TeamManager;
+use crate::team::{TeamDefinitionConfig, TeamManager};
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
@@ -721,6 +721,44 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     .expect("configure worker team member agent");
 }
 
+pub(crate) async fn insert_legacy_team_member_agent(state: &AppState, agent_id: &str) -> String {
+    let workdir = std::env::temp_dir().join(format!(
+        "agenthub-team-legacy-member-{agent_id}-{}",
+        Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workdir).expect("create legacy team member workdir");
+    let workdir = workdir.to_string_lossy().to_string();
+    let actor_cli = resolve_test_agenthub_binary_path();
+    let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
+    let now = Utc::now().timestamp();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for legacy team member");
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'created', ?6, ?7)
+        "#,
+    )
+    .bind(agent_id)
+    .bind(format!("{agent_id}-agent"))
+    .bind(&workdir)
+    .bind(&actor_cli)
+    .bind(&actor_args)
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert legacy team member agent");
+    workdir
+}
+
 #[test]
 fn resolve_test_agenthub_binary_path_prefers_real_binary() {
     let path = resolve_test_agenthub_binary_path();
@@ -756,6 +794,23 @@ fn worker_test_repo() -> &'static String {
         run_git(&base, &["commit", "-m", "init"]);
         base.to_string_lossy().to_string()
     })
+}
+
+fn create_named_worker_test_repo(name: &str) -> String {
+    let base = std::env::temp_dir().join(format!("agenthub-team-worker-root-{}", Uuid::new_v4()));
+    let repo = base.join(name);
+    std::fs::create_dir_all(&repo).expect("create named worker test repo dir");
+    run_git(&repo, &["init"]);
+    run_git(
+        &repo,
+        &["config", "user.email", "agenthub-test@example.com"],
+    );
+    run_git(&repo, &["config", "user.name", "AgentHub Test"]);
+    std::fs::write(repo.join("README.md"), format!("{name}\n"))
+        .expect("write named worker repo seed");
+    run_git(&repo, &["add", "README.md"]);
+    run_git(&repo, &["commit", "-m", "init"]);
+    repo.to_string_lossy().to_string()
 }
 
 fn run_git(repo_dir: &StdPath, args: &[&str]) {
