@@ -22,8 +22,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-#[cfg(test)]
-use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::auth::UserRecord;
@@ -419,39 +417,6 @@ pub fn router(state: AppState) -> Router {
             post(ack_team_run_message),
         )
         .with_state(state)
-}
-
-#[cfg(test)]
-fn build_team_member_actor_context(
-    team_id: &str,
-    member: &TeamMemberSpec,
-) -> anyhow::Result<AcpActorSkillContext> {
-    Ok(AcpActorSkillContext {
-        team_id: Some(team_id.to_string()),
-        current_run_id: None,
-        actor_id: member.member_id.clone(),
-        default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-        actor_cli_path: default_actor_cli_path()?,
-        member_role: Some(member.role.clone()),
-        member_skills: member.skills.clone(),
-        continuity: None,
-    })
-}
-
-#[cfg(test)]
-fn team_member_actor_context_matches(
-    current: Option<&AcpActorSkillContext>,
-    expected: &AcpActorSkillContext,
-) -> bool {
-    let Some(current) = current else {
-        return false;
-    };
-    current.team_id == expected.team_id
-        && current.current_run_id == expected.current_run_id
-        && current.actor_id == expected.actor_id
-        && current.default_channel == expected.default_channel
-        && current.member_role == expected.member_role
-        && current.member_skills == expected.member_skills
 }
 
 async fn create_team(

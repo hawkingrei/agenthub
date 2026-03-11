@@ -109,10 +109,6 @@ fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
     )
 }
 
-fn take_team_id(value: Option<String>) -> Option<String> {
-    take_optional(value).or_else(|| normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV))
-}
-
 fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
     let sub = args
         .first()
@@ -146,10 +142,18 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
                 }
                 idx += 1;
             }
-            let team_id = take_team_id(team_id);
-            let run_id = take_optional(run_id)
-                .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV))
-                .or_else(|| normalized_env_var(ACTOR_RUNTIME_RUN_ID_ENV));
+            let explicit_team_id = take_optional(team_id);
+            let explicit_run_id = take_optional(run_id);
+            let team_id = explicit_team_id
+                .clone()
+                .or_else(|| normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV));
+            let run_id = explicit_run_id.or_else(|| {
+                if explicit_team_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_RUN_ID_ENV))
+            });
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-members requires --team-id, --run-id, or actor runtime env fallback"
@@ -648,6 +652,15 @@ mod tests {
 
     #[test]
     fn parse_team_members_accepts_team_id_flag_without_run() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_RUN_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-env");
+            std::env::set_var(ACTOR_RUNTIME_RUN_ID_ENV, "run-legacy-env");
+        }
         let args = vec![
             "team-members".to_string(),
             "--team-id".to_string(),
@@ -661,6 +674,9 @@ mod tests {
             }
             _ => panic!("expected team-members command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_RUN_ID_ENV, prev_run);
     }
 
     #[test]

@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
@@ -90,6 +91,45 @@ export function resolveTeamRuntimeStatus(
     tone: "warning",
     online,
     total,
+  };
+}
+
+export function updateCachedTeamRuntimeStatus(
+  previousRuntime: TeamRuntimeRecord | undefined,
+  teamId: string,
+  teamName: string,
+  status: TeamRuntimeRecord["status"],
+  members: TeamRuntimeControlResponse["members"],
+  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
+): TeamRuntimeRecord | undefined {
+  if (!previousRuntime) {
+    return undefined;
+  }
+  const memberUpdates = new Map(
+    members.map((member) => [member.member_id, member] as const)
+  );
+  const stopped = status === "stopped";
+  return {
+    ...previousRuntime,
+    team_id: teamId,
+    team_name: teamName,
+    status,
+    members: previousRuntime.members.map((member) => {
+      const updated = memberUpdates.get(member.member_id);
+      return {
+        ...member,
+        session_id: stopped
+          ? undefined
+          : updated
+            ? (updated.session_id ?? undefined)
+            : (member.session_id ?? undefined),
+        session_status: stopped
+          ? "stopped"
+          : nextSessionStatus
+            ? nextSessionStatus(member.session_status)
+            : (member.session_status ?? undefined),
+      };
+    }),
   };
 }
 

@@ -8,7 +8,6 @@ import {
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
-  TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -101,6 +100,7 @@ import {
   resolveTeamConversationTask,
   sortTasksByActivity,
   toPrettyJson,
+  updateCachedTeamRuntimeStatus,
   upsertRun,
 } from "./team/page_helpers";
 import {
@@ -259,36 +259,6 @@ function formatTeamRuntimeActionSummary(
     .map(([key, value]) => `${key}=${value}`);
   const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
-}
-
-function updateCachedTeamRuntimeStatus(
-  previousRuntime: TeamRuntimeRecord | undefined,
-  teamId: string,
-  teamName: string,
-  status: TeamRuntimeRecord["status"],
-  members: TeamRuntimeControlResponse["members"],
-  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
-): TeamRuntimeRecord | undefined {
-  if (!previousRuntime) {
-    return undefined;
-  }
-  const memberUpdates = new Map(
-    members.map((member) => [member.member_id, member] as const)
-  );
-  return {
-    ...previousRuntime,
-    team_id: teamId,
-    team_name: teamName,
-    status,
-    members: previousRuntime.members.map((member) => {
-      const updated = memberUpdates.get(member.member_id);
-      return {
-        ...member,
-        session_id: updated?.session_id ?? (nextSessionStatus ? member.session_id : undefined),
-        session_status: nextSessionStatus ? nextSessionStatus(member.session_status) : undefined,
-      };
-    }),
-  };
 }
 
 function validateRunInputJson(raw: string): RunInputValidation {

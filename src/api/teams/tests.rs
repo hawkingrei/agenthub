@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
+use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::default_actor_cli_path;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
@@ -35,18 +36,49 @@ use super::{
     ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery,
-    ack_team_run_message, build_team_member_actor_context, cancel_team_run,
-    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_run,
-    create_team_task, delete_team, fail_team_run_step, flush_team_run_context, get_team,
-    get_team_run, get_team_run_snapshot, get_team_task, list_team_run_events, list_team_run_inbox,
-    list_team_run_steps, list_team_runs, list_team_task_messages, list_team_tasks, list_teams,
-    restart_team_run, resume_team_run, resume_team_run_step, send_team_run_message,
-    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
-    stop_team, submit_team_run_step, team_member_actor_context_matches,
+    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
+    create_team, create_team_run, create_team_task, delete_team, fail_team_run_step,
+    flush_team_run_context, get_team, get_team_run, get_team_run_snapshot, get_team_task,
+    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
+    list_team_task_messages, list_team_tasks, list_teams, restart_team_run, resume_team_run,
+    resume_team_run_step, send_team_run_message, send_team_task_message,
+    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
+    submit_team_run_step,
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
+
+fn build_team_member_actor_context(
+    team_id: &str,
+    member: &TeamMemberSpec,
+) -> anyhow::Result<AcpActorSkillContext> {
+    Ok(AcpActorSkillContext {
+        team_id: Some(team_id.to_string()),
+        current_run_id: None,
+        actor_id: member.member_id.clone(),
+        default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        actor_cli_path: default_actor_cli_path()?,
+        member_role: Some(member.role.clone()),
+        member_skills: member.skills.clone(),
+        continuity: None,
+    })
+}
+
+fn team_member_actor_context_matches(
+    current: Option<&AcpActorSkillContext>,
+    expected: &AcpActorSkillContext,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    current.team_id == expected.team_id
+        && current.current_run_id == expected.current_run_id
+        && current.actor_id == expected.actor_id
+        && current.default_channel == expected.default_channel
+        && current.member_role == expected.member_role
+        && current.member_skills == expected.member_skills
+}
 
 fn resolve_test_agenthub_binary_path() -> String {
     TEST_AGENTHUB_BIN
