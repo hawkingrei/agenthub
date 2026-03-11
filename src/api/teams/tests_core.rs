@@ -501,7 +501,7 @@ async fn teams_api_start_and_stop_team_runtime() {
     .await
     .expect("stop team");
     assert_eq!(stopped.team_id, team.id);
-    assert_eq!(stopped.status, "stopped");
+    assert_eq!(stopped.status, crate::team::TeamRuntimeStatus::Stopped);
     assert!(
         state
             .agents
@@ -525,7 +525,7 @@ async fn teams_api_start_and_stop_team_runtime() {
     .await
     .expect("start team");
     assert_eq!(started.team_id, team.id);
-    assert_eq!(started.status, "running");
+    assert_eq!(started.status, crate::team::TeamRuntimeStatus::Running);
     assert_eq!(started.members.len(), 2);
     assert!(
         started
@@ -548,7 +548,10 @@ async fn teams_api_start_and_stop_team_runtime() {
     )
         .await
         .expect("stop team again");
-    assert_eq!(stopped_again.status, "stopped");
+    assert_eq!(
+        stopped_again.status,
+        crate::team::TeamRuntimeStatus::Stopped
+    );
     assert!(stopped_again.members.len() <= 2);
 
     let Json(deleted) = delete_team(State(state.clone()), headers, Path(team.id.clone()))

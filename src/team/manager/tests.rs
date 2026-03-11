@@ -2937,7 +2937,7 @@ async fn describe_team_runtime_returns_member_runtime_status() {
 
     assert_eq!(runtime.team_id, team.id);
     assert_eq!(runtime.team_name, team.name);
-    assert_eq!(runtime.status, "degraded");
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Degraded);
     assert_eq!(runtime.members.len(), 2);
 
     let leader = &runtime.members[0];
@@ -3030,7 +3030,10 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         .expect("describe team context");
 
     assert_eq!(team_context.team_id, team.id);
-    assert_eq!(team_context.runtime.status, "degraded");
+    assert_eq!(
+        team_context.runtime.status,
+        crate::team::TeamRuntimeStatus::Degraded
+    );
     assert_eq!(team_context.runtime.online_count, 1);
     assert_eq!(team_context.runtime.member_count, 2);
     assert_eq!(
@@ -3049,7 +3052,10 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         .await
         .expect("describe runtime-only team context");
     assert_eq!(runtime_only_context.team_id, team.id);
-    assert_eq!(runtime_only_context.runtime.status, "degraded");
+    assert_eq!(
+        runtime_only_context.runtime.status,
+        crate::team::TeamRuntimeStatus::Degraded
+    );
     assert!(runtime_only_context.run.is_none());
     assert_eq!(runtime_only_context.members.len(), 2);
     assert!(runtime_only_context.members[0].steps.is_empty());

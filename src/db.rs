@@ -131,6 +131,11 @@ impl AgentEventIdleGc {
         let mut states = self.states.lock().await;
         states.remove(agent_id);
     }
+
+    #[cfg(test)]
+    pub async fn tracked_agent_count(&self) -> usize {
+        self.states.lock().await.len()
+    }
 }
 
 #[derive(Clone)]

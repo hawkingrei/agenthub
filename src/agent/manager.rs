@@ -1554,6 +1554,9 @@ impl AgentManager {
                 "cancelled",
             )
             .await;
+            if let Some(idle_gc) = &self.idle_gc {
+                idle_gc.remove_agent(agent_id).await;
+            }
             let mut child_guard = handle.child.lock().await;
             if let Some(mut child) = child_guard.take() {
                 if let Err(err) = child.kill().await {

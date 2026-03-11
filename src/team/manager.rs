@@ -88,6 +88,14 @@ pub struct TeamContextRunOverlayRecord {
     pub run_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamRuntimeStatus {
+    Running,
+    Stopped,
+    Degraded,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamContextRecord {
     pub team_id: String,
@@ -101,13 +109,13 @@ pub struct TeamContextRecord {
 pub struct TeamRuntimeRecord {
     pub team_id: String,
     pub team_name: String,
-    pub status: String,
+    pub status: TeamRuntimeStatus,
     pub members: Vec<TeamRuntimeMemberRecord>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRuntimeSummaryRecord {
-    pub status: String,
+    pub status: TeamRuntimeStatus,
     pub online_count: usize,
     pub member_count: usize,
 }
@@ -935,17 +943,17 @@ impl TeamManager {
         }
 
         let status = if out.is_empty() || online == 0 {
-            "stopped"
+            TeamRuntimeStatus::Stopped
         } else if online == out.len() {
-            "running"
+            TeamRuntimeStatus::Running
         } else {
-            "degraded"
+            TeamRuntimeStatus::Degraded
         };
 
         Ok(TeamRuntimeRecord {
             team_id: team.id,
             team_name: team.name,
-            status: status.to_string(),
+            status,
             members: out,
         })
     }

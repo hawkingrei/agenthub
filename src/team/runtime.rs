@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::agent::AgentManager;
-use crate::team::TeamDefinitionRecord;
+use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamRuntimeMemberStatusRecord {
@@ -16,7 +16,7 @@ pub struct TeamRuntimeMemberStatusRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamRuntimeControlRecord {
     pub team_id: String,
-    pub status: String,
+    pub status: TeamRuntimeStatus,
     pub members: Vec<TeamRuntimeMemberStatusRecord>,
 }
 
@@ -169,7 +169,7 @@ pub async fn ensure_team_runtime_started(
 
     Ok(TeamRuntimeControlRecord {
         team_id: team.id.clone(),
-        status: "running".to_string(),
+        status: TeamRuntimeStatus::Running,
         members,
     })
 }
@@ -199,7 +199,7 @@ pub async fn stop_team_runtime(
     }
     Ok(TeamRuntimeControlRecord {
         team_id: team.id.clone(),
-        status: "stopped".to_string(),
+        status: TeamRuntimeStatus::Stopped,
         members,
     })
 }
