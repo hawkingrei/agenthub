@@ -595,7 +595,8 @@ const DEFAULT_TEST_WORKER_MEMBER_IDS: &[&str] = &[
 ];
 
 async fn seed_default_team_member_agents(state: &AppState) {
-    let workdir = std::env::temp_dir().join("agenthub-team-api-test-members");
+    let workdir =
+        std::env::temp_dir().join(format!("agenthub-team-api-test-members-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
     let actor_cli = resolve_test_agenthub_binary_path();
@@ -643,7 +644,10 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     let now = Utc::now().timestamp();
     let repo = worker_test_repo().clone();
     let worktree_root = std::env::temp_dir()
-        .join("agenthub-team-api-test-worker-worktrees")
+        .join(format!(
+            "agenthub-team-api-test-worker-worktrees-{}",
+            Uuid::new_v4()
+        ))
         .to_string_lossy()
         .to_string();
     std::fs::create_dir_all(&worktree_root).expect("create worker runtime root");

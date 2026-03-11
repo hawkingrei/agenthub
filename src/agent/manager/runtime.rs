@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
@@ -267,15 +268,29 @@ impl AgentManager {
             };
 
             if let Some(child_mutex) = child {
-                let success = {
-                    let mut child_guard = child_mutex.lock().await;
-                    let child = match child_guard.as_mut() {
-                        Some(child) => child,
-                        None => return,
+                let success = loop {
+                    let poll_result = {
+                        let mut child_guard = child_mutex.lock().await;
+                        let child = match child_guard.as_mut() {
+                            Some(child) => child,
+                            None => return,
+                        };
+                        child.try_wait()
                     };
-                    match child.wait().await {
-                        Ok(status) => status.success(),
-                        Err(_) => false,
+                    match poll_result {
+                        Ok(Some(status)) => break status.success(),
+                        Ok(None) => {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                agent_id = %agent_id_clone,
+                                session_id = %session_id,
+                                error = %err,
+                                "spawn_exit_watcher failed to poll child status"
+                            );
+                            break false;
+                        }
                     }
                 };
                 Self::finalize_process_exit(

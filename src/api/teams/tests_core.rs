@@ -1418,8 +1418,8 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
     );
 
     let missing_team_err = list_team_runs(
-        State(state),
-        headers,
+        State(state.clone()),
+        headers.clone(),
         Path("missing-team".to_string()),
         Query(ListTeamRunsQuery {
             limit: Some(100),
@@ -1433,6 +1433,24 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         missing_team_err.into_response().status(),
         StatusCode::NOT_FOUND
     );
+
+    let Json(deleted_team) = delete_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("delete runs-list team");
+    assert_eq!(deleted_team.id, team.id);
+
+    let Json(deleted_other_team) = delete_team(
+        State(state.clone()),
+        headers,
+        Path(other_team.id.clone()),
+    )
+    .await
+    .expect("delete runs-list other team");
+    assert_eq!(deleted_other_team.id, other_team.id);
 }
 
 #[tokio::test]

@@ -40,6 +40,7 @@ const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
 const ACTOR_MAILBOX_MCP_SERVER_NAME: &str = "agenthub-actor-mailbox";
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
@@ -968,13 +969,17 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         }));
     });
 
-    match ready_rx.await {
-        Ok(Ok(session_id)) => Ok(AcpHandle {
+    match tokio::time::timeout(ACP_SESSION_START_TIMEOUT, ready_rx).await {
+        Ok(Ok(Ok(session_id))) => Ok(AcpHandle {
             session_id,
             tx: cmd_tx,
         }),
-        Ok(Err(err)) => Err(anyhow::anyhow!(err)),
-        Err(_) => Err(anyhow::anyhow!("acp session init cancelled")),
+        Ok(Ok(Err(err))) => Err(anyhow::anyhow!(err)),
+        Ok(Err(_)) => Err(anyhow::anyhow!("acp session init cancelled")),
+        Err(_) => Err(anyhow::anyhow!(
+            "acp session init timed out after {}s",
+            ACP_SESSION_START_TIMEOUT.as_secs()
+        )),
     }
 }
 
