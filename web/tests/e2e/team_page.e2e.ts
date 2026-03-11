@@ -210,6 +210,10 @@ async function selectTeamFromSidebar(
   await expect(teamItem).toHaveAttribute("data-team-selected", "true");
 }
 
+async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/teams", { waitUntil: "domcontentloaded" });
+}
+
 async function selectAgentFromSidebar(
   page: import("@playwright/test").Page,
   agentLabel: string
@@ -1050,7 +1054,7 @@ test("team runtime controls update shared runtime badge", async ({ page }) => {
     updated_at: fixture.now + 20,
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "runtime controls team");
   await expect(page.getByText("team running", { exact: true })).toBeVisible();
 
@@ -1066,7 +1070,7 @@ test("team forge modal creates team with leader/worker presets", async ({
 }) => {
   const fixture = await mockTeamPageApis(page);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
 
   await expect(page.getByRole("heading", { name: "AgentHub Teams" })).toBeVisible();
   await openMainTeamAction(page, "Guided Wizard");
@@ -1145,7 +1149,7 @@ test("team forge manual spec mode skips leader/worker stages", async ({
 }) => {
   const fixture = await mockTeamPageApis(page);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1183,7 +1187,7 @@ test("team forge blocks stage advance when duplicate assignments exist", async (
   page,
 }) => {
   await mockTeamPageApis(page);
-  await page.goto("/teams");
+  await gotoTeams(page);
 
   await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1247,7 +1251,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Mobile");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 
@@ -1439,7 +1443,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   });
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Desktop");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator(".teams-main").getByText("Team Desktop", { exact: true })).toBeVisible();
@@ -1509,7 +1513,7 @@ test("team forge agent entry creates and binds leader in-place", async ({
   const fixture = await mockTeamPageApis(page);
   fixture.agents.splice(0, fixture.agents.length);
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Guided Wizard");
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
   await dialog.getByPlaceholder("team name").fill("forge-team");
@@ -1778,7 +1782,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     ],
   };
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -1895,7 +1899,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
     }
   );
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Compile Team");
   await openMainTeamAction(page, "Tasks");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
@@ -2314,7 +2318,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Chat First Team");
   await openMainTeamAction(page, "Tasks");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
@@ -2472,7 +2476,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await openMainTeamAction(page, "Manual Spec");
 
   const dialog = page.getByRole("dialog", { name: "Team Forge" });
@@ -2813,7 +2817,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   };
 
   await enableDeveloperMode(page);
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team Mailbox");
   await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
@@ -2904,7 +2908,7 @@ test("team list supports deleting selected team", async ({ page }) => {
     }
   );
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".teams-sidebar .team-item", { hasText: "Team Delete B" })).toBeVisible();
   await selectTeamFromSidebar(page, "Team Delete A");
@@ -2982,7 +2986,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     await route.fulfill(jsonResponse(payload));
   });
 
-  await page.goto("/teams");
+  await gotoTeams(page);
   await selectTeamFromSidebar(page, "Team A");
   await page.getByRole("button", { name: "Runs", exact: true }).click();
 

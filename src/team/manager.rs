@@ -3273,7 +3273,7 @@ fn build_team_member_card(
 
 fn build_team_runtime_summary(runtime: &TeamRuntimeRecord) -> TeamRuntimeSummaryRecord {
     TeamRuntimeSummaryRecord {
-        status: runtime.status.clone(),
+        status: runtime.status,
         online_count: runtime
             .members
             .iter()
