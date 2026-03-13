@@ -610,6 +610,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await?;
 
     migrate_legacy_team_task_schema(&pool).await?;
+    migrate_safe_paths_to_absolute(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -1458,6 +1459,68 @@ async fn migrate_legacy_team_task_schema(pool: &SqlitePool) -> anyhow::Result<()
     Ok(())
 }
 
+async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()> {
+    let rows = sqlx::query("SELECT id, path, created_at FROM safe_paths ORDER BY id ASC")
+        .fetch_all(pool)
+        .await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut tx = pool.begin().await?;
+    let mut migrated = 0_u64;
+    for row in rows {
+        let id: i64 = row.get("id");
+        let path: String = row.get("path");
+        let created_at: i64 = row.get("created_at");
+        let expanded = expand_tilde_for_safe_paths(&path);
+        if expanded == path {
+            continue;
+        }
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO safe_paths (path, created_at)
+            VALUES (?1, ?2)
+            "#,
+        )
+        .bind(&expanded)
+        .bind(created_at)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM safe_paths WHERE id = ?1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        migrated += 1;
+    }
+    tx.commit().await?;
+
+    if migrated > 0 {
+        tracing::info!(
+            migrated_safe_path_count = migrated,
+            "db init: normalized safe_paths entries to absolute paths"
+        );
+    }
+    Ok(())
+}
+
+fn expand_tilde_for_safe_paths(path: &str) -> String {
+    if path == "~" {
+        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            std::path::Path::new(&home)
+                .join(stripped)
+                .to_string_lossy()
+                .to_string()
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    }
+}
+
 async fn sqlite_table_exists(pool: &SqlitePool, table_name: &str) -> anyhow::Result<bool> {
     let exists = sqlx::query_scalar::<_, i64>(
         r#"
@@ -1493,10 +1556,10 @@ async fn sqlite_table_has_column(
 mod tests {
     use super::{
         AgentEventDbRouter, AgentEventIdleGc, cleanup_agent_event_history, create_parent_dir,
-        init_db_at_path, try_connect,
+        expand_tilde_for_safe_paths, init_db_at_path, try_connect,
     };
     use sqlx::Row;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::Duration;
     use uuid::Uuid;
 
@@ -1561,6 +1624,60 @@ mod tests {
         assert!(
             fk_err.to_string().contains("FOREIGN KEY constraint failed"),
             "unexpected fk error: {fk_err}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_normalizes_safe_paths_to_absolute_paths() {
+        let dir = unique_temp_dir("db-safe-path-migration");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let options = SqliteConnectOptions::new()
+            .filename(&db_path)
+            .create_if_missing(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE safe_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create safe_paths");
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("~/.agenthub/worktrees")
+            .bind(1_i64)
+            .execute(&pool)
+            .await
+            .expect("insert legacy safe path");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+        let rows = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
+            .fetch_all(&pool)
+            .await
+            .expect("load safe paths");
+        let paths = rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("path"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            vec![expand_tilde_for_safe_paths("~/.agenthub/worktrees")]
         );
 
         pool.close().await;

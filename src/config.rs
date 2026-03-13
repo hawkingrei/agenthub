@@ -175,12 +175,12 @@ impl AppConfig {
 
     pub fn safe_paths(&self) -> Vec<String> {
         let mut paths = Vec::new();
-        paths.push(DEFAULT_SAFE_PATH.to_string());
+        paths.push(expand_tilde(DEFAULT_SAFE_PATH));
         if let Some(configured_paths) = &self.safe_paths {
             for path in configured_paths {
                 let trimmed = path.trim();
                 if !trimmed.is_empty() {
-                    paths.push(trimmed.to_string());
+                    paths.push(expand_tilde(trimmed));
                 }
             }
         }
@@ -452,9 +452,10 @@ mod tests {
     #[test]
     fn safe_paths_includes_default_worktrees_path() {
         let config = AppConfig::default();
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.safe_paths(),
-            vec!["~/.agenthub/worktrees".to_string()]
+            vec![format!("{home}/.agenthub/worktrees")]
         );
     }
 
@@ -469,9 +470,10 @@ mod tests {
             ]),
             ..Default::default()
         };
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.safe_paths(),
-            vec!["~/.agenthub/worktrees".to_string(), "/tmp/a".to_string()]
+            vec![format!("{home}/.agenthub/worktrees"), "/tmp/a".to_string()]
         );
     }
 
