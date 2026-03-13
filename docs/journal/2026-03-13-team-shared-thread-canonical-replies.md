@@ -51,6 +51,9 @@ That had three problems:
   - Added:
     - `actor_mailbox_service_persists_agent_reply_into_shared_thread`
     - `actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_conversation`
+    - `actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_thread`
+    - `actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_thread`
+    - `actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply`
 - `web/src/pages/team_panels.test.tsx`
   - Updated shared-thread tests to assert canonical conversation rendering rather than mailbox merge.
 
@@ -60,6 +63,9 @@ Local validation completed:
 
 - `cargo test actor_mailbox_service_persists_agent_reply_into_shared_thread -- --nocapture`
 - `cargo test actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_conversation -- --nocapture`
+- `cargo test actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_thread -- --nocapture`
+- `cargo test actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_thread -- --nocapture`
+- `cargo test actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply -- --nocapture`
 - `cd web && npx vitest run src/pages/team_panels.test.tsx --pool=threads --maxWorkers=1`
 
 Follow-up verification still required after push/PR:

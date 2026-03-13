@@ -1799,6 +1799,226 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_thread() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-private-chat-team".to_string(),
+            description: Some("team for private mailbox reply routing".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-private-chat"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"internal review request"
+            }),
+            idempotency_key: Some("msg-private-chat-1".to_string()),
+        })
+        .await
+        .expect("send internal mailbox reply");
+
+    let shared_task_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_tasks
+        WHERE team_id = ?1
+          AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread tasks");
+    assert_eq!(shared_task_count, 0);
+
+    let conversation_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_conversation_messages WHERE task_id IN (SELECT id FROM team_tasks WHERE team_id = ?1)",
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count conversation messages after private send");
+    assert_eq!(conversation_count, 0);
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_thread() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-stringified-reply-team".to_string(),
+            description: Some("team for stringified shared reply canonicalization".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-stringified-reply"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "user".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!("{\"type\":\"chat_message\",\"text\":\"hello from string\",\"current_phase\":\"planning\",\"correlation_id\":\"corr-string\"}"),
+            idempotency_key: Some("msg-stringified-chat-1".to_string()),
+        })
+        .await
+        .expect("send stringified shared reply");
+
+    let payload_json: String = sqlx::query_scalar(
+        r#"
+        SELECT payload_json
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("load canonical payload for stringified reply");
+    let payload: Value =
+        serde_json::from_str(&payload_json).expect("decode canonical stringified payload");
+    assert_eq!(payload["type"], json!("chat_message"));
+    assert_eq!(payload["text"], json!("hello from string"));
+    assert_eq!(payload["correlation_id"], json!("corr-string"));
+    assert!(payload.get("current_phase").is_none());
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-existing-shared-thread-team".to_string(),
+            description: Some("team for shared thread reuse".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-existing-shared-thread"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    let (shared_task, _conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"test"
+            }),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create existing shared thread");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "user".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"reuse existing thread"
+            }),
+            idempotency_key: Some("msg-existing-shared-thread-1".to_string()),
+        })
+        .await
+        .expect("send shared thread reply into existing thread");
+
+    let shared_task_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_tasks
+        WHERE team_id = ?1
+          AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread tasks after reuse");
+    assert_eq!(shared_task_count, 1);
+
+    let message_task_id: String = sqlx::query_scalar(
+        r#"
+        SELECT task_id
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("load canonical message task id");
+    assert_eq!(message_task_id, shared_task.id);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_validates_required_fields() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);
