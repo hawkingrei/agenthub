@@ -9,6 +9,14 @@ use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode};
 use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
 
+#[derive(Debug, thiserror::Error)]
+pub enum TeamRuntimeStartError {
+    #[error("{0}")]
+    InvalidConfig(String),
+    #[error("{0}")]
+    MissingMemberAgent(String),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamRuntimeMemberStatusRecord {
     pub member_id: String,
@@ -55,7 +63,10 @@ fn expand_tilde(path: &str) -> String {
     if let Some(stripped) = path.strip_prefix("~/")
         && let Ok(home) = std::env::var("HOME")
     {
-        return format!("{home}/{stripped}");
+        return Path::new(&home)
+            .join(stripped)
+            .to_string_lossy()
+            .to_string();
     }
     path.to_string()
 }
@@ -271,19 +282,24 @@ fn adjust_worker_runtime_workdir_for_safe_paths(
         let normalized_repo = normalize_path_for_compare(&expand_tilde(&config.worktree_repo));
         let normalized_workdir = normalize_path_for_compare(&expand_tilde(&config.workdir));
         if path_is_allowed(&normalized_workdir, &normalized_repo) {
-            anyhow::bail!(
+            return Err(TeamRuntimeStartError::InvalidConfig(format!(
                 "legacy worker runtime workdir '{}' is inside repo '{}' and cannot derive a safe worktree root",
-                config.workdir,
-                config.worktree_repo
-            );
+                config.workdir, config.worktree_repo
+            ))
+            .into());
         }
         config.workdir = Path::new(&config.workdir)
             .join(".agenthub-worker-root")
             .to_string_lossy()
             .to_string();
+        return Ok(config);
     }
 
-    Ok(config)
+    Err(TeamRuntimeStartError::InvalidConfig(format!(
+        "legacy worker runtime workdir '{}' is outside safe paths and cannot derive a safe worktree root",
+        config.workdir
+    ))
+    .into())
 }
 
 fn infer_repo_from_member_text(
@@ -356,16 +372,22 @@ async fn reconcile_team_member_runtime(
     let agent = agents
         .get_agent(member.member_id.as_str())
         .await
-        .with_context(|| format!("team member agent '{}' not found", member.member_id))?;
+        .map_err(|_| {
+            TeamRuntimeStartError::MissingMemberAgent(format!(
+                "team member agent '{}' not found",
+                member.member_id
+            ))
+        })?;
     if member.role != "worker" || worker_runtime_is_valid(&agent) {
         return Ok(());
     }
 
     let Some(repair) = resolve_worker_runtime_repair(agents, member, &agent).await? else {
-        anyhow::bail!(
+        return Err(TeamRuntimeStartError::InvalidConfig(format!(
             "team member runtime config for worker '{}' is missing worktree_repo; reconfigure the team member agent or recreate the team",
             member.member_id
-        );
+        ))
+        .into());
     };
 
     agents
@@ -483,4 +505,41 @@ pub async fn stop_team_runtime(
         status: TeamRuntimeStatus::Stopped,
         members,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        TeamRuntimeStartError, WorkerRuntimeRepairConfig,
+        adjust_worker_runtime_workdir_for_safe_paths, expand_tilde,
+    };
+
+    #[test]
+    fn expand_tilde_uses_path_join_for_home_relative_paths() {
+        let home = std::env::var("HOME").expect("HOME");
+        assert_eq!(
+            expand_tilde("~/worktrees"),
+            std::path::Path::new(&home)
+                .join("worktrees")
+                .to_string_lossy()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn worker_runtime_adjust_rejects_workdir_outside_safe_paths() {
+        let err = adjust_worker_runtime_workdir_for_safe_paths(
+            WorkerRuntimeRepairConfig {
+                workdir: "/tmp/agenthub-worker".to_string(),
+                worktree_repo: "/repo".to_string(),
+                worktree_ref: Some("HEAD".to_string()),
+            },
+            &[String::from("/safe/root")],
+        )
+        .expect_err("workdir outside safe paths should fail");
+        let typed = err
+            .downcast_ref::<TeamRuntimeStartError>()
+            .expect("typed runtime error");
+        assert!(matches!(typed, TeamRuntimeStartError::InvalidConfig(_)));
+    }
 }

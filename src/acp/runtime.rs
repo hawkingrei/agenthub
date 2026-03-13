@@ -30,6 +30,7 @@ fn canonicalize_actor_cli_path(path: &str) -> anyhow::Result<PathBuf> {
         .with_context(|| format!("actor_runtime.actor_cli_path is invalid: {}", trimmed))
 }
 
+#[cfg(test)]
 fn resolve_test_binary_path() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthub")
         && let Ok(canonical) = std::fs::canonicalize(&path)
@@ -45,8 +46,11 @@ fn resolve_test_binary_path() -> Option<PathBuf> {
 }
 
 pub(crate) fn default_actor_cli_path() -> anyhow::Result<String> {
+    #[cfg(test)]
     let exe = resolve_test_binary_path()
         .unwrap_or(std::env::current_exe().context("resolve current executable for actor cli")?);
+    #[cfg(not(test))]
+    let exe = std::env::current_exe().context("resolve current executable for actor cli")?;
     let canonical = std::fs::canonicalize(&exe).with_context(|| {
         format!(
             "resolve canonical executable path for actor cli: {}",

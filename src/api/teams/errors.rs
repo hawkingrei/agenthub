@@ -2,7 +2,7 @@ use agenthub_team_actor::{ActorServiceError, ActorServiceErrorCode};
 use sqlx::Error as SqlxError;
 
 use crate::api::error::ApiError;
-use crate::team::TeamRunResumeError;
+use crate::team::{TeamRunResumeError, TeamRuntimeStartError};
 
 pub(super) fn map_create_team_error(err: anyhow::Error) -> ApiError {
     if is_unique_team_name_violation(&err) {
@@ -54,18 +54,9 @@ pub(super) fn map_resume_run_error(err: anyhow::Error) -> ApiError {
 }
 
 pub(super) fn map_runtime_start_error(err: anyhow::Error) -> ApiError {
-    let full_chain = err
-        .chain()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ");
-    if full_chain.contains("team member runtime config")
-        || full_chain.contains("team member agent")
-        || full_chain.contains("team worker policy requires")
-        || full_chain.contains("worktree_repo")
-    {
-        tracing::warn!("team runtime start rejected: {}", full_chain);
-        return ApiError::bad_request(&full_chain);
+    if let Some(runtime_err) = err.downcast_ref::<TeamRuntimeStartError>() {
+        tracing::warn!("team runtime start rejected: {}", runtime_err);
+        return ApiError::bad_request(&runtime_err.to_string());
     }
     map_team_internal_error(err)
 }
@@ -100,5 +91,33 @@ fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
                 && db_err.message().contains(constraint)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::response::IntoResponse;
+
+    use super::map_runtime_start_error;
+    use crate::team::TeamRuntimeStartError;
+
+    #[test]
+    fn map_runtime_start_error_maps_typed_runtime_config_errors_to_bad_request() {
+        let api_err = map_runtime_start_error(
+            TeamRuntimeStartError::InvalidConfig("bad runtime config".to_string()).into(),
+        );
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn map_runtime_start_error_keeps_unknown_errors_internal() {
+        let api_err = map_runtime_start_error(anyhow::anyhow!("unexpected"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }
