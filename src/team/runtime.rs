@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode};
+use crate::path_utils::expand_tilde;
 use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
 
 #[derive(Debug, thiserror::Error)]
@@ -54,21 +55,6 @@ struct WorkerRuntimeRepairConfig {
     workdir: String,
     worktree_repo: String,
     worktree_ref: Option<String>,
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(stripped) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
-    {
-        return Path::new(&home)
-            .join(stripped)
-            .to_string_lossy()
-            .to_string();
-    }
-    path.to_string()
 }
 
 fn parse_runtime_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamRuntimeMemberSpec>> {
@@ -510,9 +496,9 @@ pub async fn stop_team_runtime(
 #[cfg(test)]
 mod tests {
     use super::{
-        TeamRuntimeStartError, WorkerRuntimeRepairConfig,
-        adjust_worker_runtime_workdir_for_safe_paths, expand_tilde,
+        TeamRuntimeStartError, WorkerRuntimeRepairConfig, adjust_worker_runtime_workdir_for_safe_paths,
     };
+    use crate::path_utils::expand_tilde;
 
     #[test]
     fn expand_tilde_uses_path_join_for_home_relative_paths() {

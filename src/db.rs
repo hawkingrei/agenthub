@@ -6,6 +6,8 @@ use sqlx::{
 };
 use tokio::sync::Mutex;
 
+use crate::path_utils::expand_tilde;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
     pub cutoff_ts: i64,
@@ -1473,7 +1475,7 @@ async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()>
         let id: i64 = row.get("id");
         let path: String = row.get("path");
         let created_at: i64 = row.get("created_at");
-        let expanded = expand_tilde_for_safe_paths(&path);
+        let expanded = expand_tilde(&path);
         if expanded == path {
             continue;
         }
@@ -1502,23 +1504,6 @@ async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()>
         );
     }
     Ok(())
-}
-
-fn expand_tilde_for_safe_paths(path: &str) -> String {
-    if path == "~" {
-        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
-    } else if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            std::path::Path::new(&home)
-                .join(stripped)
-                .to_string_lossy()
-                .to_string()
-        } else {
-            path.to_string()
-        }
-    } else {
-        path.to_string()
-    }
 }
 
 async fn sqlite_table_exists(pool: &SqlitePool, table_name: &str) -> anyhow::Result<bool> {
@@ -1556,8 +1541,9 @@ async fn sqlite_table_has_column(
 mod tests {
     use super::{
         AgentEventDbRouter, AgentEventIdleGc, cleanup_agent_event_history, create_parent_dir,
-        expand_tilde_for_safe_paths, init_db_at_path, try_connect,
+        init_db_at_path, try_connect,
     };
+    use crate::path_utils::expand_tilde;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::Duration;
@@ -1677,7 +1663,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             paths,
-            vec![expand_tilde_for_safe_paths("~/.agenthub/worktrees")]
+            vec![expand_tilde("~/.agenthub/worktrees")]
         );
 
         pool.close().await;

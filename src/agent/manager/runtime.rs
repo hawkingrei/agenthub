@@ -803,6 +803,7 @@ impl AgentManager {
         .bind(&normalized_workdir)
         .bind(worktree_mode_to_str(&worktree_mode))
         .bind(&normalized_worktree_repo)
+        // worktree_ref is a Git ref, not a filesystem path, so tilde expansion is not applicable.
         .bind(worktree_ref)
         .bind(now)
         .bind(agent_id)

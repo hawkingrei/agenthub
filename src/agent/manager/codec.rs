@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::agent::{AgentStatus, OutputStream, WorktreeMode};
+pub(super) use crate::path_utils::expand_tilde;
 
 use super::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentManager};
 
@@ -156,18 +157,6 @@ fn acp_provider_for_command_with_binary(
             }
         }
     }
-}
-
-pub(super) fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(stripped) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
-    {
-        return format!("{}/{}", home, stripped);
-    }
-    path.to_string()
 }
 
 pub(super) fn normalize_path(path: &str) -> String {

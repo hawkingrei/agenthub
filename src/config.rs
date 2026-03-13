@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashSet;
 
+use crate::path_utils::expand_tilde;
+
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
@@ -398,23 +400,6 @@ fn detect_env_overrides() -> Vec<String> {
         .filter(|key| std::env::var(key).ok().filter(|v| !v.is_empty()).is_some())
         .map(|key| key.to_string())
         .collect()
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
-    } else if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            std::path::Path::new(&home)
-                .join(stripped)
-                .to_string_lossy()
-                .to_string()
-        } else {
-            path.to_string()
-        }
-    } else {
-        path.to_string()
-    }
 }
 
 #[cfg(test)]
