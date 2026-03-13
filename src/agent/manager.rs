@@ -672,6 +672,10 @@ impl AgentManager {
         })
     }
 
+    pub(crate) async fn list_safe_paths(&self) -> anyhow::Result<Vec<String>> {
+        load_safe_paths(&self.db).await
+    }
+
     pub async fn list_events(
         &self,
         agent_id: &str,

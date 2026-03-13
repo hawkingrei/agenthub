@@ -945,7 +945,8 @@ export function TeamPage(props: TeamPageProps) {
         leaderPrompt,
         leaderSkills,
         leaderCustomSkills,
-        workers
+        workers,
+        teamForgeAgents
       ),
     [
       leaderMemberId,
@@ -954,6 +955,7 @@ export function TeamPage(props: TeamPageProps) {
       leaderSkills,
       leaderCustomSkills,
       workers,
+      teamForgeAgents,
     ]
   );
 

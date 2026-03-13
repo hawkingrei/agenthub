@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashSet;
 
+use crate::path_utils::expand_tilde;
+
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
@@ -175,12 +177,12 @@ impl AppConfig {
 
     pub fn safe_paths(&self) -> Vec<String> {
         let mut paths = Vec::new();
-        paths.push(DEFAULT_SAFE_PATH.to_string());
+        paths.push(expand_tilde(DEFAULT_SAFE_PATH));
         if let Some(configured_paths) = &self.safe_paths {
             for path in configured_paths {
                 let trimmed = path.trim();
                 if !trimmed.is_empty() {
-                    paths.push(trimmed.to_string());
+                    paths.push(expand_tilde(trimmed));
                 }
             }
         }
@@ -400,23 +402,6 @@ fn detect_env_overrides() -> Vec<String> {
         .collect()
 }
 
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        std::env::var("HOME").unwrap_or_else(|_| path.to_string())
-    } else if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            std::path::Path::new(&home)
-                .join(stripped)
-                .to_string_lossy()
-                .to_string()
-        } else {
-            path.to_string()
-        }
-    } else {
-        path.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{AppConfig, HistoryConfig, WorktreeConfig};
@@ -452,9 +437,10 @@ mod tests {
     #[test]
     fn safe_paths_includes_default_worktrees_path() {
         let config = AppConfig::default();
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.safe_paths(),
-            vec!["~/.agenthub/worktrees".to_string()]
+            vec![format!("{home}/.agenthub/worktrees")]
         );
     }
 
@@ -469,9 +455,10 @@ mod tests {
             ]),
             ..Default::default()
         };
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.safe_paths(),
-            vec!["~/.agenthub/worktrees".to_string(), "/tmp/a".to_string()]
+            vec![format!("{home}/.agenthub/worktrees"), "/tmp/a".to_string()]
         );
     }
 

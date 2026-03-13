@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AgentRecord } from "../../api";
 import type { WorkerDraft } from "./member_helpers";
 import {
   buildTeamForgeCleanupWarning,
@@ -28,6 +29,25 @@ function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
   };
 }
 
+function buildForgeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
+  const id = overrides.id ?? "agent-default";
+  return {
+    id,
+    name: `${id}-name`,
+    workdir: `/tmp/${id}`,
+    command: "agenthub",
+    args: ["actor-mcp"],
+    worktree_mode: "use_existing",
+    worktree_repo: null,
+    worktree_ref: null,
+    code_mode: false,
+    status: "created",
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  };
+}
+
 describe("team create helpers", () => {
   it("builds default team spec from form fields with normalized members and steps", () => {
     const spec = buildTeamSpecFromForm(
@@ -45,6 +65,18 @@ describe("team create helpers", () => {
           custom_skills: "custom-worker-skill",
         }),
         buildWorker({ member_id: "   " }),
+      ],
+      [
+        buildForgeAgent({ id: "leader-main", workdir: "/tmp/leader-main" }),
+        buildForgeAgent({
+          id: "worker alpha",
+          name: "worker-alpha",
+          workdir: "/tmp/team-workers/worker-alpha",
+          worktree_mode: "create_worktree",
+          worktree_repo: "/tmp/repos/shiro",
+          worktree_ref: "HEAD",
+          code_mode: true,
+        }),
       ]
     ) as {
       spec_version: number;
@@ -56,6 +88,7 @@ describe("team create helpers", () => {
         description?: string;
         model?: string;
         prompt: string;
+        runtime?: Record<string, unknown>;
         skills: string[];
       }>;
       steps: Array<{
@@ -90,6 +123,22 @@ describe("team create helpers", () => {
         "custom-worker-skill",
       ])
     );
+    expect(spec.members[0]?.runtime).toEqual({
+      name: "leader-main-name",
+      workdir: "/tmp/leader-main",
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: false,
+    });
+    expect(spec.members[1]?.runtime).toEqual({
+      name: "worker-alpha",
+      workdir: "/tmp/team-workers/worker-alpha",
+      worktree_mode: "create_worktree",
+      worktree_repo: "/tmp/repos/shiro",
+      worktree_ref: "HEAD",
+      code_mode: true,
+    });
     expect(spec.steps).toEqual([
       {
         step_key: "leader_plan",
@@ -110,9 +159,17 @@ describe("team create helpers", () => {
   });
 
   it("falls back to single planning step when no workers are provided", () => {
-    const spec = buildTeamSpecFromForm("leader-only", "", "", [], "", []) as {
+    const spec = buildTeamSpecFromForm(
+      "leader-only",
+      "",
+      "",
+      [],
+      "",
+      [],
+      [buildForgeAgent({ id: "leader-only" })]
+    ) as {
       entrypoint: string;
-      members: Array<{ member_id: string; prompt: string }>;
+      members: Array<{ member_id: string; prompt: string; runtime?: Record<string, unknown> }>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
     expect(spec.entrypoint).toBe("leader_plan");
@@ -129,6 +186,14 @@ describe("team create helpers", () => {
     expect(spec.members[0]?.prompt).toContain("Clearance checklist before delegation");
     expect(spec.members[0]?.prompt).toContain("spec.members[].member_id");
     expect(spec.members[0]?.prompt).toContain("Finalization by mode");
+    expect(spec.members[0]?.runtime).toEqual({
+      name: "leader-only-name",
+      workdir: "/tmp/leader-only",
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: false,
+    });
   });
 
   it("parses error message from plain and JSON-formatted errors", () => {

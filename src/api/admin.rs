@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::path_utils::expand_tilde;
 use crate::state::AppState;
 
 #[derive(Debug, serde::Serialize)]
@@ -137,18 +138,6 @@ async fn delete_safe_path(
         )
         .await;
     Ok(Json(serde_json::json!({ "status": "ok" })))
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(stripped) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
-    {
-        return format!("{}/{}", home, stripped);
-    }
-    path.to_string()
 }
 
 fn extract_ip(headers: &HeaderMap) -> Option<String> {

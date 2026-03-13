@@ -560,6 +560,104 @@ async fn teams_api_start_and_stop_team_runtime() {
     assert_eq!(deleted.id, team.id);
 }
 
+#[tokio::test]
+async fn teams_api_start_team_repairs_legacy_worker_runtime_from_prompt_hint() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let now = Utc::now().timestamp();
+    let repo = create_named_worker_test_repo("shiro");
+    let worker_id = "shiro-reviewer";
+    insert_legacy_team_member_agent(&state, worker_id).await;
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&repo)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert shiro repo safe path");
+
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "legacy-worker-repair".to_string(),
+                description: Some("legacy worker config".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {
+                            "member_id":worker_id,
+                            "role":"worker",
+                            "prompt":"Investigate issues in github.com/hawkingrei/shiro and report back."
+                        }
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("insert legacy team");
+
+    let Json(started) = start_team(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("start legacy team");
+    assert_eq!(started.status, crate::team::TeamRuntimeStatus::Running);
+
+    let reviewer = state
+        .agents
+        .get_agent(worker_id)
+        .await
+        .expect("load repaired reviewer agent");
+    assert!(matches!(
+        reviewer.worktree_mode,
+        crate::agent::WorktreeMode::CreateWorktree
+    ));
+    assert_eq!(reviewer.worktree_repo.as_deref(), Some(repo.as_str()));
+    assert_eq!(reviewer.worktree_ref.as_deref(), Some("HEAD"));
+}
+
+#[tokio::test]
+async fn teams_api_start_team_returns_bad_request_for_unrecoverable_worker_runtime() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let worker_id = "ghost-reviewer";
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "legacy-worker-missing-repo".to_string(),
+                description: Some("legacy worker missing repo".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {
+                            "member_id":worker_id,
+                            "role":"worker",
+                            "prompt":"Investigate the issue and report back."
+                        }
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("insert legacy team");
+
+    let err = start_team(State(state), headers, Path(team.id))
+        .await
+        .expect_err("unrecoverable worker runtime should fail");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("team member agent")),
+        "unexpected error body: {body}",
+    );
+}
+
 #[test]
 fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
     let expected = build_team_member_actor_context(

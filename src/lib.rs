@@ -10,6 +10,7 @@ mod auth;
 mod config;
 mod db;
 mod internal;
+mod path_utils;
 mod push;
 mod sse;
 mod state;

@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use super::codec::{is_acp_message, is_dir_empty};
-use super::{AgentHandle, AgentManager, normalize_path};
+use super::{AgentHandle, AgentManager, expand_tilde, normalize_path, worktree_mode_to_str};
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
 use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -767,6 +767,44 @@ impl AgentManager {
             "#,
         )
         .bind(if code_mode { 1 } else { 0 })
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn update_team_member_runtime_config(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+        worktree_mode: WorktreeMode,
+        worktree_repo: Option<&str>,
+        worktree_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let normalized_workdir = expand_tilde(workdir);
+        let normalized_worktree_repo = worktree_repo.map(expand_tilde);
+        self.ensure_safe_path(&normalized_workdir).await?;
+        if let Some(repo) = normalized_worktree_repo.as_deref() {
+            self.ensure_safe_path(repo).await?;
+        }
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET workdir = ?1,
+                worktree_mode = ?2,
+                worktree_repo = ?3,
+                worktree_ref = ?4,
+                updated_at = ?5
+            WHERE id = ?6
+            "#,
+        )
+        .bind(&normalized_workdir)
+        .bind(worktree_mode_to_str(&worktree_mode))
+        .bind(&normalized_worktree_repo)
+        // worktree_ref is a Git ref, not a filesystem path, so tilde expansion is not applicable.
+        .bind(worktree_ref)
         .bind(now)
         .bind(agent_id)
         .execute(&self.db)
