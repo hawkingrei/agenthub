@@ -298,10 +298,10 @@ fn infer_repo_from_member_text(
     if let Some(description) = member.description.as_deref() {
         haystack_parts.push(description.to_ascii_lowercase());
     }
-    if let Some(runtime) = member.runtime.as_ref() {
-        if let Some(name) = runtime.name.as_deref() {
-            haystack_parts.push(name.to_ascii_lowercase());
-        }
+    if let Some(runtime) = member.runtime.as_ref()
+        && let Some(name) = runtime.name.as_deref()
+    {
+        haystack_parts.push(name.to_ascii_lowercase());
     }
     haystack_parts.push(member.member_id.to_ascii_lowercase());
     haystack_parts.push(agent.name.to_ascii_lowercase());
@@ -339,14 +339,14 @@ async fn resolve_worker_runtime_repair(
     }
     let candidates = collect_repo_candidates(&safe_paths);
     let inferred_repo = infer_repo_from_member_text(&candidates, member, agent);
-    Ok(inferred_repo
+    inferred_repo
         .map(|worktree_repo| WorkerRuntimeRepairConfig {
             workdir: agent.workdir.clone(),
             worktree_repo,
             worktree_ref: Some("HEAD".to_string()),
         })
         .map(|config| adjust_worker_runtime_workdir_for_safe_paths(config, &safe_paths))
-        .transpose()?)
+        .transpose()
 }
 
 async fn reconcile_team_member_runtime(
