@@ -1,29 +1,34 @@
 use agent_client_protocol::{
-    Agent, AgentCapabilities, AuthMethod, AuthMethodId, AuthenticateRequest, AuthenticateResponse,
-    CancelNotification, ClientCapabilities, Error, Implementation, InitializeRequest,
-    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
-    LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp, McpServerStdio,
-    NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    ProtocolVersion, SessionCapabilities, SessionId, SessionInfo, SessionListCapabilities,
-    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
-    SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
+    Agent, AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar,
+    AuthMethodId, AuthenticateRequest, AuthenticateResponse, CancelNotification,
+    ClientCapabilities, CloseSessionRequest, CloseSessionResponse, Error, Implementation,
+    InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
+    LoadSessionRequest, LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp,
+    McpServerStdio, NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest,
+    PromptResponse, ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId,
+    SessionInfo, SessionListCapabilities, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
+    SetSessionModelRequest, SetSessionModelResponse,
 };
-use codex_core::auth::AuthMode;
 use codex_core::{
-    NewThread, RolloutRecorder, ThreadManager, ThreadSortKey,
+    CodexAuth, NewThread, RolloutRecorder, ThreadManager, ThreadSortKey,
     auth::{AuthManager, read_codex_api_key_from_env, read_openai_api_key_from_env},
     config::{
         Config,
         types::{McpServerConfig, McpServerTransportConfig},
     },
-    find_thread_path_by_id_str, parse_cursor,
-    protocol::{InitialHistory, ResumedHistory, SessionSource},
+    find_thread_path_by_id_str,
+    models_manager::collaboration_mode_presets::CollaborationModesConfig,
+    parse_cursor,
 };
 use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
-use codex_protocol::{ThreadId, models::ResponseItem, protocol::RolloutItem};
+use codex_protocol::{
+    ThreadId,
+    protocol::{InitialHistory, SessionSource},
+};
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -74,9 +79,13 @@ impl CodexAgent {
         let session_roots: Arc<Mutex<HashMap<SessionId, PathBuf>>> = Arc::default();
         let session_roots_clone = session_roots.clone();
         let thread_manager = ThreadManager::new_with_fs(
-            config.codex_home.clone(),
+            &config,
             auth_manager.clone(),
             SessionSource::Unknown,
+            CollaborationModesConfig {
+                // False for now
+                default_mode_request_user_input: false,
+            },
             Box::new(move |thread_id| {
                 Arc::new(AcpFs::new(
                     Self::session_id_from_thread_id(thread_id),
@@ -151,14 +160,15 @@ impl CodexAgent {
                                 },
                                 env_http_headers: None,
                             },
-                            enabled: true,
                             required: false,
+                            enabled: true,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
                             scopes: None,
+                            oauth_resource: None,
                         },
                     );
                 }
@@ -185,14 +195,15 @@ impl CodexAgent {
                                 env_vars: vec![],
                                 cwd: Some(cwd.clone()),
                             },
-                            enabled: true,
                             required: false,
+                            enabled: true,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
                             scopes: None,
+                            oauth_resource: None,
                         },
                     );
                 }
@@ -228,8 +239,9 @@ impl Agent for CodexAgent {
             .mcp_capabilities(McpCapabilities::new().http(true))
             .load_session(true);
 
-        agent_capabilities.session_capabilities =
-            SessionCapabilities::new().list(SessionListCapabilities::new());
+        agent_capabilities.session_capabilities = SessionCapabilities::new()
+            .close(SessionCloseCapabilities::new())
+            .list(SessionListCapabilities::new());
 
         let mut auth_methods = vec![
             CodexAuthMethod::ChatGpt.into(),
@@ -258,12 +270,12 @@ impl Agent for CodexAgent {
 
         // Check before starting login flow if already authenticated with the same method
         if let Some(auth) = self.auth_manager.auth().await {
-            match (auth.auth_mode(), auth_method) {
+            match (auth, auth_method) {
                 (
-                    AuthMode::ApiKey,
+                    CodexAuth::ApiKey(..),
                     CodexAuthMethod::CodexApiKey | CodexAuthMethod::OpenAiApiKey,
                 )
-                | (AuthMode::Chatgpt, CodexAuthMethod::ChatGpt) => {
+                | (CodexAuth::Chatgpt(..), CodexAuthMethod::ChatGpt) => {
                     return Ok(AuthenticateResponse::new());
                 }
                 _ => {}
@@ -391,15 +403,12 @@ impl Agent for CodexAgent {
         let history = RolloutRecorder::get_rollout_history(&rollout_path)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
-        let (initial_history, rollout_items, repaired_custom_tool_calls) =
-            repair_custom_tool_call_outputs(history);
-        if repaired_custom_tool_calls > 0 {
-            tracing::warn!(
-                session_id = %session_id,
-                repaired_custom_tool_calls,
-                "load_session repaired rollout history with synthetic CustomToolCallOutput items"
-            );
-        }
+
+        let rollout_items = match &history {
+            InitialHistory::Resumed(resumed) => resumed.history.clone(),
+            InitialHistory::Forked(items) => items.clone(),
+            InitialHistory::New => Vec::new(),
+        };
 
         let config = self.build_session_config(&cwd, mcp_servers)?;
 
@@ -407,11 +416,10 @@ impl Agent for CodexAgent {
             thread_id: _,
             thread,
             session_configured: _,
-        } = Box::pin(self.thread_manager.resume_thread_with_history(
+        } = Box::pin(self.thread_manager.resume_thread_from_rollout(
             config.clone(),
-            initial_history,
+            rollout_path,
             self.auth_manager.clone(),
-            false,
         ))
         .await
         .map_err(|e| Error::internal_error().data(e.to_string()))?;
@@ -462,6 +470,7 @@ impl Agent for CodexAgent {
             ],
             None,
             self.config.model_provider_id.as_str(),
+            None,
         )
         .await
         .map_err(|err| Error::internal_error().data(format!("failed to list sessions: {err}")))?;
@@ -500,6 +509,25 @@ impl Agent for CodexAgent {
             .and_then(|value| value.as_str().map(str::to_owned));
 
         Ok(ListSessionsResponse::new(sessions).next_cursor(next_cursor))
+    }
+
+    async fn close_session(
+        &self,
+        request: CloseSessionRequest,
+    ) -> Result<CloseSessionResponse, Error> {
+        self.get_thread(&request.session_id)?.shutdown().await?;
+        self.thread_manager
+            .remove_thread(
+                &ThreadId::from_string(&request.session_id.0)
+                    .map_err(Error::into_internal_error)?,
+            )
+            .await;
+        self.sessions.borrow_mut().remove(&request.session_id);
+        self.session_roots
+            .lock()
+            .unwrap()
+            .remove(&request.session_id);
+        Ok(CloseSessionResponse::new())
     }
 
     async fn prompt(&self, request: PromptRequest) -> Result<PromptResponse, Error> {
@@ -549,8 +577,8 @@ impl Agent for CodexAgent {
         args: SetSessionConfigOptionRequest,
     ) -> Result<SetSessionConfigOptionResponse, Error> {
         info!(
-            "Setting session config option for session: {} (config_id: {}, value: {})",
-            args.session_id, args.config_id.0, args.value.0
+            "Setting session config option for session: {} (config_id: {}, value: {:?})",
+            args.session_id, args.config_id.0, args.value
         );
 
         let thread = self.get_thread(&args.session_id)?;
@@ -561,68 +589,6 @@ impl Agent for CodexAgent {
 
         Ok(SetSessionConfigOptionResponse::new(config_options))
     }
-}
-
-fn repair_custom_tool_call_outputs(
-    history: InitialHistory,
-) -> (InitialHistory, Vec<RolloutItem>, usize) {
-    match history {
-        InitialHistory::Resumed(resumed) => {
-            let (history, inserted) = fill_missing_custom_tool_call_outputs(resumed.history);
-            let replay_items = history.clone();
-            (
-                InitialHistory::Resumed(ResumedHistory {
-                    conversation_id: resumed.conversation_id,
-                    history,
-                    rollout_path: resumed.rollout_path,
-                }),
-                replay_items,
-                inserted,
-            )
-        }
-        InitialHistory::Forked(items) => {
-            let (items, inserted) = fill_missing_custom_tool_call_outputs(items);
-            let replay_items = items.clone();
-            (InitialHistory::Forked(items), replay_items, inserted)
-        }
-        InitialHistory::New => (InitialHistory::New, Vec::new(), 0),
-    }
-}
-
-fn fill_missing_custom_tool_call_outputs(items: Vec<RolloutItem>) -> (Vec<RolloutItem>, usize) {
-    let mut output_call_ids = HashSet::new();
-    for item in &items {
-        if let RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, .. }) = item
-        {
-            output_call_ids.insert(call_id.clone());
-        }
-    }
-
-    let mut inserted = 0;
-    let mut normalized = Vec::with_capacity(items.len());
-    for item in items {
-        let missing_call_id = match &item {
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. })
-                if !output_call_ids.contains(call_id) =>
-            {
-                Some(call_id.clone())
-            }
-            _ => None,
-        };
-        normalized.push(item);
-        if let Some(call_id) = missing_call_id {
-            output_call_ids.insert(call_id.clone());
-            inserted += 1;
-            normalized.push(RolloutItem::ResponseItem(
-                ResponseItem::CustomToolCallOutput {
-                    call_id,
-                    output: "aborted".to_string(),
-                },
-            ));
-        }
-    }
-
-    (normalized, inserted)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -645,19 +611,31 @@ impl From<CodexAuthMethod> for AuthMethodId {
 impl From<CodexAuthMethod> for AuthMethod {
     fn from(method: CodexAuthMethod) -> Self {
         match method {
-            CodexAuthMethod::ChatGpt => Self::new(method, "Login with ChatGPT").description(
-                "Use your ChatGPT login with Codex CLI (requires a paid ChatGPT subscription)",
+            CodexAuthMethod::ChatGpt => Self::Agent(
+                AuthMethodAgent::new(method, "Login with ChatGPT").description(
+                    "Use your ChatGPT login with Codex CLI (requires a paid ChatGPT subscription)",
+                ),
             ),
-            CodexAuthMethod::CodexApiKey => {
-                Self::new(method, format!("Use {CODEX_API_KEY_ENV_VAR}")).description(format!(
+            CodexAuthMethod::CodexApiKey => Self::EnvVar(
+                AuthMethodEnvVar::new(
+                    method,
+                    format!("Use {CODEX_API_KEY_ENV_VAR}"),
+                    vec![AuthEnvVar::new(CODEX_API_KEY_ENV_VAR)],
+                )
+                .description(format!(
                     "Requires setting the `{CODEX_API_KEY_ENV_VAR}` environment variable."
-                ))
-            }
-            CodexAuthMethod::OpenAiApiKey => {
-                Self::new(method, format!("Use {OPENAI_API_KEY_ENV_VAR}")).description(format!(
+                )),
+            ),
+            CodexAuthMethod::OpenAiApiKey => Self::EnvVar(
+                AuthMethodEnvVar::new(
+                    method,
+                    format!("Use {OPENAI_API_KEY_ENV_VAR}"),
+                    vec![AuthEnvVar::new(OPENAI_API_KEY_ENV_VAR)],
+                )
+                .description(format!(
                     "Requires setting the `{OPENAI_API_KEY_ENV_VAR}` environment variable."
-                ))
-            }
+                )),
+            ),
         }
     }
 }
@@ -703,54 +681,5 @@ fn format_session_title(message: &str) -> Option<String> {
         None
     } else {
         Some(truncate_graphemes(trimmed, SESSION_TITLE_MAX_GRAPHEMES))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::fill_missing_custom_tool_call_outputs;
-    use codex_protocol::{models::ResponseItem, protocol::RolloutItem};
-
-    #[test]
-    fn fill_missing_custom_tool_call_outputs_inserts_synthetic_output() {
-        let call_id = "call_1".to_string();
-        let items = vec![RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
-            id: None,
-            status: None,
-            call_id: call_id.clone(),
-            input: "{}".to_string(),
-            name: "apply_patch".to_string(),
-        })];
-
-        let (repaired, inserted) = fill_missing_custom_tool_call_outputs(items);
-        assert_eq!(inserted, 1);
-        assert_eq!(repaired.len(), 2);
-        assert!(matches!(
-            repaired[1],
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { ref call_id, ref output })
-            if call_id == "call_1" && output == "aborted"
-        ));
-    }
-
-    #[test]
-    fn fill_missing_custom_tool_call_outputs_keeps_existing_output() {
-        let call_id = "call_2".to_string();
-        let items = vec![
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
-                id: None,
-                status: None,
-                call_id: call_id.clone(),
-                input: "{}".to_string(),
-                name: "apply_patch".to_string(),
-            }),
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
-                call_id: call_id.clone(),
-                output: "ok".to_string(),
-            }),
-        ];
-
-        let (repaired, inserted) = fill_missing_custom_tool_call_outputs(items);
-        assert_eq!(inserted, 0);
-        assert_eq!(repaired.len(), 2);
     }
 }

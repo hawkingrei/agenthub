@@ -1,6 +1,6 @@
 [package]
 name = "agenthub-codex-acp"
-version = "0.1.0"
+version = "0.10.0"
 edition = "2024"
 authors = ["AgentHub <dev@agenthub.local>"]
 license = "Apache-2.0"
@@ -17,18 +17,19 @@ name = "agenthub_codex_acp"
 path = "src/lib.rs"
 
 [dependencies]
-agent-client-protocol = { version = "=0.9.4", features = ["unstable"] }
+agent-client-protocol = { version = "=0.10.2", features = ["unstable"] }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-arg0 = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-core = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-mcp-server = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-protocol = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-login = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-utils-approval-presets = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
-codex-utils-cli = { git = "https://github.com/zed-industries/codex", rev = "c34b30a3c128bb75fcec27ef838c93c99b92fc61" }
+codex-apply-patch = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-arg0 = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-core = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-mcp-server = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-protocol = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-login = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-shell-command = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-utils-approval-presets = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-utils-cli = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
 heck = "0.5.0"
 itertools = "0.14.0"
 regex-lite = "0.1"
