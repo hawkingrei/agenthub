@@ -2683,7 +2683,6 @@ export function TeamPage(props: TeamPageProps) {
         onSendMessage={onSendTaskMessage}
         onRefreshMessages={refreshTaskMessages}
         messages={taskMessages}
-        mailboxMessages={snapshot?.mailbox.recent_messages ?? []}
         seenByMessageId={conversationSeenByMessageId}
         humanActorId={HUMAN_MAILBOX_ACTOR_ID}
         memberLiveStates={selectedTeamMemberLiveStates}

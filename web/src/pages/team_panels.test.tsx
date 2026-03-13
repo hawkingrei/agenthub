@@ -1495,7 +1495,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("running");
   });
 
-  it("TeamTaskPanel renders delivered mailbox replies to the human in shared thread", () => {
+  it("TeamTaskPanel renders canonical agent replies already persisted in shared thread", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     act(() => {
@@ -1515,19 +1515,11 @@ describe("team panels interactions", () => {
               route: "group_chat",
               payload: { type: "chat_message", text: "hello team" },
             }),
-          ]}
-          mailboxMessages={[
-            buildMailboxMessage(9, {
+            buildTaskMessage(2, {
               from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
+              to_actor_id: null,
+              route: "group_chat",
               payload: { type: "chat_message", text: "leader reply visible in all" },
-            }),
-            buildMailboxMessage(10, {
-              from_actor_id: "leader-agent",
-              to_actor_id: "worker-agent",
-              status: "delivered",
-              payload: { type: "chat_message", text: "worker-only mailbox message" },
             }),
           ]}
           seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
@@ -1557,14 +1549,13 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Seen by 2 agents"));
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
-    expect(container.textContent).not.toContain("worker-only mailbox message");
-    expect(container.textContent).toContain("reply");
+    expect(container.textContent).not.toContain("Seen by 0 agents");
     expect(container.textContent).toContain("You");
     expect(container.textContent).toContain("LeaderAgent");
     expect(container.textContent).toContain("worker-agent");
   });
 
-  it("TeamTaskPanel renders mailbox chat_message payload strings as thread text", () => {
+  it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     act(() => {
@@ -1577,12 +1568,11 @@ describe("team panels interactions", () => {
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
           onRefreshMessages={vi.fn()}
-          messages={[]}
-          mailboxMessages={[
-            buildMailboxMessage(11, {
+          messages={[
+            buildTaskMessage(11, {
               from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
+              to_actor_id: null,
+              route: "group_chat",
               payload:
                 '{"type":"chat_message","current_phase":"Team formation","text":"rendered from string payload"}',
             }),
@@ -1600,45 +1590,6 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("rendered from string payload");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
-    expect(toPrettyJson).not.toHaveBeenCalled();
-  });
-
-  it("TeamTaskPanel renders plain markdown string mailbox payloads without JSON escaping", () => {
-    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
-
-    act(() => {
-      root.render(
-        <TeamTaskPanel
-          developerMode={true}
-          tasksLoading={false}
-          onRefreshTasks={vi.fn()}
-          messageDraft=""
-          onMessageDraftChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
-          messages={[]}
-          mailboxMessages={[
-            buildMailboxMessage(12, {
-              from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
-              payload: "line one\n\n- line two",
-            }),
-          ]}
-          humanActorId="user"
-          memberLiveStates={[]}
-          memberIds={["leader-agent"]}
-          messagesLoading={false}
-          busy={null}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={toPrettyJson}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("line one");
-    expect(container.textContent).toContain("line two");
-    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
