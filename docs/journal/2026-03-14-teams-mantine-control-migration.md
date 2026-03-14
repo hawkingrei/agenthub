@@ -23,6 +23,8 @@ Scope in this checkpoint:
   - workspace runtime status now uses Mantine `Badge`
   - `Start Team` / `Stop Team` now use Mantine `Button`
   - runtime badge color mapping is centralized in `page_helpers.ts`
+  - warning notices now use Mantine `Alert`
+  - empty-state `Guided Wizard` / `Manual Spec` actions now use Mantine `Button`
 
 The team actions overflow menu was intentionally left on the existing custom popup implementation for now. The Mantine `Menu` variant introduced more test/runtime instability than value in this slice, while the input/filter/select migration delivered the higher-yield framework convergence.
 
@@ -36,6 +38,7 @@ The team actions overflow menu was intentionally left on the existing custom pop
 - `cd web && npm run lint -- src/pages/team_task_panel.tsx src/pages/team_panels.test.tsx`
 - `cd web && npx vitest run src/pages/team/page_helpers.test.ts --pool=threads --maxWorkers=1`
 - `cd web && npm run lint -- src/pages/team_page.tsx src/pages/team/page_helpers.ts src/pages/team/page_helpers.test.ts`
+- `cd web && npm run lint -- src/pages/team_page.tsx src/pages/team_panels.test.tsx`
 
 ### Chrome DevTools MCP baseline/regression note
 

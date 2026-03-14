@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Badge, Button, Group, Menu, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, Group, Menu, Tooltip } from "@mantine/core";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
@@ -2902,17 +2902,18 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
       {warning && (
-        <div className="team-create-warning rounded-xl" role="status">
-          <p className="text-sm text-amber-900">{warning}</p>
-          <button
-            type="button"
-            className={panelSecondaryButtonClassName}
-            onClick={() => setWarning(null)}
-            aria-label="Dismiss warning"
-          >
-            Dismiss
-          </button>
-        </div>
+        <Alert
+          color="yellow"
+          variant="light"
+          radius="xl"
+          role="status"
+          title="Team runtime update"
+          icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
+          withCloseButton
+          onClose={() => setWarning(null)}
+        >
+          <span className="text-sm text-amber-900">{warning}</span>
+        </Alert>
       )}
 
       <div
@@ -2961,22 +2962,25 @@ export function TeamPage(props: TeamPageProps) {
               <p className={teamSectionBodyTextClassName}>
                 Create a team or select one from the left panel to start team conversations and supervise execution.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
+              <Group gap="sm" mt="md">
+                <Button
                   type="button"
-                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                  radius="md"
+                  color="dark"
                   onClick={openCreateTeamWizardModal}
                 >
                   Guided Wizard
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                  radius="md"
+                  variant="default"
+                  color="gray"
                   onClick={openCreateTeamManualModal}
                 >
                   Manual Spec
-                </button>
-              </div>
+                </Button>
+              </Group>
             </div>
           )}
 
