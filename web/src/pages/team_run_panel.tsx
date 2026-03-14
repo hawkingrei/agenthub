@@ -1,8 +1,8 @@
+import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
@@ -127,18 +127,15 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         <div className={RUN_PANEL_LIST_HEAD_CLASS}>
           <h3 className={RUN_PANEL_LIST_TITLE_CLASS}>Runs</h3>
           <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-            <select
-              className={`${TEAM_PANEL_INPUT_CLASS} min-w-0 sm:min-w-[164px]`}
-              value={runStatusFilter}
-              onChange={(event) => onRunStatusFilterChange(event.target.value as TeamRunStatusFilter)}
+            <NativeSelect
+              className="min-w-0 sm:min-w-[164px]"
               aria-label="Run status filter"
-            >
-              {runStatusFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              value={runStatusFilter}
+              onChange={(event) => onRunStatusFilterChange(event.currentTarget.value as TeamRunStatusFilter)}
+              data={runStatusFilterOptions}
+              size="sm"
+              radius="md"
+            />
             <button
               onClick={() => {
                 void onRefreshRuns();

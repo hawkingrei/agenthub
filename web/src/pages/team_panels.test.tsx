@@ -44,6 +44,14 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }) as MediaQueryList) as typeof window.matchMedia;
 }
 
+if (typeof globalThis.ResizeObserver !== "function") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as typeof ResizeObserver;
+}
+
 function required<T>(value: T | null | undefined, message: string): T {
   if (value == null) {
     throw new Error(message);
@@ -63,6 +71,17 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
     candidate.textContent?.includes(text)
   ) as HTMLButtonElement | undefined;
   return required(button, `button not found: ${text}`);
+}
+
+function findInteractiveByText(
+  container: ParentNode,
+  text: string,
+  selectors = "button, label, [role='menuitem']"
+): HTMLElement {
+  const target = Array.from(container.querySelectorAll(selectors)).find((candidate) =>
+    candidate.textContent?.includes(text)
+  ) as HTMLElement | undefined;
+  return required(target, `interactive element not found: ${text}`);
 }
 
 function findButtonByAriaLabel(container: HTMLElement, label: string): HTMLButtonElement {
@@ -386,9 +405,9 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Guided Wizard"));
+    clickElement(findInteractiveByText(document.body, "Guided Wizard"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Manual Spec"));
+    clickElement(findInteractiveByText(document.body, "Manual Spec"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
@@ -398,7 +417,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("filtered=1 total=2");
     clickElement(findButtonByAriaLabel(container, "Clear team filter"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Show Team Details"));
+    clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");
     expect(container.textContent).toContain("workers=2");
@@ -489,7 +508,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("worker · working");
     expect(container.textContent).not.toContain("team-1");
 
-    clickElement(findButtonByText(container, "Operations"));
+    clickElement(findInteractiveByText(container, "Operations", "button, label"));
     expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
     expect(container.textContent).toContain("Utilities 1");
     expect(container.textContent).not.toContain("Channels 1");
@@ -551,7 +570,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Channels & Agents"));
+    clickElement(findInteractiveByText(container, "Channels & Agents", "button, label"));
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
 
     act(() => {
@@ -641,7 +660,8 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={true}
           busy={null}
@@ -665,7 +685,8 @@ describe("team panels interactions", () => {
           runsHasMore={true}
           selectedTeamId="team-1"
           onLoadMoreRuns={onLoadMoreRuns}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -692,7 +713,8 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={true}
           busy={null}
@@ -713,7 +735,8 @@ describe("team panels interactions", () => {
           runsHasMore={false}
           selectedTeamId={null}
           onLoadMoreRuns={() => {}}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -726,7 +749,8 @@ describe("team panels interactions", () => {
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={false}
           busy={null}
@@ -747,7 +771,8 @@ describe("team panels interactions", () => {
           runsHasMore={false}
           selectedTeamId="team-1"
           onLoadMoreRuns={() => {}}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -1630,54 +1655,56 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamTasksPanel
-          developerMode={true}
-          tasks={[
-            buildPanelTask("task-1", {
-              title: "Investigate bug",
-              status: "open",
-              created_at: 100,
-              updated_at: 200,
-            }),
-            buildPanelTask("task-2", {
-              title: "Prepare rollout",
-              status: "in_progress",
-              context: { owner: "leader" },
-              created_at: 90,
-              updated_at: 220,
-            }),
-          ]}
-          tasksLoading={false}
-          selectedTaskId="task-2"
-          onSelectedTaskIdChange={onSelectedTaskIdChange}
-          onRefreshTasks={onRefreshTasks}
-          newTaskTitle="New task draft"
-          onNewTaskTitleChange={onNewTaskTitleChange}
-          onCreateTask={onCreateTask}
-          busy={null}
-          compilePreviewContextId="ctx-preview"
-          onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
-          onCompileTaskRunPreview={onCompileTaskRunPreview}
-          canCompileTask={true}
-          compiledRunPreview={{
-            conversation_id: "conv-77",
-            run_payload: {
-              context_id: "ctx-preview",
-              input: { objective: "ship" },
-            },
-            plan: { steps: ["review", "ship"] },
-          }}
-          onUseCompiledRunPayload={onUseCompiledRunPayload}
-          onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamTasksPanel
+            developerMode={true}
+            tasks={[
+              buildPanelTask("task-1", {
+                title: "Investigate bug",
+                status: "open",
+                created_at: 100,
+                updated_at: 200,
+              }),
+              buildPanelTask("task-2", {
+                title: "Prepare rollout",
+                status: "in_progress",
+                context: { owner: "leader" },
+                created_at: 90,
+                updated_at: 220,
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-2"
+            onSelectedTaskIdChange={onSelectedTaskIdChange}
+            onRefreshTasks={onRefreshTasks}
+            newTaskTitle="New task draft"
+            onNewTaskTitleChange={onNewTaskTitleChange}
+            onCreateTask={onCreateTask}
+            busy={null}
+            compilePreviewContextId="ctx-preview"
+            onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
+            onCompileTaskRunPreview={onCompileTaskRunPreview}
+            canCompileTask={true}
+            compiledRunPreview={{
+              conversation_id: "conv-77",
+              run_payload: {
+                context_id: "ctx-preview",
+                input: { objective: "ship" },
+              },
+              plan: { steps: ["review", "ship"] },
+            }}
+            onUseCompiledRunPayload={onUseCompiledRunPayload}
+            onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
-    clickElement(findButtonByText(container, "In progress"));
+    clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
         container.querySelector('input[placeholder="New task title"]') as HTMLInputElement | null,
@@ -1715,37 +1742,39 @@ describe("team panels interactions", () => {
   it("TeamTasksPanel keeps details aligned with the active filter", () => {
     act(() => {
       root.render(
-        <TeamTasksPanel
-          developerMode={false}
-          tasks={[
-            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
-            buildPanelTask("task-progress", {
-              title: "Prepare rollout",
-              status: "in_progress",
-            }),
-          ]}
-          tasksLoading={false}
-          selectedTaskId="task-progress"
-          onSelectedTaskIdChange={vi.fn()}
-          onRefreshTasks={vi.fn()}
-          newTaskTitle=""
-          onNewTaskTitleChange={vi.fn()}
-          onCreateTask={vi.fn()}
-          busy={null}
-          compilePreviewContextId=""
-          onCompilePreviewContextIdChange={vi.fn()}
-          onCompileTaskRunPreview={vi.fn()}
-          canCompileTask={false}
-          compiledRunPreview={null}
-          onUseCompiledRunPayload={vi.fn()}
-          onCreateRunFromCompiledPreview={vi.fn()}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamTasksPanel
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            newTaskTitle=""
+            onNewTaskTitleChange={vi.fn()}
+            onCreateTask={vi.fn()}
+            busy={null}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
-    clickElement(findButtonByText(container, "Open"));
+    clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutCompile this task");
   });
