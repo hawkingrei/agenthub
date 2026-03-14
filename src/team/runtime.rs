@@ -496,7 +496,8 @@ pub async fn stop_team_runtime(
 #[cfg(test)]
 mod tests {
     use super::{
-        TeamRuntimeStartError, WorkerRuntimeRepairConfig, adjust_worker_runtime_workdir_for_safe_paths,
+        TeamRuntimeStartError, WorkerRuntimeRepairConfig,
+        adjust_worker_runtime_workdir_for_safe_paths,
     };
     use crate::path_utils::expand_tilde;
 

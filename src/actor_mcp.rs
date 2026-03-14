@@ -13,7 +13,6 @@ use crate::team::TeamManager;
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
-const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
@@ -74,7 +73,6 @@ fn actor_mcp_usage() -> &'static str {
 Environment fallback:
   AGENTHUB_ACTOR_TEAM_ID
   AGENTHUB_ACTOR_CURRENT_RUN_ID
-  AGENTHUB_ACTOR_RUN_ID
   AGENTHUB_ACTOR_ID
   AGENTHUB_ACTOR_AGENT_ID
   AGENTHUB_ACTOR_CHANNEL
@@ -174,9 +172,8 @@ where
     }
 
     let team_id = take_optional(team_id).or_else(|| env_lookup(ACTOR_RUNTIME_TEAM_ID_ENV));
-    let current_run_id = take_optional(run_id)
-        .or_else(|| env_lookup(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV))
-        .or_else(|| env_lookup(ACTOR_RUNTIME_RUN_ID_ENV));
+    let current_run_id =
+        take_optional(run_id).or_else(|| env_lookup(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV));
     let actor_id = take_required(
         actor_id
             .or_else(|| env_lookup(ACTOR_RUNTIME_ACTOR_ID_ENV))
@@ -879,6 +876,25 @@ mod tests {
         let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
             .expect("parse actor mcp context");
         assert_eq!(context.default_channel, DEFAULT_ACTOR_CHANNEL);
+    }
+
+    #[test]
+    fn parse_actor_mcp_context_ignores_legacy_run_env_alias() {
+        let env = [
+            (
+                "AGENTHUB_ACTOR_RUN_ID".to_string(),
+                "run-legacy-only".to_string(),
+            ),
+            (
+                ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
+                "planner".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+        let context = parse_actor_mcp_context_with_env(&[], |key| env.get(key).cloned())
+            .expect("parse actor mcp context");
+        assert!(context.current_run_id.is_none());
     }
 
     #[test]

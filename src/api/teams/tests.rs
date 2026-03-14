@@ -909,7 +909,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             command: "/bin/sh".to_string(),
             args: vec![
                 "-c".to_string(),
-                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
+                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
             ],
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
@@ -975,10 +975,6 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
     assert!(
         snapshot.contains("current_run=run-env-check"),
         "missing AGENTHUB_ACTOR_CURRENT_RUN_ID in process env output: {snapshot}"
-    );
-    assert!(
-        snapshot.contains("run=run-env-check"),
-        "missing AGENTHUB_ACTOR_RUN_ID in process env output: {snapshot}"
     );
     assert!(
         snapshot.contains("actor=planner"),
