@@ -1,5 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Menu } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Menu,
+  NativeSelect,
+  Stepper,
+  Tabs,
+  TextInput,
+  Textarea,
+  Tooltip,
+} from "@mantine/core";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
@@ -24,7 +36,6 @@ import {
 import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
-import { StatusBadge } from "../components/status_badge";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
@@ -94,6 +105,7 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
@@ -145,8 +157,6 @@ import {
   TEAM_CREATE_ACTIONS_BAR_CLASS,
   TEAM_CREATE_MODAL_BACKDROP_CLASS,
   TEAM_CREATE_MODAL_CARD_CLASS,
-  TEAM_CREATE_NOTE_INFO_CLASS,
-  TEAM_CREATE_NOTE_WARNING_CLASS,
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_IDLE_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
@@ -155,11 +165,7 @@ import {
   TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS,
   TEAM_CREATE_WORKER_CARD_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_GHOST_BUTTON_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -218,6 +224,7 @@ type TeamPageProps = {
   developerMode: boolean;
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
+type TeamCreateNoteTone = "info" | "warning";
 
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
   "conversation",
@@ -274,10 +281,7 @@ function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
 const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
-const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
-const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
 const teamSectionCardClassName =
   "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
 const teamSectionCardLargeClassName =
@@ -298,16 +302,6 @@ const teamCreateModalHeaderClassName =
   "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
 const teamCreateModalTitleClassName =
   "text-lg font-semibold tracking-tight text-ui-text-primary";
-const teamCreateStageClassName =
-  "team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition";
-const teamCreateStageActiveClassName =
-  `${teamCreateStageClassName} active border-brand-primary bg-brand-primary text-ui-text-inverse shadow-sm`;
-const teamCreateStageCompletedClassName =
-  `${teamCreateStageClassName} completed border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]`;
-const teamCreateStageLockedClassName =
-  `${teamCreateStageClassName} locked cursor-not-allowed border-ui-border bg-ui-surface-muted text-ui-text-muted`;
-const teamCreateStageIdleClassName =
-  `${teamCreateStageClassName} border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
 const teamCreateCheckItemReadyClassName =
   "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
 const teamCreateCheckItemPendingClassName =
@@ -320,12 +314,11 @@ const teamCreateLaunchMetaClassName =
   "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
 const teamCreateLaunchMetaItemClassName =
   "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
-const modalFieldClassName =
-  "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
-const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 const teamRunMetaItemClassName =
   "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
 const workspaceToolbarClassName =
+  "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+const workspacePrimaryTabsListClassName =
   "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
 const workspaceToolbarButtonBaseClassName =
   "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
@@ -333,6 +326,8 @@ const workspaceToolbarButtonActiveClassName =
   `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
 const workspaceToolbarButtonIdleClassName =
   `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+const workspacePrimaryTabClassName =
+  "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition hover:bg-ui-surface hover:text-ui-text-primary data-[active=true]:border data-[active=true]:border-ui-border/80 data-[active=true]:bg-ui-surface data-[active=true]:text-ui-text-primary data-[active=true]:shadow-sm";
 const workspaceNoticeClassName =
   "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
 const workspaceNoticeTextClassName =
@@ -350,6 +345,47 @@ const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
   { value: "tasks", label: "Tasks", icon: "bi bi-list-check" },
   { value: "mailbox", label: "Mailbox", icon: "bi bi-inboxes" },
 ];
+
+const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
+  TeamCreateNoteTone,
+  { color: "blue" | "yellow"; title: string; iconClassName: string }
+> = {
+  info: {
+    color: "blue",
+    title: "Team note",
+    iconClassName: "bi bi-info-circle",
+  },
+  warning: {
+    color: "yellow",
+    title: "Action required",
+    iconClassName: "bi bi-exclamation-triangle",
+  },
+};
+
+const TeamCreateNote = React.memo(function TeamCreateNote({
+  tone,
+  children,
+  action,
+}: {
+  tone: TeamCreateNoteTone;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  const config = TEAM_CREATE_NOTE_ALERT_CONFIG[tone];
+  return (
+    <Alert
+      color={config.color}
+      variant="light"
+      radius="xl"
+      mt="md"
+      title={config.title}
+      icon={<i className={config.iconClassName} aria-hidden="true" />}
+    >
+      <div className="text-sm text-ui-text-secondary">{children}</div>
+      {action ? <div className="mt-3">{action}</div> : null}
+    </Alert>
+  );
+});
 
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
@@ -835,6 +871,11 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveTeamRuntimeStatus(selectedTeamMemberSummary, selectedTeamRuntime),
     [selectedTeamMemberSummary, selectedTeamRuntime]
   );
+  const selectedTeamRuntimeControlTone = useMemo(
+    () => resolveTeamRuntimeControlTone(selectedTeamRuntimeStatus.status),
+    [selectedTeamRuntimeStatus.status]
+  );
+  const primaryWorkspaceTabValue = TEAM_PRIMARY_WORKSPACE_TABS.has(tab) ? tab : null;
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -2683,7 +2724,6 @@ export function TeamPage(props: TeamPageProps) {
         onSendMessage={onSendTaskMessage}
         onRefreshMessages={refreshTaskMessages}
         messages={taskMessages}
-        mailboxMessages={snapshot?.mailbox.recent_messages ?? []}
         seenByMessageId={conversationSeenByMessageId}
         humanActorId={HUMAN_MAILBOX_ACTOR_ID}
         memberLiveStates={selectedTeamMemberLiveStates}
@@ -2727,29 +2767,33 @@ export function TeamPage(props: TeamPageProps) {
         <p className={teamSectionBodyTextClassName}>
           Debug entry for manually starting a Team run.
         </p>
-        <div className="form-row mt-3">
-          <input
-            className={panelInputClassName}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+          <TextInput
+            className="flex-1"
+            radius="md"
             placeholder="context_id (optional, auto-generated when empty)"
             value={runContextId}
             onChange={(event) => setRunContextId(event.target.value)}
           />
-          <button
-            className={panelPrimaryButtonClassName}
+          <Button
+            radius="md"
+            color="dark"
             onClick={onCreateRun}
             disabled={!canCreateRun}
             title={runInputValidation.error ?? "Create run"}
           >
             Create Run
-          </button>
+          </Button>
         </div>
         <p className={teamSectionHintTextClassName}>
           <code>context_id</code> can be empty. Use one when you want retries/resume grouped
           under the same context.
         </p>
-        <textarea
-          className={`${TEAM_PANEL_TEXTAREA_CLASS} mt-3`}
-          rows={8}
+        <Textarea
+          className="mt-3"
+          radius="md"
+          minRows={8}
+          autosize
           placeholder='Optional JSON input, e.g. {"task":"sync"}'
           aria-label="Run input JSON"
           spellCheck={false}
@@ -2761,6 +2805,7 @@ export function TeamPage(props: TeamPageProps) {
               void onCreateRun();
             }
           }}
+          styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
         />
         {runInputValidation.error ? (
           <p className="mt-2 text-xs text-rose-600" role="alert">
@@ -2772,9 +2817,12 @@ export function TeamPage(props: TeamPageProps) {
           </p>
         )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() =>
               setRunInput(
                 JSON.stringify(
@@ -2789,17 +2837,23 @@ export function TeamPage(props: TeamPageProps) {
             }
           >
             Use Example JSON
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => setRunInput("{}")}
           >
             Set Empty Object
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => {
               const parsed = runInputValidation.parsed;
               if (parsed === undefined && runInput.trim().length === 0) {
@@ -2814,15 +2868,18 @@ export function TeamPage(props: TeamPageProps) {
             disabled={runInputHasError}
           >
             Format JSON
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => setRunInput("")}
             disabled={runInput.trim().length === 0}
           >
             Clear
-          </button>
+          </Button>
         </div>
         <p className={teamSectionHintTextClassName}>
           Leave empty to submit default empty input <code>{`{}`}</code>.
@@ -2833,20 +2890,24 @@ export function TeamPage(props: TeamPageProps) {
         <p className={teamSectionBodyTextClassName}>
           Load by <code>run_id</code> for the currently selected team only.
         </p>
-        <div className="form-row mt-3">
-          <input
-            className={panelInputClassName}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+          <TextInput
+            className="flex-1"
+            radius="md"
             placeholder="existing run_id"
             value={runLookupId}
             onChange={(event) => setRunLookupId(event.target.value)}
           />
-          <button
-            className={panelSecondaryButtonClassName}
+          <Button
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={onLoadRunById}
             disabled={busy === "load-run"}
+            loading={busy === "load-run"}
           >
             Load Run
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -2899,17 +2960,18 @@ export function TeamPage(props: TeamPageProps) {
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
       {warning && (
-        <div className="team-create-warning rounded-xl" role="status">
-          <p className="text-sm text-amber-900">{warning}</p>
-          <button
-            type="button"
-            className={panelSecondaryButtonClassName}
-            onClick={() => setWarning(null)}
-            aria-label="Dismiss warning"
-          >
-            Dismiss
-          </button>
-        </div>
+        <Alert
+          color="yellow"
+          variant="light"
+          radius="xl"
+          role="status"
+          title="Team runtime update"
+          icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
+          withCloseButton
+          onClose={() => setWarning(null)}
+        >
+          <span className="text-sm text-amber-900">{warning}</span>
+        </Alert>
       )}
 
       <div
@@ -2958,22 +3020,25 @@ export function TeamPage(props: TeamPageProps) {
               <p className={teamSectionBodyTextClassName}>
                 Create a team or select one from the left panel to start team conversations and supervise execution.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
+              <Group gap="sm" mt="md">
+                <Button
                   type="button"
-                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                  radius="md"
+                  color="dark"
                   onClick={openCreateTeamWizardModal}
                 >
                   Guided Wizard
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                  radius="md"
+                  variant="default"
+                  color="gray"
                   onClick={openCreateTeamManualModal}
                 >
                   Manual Spec
-                </button>
-              </div>
+                </Button>
+              </Group>
             </div>
           )}
 
@@ -2993,43 +3058,90 @@ export function TeamPage(props: TeamPageProps) {
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      label={selectedTeamRuntimeStatus.label}
-                      tone={selectedTeamRuntimeStatus.tone}
-                      title={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
-                    />
-                    <button
-                      type="button"
-                      className={panelSecondaryButtonClassName}
-                      onClick={onStartTeamRuntime}
-                      disabled={busy === "start-team" || selectedTeamRuntimeStatus.status === "running"}
+                    <Tooltip
+                      label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
+                      withArrow
                     >
-                      {busy === "start-team" ? "Starting Team..." : "Start Team"}
-                    </button>
-                    <button
-                      type="button"
-                      className={panelSecondaryButtonClassName}
-                      onClick={onStopTeamRuntime}
-                      disabled={busy === "stop-team" || selectedTeamRuntimeStatus.status === "stopped"}
-                    >
-                      {busy === "stop-team" ? "Stopping Team..." : "Stop Team"}
-                    </button>
-                    <div className={workspaceToolbarClassName}>
-                      {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
-                        <button
-                          key={item.value}
-                          type="button"
-                          className={
-                            tab === item.value
-                              ? workspaceToolbarButtonActiveClassName
-                              : workspaceToolbarButtonIdleClassName
-                          }
-                          onClick={() => setTab(item.value)}
+                      <Group
+                        gap={8}
+                        wrap="nowrap"
+                        className="rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-2 py-1"
+                      >
+                        <Badge
+                          variant="light"
+                          color={selectedTeamRuntimeControlTone.statusColor}
+                          radius="sm"
                         >
-                          <i className={item.icon} aria-hidden="true" />
-                          <span>{item.label}</span>
-                        </button>
-                      ))}
+                          {selectedTeamRuntimeStatus.label}
+                        </Badge>
+                        <Badge
+                          variant="dot"
+                          color={selectedTeamRuntimeControlTone.countColor}
+                          radius="sm"
+                        >
+                          {`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} online`}
+                        </Badge>
+                      </Group>
+                    </Tooltip>
+                    <Group gap="xs">
+                      <Button
+                        type="button"
+                        size="xs"
+                        radius="md"
+                        variant={
+                          selectedTeamRuntimeStatus.status === "running" ? "default" : "filled"
+                        }
+                        color="dark"
+                        loading={busy === "start-team"}
+                        disabled={
+                          busy === "stop-team" || selectedTeamRuntimeStatus.status === "running"
+                        }
+                        leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                        onClick={onStartTeamRuntime}
+                      >
+                        Start Team
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
+                        loading={busy === "stop-team"}
+                        disabled={
+                          busy === "start-team" || selectedTeamRuntimeStatus.status === "stopped"
+                        }
+                        leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                        onClick={onStopTeamRuntime}
+                      >
+                        Stop Team
+                      </Button>
+                    </Group>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tabs
+                        value={primaryWorkspaceTabValue}
+                        onChange={(value) => {
+                          if (value) {
+                            setTab(value as TeamTab);
+                          }
+                        }}
+                        classNames={{
+                          list: workspacePrimaryTabsListClassName,
+                          tab: workspacePrimaryTabClassName,
+                        }}
+                      >
+                        <Tabs.List>
+                          {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
+                            <Tabs.Tab key={item.value} value={item.value}>
+                              <span className="inline-flex items-center gap-1.5">
+                                <i className={item.icon} aria-hidden="true" />
+                                <span>{item.label}</span>
+                              </span>
+                            </Tabs.Tab>
+                          ))}
+                        </Tabs.List>
+                      </Tabs>
+                      <div className={workspaceToolbarClassName}>
                       <button
                         type="button"
                         className={
@@ -3105,6 +3217,7 @@ export function TeamPage(props: TeamPageProps) {
                           </Menu.Dropdown>
                         </Menu>
                       )}
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -3603,7 +3716,22 @@ export function TeamPage(props: TeamPageProps) {
               </div>
             </div>
 
-            <div className="team-create-progress mt-4 grid gap-2 md:grid-cols-4">
+            <Stepper
+              active={createTeamStage}
+              onStepClick={(index) => onSelectCreateTeamStage(index as CreateTeamStage)}
+              iconPosition="left"
+              className="mt-4"
+              classNames={{
+                steps: "gap-2",
+                step: "min-w-0",
+                stepWrapper: "min-w-0",
+                stepBody: "min-w-0",
+                stepLabel: "text-sm font-semibold text-ui-text-primary",
+                stepDescription: "text-xs text-ui-text-muted",
+                stepIcon: "shadow-sm",
+                separator: "mx-1",
+              }}
+            >
               {CREATE_TEAM_STAGE_TITLES.map((title, index) => {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
@@ -3612,36 +3740,23 @@ export function TeamPage(props: TeamPageProps) {
                   useSpecOverride && stageIndex !== 0 && stageIndex !== 3;
                 const isLocked = isManualSkipped || !canEnterCreateStage(stageIndex);
                 return (
-                  <button
+                  <Stepper.Step
                     key={title}
-                    className={`${
-                      isActive
-                        ? teamCreateStageActiveClassName
-                        : isCompleted
-                          ? teamCreateStageCompletedClassName
-                          : isLocked
-                            ? teamCreateStageLockedClassName
-                          : teamCreateStageIdleClassName
-                    }`}
-                    onClick={() => onSelectCreateTeamStage(stageIndex)}
-                    type="button"
-                    aria-disabled={isLocked && !isActive && !isCompleted}
-                    title={
-                      isLocked && !isActive && !isCompleted
-                        ? isManualSkipped
-                          ? "Manual spec mode skips this stage"
-                          : "Complete previous stage requirements first"
-                        : undefined
+                    label={title}
+                    icon={index + 1}
+                    completedIcon={<i className="bi bi-check-lg" aria-hidden="true" />}
+                    allowStepSelect={!isLocked || isActive || isCompleted}
+                    description={
+                      isManualSkipped
+                        ? "Skipped in manual spec"
+                        : isLocked && !isActive && !isCompleted
+                          ? "Complete previous stage requirements first"
+                          : `Stage ${index + 1}`
                     }
-                    >
-                    <span className="team-create-stage-index text-[11px] font-medium uppercase tracking-wide opacity-80">
-                      #{index + 1}
-                    </span>
-                    <span className="team-create-stage-title text-sm font-semibold">{title}</span>
-                  </button>
+                  />
                 );
               })}
-            </div>
+            </Stepper>
 
             <div className="modal-body mt-4 space-y-4">
               <div className="team-create-checklist grid gap-2 sm:grid-cols-2">
@@ -3669,14 +3784,17 @@ export function TeamPage(props: TeamPageProps) {
                 <div className={teamCreateAgentEntryClassName}>
                   <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
                     <h4 className={teamSectionTitleClassName}>Agent Forge</h4>
-                    <button
-                      className={panelSecondaryButtonClassName}
+                    <Button
+                      size="xs"
+                      radius="md"
+                      variant="default"
+                      color="gray"
                       onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
                       disabled={!canForgeAgentsInStage || forgeAgentBusy}
                       type="button"
                     >
                       {showForgeAgentForm ? "Hide" : "New Agent"}
-                    </button>
+                    </Button>
                   </div>
                   <p className={teamSectionBodyTextClassName}>
                     Role tag follows the current stage. In Team, worker is a role assigned to a
@@ -3687,14 +3805,14 @@ export function TeamPage(props: TeamPageProps) {
                     <span className="text-ui-text-primary">{forgeRoleTag ?? "-"}</span>
                   </div>
                   {!canForgeAgentsInStage && (
-                    <div className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Agent Forge is available only in Leader Forge or Recruit Workers stage.
-                    </div>
+                    </TeamCreateNote>
                   )}
                   {showForgeAgentForm && (
-                    <div className={TEAM_CREATE_NOTE_INFO_CLASS}>
+                    <TeamCreateNote tone="info">
                       Agent create modal is open. Submit to create and auto-assign by role tag.
-                    </div>
+                    </TeamCreateNote>
                   )}
                 </div>
               )}
@@ -3708,24 +3826,26 @@ export function TeamPage(props: TeamPageProps) {
                       the workbench.
                     </p>
                   </div>
-                  <p className={TEAM_CREATE_NOTE_INFO_CLASS}>
+                  <TeamCreateNote tone="info">
                     {useSpecOverride
                       ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
                       : "Guided Wizard entry selected. Continue to Leader Forge next."}
-                  </p>
+                  </TeamCreateNote>
                   {!isMissionBriefReady && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Team name is required before entering the next stage.
-                    </p>
+                    </TeamCreateNote>
                   )}
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="team name"
                     value={newTeamName}
                     onChange={(event) => setNewTeamName(event.target.value)}
                   />
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="description (optional)"
                     value={newTeamDescription}
                     onChange={(event) => setNewTeamDescription(event.target.value)}
@@ -3740,44 +3860,44 @@ export function TeamPage(props: TeamPageProps) {
                     Choose the leader from member agents created in this Team Forge session only.
                   </p>
                   {!isLeaderForgeReady && hasForgeAgents && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Select one forged leader agent to continue.
-                    </p>
+                    </TeamCreateNote>
                   )}
                   {!hasForgeAgents && (
                     <p className={teamSectionBodyTextClassName}>
                       No forged agents yet. Create one in the Agent Forge entry above.
                     </p>
                   )}
-                  <select
-                    className={`${modalFieldClassName} mt-3`}
+                  <NativeSelect
+                    className="mt-3"
+                    radius="md"
                     value={leaderMemberId}
                     onChange={(event) => setLeaderMemberId(event.target.value)}
                     disabled={useSpecOverride || !hasForgeAgents}
-                  >
-                    <option value="">Select forged leader agent</option>
-                    {leaderAgentSelectOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    data={[
+                      { value: "", label: "Select forged leader agent" },
+                      ...leaderAgentSelectOptions.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      })),
+                    ]}
+                  />
                   <div className={TEAM_CREATE_STEP_PREVIEW_CLASS}>
                     <div>agent_id: {leaderMemberId || "-"}</div>
                     <div>workdir: {leaderAgent?.workdir ?? "-"}</div>
                   </div>
-                  <select
-                    className={`${modalFieldClassName} mt-3`}
+                  <NativeSelect
+                    className="mt-3"
+                    radius="md"
                     value={leaderModel}
                     onChange={(event) => setLeaderModel(event.target.value)}
                     disabled={useSpecOverride}
-                  >
-                    {leaderModelOptions.map((option) => (
-                      <option key={option.value || "__default"} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    data={leaderModelOptions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                   <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                     {TEAM_SKILL_OPTIONS.map((skill) => {
                       const selected = leaderSkills.includes(skill);
@@ -3808,20 +3928,24 @@ export function TeamPage(props: TeamPageProps) {
                       );
                     })}
                   </div>
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="leader custom skills (comma separated, optional)"
                     value={leaderCustomSkills}
                     onChange={(event) => setLeaderCustomSkills(event.target.value)}
                     disabled={useSpecOverride}
                   />
-                  <textarea
-                    className={`${modalMonoFieldClassName} mt-3`}
-                    rows={4}
+                  <Textarea
+                    className="mt-3"
+                    radius="md"
+                    minRows={4}
+                    autosize
                     placeholder="leader prompt"
                     value={leaderPrompt}
                     onChange={(event) => setLeaderPrompt(event.target.value)}
                     disabled={useSpecOverride}
+                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                   />
                 </div>
               )}
@@ -3831,15 +3955,22 @@ export function TeamPage(props: TeamPageProps) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h4 className={teamSectionTitleClassName}>Recruit Workers</h4>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        className={panelSecondaryButtonClassName}
+                      <Button
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
                         onClick={onAddWorker}
                         disabled={useSpecOverride || !hasForgeAgents}
+                        type="button"
                       >
                         Add Worker
-                      </button>
-                      <button
-                        className={panelSecondaryButtonClassName}
+                      </Button>
+                      <Button
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
                         onClick={onAddAllRemainingWorkers}
                         disabled={
                           useSpecOverride || !hasForgeAgents || availableWorkerAgentCount === 0
@@ -3847,7 +3978,7 @@ export function TeamPage(props: TeamPageProps) {
                         type="button"
                       >
                         Auto Fill Party
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <p className={teamSectionBodyTextClassName}>
@@ -3856,11 +3987,11 @@ export function TeamPage(props: TeamPageProps) {
                     team level.
                   </p>
                   {unassignedWorkerSlots > 0 && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       {unassignedWorkerSlots} worker slot
                       {unassignedWorkerSlots > 1 ? "s are" : " is"} currently unassigned and will
                       be ignored unless selected.
-                    </p>
+                    </TeamCreateNote>
                   )}
                   <div className="team-create-worker-grid mt-3 grid gap-3 lg:grid-cols-2">
                     {workers.map((worker, index) => {
@@ -3894,36 +4025,41 @@ export function TeamPage(props: TeamPageProps) {
                         >
                           <div className="team-create-worker-head flex items-center justify-between gap-2">
                             <strong>Worker {index + 1}</strong>
-                            <button
-                              className={panelGhostButtonClassName}
+                            <Button
+                              size="xs"
+                              radius="md"
+                              variant="subtle"
+                              color="gray"
                               onClick={() => onRemoveWorker(index)}
                               disabled={useSpecOverride}
                               type="button"
                             >
                               Remove
-                            </button>
+                            </Button>
                           </div>
-                          <select
-                            className={`${modalFieldClassName} mt-3`}
+                          <NativeSelect
+                            className="mt-3"
+                            radius="md"
                             value={worker.member_id}
                             onChange={(event) =>
                               onUpdateWorker(index, "member_id", event.target.value)
                             }
                             disabled={useSpecOverride || !hasForgeAgents}
-                          >
-                            <option value="">Select forged worker agent</option>
-                            {workerOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            data={[
+                              { value: "", label: "Select forged worker agent" },
+                              ...workerOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                              })),
+                            ]}
+                          />
                           <div className={TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS}>
                             <div>agent_id: {worker.member_id || "-"}</div>
                             <div>workdir: {workerAgent?.workdir ?? "-"}</div>
                           </div>
-                          <input
-                            className={`${modalFieldClassName} mt-3`}
+                          <TextInput
+                            className="mt-3"
+                            radius="md"
                             placeholder="worker description (identity card)"
                             value={worker.description}
                             onChange={(event) =>
@@ -3931,20 +4067,19 @@ export function TeamPage(props: TeamPageProps) {
                             }
                             disabled={useSpecOverride}
                           />
-                          <select
-                            className={`${modalFieldClassName} mt-3`}
+                          <NativeSelect
+                            className="mt-3"
+                            radius="md"
                             value={worker.model}
                             onChange={(event) =>
                               onUpdateWorker(index, "model", event.target.value)
                             }
                             disabled={useSpecOverride}
-                          >
-                            {resolveTeamModelOptions(worker.model).map((option) => (
-                              <option key={option.value || "__default"} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            data={resolveTeamModelOptions(worker.model).map((option) => ({
+                              value: option.value,
+                              label: option.label,
+                            }))}
+                          />
                           <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                             {TEAM_SKILL_OPTIONS.map((skill) => {
                               const selected = worker.skills.includes(skill);
@@ -3967,8 +4102,9 @@ export function TeamPage(props: TeamPageProps) {
                               );
                             })}
                           </div>
-                          <input
-                            className={`${modalFieldClassName} mt-3`}
+                          <TextInput
+                            className="mt-3"
+                            radius="md"
                             placeholder="worker custom skills (comma separated, optional)"
                             value={worker.custom_skills}
                             onChange={(event) =>
@@ -3976,15 +4112,18 @@ export function TeamPage(props: TeamPageProps) {
                             }
                             disabled={useSpecOverride}
                           />
-                          <textarea
-                            className={`${modalMonoFieldClassName} mt-3`}
-                            rows={3}
+                          <Textarea
+                            className="mt-3"
+                            radius="md"
+                            minRows={3}
+                            autosize
                             placeholder="worker prompt"
                             value={worker.prompt}
                             onChange={(event) =>
                               onUpdateWorker(index, "prompt", event.target.value)
                             }
                             disabled={useSpecOverride}
+                            styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                           />
                         </div>
                       );
@@ -3996,19 +4135,24 @@ export function TeamPage(props: TeamPageProps) {
                     </p>
                   )}
                   {hasDuplicateMembers && (
-                    <div className="team-create-warning mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                      <p className="muted text-sm text-rose-700">
+                    <TeamCreateNote
+                      tone="warning"
+                      action={
+                        <Button
+                          type="button"
+                          size="xs"
+                          radius="md"
+                          variant="default"
+                          color="gray"
+                          onClick={onResolveDuplicateWorkers}
+                        >
+                          Resolve Duplicates
+                        </Button>
+                      }
+                    >
                         Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
                         and member assignments must reference different agents.
-                      </p>
-                      <button
-                        className={`${panelSecondaryButtonClassName} mt-2`}
-                        onClick={onResolveDuplicateWorkers}
-                        type="button"
-                      >
-                        Resolve Duplicates
-                      </button>
-                    </div>
+                    </TeamCreateNote>
                   )}
                 </div>
               )}
@@ -4040,12 +4184,15 @@ export function TeamPage(props: TeamPageProps) {
                       `leader_plan` → `worker_*` → `leader_synthesize`.
                     </p>
                   )}
-                  <textarea
-                    className={`${modalMonoFieldClassName} mt-3`}
-                    rows={12}
+                  <Textarea
+                    className="mt-3"
+                    radius="md"
+                    minRows={12}
+                    autosize
                     value={displayedTeamSpec}
                     onChange={(event) => setNewTeamSpec(event.target.value)}
                     readOnly={!useSpecOverride}
+                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                   />
                 </div>
               )}
@@ -4057,45 +4204,52 @@ export function TeamPage(props: TeamPageProps) {
                   {currentStageBlockReason}
                 </span>
               )}
-              <button
-                className={panelGhostButtonClassName}
+              <Button
+                radius="md"
+                variant="subtle"
+                color="gray"
                 onClick={closeCreateTeamModal}
                 disabled={busy === "create-team"}
                 type="button"
               >
                 Cancel
-              </button>
-              <button
-                className={panelGhostButtonClassName}
+              </Button>
+              <Button
+                radius="md"
+                variant="subtle"
+                color="gray"
                 onClick={goToPrevCreateTeamStage}
                 disabled={createTeamStage === 0 || busy === "create-team"}
                 type="button"
               >
                 Back
-              </button>
+              </Button>
               {createTeamStage < 3 && (
-                <button
-                  className={panelPrimaryButtonClassName}
+                <Button
+                  radius="md"
+                  color="dark"
                   onClick={goToNextCreateTeamStage}
                   disabled={!canAdvanceCreateStage || busy === "create-team"}
                   type="button"
                 >
                   Next Stage
-                </button>
+                </Button>
               )}
               {createTeamStage === 3 && (
-                <button
-                  className={panelPrimaryButtonClassName}
+                <Button
+                  radius="md"
+                  color="dark"
                   onClick={onCreateTeam}
                   disabled={
                     busy === "create-team" ||
                     (!useSpecOverride &&
                       (!hasForgeAgents || !leaderMemberId.trim() || hasDuplicateMembers))
                   }
+                  loading={busy === "create-team"}
                   type="button"
                 >
                   Create Team
-                </button>
+                </Button>
               )}
             </div>
           </div>

@@ -15,6 +15,7 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
@@ -352,6 +353,21 @@ describe("team page helpers", () => {
       tone: "active",
       online: 3,
       total: 3,
+    });
+  });
+
+  it("maps team runtime status to mantine control tones", () => {
+    expect(resolveTeamRuntimeControlTone("running")).toEqual({
+      statusColor: "teal",
+      countColor: "teal",
+    });
+    expect(resolveTeamRuntimeControlTone("degraded")).toEqual({
+      statusColor: "yellow",
+      countColor: "yellow",
+    });
+    expect(resolveTeamRuntimeControlTone("stopped")).toEqual({
+      statusColor: "gray",
+      countColor: "gray",
     });
   });
 

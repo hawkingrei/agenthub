@@ -1,4 +1,5 @@
 import React from "react";
+import { SegmentedControl, TextInput } from "@mantine/core";
 import type {
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -12,7 +13,6 @@ import {
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -47,13 +47,7 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1";
-const TASKS_FILTER_BUTTON_BASE_CLASS =
-  "rounded-md px-2.5 py-1.5 text-xs font-medium transition";
-const TASKS_FILTER_BUTTON_ACTIVE_CLASS =
-  `${TASKS_FILTER_BUTTON_BASE_CLASS} bg-ui-surface text-ui-text-primary shadow-sm`;
-const TASKS_FILTER_BUTTON_IDLE_CLASS =
-  `${TASKS_FILTER_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1";
 const TASKS_WORKSPACE_GRID_CLASS =
   "mt-4 grid gap-4 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]";
 const TASKS_LIST_PANEL_CLASS =
@@ -67,6 +61,15 @@ const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
   "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+
+const SEGMENTED_CONTROL_CLASSNAMES = {
+  root: "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1",
+  control: "flex-1",
+  label:
+    "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition data-[active]:bg-ui-surface data-[active]:text-ui-text-primary data-[active]:shadow-sm hover:text-ui-text-primary",
+  indicator: "hidden",
+  innerLabel: "truncate",
+} as const;
 
 const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -153,17 +156,20 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input
-          className={`${TEAM_PANEL_INPUT_CLASS} flex-1 min-w-[220px]`}
+        <TextInput
+          className="min-w-[220px] flex-1"
           placeholder="New task title"
+          aria-label="New task title"
           value={newTaskTitle}
-          onChange={(event) => onNewTaskTitleChange(event.target.value)}
+          onChange={(event) => onNewTaskTitleChange(event.currentTarget.value)}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCreateTask) {
               event.preventDefault();
               void onCreateTask();
             }
           }}
+          size="sm"
+          radius="md"
         />
         <button
           type="button"
@@ -178,20 +184,16 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className={TASKS_FILTER_BAR_CLASS}>
-        {TASK_STATUS_FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            type="button"
-            className={
-              statusFilter === filter.value
-                ? TASKS_FILTER_BUTTON_ACTIVE_CLASS
-                : TASKS_FILTER_BUTTON_IDLE_CLASS
-            }
-            onClick={() => setStatusFilter(filter.value)}
-          >
-            {filter.label}
-          </button>
-        ))}
+        <SegmentedControl
+          fullWidth
+          size="xs"
+          radius="md"
+          value={statusFilter}
+          onChange={(value) => setStatusFilter(value as TaskStatusFilter)}
+          data={TASK_STATUS_FILTERS}
+          aria-label="Task status filter"
+          classNames={SEGMENTED_CONTROL_CLASSNAMES}
+        />
       </div>
 
       <div className={TASKS_WORKSPACE_GRID_CLASS}>
@@ -284,11 +286,14 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 >
                   Compile Preview
                 </button>
-                <input
-                  className={`${TEAM_PANEL_INPUT_CLASS} min-w-[220px] flex-1`}
+                <TextInput
+                  className="min-w-[220px] flex-1"
                   placeholder="context_id override (optional)"
+                  aria-label="context_id override"
                   value={compilePreviewContextId}
-                  onChange={(event) => onCompilePreviewContextIdChange(event.target.value)}
+                  onChange={(event) => onCompilePreviewContextIdChange(event.currentTarget.value)}
+                  size="sm"
+                  radius="md"
                 />
               </div>
 

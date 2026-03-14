@@ -3046,7 +3046,7 @@ fn should_offload_continuity_output(raw_output: &str) -> bool {
     raw_output.chars().count() > CONTINUITY_MAX_HISTORY_CHARS
 }
 
-fn redact_sensitive_json(value: &Value) -> Value {
+pub(super) fn redact_sensitive_json(value: &Value) -> Value {
     const REDACTED: &str = "[redacted]";
     match value {
         Value::Object(map) => {

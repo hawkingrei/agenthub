@@ -16,12 +16,13 @@ use chrono::Utc;
 use hmac::{Hmac, Mac};
 use reqwest::{Method, Url, header};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use sha2::Sha256;
 use sqlx::{Error as SqlxError, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
+use uuid::Uuid;
 
-use super::TeamManager;
+use super::{TeamManager, redact_sensitive_json};
 use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
@@ -31,6 +32,23 @@ use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessa
 const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const RELAY_TIMEOUT_MIN_MS: u64 = 100;
 const RELAY_TIMEOUT_MAX_MS: u64 = 60_000;
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
+const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
+const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+
+#[derive(Debug, Clone)]
+struct CanonicalChatReply {
+    text: String,
+    correlation_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SharedThreadTarget {
+    task_id: String,
+    conversation_id: String,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct TeamRemoteRelayWorkerSettings {
@@ -829,6 +847,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
 
         let (message, created) = if inserted.rows_affected() == 1 {
             let message_id = inserted.last_insert_rowid();
+            maybe_persist_human_visible_chat_reply(&mut tx, cmd).await?;
             let message = fetch_message_by_id(&mut tx, message_id).await?;
             (message, true)
         } else if let Some(idempotency_key) = cmd.idempotency_key.as_deref() {
@@ -1170,6 +1189,243 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .await?;
         Ok(())
     }
+}
+
+async fn maybe_persist_human_visible_chat_reply(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    cmd: &SendActorMessageCommand,
+) -> Result<(), sqlx::Error> {
+    if !should_persist_human_visible_chat_reply(cmd) {
+        return Ok(());
+    }
+    let Some(reply) = resolve_canonical_chat_reply(&cmd.payload) else {
+        return Ok(());
+    };
+    let shared_thread = resolve_or_create_shared_thread_for_run(tx, &cmd.run_id, cmd).await?;
+    let payload = build_canonical_chat_payload(&reply);
+    let payload_json = redact_sensitive_json(&payload).to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversation_messages (
+            conversation_id,
+            task_id,
+            from_actor_id,
+            to_actor_id,
+            route,
+            payload_json,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, NULL, 'group_chat', ?4, ?5)
+        "#,
+    )
+    .bind(&shared_thread.conversation_id)
+    .bind(&shared_thread.task_id)
+    .bind(&cmd.from_actor_id)
+    .bind(payload_json)
+    .bind(cmd.created_at)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+fn should_persist_human_visible_chat_reply(cmd: &SendActorMessageCommand) -> bool {
+    cmd.transport == agenthub_team_actor::ActorMessageTransport::Local
+        && cmd.to_peer_id == ACTOR_MAIN_PEER_ID
+        && is_human_actor_id(&cmd.to_actor_id)
+        && !is_human_actor_id(&cmd.from_actor_id)
+}
+
+fn is_human_actor_id(actor_id: &str) -> bool {
+    let trimmed = actor_id.trim();
+    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS
+        || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+}
+
+fn resolve_canonical_chat_reply(payload: &Value) -> Option<CanonicalChatReply> {
+    match payload {
+        Value::Object(map) => resolve_canonical_chat_reply_from_map(map),
+        Value::String(text) => {
+            if let Some(parsed) = parse_stringified_json_payload(text)
+                && let Some(reply) = resolve_canonical_chat_reply(&parsed)
+            {
+                return Some(reply);
+            }
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(CanonicalChatReply {
+                    text: text.clone(),
+                    correlation_id: None,
+                })
+            }
+        }
+        _ => None,
+    }
+}
+
+fn resolve_canonical_chat_reply_from_map(map: &Map<String, Value>) -> Option<CanonicalChatReply> {
+    let payload_type = map
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if !payload_type.is_empty() && payload_type != "chat_message" {
+        return None;
+    }
+    let text = map
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?
+        .to_string();
+    let correlation_id = map
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    Some(CanonicalChatReply {
+        text,
+        correlation_id,
+    })
+}
+
+fn parse_stringified_json_payload(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return None;
+    }
+    serde_json::from_str(trimmed).ok()
+}
+
+fn build_canonical_chat_payload(reply: &CanonicalChatReply) -> Value {
+    let mut payload = Map::new();
+    payload.insert("type".to_string(), Value::String("chat_message".to_string()));
+    payload.insert("text".to_string(), Value::String(reply.text.clone()));
+    if let Some(correlation_id) = reply.correlation_id.as_deref() {
+        payload.insert(
+            "correlation_id".to_string(),
+            Value::String(correlation_id.to_string()),
+        );
+    }
+    Value::Object(payload)
+}
+
+async fn resolve_or_create_shared_thread_for_run(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    cmd: &SendActorMessageCommand,
+) -> Result<SharedThreadTarget, sqlx::Error> {
+    let team_id = resolve_team_id_for_run(tx, run_id).await?;
+    if let Some(existing) = fetch_shared_thread_for_team(tx, &team_id).await? {
+        return Ok(existing);
+    }
+
+    let now = cmd.created_at;
+    let task_id = Uuid::new_v4().to_string();
+    let conversation_id = Uuid::new_v4().to_string();
+    let context_json = serde_json::json!({
+        "bootstrap_kind": TEAM_SHARED_THREAD_BOOTSTRAP_KIND,
+        "bootstrap_source": TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE,
+    })
+    .to_string();
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (
+            id,
+            team_id,
+            title,
+            status,
+            created_by_actor_id,
+            context_json,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind(&task_id)
+    .bind(&team_id)
+    .bind(TEAM_SHARED_THREAD_TITLE)
+    .bind(&cmd.from_actor_id)
+    .bind(context_json)
+    .bind(now)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (
+            id,
+            team_id,
+            task_id,
+            mode,
+            topic,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?6)
+        "#,
+    )
+    .bind(&conversation_id)
+    .bind(&team_id)
+    .bind(&task_id)
+    .bind(TEAM_SHARED_THREAD_TITLE)
+    .bind(now)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(SharedThreadTarget {
+        task_id,
+        conversation_id,
+    })
+}
+
+async fn resolve_team_id_for_run(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+) -> Result<String, sqlx::Error> {
+    let row = sqlx::query("SELECT team_id FROM team_runs WHERE id = ?1")
+        .bind(run_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    row.try_get("team_id")
+}
+
+async fn fetch_shared_thread_for_team(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    team_id: &str,
+) -> Result<Option<SharedThreadTarget>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            t.id AS task_id,
+            c.id AS conversation_id
+        FROM team_tasks t
+        INNER JOIN team_conversations c ON c.task_id = t.id
+        WHERE t.team_id = ?1
+          AND (
+            lower(trim(t.title)) = ?2
+            OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = ?3
+          )
+        ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(team_id)
+    .bind(TEAM_SHARED_THREAD_TITLE)
+    .bind(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(row.map(|row| SharedThreadTarget {
+        task_id: row.get("task_id"),
+        conversation_id: row.get("conversation_id"),
+    }))
 }
 
 async fn fetch_message_by_id(
