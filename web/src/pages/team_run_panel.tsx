@@ -128,7 +128,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <h3 className={RUN_PANEL_LIST_TITLE_CLASS}>Runs</h3>
           <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
             <NativeSelect
-              className="min-w-0 sm:min-w-[164px]"
+              className="w-full sm:w-[164px]"
               aria-label="Run status filter"
               value={runStatusFilter}
               onChange={(event) => onRunStatusFilterChange(event.currentTarget.value as TeamRunStatusFilter)}
