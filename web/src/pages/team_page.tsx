@@ -145,8 +145,6 @@ import {
   TEAM_CREATE_ACTIONS_BAR_CLASS,
   TEAM_CREATE_MODAL_BACKDROP_CLASS,
   TEAM_CREATE_MODAL_CARD_CLASS,
-  TEAM_CREATE_NOTE_INFO_CLASS,
-  TEAM_CREATE_NOTE_WARNING_CLASS,
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_IDLE_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
@@ -218,6 +216,7 @@ type TeamPageProps = {
   developerMode: boolean;
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
+type TeamCreateNoteTone = "info" | "warning";
 
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
   "conversation",
@@ -350,6 +349,47 @@ const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
   { value: "tasks", label: "Tasks", icon: "bi bi-list-check" },
   { value: "mailbox", label: "Mailbox", icon: "bi bi-inboxes" },
 ];
+
+const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
+  TeamCreateNoteTone,
+  { color: "blue" | "yellow"; title: string; iconClassName: string }
+> = {
+  info: {
+    color: "blue",
+    title: "Team note",
+    iconClassName: "bi bi-info-circle",
+  },
+  warning: {
+    color: "yellow",
+    title: "Action required",
+    iconClassName: "bi bi-exclamation-triangle",
+  },
+};
+
+const TeamCreateNote = React.memo(function TeamCreateNote({
+  tone,
+  children,
+  action,
+}: {
+  tone: TeamCreateNoteTone;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  const config = TEAM_CREATE_NOTE_ALERT_CONFIG[tone];
+  return (
+    <Alert
+      color={config.color}
+      variant="light"
+      radius="xl"
+      mt="md"
+      title={config.title}
+      icon={<i className={config.iconClassName} aria-hidden="true" />}
+    >
+      <div className="text-sm text-ui-text-secondary">{children}</div>
+      {action ? <div className="mt-3">{action}</div> : null}
+    </Alert>
+  );
+});
 
 export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
@@ -3732,14 +3772,14 @@ export function TeamPage(props: TeamPageProps) {
                     <span className="text-ui-text-primary">{forgeRoleTag ?? "-"}</span>
                   </div>
                   {!canForgeAgentsInStage && (
-                    <div className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Agent Forge is available only in Leader Forge or Recruit Workers stage.
-                    </div>
+                    </TeamCreateNote>
                   )}
                   {showForgeAgentForm && (
-                    <div className={TEAM_CREATE_NOTE_INFO_CLASS}>
+                    <TeamCreateNote tone="info">
                       Agent create modal is open. Submit to create and auto-assign by role tag.
-                    </div>
+                    </TeamCreateNote>
                   )}
                 </div>
               )}
@@ -3753,15 +3793,15 @@ export function TeamPage(props: TeamPageProps) {
                       the workbench.
                     </p>
                   </div>
-                  <p className={TEAM_CREATE_NOTE_INFO_CLASS}>
+                  <TeamCreateNote tone="info">
                     {useSpecOverride
                       ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
                       : "Guided Wizard entry selected. Continue to Leader Forge next."}
-                  </p>
+                  </TeamCreateNote>
                   {!isMissionBriefReady && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Team name is required before entering the next stage.
-                    </p>
+                    </TeamCreateNote>
                   )}
                   <input
                     className={`${modalFieldClassName} mt-3`}
@@ -3785,9 +3825,9 @@ export function TeamPage(props: TeamPageProps) {
                     Choose the leader from member agents created in this Team Forge session only.
                   </p>
                   {!isLeaderForgeReady && hasForgeAgents && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       Select one forged leader agent to continue.
-                    </p>
+                    </TeamCreateNote>
                   )}
                   {!hasForgeAgents && (
                     <p className={teamSectionBodyTextClassName}>
@@ -3901,11 +3941,11 @@ export function TeamPage(props: TeamPageProps) {
                     team level.
                   </p>
                   {unassignedWorkerSlots > 0 && (
-                    <p className={TEAM_CREATE_NOTE_WARNING_CLASS}>
+                    <TeamCreateNote tone="warning">
                       {unassignedWorkerSlots} worker slot
                       {unassignedWorkerSlots > 1 ? "s are" : " is"} currently unassigned and will
                       be ignored unless selected.
-                    </p>
+                    </TeamCreateNote>
                   )}
                   <div className="team-create-worker-grid mt-3 grid gap-3 lg:grid-cols-2">
                     {workers.map((worker, index) => {
@@ -4041,19 +4081,24 @@ export function TeamPage(props: TeamPageProps) {
                     </p>
                   )}
                   {hasDuplicateMembers && (
-                    <div className="team-create-warning mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                      <p className="muted text-sm text-rose-700">
+                    <TeamCreateNote
+                      tone="warning"
+                      action={
+                        <Button
+                          type="button"
+                          size="xs"
+                          radius="md"
+                          variant="default"
+                          color="gray"
+                          onClick={onResolveDuplicateWorkers}
+                        >
+                          Resolve Duplicates
+                        </Button>
+                      }
+                    >
                         Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
                         and member assignments must reference different agents.
-                      </p>
-                      <button
-                        className={`${panelSecondaryButtonClassName} mt-2`}
-                        onClick={onResolveDuplicateWorkers}
-                        type="button"
-                      >
-                        Resolve Duplicates
-                      </button>
-                    </div>
+                    </TeamCreateNote>
                   )}
                 </div>
               )}

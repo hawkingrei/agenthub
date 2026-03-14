@@ -25,6 +25,8 @@ Scope in this checkpoint:
   - runtime badge color mapping is centralized in `page_helpers.ts`
   - warning notices now use Mantine `Alert`
   - empty-state `Guided Wizard` / `Manual Spec` actions now use Mantine `Button`
+  - create-team modal info/warning notes now use one Mantine `Alert` wrapper (`TeamCreateNote`)
+  - duplicate-member recovery action now uses Mantine `Button`
 
 The team actions overflow menu was intentionally left on the existing custom popup implementation for now. The Mantine `Menu` variant introduced more test/runtime instability than value in this slice, while the input/filter/select migration delivered the higher-yield framework convergence.
 
