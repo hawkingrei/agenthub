@@ -206,9 +206,10 @@ pub struct StartTeamRunStepRequest {
     /// Runtime executor handle supplied by external orchestrators.
     ///
     /// In the current implementation this is typically the member agent
-    /// session id. The request field keeps the legacy `remote_task_id` name for
+    /// session id. The request accepts the legacy `remote_task_id` name for
     /// wire compatibility.
-    pub remote_task_id: Option<String>,
+    #[serde(default, alias = "remote_task_id")]
+    pub runtime_handle_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1062,14 +1063,14 @@ async fn start_team_run_step(
     let user = require_user(&headers, &state).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
-    let remote_task_id = payload
-        .remote_task_id
+    let runtime_handle_id = payload
+        .runtime_handle_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let step = state
         .teams
-        .start_step(&step_id, remote_task_id)
+        .start_step(&step_id, runtime_handle_id)
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(step))

@@ -84,6 +84,7 @@ pub(super) fn openapi_spec() -> Value {
               "run_id": { "type": "string" },
               "step_key": { "type": "string" },
               "member_id": { "type": "string" },
+              "runtime_handle_id": { "type": ["string", "null"] },
               "remote_task_id": { "type": ["string", "null"] },
               "status": {
                 "type": "string",

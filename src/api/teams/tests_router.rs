@@ -533,13 +533,14 @@ async fn teams_router_http_contract() {
             Method::POST,
             &format!("/runs/{step_run_id}/steps/{step_id}/start"),
             Some(&token),
-            Some(json!({"remote_task_id":"router-remote-task"})),
+            Some(json!({"runtime_handle_id":"router-remote-task"})),
         ))
         .await
         .expect("start step via router");
     assert_eq!(start_step_resp.status(), StatusCode::OK);
     let started_step = decode_json_body(start_step_resp).await;
     assert_eq!(started_step["status"], "working");
+    assert_eq!(started_step["runtime_handle_id"], "router-remote-task");
     assert_eq!(started_step["remote_task_id"], "router-remote-task");
 
     let input_required_resp = app
@@ -1601,7 +1602,7 @@ async fn teams_router_orchestrator_marks_input_required_when_team_runtime_is_sto
         let db_step = db_steps.first().expect("first db step");
         panic!(
             "run did not converge to input_required in time: run_status={}, step_status={:?}, remote_task_id={:?}",
-            last_run_status, db_step.status, db_step.remote_task_id
+            last_run_status, db_step.status, db_step.runtime_handle_id
         );
     }
 

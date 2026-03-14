@@ -40,7 +40,7 @@ type TeamStepApiClient = {
   startTeamRunStep: (
     runId: string,
     stepId: string,
-    payload: { remote_task_id?: string }
+    payload: { runtime_handle_id?: string }
   ) => Promise<TeamStepRecord>;
   completeTeamRunStep: (
     runId: string,
@@ -178,7 +178,7 @@ export function useTeamStepActions(options: UseTeamStepActionsOptions) {
     try {
       if (stepAction === "start") {
         await teamStepApi.startTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {
-          remote_task_id: stepRemoteTaskId.trim() || undefined,
+          runtime_handle_id: stepRemoteTaskId.trim() || undefined,
         });
       } else if (stepAction === "complete") {
         await teamStepApi.completeTeamRunStep(activeRunIdForSelectedTeam, selectedStepId, {

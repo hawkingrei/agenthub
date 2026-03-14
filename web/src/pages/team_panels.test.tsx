@@ -146,6 +146,7 @@ function buildStep(overrides: Partial<TeamStepRecord> = {}): TeamStepRecord {
     run_id: "run-1",
     step_key: "plan",
     member_id: "leader-agent",
+    runtime_handle_id: null,
     remote_task_id: null,
     status: "working",
     attempt: 1,
@@ -897,8 +898,8 @@ describe("team panels interactions", () => {
     );
     changeInputValue(
       required(
-        container.querySelector('input[placeholder="remote_task_id (optional)"]') as HTMLInputElement | null,
-        "remote_task_id input missing"
+        container.querySelector('input[placeholder="runtime_handle_id (optional)"]') as HTMLInputElement | null,
+        "runtime_handle_id input missing"
       ),
       "task-9"
     );

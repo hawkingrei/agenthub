@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use serde_json::Value;
 
 pub const TEAM_RUN_STATUS_VALUES: [&str; 6] = [
@@ -141,7 +141,7 @@ pub enum TeamStepStatus {
     Canceled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct TeamStepRecord {
     pub id: String,
@@ -151,9 +151,10 @@ pub struct TeamStepRecord {
     /// Runtime executor handle for this step.
     ///
     /// In the current ACP-backed implementation this stores the member agent
-    /// session id. The field name is legacy and is kept for compatibility with
-    /// existing DB/API/proto payloads until a broader rename can be rolled out.
-    pub remote_task_id: Option<String>,
+    /// session id. Serialization keeps the legacy `remote_task_id` wire field
+    /// alongside `runtime_handle_id` for compatibility.
+    #[serde(default, alias = "remote_task_id")]
+    pub runtime_handle_id: Option<String>,
     pub status: TeamStepStatus,
     pub attempt: i64,
     pub depends_on: Vec<String>,
@@ -162,6 +163,30 @@ pub struct TeamStepRecord {
     pub error_text: Option<String>,
     pub started_at: Option<i64>,
     pub ended_at: Option<i64>,
+}
+
+impl Serialize for TeamStepRecord {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("TeamStepRecord", 14)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("run_id", &self.run_id)?;
+        state.serialize_field("step_key", &self.step_key)?;
+        state.serialize_field("member_id", &self.member_id)?;
+        state.serialize_field("runtime_handle_id", &self.runtime_handle_id)?;
+        state.serialize_field("remote_task_id", &self.runtime_handle_id)?;
+        state.serialize_field("status", &self.status)?;
+        state.serialize_field("attempt", &self.attempt)?;
+        state.serialize_field("depends_on", &self.depends_on)?;
+        state.serialize_field("input", &self.input)?;
+        state.serialize_field("output", &self.output)?;
+        state.serialize_field("error_text", &self.error_text)?;
+        state.serialize_field("started_at", &self.started_at)?;
+        state.serialize_field("ended_at", &self.ended_at)?;
+        state.end()
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -174,8 +199,9 @@ pub enum TeamRunResumeError {
 mod tests {
     use super::{
         TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
-        TEAM_TASK_STATUS_VALUES, TeamRunResumeError,
+        TEAM_TASK_STATUS_VALUES, TeamRunResumeError, TeamStepRecord, TeamStepStatus,
     };
+    use serde_json::json;
 
     #[test]
     fn status_values_keep_expected_length() {
@@ -191,5 +217,50 @@ mod tests {
             TeamRunResumeError::CompletedRun.to_string(),
             "completed run cannot be resumed"
         );
+    }
+
+    #[test]
+    fn step_record_serializes_runtime_handle_with_legacy_alias() {
+        let step = TeamStepRecord {
+            id: "step-1".to_string(),
+            run_id: "run-1".to_string(),
+            step_key: "leader_plan".to_string(),
+            member_id: "leader".to_string(),
+            runtime_handle_id: Some("session-1".to_string()),
+            status: TeamStepStatus::Working,
+            attempt: 1,
+            depends_on: vec!["seed".to_string()],
+            input: Some(json!({"goal":"plan"})),
+            output: None,
+            error_text: None,
+            started_at: Some(1),
+            ended_at: None,
+        };
+
+        let value = serde_json::to_value(&step).expect("serialize step");
+        assert_eq!(value["runtime_handle_id"], "session-1");
+        assert_eq!(value["remote_task_id"], "session-1");
+    }
+
+    #[test]
+    fn step_record_deserializes_legacy_remote_task_id_alias() {
+        let value = json!({
+            "id": "step-1",
+            "run_id": "run-1",
+            "step_key": "leader_plan",
+            "member_id": "leader",
+            "remote_task_id": "session-legacy",
+            "status": "working",
+            "attempt": 1,
+            "depends_on": [],
+            "input": null,
+            "output": null,
+            "error_text": null,
+            "started_at": null,
+            "ended_at": null
+        });
+
+        let step: TeamStepRecord = serde_json::from_value(value).expect("deserialize step");
+        assert_eq!(step.runtime_handle_id.as_deref(), Some("session-legacy"));
     }
 }
