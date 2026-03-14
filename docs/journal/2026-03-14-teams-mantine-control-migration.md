@@ -27,6 +27,11 @@ Scope in this checkpoint:
   - empty-state `Guided Wizard` / `Manual Spec` actions now use Mantine `Button`
   - create-team modal info/warning notes now use one Mantine `Alert` wrapper (`TeamCreateNote`)
   - duplicate-member recovery action now uses Mantine `Button`
+  - primary workspace navigation (`Conversation / Tasks / Mailbox`) now uses Mantine `Tabs`
+  - `Runs` and `Advanced` stay on the existing button/menu layer so non-primary views do not force a fake selected tab
+  - create-team stage navigation now uses Mantine `Stepper`
+  - create-team modal inputs/selects/textareas now use Mantine form controls on the main guided path
+  - create-team modal footer and worker-management actions now use Mantine `Button`
 
 The team actions overflow menu was intentionally left on the existing custom popup implementation for now. The Mantine `Menu` variant introduced more test/runtime instability than value in this slice, while the input/filter/select migration delivered the higher-yield framework convergence.
 

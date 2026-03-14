@@ -1,5 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Alert, Badge, Button, Group, Menu, Tooltip } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Menu,
+  NativeSelect,
+  Stepper,
+  Tabs,
+  TextInput,
+  Textarea,
+  Tooltip,
+} from "@mantine/core";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
@@ -153,7 +165,6 @@ import {
   TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS,
   TEAM_CREATE_WORKER_CARD_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -276,7 +287,6 @@ function validateRunInputJson(raw: string): RunInputValidation {
 const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
 const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
 const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
-const panelGhostButtonClassName = TEAM_PANEL_GHOST_BUTTON_CLASS;
 const teamSectionCardClassName =
   "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
 const teamSectionCardLargeClassName =
@@ -297,16 +307,6 @@ const teamCreateModalHeaderClassName =
   "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
 const teamCreateModalTitleClassName =
   "text-lg font-semibold tracking-tight text-ui-text-primary";
-const teamCreateStageClassName =
-  "team-create-stage flex min-h-[64px] flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition";
-const teamCreateStageActiveClassName =
-  `${teamCreateStageClassName} active border-brand-primary bg-brand-primary text-ui-text-inverse shadow-sm`;
-const teamCreateStageCompletedClassName =
-  `${teamCreateStageClassName} completed border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]`;
-const teamCreateStageLockedClassName =
-  `${teamCreateStageClassName} locked cursor-not-allowed border-ui-border bg-ui-surface-muted text-ui-text-muted`;
-const teamCreateStageIdleClassName =
-  `${teamCreateStageClassName} border-ui-border-strong bg-ui-surface text-ui-text-secondary hover:border-ui-border-emphasis hover:bg-ui-surface-soft`;
 const teamCreateCheckItemReadyClassName =
   "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
 const teamCreateCheckItemPendingClassName =
@@ -319,12 +319,11 @@ const teamCreateLaunchMetaClassName =
   "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
 const teamCreateLaunchMetaItemClassName =
   "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
-const modalFieldClassName =
-  "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-sm text-ui-text-primary shadow-sm outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border disabled:cursor-not-allowed disabled:bg-ui-surface-muted disabled:text-ui-text-muted";
-const modalMonoFieldClassName = `${modalFieldClassName} font-mono text-xs leading-5`;
 const teamRunMetaItemClassName =
   "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
 const workspaceToolbarClassName =
+  "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+const workspacePrimaryTabsListClassName =
   "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
 const workspaceToolbarButtonBaseClassName =
   "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
@@ -332,6 +331,8 @@ const workspaceToolbarButtonActiveClassName =
   `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
 const workspaceToolbarButtonIdleClassName =
   `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+const workspacePrimaryTabClassName =
+  "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition hover:bg-ui-surface hover:text-ui-text-primary data-[active=true]:border data-[active=true]:border-ui-border/80 data-[active=true]:bg-ui-surface data-[active=true]:text-ui-text-primary data-[active=true]:shadow-sm";
 const workspaceNoticeClassName =
   "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
 const workspaceNoticeTextClassName =
@@ -879,6 +880,7 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveTeamRuntimeControlTone(selectedTeamRuntimeStatus.status),
     [selectedTeamRuntimeStatus.status]
   );
+  const primaryWorkspaceTabValue = TEAM_PRIMARY_WORKSPACE_TABS.has(tab) ? tab : null;
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -3099,22 +3101,31 @@ export function TeamPage(props: TeamPageProps) {
                         Stop Team
                       </Button>
                     </Group>
-                    <div className={workspaceToolbarClassName}>
-                      {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
-                        <button
-                          key={item.value}
-                          type="button"
-                          className={
-                            tab === item.value
-                              ? workspaceToolbarButtonActiveClassName
-                              : workspaceToolbarButtonIdleClassName
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tabs
+                        value={primaryWorkspaceTabValue}
+                        onChange={(value) => {
+                          if (value) {
+                            setTab(value as TeamTab);
                           }
-                          onClick={() => setTab(item.value)}
-                        >
-                          <i className={item.icon} aria-hidden="true" />
-                          <span>{item.label}</span>
-                        </button>
-                      ))}
+                        }}
+                        classNames={{
+                          list: workspacePrimaryTabsListClassName,
+                          tab: workspacePrimaryTabClassName,
+                        }}
+                      >
+                        <Tabs.List>
+                          {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
+                            <Tabs.Tab key={item.value} value={item.value}>
+                              <span className="inline-flex items-center gap-1.5">
+                                <i className={item.icon} aria-hidden="true" />
+                                <span>{item.label}</span>
+                              </span>
+                            </Tabs.Tab>
+                          ))}
+                        </Tabs.List>
+                      </Tabs>
+                      <div className={workspaceToolbarClassName}>
                       <button
                         type="button"
                         className={
@@ -3190,6 +3201,7 @@ export function TeamPage(props: TeamPageProps) {
                           </Menu.Dropdown>
                         </Menu>
                       )}
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -3688,7 +3700,22 @@ export function TeamPage(props: TeamPageProps) {
               </div>
             </div>
 
-            <div className="team-create-progress mt-4 grid gap-2 md:grid-cols-4">
+            <Stepper
+              active={createTeamStage}
+              onStepClick={(index) => onSelectCreateTeamStage(index as CreateTeamStage)}
+              iconPosition="left"
+              className="mt-4"
+              classNames={{
+                steps: "gap-2",
+                step: "min-w-0",
+                stepWrapper: "min-w-0",
+                stepBody: "min-w-0",
+                stepLabel: "text-sm font-semibold text-ui-text-primary",
+                stepDescription: "text-xs text-ui-text-muted",
+                stepIcon: "shadow-sm",
+                separator: "mx-1",
+              }}
+            >
               {CREATE_TEAM_STAGE_TITLES.map((title, index) => {
                 const stageIndex = index as CreateTeamStage;
                 const isActive = stageIndex === createTeamStage;
@@ -3697,36 +3724,23 @@ export function TeamPage(props: TeamPageProps) {
                   useSpecOverride && stageIndex !== 0 && stageIndex !== 3;
                 const isLocked = isManualSkipped || !canEnterCreateStage(stageIndex);
                 return (
-                  <button
+                  <Stepper.Step
                     key={title}
-                    className={`${
-                      isActive
-                        ? teamCreateStageActiveClassName
-                        : isCompleted
-                          ? teamCreateStageCompletedClassName
-                          : isLocked
-                            ? teamCreateStageLockedClassName
-                          : teamCreateStageIdleClassName
-                    }`}
-                    onClick={() => onSelectCreateTeamStage(stageIndex)}
-                    type="button"
-                    aria-disabled={isLocked && !isActive && !isCompleted}
-                    title={
-                      isLocked && !isActive && !isCompleted
-                        ? isManualSkipped
-                          ? "Manual spec mode skips this stage"
-                          : "Complete previous stage requirements first"
-                        : undefined
+                    label={title}
+                    icon={index + 1}
+                    completedIcon={<i className="bi bi-check-lg" aria-hidden="true" />}
+                    allowStepSelect={!isLocked || isActive || isCompleted}
+                    description={
+                      isManualSkipped
+                        ? "Skipped in manual spec"
+                        : isLocked && !isActive && !isCompleted
+                          ? "Complete previous stage requirements first"
+                          : `Stage ${index + 1}`
                     }
-                    >
-                    <span className="team-create-stage-index text-[11px] font-medium uppercase tracking-wide opacity-80">
-                      #{index + 1}
-                    </span>
-                    <span className="team-create-stage-title text-sm font-semibold">{title}</span>
-                  </button>
+                  />
                 );
               })}
-            </div>
+            </Stepper>
 
             <div className="modal-body mt-4 space-y-4">
               <div className="team-create-checklist grid gap-2 sm:grid-cols-2">
@@ -3754,14 +3768,17 @@ export function TeamPage(props: TeamPageProps) {
                 <div className={teamCreateAgentEntryClassName}>
                   <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
                     <h4 className={teamSectionTitleClassName}>Agent Forge</h4>
-                    <button
-                      className={panelSecondaryButtonClassName}
+                    <Button
+                      size="xs"
+                      radius="md"
+                      variant="default"
+                      color="gray"
                       onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
                       disabled={!canForgeAgentsInStage || forgeAgentBusy}
                       type="button"
                     >
                       {showForgeAgentForm ? "Hide" : "New Agent"}
-                    </button>
+                    </Button>
                   </div>
                   <p className={teamSectionBodyTextClassName}>
                     Role tag follows the current stage. In Team, worker is a role assigned to a
@@ -3803,14 +3820,16 @@ export function TeamPage(props: TeamPageProps) {
                       Team name is required before entering the next stage.
                     </TeamCreateNote>
                   )}
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="team name"
                     value={newTeamName}
                     onChange={(event) => setNewTeamName(event.target.value)}
                   />
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="description (optional)"
                     value={newTeamDescription}
                     onChange={(event) => setNewTeamDescription(event.target.value)}
@@ -3834,35 +3853,35 @@ export function TeamPage(props: TeamPageProps) {
                       No forged agents yet. Create one in the Agent Forge entry above.
                     </p>
                   )}
-                  <select
-                    className={`${modalFieldClassName} mt-3`}
+                  <NativeSelect
+                    className="mt-3"
+                    radius="md"
                     value={leaderMemberId}
                     onChange={(event) => setLeaderMemberId(event.target.value)}
                     disabled={useSpecOverride || !hasForgeAgents}
-                  >
-                    <option value="">Select forged leader agent</option>
-                    {leaderAgentSelectOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    data={[
+                      { value: "", label: "Select forged leader agent" },
+                      ...leaderAgentSelectOptions.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      })),
+                    ]}
+                  />
                   <div className={TEAM_CREATE_STEP_PREVIEW_CLASS}>
                     <div>agent_id: {leaderMemberId || "-"}</div>
                     <div>workdir: {leaderAgent?.workdir ?? "-"}</div>
                   </div>
-                  <select
-                    className={`${modalFieldClassName} mt-3`}
+                  <NativeSelect
+                    className="mt-3"
+                    radius="md"
                     value={leaderModel}
                     onChange={(event) => setLeaderModel(event.target.value)}
                     disabled={useSpecOverride}
-                  >
-                    {leaderModelOptions.map((option) => (
-                      <option key={option.value || "__default"} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    data={leaderModelOptions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                   <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                     {TEAM_SKILL_OPTIONS.map((skill) => {
                       const selected = leaderSkills.includes(skill);
@@ -3893,20 +3912,24 @@ export function TeamPage(props: TeamPageProps) {
                       );
                     })}
                   </div>
-                  <input
-                    className={`${modalFieldClassName} mt-3`}
+                  <TextInput
+                    className="mt-3"
+                    radius="md"
                     placeholder="leader custom skills (comma separated, optional)"
                     value={leaderCustomSkills}
                     onChange={(event) => setLeaderCustomSkills(event.target.value)}
                     disabled={useSpecOverride}
                   />
-                  <textarea
-                    className={`${modalMonoFieldClassName} mt-3`}
-                    rows={4}
+                  <Textarea
+                    className="mt-3"
+                    radius="md"
+                    minRows={4}
+                    autosize
                     placeholder="leader prompt"
                     value={leaderPrompt}
                     onChange={(event) => setLeaderPrompt(event.target.value)}
                     disabled={useSpecOverride}
+                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                   />
                 </div>
               )}
@@ -3916,15 +3939,22 @@ export function TeamPage(props: TeamPageProps) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h4 className={teamSectionTitleClassName}>Recruit Workers</h4>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        className={panelSecondaryButtonClassName}
+                      <Button
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
                         onClick={onAddWorker}
                         disabled={useSpecOverride || !hasForgeAgents}
+                        type="button"
                       >
                         Add Worker
-                      </button>
-                      <button
-                        className={panelSecondaryButtonClassName}
+                      </Button>
+                      <Button
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
                         onClick={onAddAllRemainingWorkers}
                         disabled={
                           useSpecOverride || !hasForgeAgents || availableWorkerAgentCount === 0
@@ -3932,7 +3962,7 @@ export function TeamPage(props: TeamPageProps) {
                         type="button"
                       >
                         Auto Fill Party
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <p className={teamSectionBodyTextClassName}>
@@ -3979,36 +4009,41 @@ export function TeamPage(props: TeamPageProps) {
                         >
                           <div className="team-create-worker-head flex items-center justify-between gap-2">
                             <strong>Worker {index + 1}</strong>
-                            <button
-                              className={panelGhostButtonClassName}
+                            <Button
+                              size="xs"
+                              radius="md"
+                              variant="subtle"
+                              color="gray"
                               onClick={() => onRemoveWorker(index)}
                               disabled={useSpecOverride}
                               type="button"
                             >
                               Remove
-                            </button>
+                            </Button>
                           </div>
-                          <select
-                            className={`${modalFieldClassName} mt-3`}
+                          <NativeSelect
+                            className="mt-3"
+                            radius="md"
                             value={worker.member_id}
                             onChange={(event) =>
                               onUpdateWorker(index, "member_id", event.target.value)
                             }
                             disabled={useSpecOverride || !hasForgeAgents}
-                          >
-                            <option value="">Select forged worker agent</option>
-                            {workerOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            data={[
+                              { value: "", label: "Select forged worker agent" },
+                              ...workerOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                              })),
+                            ]}
+                          />
                           <div className={TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS}>
                             <div>agent_id: {worker.member_id || "-"}</div>
                             <div>workdir: {workerAgent?.workdir ?? "-"}</div>
                           </div>
-                          <input
-                            className={`${modalFieldClassName} mt-3`}
+                          <TextInput
+                            className="mt-3"
+                            radius="md"
                             placeholder="worker description (identity card)"
                             value={worker.description}
                             onChange={(event) =>
@@ -4016,20 +4051,19 @@ export function TeamPage(props: TeamPageProps) {
                             }
                             disabled={useSpecOverride}
                           />
-                          <select
-                            className={`${modalFieldClassName} mt-3`}
+                          <NativeSelect
+                            className="mt-3"
+                            radius="md"
                             value={worker.model}
                             onChange={(event) =>
                               onUpdateWorker(index, "model", event.target.value)
                             }
                             disabled={useSpecOverride}
-                          >
-                            {resolveTeamModelOptions(worker.model).map((option) => (
-                              <option key={option.value || "__default"} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            data={resolveTeamModelOptions(worker.model).map((option) => ({
+                              value: option.value,
+                              label: option.label,
+                            }))}
+                          />
                           <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
                             {TEAM_SKILL_OPTIONS.map((skill) => {
                               const selected = worker.skills.includes(skill);
@@ -4052,8 +4086,9 @@ export function TeamPage(props: TeamPageProps) {
                               );
                             })}
                           </div>
-                          <input
-                            className={`${modalFieldClassName} mt-3`}
+                          <TextInput
+                            className="mt-3"
+                            radius="md"
                             placeholder="worker custom skills (comma separated, optional)"
                             value={worker.custom_skills}
                             onChange={(event) =>
@@ -4061,15 +4096,18 @@ export function TeamPage(props: TeamPageProps) {
                             }
                             disabled={useSpecOverride}
                           />
-                          <textarea
-                            className={`${modalMonoFieldClassName} mt-3`}
-                            rows={3}
+                          <Textarea
+                            className="mt-3"
+                            radius="md"
+                            minRows={3}
+                            autosize
                             placeholder="worker prompt"
                             value={worker.prompt}
                             onChange={(event) =>
                               onUpdateWorker(index, "prompt", event.target.value)
                             }
                             disabled={useSpecOverride}
+                            styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                           />
                         </div>
                       );
@@ -4130,12 +4168,15 @@ export function TeamPage(props: TeamPageProps) {
                       `leader_plan` → `worker_*` → `leader_synthesize`.
                     </p>
                   )}
-                  <textarea
-                    className={`${modalMonoFieldClassName} mt-3`}
-                    rows={12}
+                  <Textarea
+                    className="mt-3"
+                    radius="md"
+                    minRows={12}
+                    autosize
                     value={displayedTeamSpec}
                     onChange={(event) => setNewTeamSpec(event.target.value)}
                     readOnly={!useSpecOverride}
+                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
                   />
                 </div>
               )}
@@ -4147,45 +4188,52 @@ export function TeamPage(props: TeamPageProps) {
                   {currentStageBlockReason}
                 </span>
               )}
-              <button
-                className={panelGhostButtonClassName}
+              <Button
+                radius="md"
+                variant="subtle"
+                color="gray"
                 onClick={closeCreateTeamModal}
                 disabled={busy === "create-team"}
                 type="button"
               >
                 Cancel
-              </button>
-              <button
-                className={panelGhostButtonClassName}
+              </Button>
+              <Button
+                radius="md"
+                variant="subtle"
+                color="gray"
                 onClick={goToPrevCreateTeamStage}
                 disabled={createTeamStage === 0 || busy === "create-team"}
                 type="button"
               >
                 Back
-              </button>
+              </Button>
               {createTeamStage < 3 && (
-                <button
-                  className={panelPrimaryButtonClassName}
+                <Button
+                  radius="md"
+                  color="dark"
                   onClick={goToNextCreateTeamStage}
                   disabled={!canAdvanceCreateStage || busy === "create-team"}
                   type="button"
                 >
                   Next Stage
-                </button>
+                </Button>
               )}
               {createTeamStage === 3 && (
-                <button
-                  className={panelPrimaryButtonClassName}
+                <Button
+                  radius="md"
+                  color="dark"
                   onClick={onCreateTeam}
                   disabled={
                     busy === "create-team" ||
                     (!useSpecOverride &&
                       (!hasForgeAgents || !leaderMemberId.trim() || hasDuplicateMembers))
                   }
+                  loading={busy === "create-team"}
                   type="button"
                 >
                   Create Team
-                </button>
+                </Button>
               )}
             </div>
           </div>
