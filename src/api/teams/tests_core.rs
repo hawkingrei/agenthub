@@ -276,11 +276,12 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert context flush checkpoint");
 
+    drop(member_event_db);
+
     let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
         .expect("delete team");
     assert_eq!(deleted.id, team.id);
-    drop(member_event_db);
 
     let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
@@ -361,9 +362,9 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     let event_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id = ?1")
             .bind(&session_id)
-        .fetch_one(&member_event_db)
-        .await
-        .expect("count member events");
+            .fetch_one(&member_event_db)
+            .await
+            .expect("count member events");
     assert_eq!(event_count, 0);
 
     let permission_count: i64 =

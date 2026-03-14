@@ -220,7 +220,8 @@ async function selectAgentFromSidebar(
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
   const subjectsScopeButton = sidebar
-    .getByRole("button", { name: "Channels & Agents", exact: true })
+    .getByLabel("Team sidebar scope switch")
+    .getByText("Channels & Agents", { exact: true })
     .first();
   if (await subjectsScopeButton.isVisible()) {
     await subjectsScopeButton.click();
