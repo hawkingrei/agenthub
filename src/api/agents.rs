@@ -1924,7 +1924,7 @@ mod tests {
         .expect("insert safe path");
 
         let env_file = workdir.join("actor-runtime-env.txt");
-        let script = "printf '%s\\n' \"$AGENTHUB_ACTOR_RUN_ID\" > actor-runtime-env.txt; \
+        let script = "printf '%s\\n' \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" > actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_ID\" >> actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_CHANNEL\" >> actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_CLI\" >> actor-runtime-env.txt; \

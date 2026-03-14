@@ -829,7 +829,7 @@ impl TeamManager {
         let mut session_ids = Vec::new();
         for step in steps {
             if let Some(session_id) = step
-                .remote_task_id
+                .runtime_handle_id
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -868,9 +868,9 @@ impl TeamManager {
                     step_key: step.step_key,
                     status: step.status,
                     attempt: step.attempt,
-                    session_id: step.remote_task_id.clone(),
+                    session_id: step.runtime_handle_id.clone(),
                     session_status: step
-                        .remote_task_id
+                        .runtime_handle_id
                         .as_deref()
                         .and_then(|session_id| session_status_by_id.get(session_id))
                         .cloned(),
@@ -1360,7 +1360,7 @@ impl TeamManager {
     pub async fn start_step(
         &self,
         step_id: &str,
-        remote_task_id: Option<&str>,
+        runtime_handle_id: Option<&str>,
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
@@ -1374,7 +1374,7 @@ impl TeamManager {
             WHERE id = ?3 AND status IN ('submitted', 'input_required')
             "#,
         )
-        .bind(remote_task_id)
+        .bind(runtime_handle_id)
         .bind(now)
         .bind(step_id)
         .execute(&mut *tx)
@@ -1439,7 +1439,8 @@ impl TeamManager {
                 "step_id": step.id,
                 "step_key": step.step_key,
                 "status": "working",
-                "remote_task_id": step.remote_task_id,
+                "runtime_handle_id": step.runtime_handle_id,
+                "remote_task_id": step.runtime_handle_id,
             });
             sqlx::query(
                 r#"
@@ -1656,7 +1657,8 @@ impl TeamManager {
                 "step_id": step.id,
                 "step_key": step.step_key,
                 "status": "working",
-                "remote_task_id": step.remote_task_id,
+                "runtime_handle_id": step.runtime_handle_id,
+                "remote_task_id": step.runtime_handle_id,
             });
             sqlx::query(
                 r#"
@@ -1774,7 +1776,7 @@ impl TeamManager {
                             team_id: &team_id,
                             run_id: &step.run_id,
                             member_id: &step.member_id,
-                            session_id: step.remote_task_id.as_deref(),
+                            session_id: step.runtime_handle_id.as_deref(),
                         },
                         &continuity_snapshot,
                         now,
@@ -1816,7 +1818,7 @@ impl TeamManager {
                 team_id: team_id.clone(),
                 member_id: step.member_id.clone(),
                 source_run_id: step.run_id.clone(),
-                source_session_id: step.remote_task_id.clone(),
+                source_session_id: step.runtime_handle_id.clone(),
                 summary_text: continuity_snapshot.summary_text,
                 history_window: continuity_snapshot.history_window,
                 updated_at: now,

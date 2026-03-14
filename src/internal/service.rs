@@ -427,7 +427,7 @@ fn step_to_transition_response(step: TeamStepRecord) -> TransitionStepResponse {
         run_id: step.run_id,
         step_key: step.step_key,
         member_id: step.member_id,
-        remote_task_id: step.remote_task_id.unwrap_or_default(),
+        remote_task_id: step.runtime_handle_id.unwrap_or_default(),
         status: step_status_to_str(&step.status).to_string(),
         error_text: step.error_text.unwrap_or_default(),
     }

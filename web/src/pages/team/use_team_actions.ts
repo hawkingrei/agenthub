@@ -10,6 +10,7 @@ import {
   type AgentEvent,
   type AgentRecord,
   api,
+  getTeamStepRuntimeHandleId,
   type TeamActorMessageRecord,
   type TeamDefinitionRecord,
   type TeamMemberSnapshot,
@@ -408,7 +409,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         return;
       }
       const memberAgentId = selectedMemberSnapshot.member_id;
-      const sessionId = selectedMemberSnapshot.latest_step?.remote_task_id ?? undefined;
+      const sessionId = getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) ?? undefined;
       if (!sessionId) {
         setMemberEvents([]);
         setMemberEventsHasMore(false);

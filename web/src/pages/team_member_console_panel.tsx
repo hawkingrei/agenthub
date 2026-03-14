@@ -5,6 +5,7 @@ import {
   TeamMemberSnapshot,
   TeamRunEventRecord,
   TeamRunSnapshotRecord,
+  getTeamStepRuntimeHandleId,
 } from "../api";
 import {
   resolveDisplayName,
@@ -180,9 +181,9 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               </span>
             </div>
             <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>remote_task_id</div>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>runtime_handle_id</div>
               <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                {selectedMemberSnapshot.latest_step?.remote_task_id ?? "-"}
+                {getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) ?? "-"}
               </span>
             </div>
             <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
@@ -274,14 +275,14 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
         </p>
       )}
 
-      {selectedMemberSnapshot && !selectedMemberSnapshot.latest_step?.remote_task_id && (
+      {selectedMemberSnapshot && !getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) && (
         <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>
           Selected member has no associated session yet.
         </p>
       )}
 
       {selectedMemberSnapshot &&
-        selectedMemberSnapshot.latest_step?.remote_task_id &&
+        getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) &&
         memberEvents.length === 0 && (
           <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>No member events yet.</p>
         )}

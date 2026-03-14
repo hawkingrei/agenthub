@@ -245,7 +245,7 @@ impl TeamOrchestratorWorker {
             ) {
                 continue;
             }
-            let Some(session_id) = step.remote_task_id.as_deref() else {
+            let Some(session_id) = step.runtime_handle_id.as_deref() else {
                 continue;
             };
             let Some(session_status) = self.teams.get_agent_session_status(session_id).await?
@@ -827,7 +827,7 @@ mod tests {
             run_id: "run-1".to_string(),
             step_key: step_key.to_string(),
             member_id: "planner".to_string(),
-            remote_task_id: None,
+            runtime_handle_id: None,
             status: TeamStepStatus::Submitted,
             attempt: 0,
             depends_on: depends_on.iter().map(|item| item.to_string()).collect(),
@@ -1382,7 +1382,7 @@ mod tests {
         let started_step = teams.get_step(&step.id).await.expect("get started step");
         assert_eq!(started_step.status, TeamStepStatus::Working);
         assert_eq!(
-            started_step.remote_task_id.as_deref(),
+            started_step.runtime_handle_id.as_deref(),
             Some("session-planner")
         );
 

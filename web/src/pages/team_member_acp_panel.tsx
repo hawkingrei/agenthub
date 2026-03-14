@@ -1,6 +1,6 @@
 import React from "react";
 import { buildAcpView } from "../acp";
-import { AgentEvent, TeamMemberSnapshot } from "../api";
+import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
 import { AcpConversation } from "../components/acp_conversation";
 import { buildConversationMessages } from "../conversation";
 import { isNearBottom } from "../scroll";
@@ -41,7 +41,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     onLoadOlder,
   } = props;
 
-  const selectedSessionId = selectedMemberSnapshot?.latest_step?.remote_task_id ?? null;
+  const selectedSessionId = getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const acpEventLines = React.useMemo(
     () =>
       memberEvents.map((event) => ({

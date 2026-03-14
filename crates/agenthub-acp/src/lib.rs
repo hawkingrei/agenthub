@@ -44,7 +44,6 @@ const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
 const ACTOR_MAILBOX_MCP_SERVER_NAME: &str = "agenthub-actor-mailbox";
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
-const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
@@ -255,11 +254,6 @@ fn build_actor_mailbox_mcp_server(context: &AcpActorSkillContext) -> McpServer {
     {
         env.push(EnvVariable::new(
             ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
-            run_id.to_string(),
-        ));
-        // Compatibility fallback for existing actor tooling that still reads the legacy env key.
-        env.push(EnvVariable::new(
-            ACTOR_RUNTIME_RUN_ID_ENV.to_string(),
             run_id.to_string(),
         ));
     }

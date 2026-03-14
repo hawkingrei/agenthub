@@ -710,7 +710,7 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
         .await
         .expect("start step");
     assert_eq!(working.status, TeamStepStatus::Working);
-    assert_eq!(working.remote_task_id.as_deref(), Some("remote-task-1"));
+    assert_eq!(working.runtime_handle_id.as_deref(), Some("remote-task-1"));
     assert!(working.started_at.is_some());
 
     let run_after_start = manager.get_run(&run.id).await.expect("get run");
