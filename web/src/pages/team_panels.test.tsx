@@ -1578,6 +1578,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("You");
     expect(container.textContent).toContain("LeaderAgent");
     expect(container.textContent).toContain("worker-agent");
+    const activityKinds = Array.from(
+      container.querySelectorAll("[data-activity-author-kind]")
+    ).map((node) => node.getAttribute("data-activity-author-kind"));
+    expect(activityKinds).toEqual(["human", "agent"]);
   });
 
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {

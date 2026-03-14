@@ -52,8 +52,12 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "mt-3 min-h-[320px] max-h-[min(72vh,760px)] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
 const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
-const TEAM_TASK_ACTIVITY_ITEM_CLASS =
-  "rounded-lg border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
+  "acp-bubble rounded-xl border px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-sky-200 bg-sky-50/85 text-sky-950`;
+const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-slate-200 bg-white text-slate-800`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
@@ -62,9 +66,9 @@ const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
   "text-sm font-semibold text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 text-sm leading-6 text-ui-text-primary";
+  "acp-text mt-2 text-sm leading-6 text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft/80";
+  "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
   "mt-2 inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
@@ -114,6 +118,15 @@ function resolveMentionLabel(
     return agentName;
   }
   return actorId;
+}
+
+function resolveActivityItemClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return isHumanMailboxActor(actorId, humanActorId)
+    ? TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS
+    : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
 }
 
 export function TeamTaskPanel(props: TeamTaskPanelProps) {
@@ -308,13 +321,18 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
+            const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
             const authorLabel = resolveThreadAuthorLabel(
               item.fromActorId,
               humanActorId,
               liveStateByMemberId
             );
             return (
-              <div key={item.key} className={TEAM_TASK_ACTIVITY_ITEM_CLASS}>
+              <div
+                key={item.key}
+                className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
+                data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
+              >
                 <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                   <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
                     <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>

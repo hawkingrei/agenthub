@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Menu } from "@mantine/core";
+import { Badge, Button, Group, Menu, Tooltip } from "@mantine/core";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
@@ -24,7 +24,6 @@ import {
 import { CreateAgentModal } from "../components/create_agent_modal";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
-import { StatusBadge } from "../components/status_badge";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
@@ -94,6 +93,7 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
+  resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
@@ -834,6 +834,10 @@ export function TeamPage(props: TeamPageProps) {
   const selectedTeamRuntimeStatus = useMemo(
     () => resolveTeamRuntimeStatus(selectedTeamMemberSummary, selectedTeamRuntime),
     [selectedTeamMemberSummary, selectedTeamRuntime]
+  );
+  const selectedTeamRuntimeControlTone = useMemo(
+    () => resolveTeamRuntimeControlTone(selectedTeamRuntimeStatus.status),
+    [selectedTeamRuntimeStatus.status]
   );
   useEffect(() => {
     const memberId = selectedMemberId.trim();
@@ -2992,27 +2996,65 @@ export function TeamPage(props: TeamPageProps) {
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      label={selectedTeamRuntimeStatus.label}
-                      tone={selectedTeamRuntimeStatus.tone}
-                      title={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
-                    />
-                    <button
-                      type="button"
-                      className={panelSecondaryButtonClassName}
-                      onClick={onStartTeamRuntime}
-                      disabled={busy === "start-team" || selectedTeamRuntimeStatus.status === "running"}
+                    <Tooltip
+                      label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
+                      withArrow
                     >
-                      {busy === "start-team" ? "Starting Team..." : "Start Team"}
-                    </button>
-                    <button
-                      type="button"
-                      className={panelSecondaryButtonClassName}
-                      onClick={onStopTeamRuntime}
-                      disabled={busy === "stop-team" || selectedTeamRuntimeStatus.status === "stopped"}
-                    >
-                      {busy === "stop-team" ? "Stopping Team..." : "Stop Team"}
-                    </button>
+                      <Group
+                        gap={8}
+                        wrap="nowrap"
+                        className="rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-2 py-1"
+                      >
+                        <Badge
+                          variant="light"
+                          color={selectedTeamRuntimeControlTone.statusColor}
+                          radius="sm"
+                        >
+                          {selectedTeamRuntimeStatus.label}
+                        </Badge>
+                        <Badge
+                          variant="dot"
+                          color={selectedTeamRuntimeControlTone.countColor}
+                          radius="sm"
+                        >
+                          {`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} online`}
+                        </Badge>
+                      </Group>
+                    </Tooltip>
+                    <Group gap="xs">
+                      <Button
+                        type="button"
+                        size="xs"
+                        radius="md"
+                        variant={
+                          selectedTeamRuntimeStatus.status === "running" ? "default" : "filled"
+                        }
+                        color="dark"
+                        loading={busy === "start-team"}
+                        disabled={
+                          busy === "stop-team" || selectedTeamRuntimeStatus.status === "running"
+                        }
+                        leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                        onClick={onStartTeamRuntime}
+                      >
+                        Start Team
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        radius="md"
+                        variant="default"
+                        color="gray"
+                        loading={busy === "stop-team"}
+                        disabled={
+                          busy === "start-team" || selectedTeamRuntimeStatus.status === "stopped"
+                        }
+                        leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                        onClick={onStopTeamRuntime}
+                      >
+                        Stop Team
+                      </Button>
+                    </Group>
                     <div className={workspaceToolbarClassName}>
                       {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
                         <button

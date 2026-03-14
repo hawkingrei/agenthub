@@ -26,6 +26,11 @@ export type TeamRuntimeStatusView = {
   total: number;
 };
 
+export type TeamRuntimeControlTone = {
+  statusColor: "teal" | "yellow" | "gray";
+  countColor: "teal" | "yellow" | "gray";
+};
+
 type TeamRuntimeStatusRecord = {
   status: TeamRuntimeRecord["status"];
   members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
@@ -91,6 +96,27 @@ export function resolveTeamRuntimeStatus(
     tone: "warning",
     online,
     total,
+  };
+}
+
+export function resolveTeamRuntimeControlTone(
+  status: TeamRuntimeStatusView["status"]
+): TeamRuntimeControlTone {
+  if (status === "running") {
+    return {
+      statusColor: "teal",
+      countColor: "teal",
+    };
+  }
+  if (status === "degraded") {
+    return {
+      statusColor: "yellow",
+      countColor: "yellow",
+    };
+  }
+  return {
+    statusColor: "gray",
+    countColor: "gray",
   };
 }
 
