@@ -165,10 +165,7 @@ import {
   TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS,
   TEAM_CREATE_WORKER_CARD_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -284,9 +281,7 @@ function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-const panelPrimaryButtonClassName = TEAM_PANEL_PRIMARY_BUTTON_CLASS;
 const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
-const panelInputClassName = `${TEAM_PANEL_INPUT_CLASS} shadow-sm`;
 const teamSectionCardClassName =
   "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
 const teamSectionCardLargeClassName =
@@ -2772,29 +2767,33 @@ export function TeamPage(props: TeamPageProps) {
         <p className={teamSectionBodyTextClassName}>
           Debug entry for manually starting a Team run.
         </p>
-        <div className="form-row mt-3">
-          <input
-            className={panelInputClassName}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+          <TextInput
+            className="flex-1"
+            radius="md"
             placeholder="context_id (optional, auto-generated when empty)"
             value={runContextId}
             onChange={(event) => setRunContextId(event.target.value)}
           />
-          <button
-            className={panelPrimaryButtonClassName}
+          <Button
+            radius="md"
+            color="dark"
             onClick={onCreateRun}
             disabled={!canCreateRun}
             title={runInputValidation.error ?? "Create run"}
           >
             Create Run
-          </button>
+          </Button>
         </div>
         <p className={teamSectionHintTextClassName}>
           <code>context_id</code> can be empty. Use one when you want retries/resume grouped
           under the same context.
         </p>
-        <textarea
-          className={`${TEAM_PANEL_TEXTAREA_CLASS} mt-3`}
-          rows={8}
+        <Textarea
+          className="mt-3"
+          radius="md"
+          minRows={8}
+          autosize
           placeholder='Optional JSON input, e.g. {"task":"sync"}'
           aria-label="Run input JSON"
           spellCheck={false}
@@ -2806,6 +2805,7 @@ export function TeamPage(props: TeamPageProps) {
               void onCreateRun();
             }
           }}
+          styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
         />
         {runInputValidation.error ? (
           <p className="mt-2 text-xs text-rose-600" role="alert">
@@ -2817,9 +2817,12 @@ export function TeamPage(props: TeamPageProps) {
           </p>
         )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() =>
               setRunInput(
                 JSON.stringify(
@@ -2834,17 +2837,23 @@ export function TeamPage(props: TeamPageProps) {
             }
           >
             Use Example JSON
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => setRunInput("{}")}
           >
             Set Empty Object
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => {
               const parsed = runInputValidation.parsed;
               if (parsed === undefined && runInput.trim().length === 0) {
@@ -2859,15 +2868,18 @@ export function TeamPage(props: TeamPageProps) {
             disabled={runInputHasError}
           >
             Format JSON
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={panelSecondaryButtonClassName}
+            size="xs"
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={() => setRunInput("")}
             disabled={runInput.trim().length === 0}
           >
             Clear
-          </button>
+          </Button>
         </div>
         <p className={teamSectionHintTextClassName}>
           Leave empty to submit default empty input <code>{`{}`}</code>.
@@ -2878,20 +2890,24 @@ export function TeamPage(props: TeamPageProps) {
         <p className={teamSectionBodyTextClassName}>
           Load by <code>run_id</code> for the currently selected team only.
         </p>
-        <div className="form-row mt-3">
-          <input
-            className={panelInputClassName}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+          <TextInput
+            className="flex-1"
+            radius="md"
             placeholder="existing run_id"
             value={runLookupId}
             onChange={(event) => setRunLookupId(event.target.value)}
           />
-          <button
-            className={panelSecondaryButtonClassName}
+          <Button
+            radius="md"
+            variant="default"
+            color="gray"
             onClick={onLoadRunById}
             disabled={busy === "load-run"}
+            loading={busy === "load-run"}
           >
             Load Run
-          </button>
+          </Button>
         </div>
       </div>
     </div>

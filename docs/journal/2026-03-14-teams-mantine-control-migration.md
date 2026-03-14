@@ -32,6 +32,7 @@ Scope in this checkpoint:
   - create-team stage navigation now uses Mantine `Stepper`
   - create-team modal inputs/selects/textareas now use Mantine form controls on the main guided path
   - create-team modal footer and worker-management actions now use Mantine `Button`
+  - debug `Run Ops` inputs, textarea, and action buttons now use Mantine form controls
 
 The team actions overflow menu was intentionally left on the existing custom popup implementation for now. The Mantine `Menu` variant introduced more test/runtime instability than value in this slice, while the input/filter/select migration delivered the higher-yield framework convergence.
 
