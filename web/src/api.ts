@@ -526,6 +526,15 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token),
+  updateTeamSpec: (
+    token: string,
+    id: string,
+    payload: { spec: unknown; expected_updated_at: number }
+  ) =>
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}/spec`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   getTeamRuntime: (token: string, id: string) =>
     apiFetch<TeamRuntimeRecord>(`/api/teams/${encodePathSegment(id)}/runtime`, token),
   startTeam: (token: string, id: string) =>

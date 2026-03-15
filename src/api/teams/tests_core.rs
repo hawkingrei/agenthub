@@ -75,6 +75,174 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
 }
 
 #[tokio::test]
+async fn teams_api_allows_creating_team_without_members() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "empty-team".to_string(),
+            description: Some("goal only".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create team without members");
+
+    assert_eq!(created.spec["spec_version"], Value::from(1));
+    assert_eq!(created.spec["members"], json!([]));
+    assert!(created.spec.get("entrypoint").is_none());
+    assert!(created.spec.get("leader_member_id").is_none());
+    assert!(created.spec.get("steps").is_none());
+
+    let Json(runtime) = get_team_runtime(
+        State(state),
+        headers,
+        Path(created.id.clone()),
+    )
+    .await
+    .expect("describe empty team runtime");
+    assert_eq!(runtime.team_id, created.id);
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Stopped);
+    assert!(runtime.members.is_empty());
+}
+
+#[tokio::test]
+async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    insert_legacy_team_member_agent(&state, "planner").await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "bootstrap-team".to_string(),
+            description: Some("team bootstrap".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create empty team");
+
+    let Json(updated) = update_team_spec(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(UpdateTeamSpecRequest {
+            expected_updated_at: created.updated_at,
+            spec: json!({
+                "spec_version": 1,
+                "entrypoint": "planner",
+                "members": [
+                    {
+                        "member_id": "planner",
+                        "role": "leader",
+                    }
+                ],
+            }),
+        }),
+    )
+    .await
+    .expect("update team spec");
+
+    assert_eq!(updated.spec["leader_member_id"], Value::from("planner"));
+    assert_eq!(updated.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(updated.spec["steps"][0]["member_id"], Value::from("planner"));
+    let Json(runtime) = get_team_runtime(
+        State(state),
+        headers,
+        Path(updated.id.clone()),
+    )
+    .await
+    .expect("describe updated team runtime");
+    assert_eq!(runtime.team_id, updated.id);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "planner");
+}
+
+#[tokio::test]
+async fn teams_api_rejects_execution_until_team_has_members() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "empty-execution-team".to_string(),
+            description: Some("members added later".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create empty execution team");
+
+    let start_err = start_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect_err("start should fail without members");
+    let start_body = decode_json_body(start_err.into_response()).await;
+    assert_eq!(start_body["error"], Value::from("team has no members configured; add at least one agent first"));
+
+    let run_err = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-empty-team".to_string()),
+            input: Some(json!({"task": "noop"})),
+        }),
+    )
+    .await
+    .expect_err("run creation should fail without members");
+    let run_body = decode_json_body(run_err.into_response()).await;
+    assert_eq!(run_body["error"], Value::from("team has no members configured; add at least one agent first"));
+
+    let Json(task_detail) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Investigate".to_string(),
+            created_by_actor_id: None,
+            context: None,
+            conversation_mode: None,
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task without members");
+
+    let compile_err = compile_team_task_run_preview(
+        State(state),
+        headers,
+        Path((team.id.clone(), task_detail.task.id.clone())),
+        Json(CompileTeamTaskRunPreviewRequest {
+            context_id: Some("ctx-empty-team-compile".to_string()),
+        }),
+    )
+    .await
+    .expect_err("compile preview should fail without members");
+    let compile_body = decode_json_body(compile_err.into_response()).await;
+    assert_eq!(compile_body["error"], Value::from("team has no members configured; add at least one agent first"));
+}
+
+#[tokio::test]
 async fn teams_api_delete_team_cascades_related_run_data() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

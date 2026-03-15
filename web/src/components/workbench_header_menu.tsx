@@ -1,0 +1,55 @@
+import React from "react";
+import { Menu } from "@mantine/core";
+
+type WorkbenchHeaderMenuProps = {
+  active: "agents" | "teams";
+  username: string;
+  isRoot: boolean;
+  onLogout: () => void;
+  buttonClassName: string;
+  defaultOpened?: boolean;
+};
+
+export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
+  active,
+  username,
+  isRoot,
+  onLogout,
+  buttonClassName,
+  defaultOpened = false,
+}: WorkbenchHeaderMenuProps) {
+  return (
+    <Menu withinPortal={false} position="bottom-end" shadow="md" defaultOpened={defaultOpened}>
+      <Menu.Target>
+        <button
+          type="button"
+          className={buttonClassName}
+          aria-label="Open workbench menu"
+        >
+          <i className="bi bi-grid-3x3-gap text-[13px] sm:text-[14px]" aria-hidden="true" />
+          <span className="hidden sm:inline">Menu</span>
+          <i className="bi bi-chevron-down text-[10px] text-black/65" aria-hidden="true" />
+        </button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>{username}</Menu.Label>
+        <Menu.Item component="a" href="/" disabled={active === "agents"}>
+          Agents
+        </Menu.Item>
+        <Menu.Item component="a" href="/teams" disabled={active === "teams"}>
+          Teams
+        </Menu.Item>
+        <Menu.Divider />
+        {isRoot && (
+          <Menu.Item component="a" href="/admin">
+            Settings
+          </Menu.Item>
+        )}
+        {isRoot && <Menu.Divider />}
+        <Menu.Item color="red" onClick={onLogout}>
+          Logout
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+});

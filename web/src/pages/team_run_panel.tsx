@@ -8,7 +8,6 @@ import {
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
@@ -31,6 +30,14 @@ const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wi
 const RUN_PANEL_HINT_TEXT_CLASS = "text-sm text-ui-text-muted";
 const RUN_PANEL_LIST_TITLE_CLASS = "text-sm font-semibold text-ui-text-primary";
 const RUN_PANEL_FOOT_META_CLASS = "mono text-ui-xs text-ui-text-muted";
+const TEAM_WORKBENCH_RUN_PANEL_CLASS =
+  "rounded-[28px] border-[3px] border-black bg-[#f6efe5] p-5 shadow-[0_4px_0_rgba(0,0,0,0.18)]";
+const TEAM_WORKBENCH_RUN_LIST_CLASS =
+  "rounded-[22px] border-[3px] border-black bg-[#fffaf3] p-4 shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const TEAM_WORKBENCH_ACCENT_BUTTON_CLASS =
+  "rounded-[14px] border-[3px] border-black bg-[#243243] px-3 py-2 text-sm font-semibold text-white shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
+const TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS =
+  "rounded-[14px] border-[3px] border-black bg-white px-3 py-2 text-sm font-semibold text-black shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -38,6 +45,8 @@ type TeamRunPanelProps = {
   busy: string | null;
   onDeleteTeam: () => Promise<void> | void;
   onStartRun: () => Promise<void> | void;
+  canStartRun: boolean;
+  runBlockedReason?: string | null;
   runStatusFilter: TeamRunStatusFilter;
   runStatusFilterOptions: TeamRunStatusFilterOption[];
   onRunStatusFilterChange: (value: TeamRunStatusFilter) => void;
@@ -62,6 +71,8 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     busy,
     onDeleteTeam,
     onStartRun,
+    canStartRun,
+    runBlockedReason,
     runStatusFilter,
     runStatusFilterOptions,
     onRunStatusFilterChange,
@@ -80,27 +91,29 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
   } = props;
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} ${TEAM_WORKBENCH_RUN_PANEL_CLASS}`}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <div className="text-lg font-semibold tracking-tight text-ui-text-primary">
+        <div className="text-lg font-semibold tracking-tight text-black">
           {selectedTeam.name}
         </div>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <span className="mono">{selectedTeam.id}</span>
+          <span className="mono rounded-full border-2 border-black bg-white px-3 py-1 text-black">
+            {selectedTeam.id}
+          </span>
           <button
             onClick={() => {
               void onDeleteTeam();
             }}
             disabled={busy === "delete-team"}
-            className={RUN_PANEL_DELETE_BUTTON_CLASS}
+            className={`${RUN_PANEL_DELETE_BUTTON_CLASS} border-[3px] border-black bg-white text-black shadow-[0_2px_0_rgba(0,0,0,0.16)]`}
           >
             Delete Team
           </button>
         </div>
       </div>
-      <div className={RUN_PANEL_LIST_CLASS}>
-        <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
-        <p className={TEAM_MUTED_TEXT_CLASS}>
+      <div className={`${RUN_PANEL_LIST_CLASS} ${TEAM_WORKBENCH_RUN_LIST_CLASS}`}>
+        <p className={`${RUN_PANEL_SUBTITLE_CLASS} text-black/60`}>Run Browser</p>
+        <p className={`${TEAM_MUTED_TEXT_CLASS} text-black/70`}>
           {developerMode ? (
             <>
               Team execution is agent-driven. You can quick-start here, or use{" "}
@@ -111,14 +124,20 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           )}
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <span className={RUN_PANEL_HINT_TEXT_CLASS}>Quick start a new run for this team.</span>
+          <span className={RUN_PANEL_HINT_TEXT_CLASS}>
+            {runBlockedReason ?? "Quick start a new run for this team."}
+          </span>
           <button
             onClick={() => {
               void onStartRun();
             }}
-            disabled={busy === "create-run" || !selectedTeamId}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            title="Start a new run for the selected team"
+            disabled={busy === "create-run" || !selectedTeamId || !canStartRun}
+            className={
+              canStartRun
+                ? TEAM_WORKBENCH_ACCENT_BUTTON_CLASS
+                : TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS
+            }
+            title={runBlockedReason ?? "Start a new run for the selected team"}
             aria-label="Start run"
           >
             {busy === "create-run" ? "Starting..." : "Start Run"}
@@ -141,7 +160,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
                 void onRefreshRuns();
               }}
               disabled={runsLoading}
-              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+              className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} ${TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS}`}
               title="Refresh runs"
               aria-label="Refresh runs"
             >
@@ -192,7 +211,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               void onLoadMoreRuns();
             }}
             disabled={runsLoading || !runsHasMore || !selectedTeamId}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+            className={TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS}
           >
             {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
           </button>

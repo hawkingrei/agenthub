@@ -22,6 +22,8 @@ import {
 } from "../agent_presets";
 
 type CreateAgentModalProps = {
+  title?: string;
+  confirmLabel?: string;
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
@@ -43,6 +45,7 @@ type CreateAgentModalProps = {
   createBusy: boolean;
   workdirPlaceholder?: string;
   withinPortal?: boolean;
+  children?: React.ReactNode;
   onCreateAgent: () => void;
   onClose: () => void;
 };
@@ -52,6 +55,30 @@ const worktreeOptions = [
   { value: "create_worktree", label: "Create git worktree" },
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
+const TEAM_AGENT_MODAL_CONTENT_STYLE = {
+  backgroundColor: "#f6efe5",
+  border: "3px solid #000",
+  boxShadow: "0 4px 0 rgba(0, 0, 0, 0.18)",
+};
+const TEAM_AGENT_MODAL_HEADER_STYLE = {
+  backgroundColor: "transparent",
+  borderBottom: "2px solid #000",
+  paddingBottom: "12px",
+};
+const TEAM_AGENT_MODAL_TITLE_STYLE = {
+  color: "#000",
+  fontSize: "0.85rem",
+  fontWeight: 800,
+  letterSpacing: "0.18em",
+  textTransform: "uppercase" as const,
+};
+const TEAM_AGENT_MODAL_BODY_STYLE = {
+  paddingTop: "16px",
+};
+const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
+  "!border-[3px] !border-black !bg-[#243243] !text-white !shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:!-translate-y-[1px] hover:!shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
+  "!border-[3px] !border-black !bg-white !text-black !shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:!-translate-y-[1px] hover:!shadow-[0_1px_0_rgba(0,0,0,0.12)]";
 
 export function resolveCreateAgentPresetId(value: string | null): AgentPresetId {
   if (value && isAgentPresetId(value)) {
@@ -85,6 +112,8 @@ export function shouldAutoExpandCreateAgentAdvancedOptions(
 }
 
 export function CreateAgentModal({
+  title = "Create Agent",
+  confirmLabel = "Create Agent",
   agentName,
   setAgentName,
   agentWorkdir,
@@ -104,6 +133,7 @@ export function CreateAgentModal({
   createBusy,
   workdirPlaceholder = "Workdir",
   withinPortal = true,
+  children,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
@@ -156,7 +186,7 @@ export function CreateAgentModal({
     <Modal
       opened
       onClose={onClose}
-      title="Create Agent"
+      title={title}
       size="lg"
       radius="md"
       withCloseButton={false}
@@ -164,6 +194,12 @@ export function CreateAgentModal({
       closeOnClickOutside={false}
       withinPortal={withinPortal}
       overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
+      styles={{
+        content: TEAM_AGENT_MODAL_CONTENT_STYLE,
+        header: TEAM_AGENT_MODAL_HEADER_STYLE,
+        title: TEAM_AGENT_MODAL_TITLE_STYLE,
+        body: TEAM_AGENT_MODAL_BODY_STYLE,
+      }}
     >
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -276,6 +312,8 @@ export function CreateAgentModal({
           onChange={(event) => setCodeMode(event.currentTarget.checked)}
         />
 
+        {children}
+
         {worktreeError ? (
           <Alert color="red" title="Worktree Setup Failed" variant="light">
             <Text size="sm">{worktreeError}</Text>
@@ -296,10 +334,16 @@ export function CreateAgentModal({
             onClick={onCreateAgent}
             loading={createBusy}
             disabled={createBusy}
+            className={TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS}
           >
-            Create Agent
+            {confirmLabel}
           </Button>
-          <Button variant="default" onClick={onClose} disabled={createBusy}>
+          <Button
+            variant="default"
+            onClick={onClose}
+            disabled={createBusy}
+            className={TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS}
+          >
             Cancel
           </Button>
         </Group>

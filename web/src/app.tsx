@@ -26,6 +26,7 @@ import {
 } from "./auth_redirect";
 import {
   deriveConnectionBadge,
+  getNavigatorOnline,
   OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
   shouldHideErrorBannerMessage,
@@ -69,6 +70,8 @@ import { OutputHeader } from "./components/output_header";
 import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { PermissionModal } from "./components/permission_modal";
+import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
+import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
@@ -121,6 +124,14 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+const APP_WORKBENCH_HEADER_CLASS =
+  "flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#f3f1eb] px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:gap-3 sm:rounded-[20px] sm:px-3.5 sm:py-3 sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const APP_WORKBENCH_HEADER_STATUS_CLASS =
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-black bg-[#fcfbf7] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)] sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[10px] sm:tracking-[0.14em]";
+const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border-[2px] border-black text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] lg:hidden";
+const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
 
 function AuthRedirect(): null {
   useEffect(() => {
@@ -141,7 +152,40 @@ export function shouldRedirectTeamsToLogin(
   auth: AuthState | null,
   token: string | null
 ): boolean {
-  return pathname.startsWith("/teams") && (!auth || !token);
+  return isTeamsRoute(pathname) && (!auth || !token);
+}
+
+function isTeamsRoute(pathname: string): boolean {
+  return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
+}
+
+export function resolveTeamRoute(pathname: string): {
+  mode: "selector" | "detail";
+  teamId: string | null;
+} | null {
+  if (!isTeamsRoute(pathname)) {
+    return null;
+  }
+  const suffix = pathname.slice("/teams".length);
+  if (!suffix || suffix === "/") {
+    return { mode: "selector", teamId: null };
+  }
+  const normalized = suffix.startsWith("/") ? suffix.slice(1) : suffix;
+  const [rawTeamId] = normalized.split("/");
+  if (!rawTeamId) {
+    return { mode: "selector", teamId: null };
+  }
+  try {
+    return {
+      mode: "detail",
+      teamId: decodeURIComponent(rawTeamId),
+    };
+  } catch {
+    return {
+      mode: "detail",
+      teamId: rawTeamId,
+    };
+  }
 }
 
 export function resolvePostAuthRedirectTarget(
@@ -621,6 +665,10 @@ export function App() {
   const eventLimit = 200;
   const maxCachedEvents = 800;
   const maxCachedSessions = 40;
+  const [routeLocation, setRouteLocation] = useState(() => ({
+    pathname: location.pathname,
+    search: location.search,
+  }));
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = getLocalStorageItemSafe("agenthub_auth");
     if (!raw) return null;
@@ -1002,11 +1050,23 @@ export function App() {
 
   const token = auth?.token ?? null;
   const postAuthRedirectTarget = resolvePostAuthRedirectTarget(
-    location.pathname,
-    location.search,
+    routeLocation.pathname,
+    routeLocation.search,
     auth,
     token
   );
+  useEffect(() => {
+    const syncRouteLocation = () => {
+      setRouteLocation({
+        pathname: location.pathname,
+        search: location.search,
+      });
+    };
+    window.addEventListener("popstate", syncRouteLocation);
+    return () => {
+      window.removeEventListener("popstate", syncRouteLocation);
+    };
+  }, []);
   useEffect(() => {
     activeAgentRef.current = activeAgent;
   }, [activeAgent]);
@@ -2260,10 +2320,6 @@ export function App() {
     setAgentsCollapsed(false);
   }, []);
 
-  const handleToggleAgents = useCallback(() => {
-    setAgentsCollapsed((prev) => !prev);
-  }, []);
-
   const handleSelectAgent = useCallback((id: string) => {
     setActiveAgent(id);
     setActiveSessionId(agentSessions[id] ?? null);
@@ -2574,6 +2630,7 @@ export function App() {
     () => ({
       acpView,
       subtitle: activeAgentRecord?.workdir ?? null,
+      mobileTitle: activeAgentRecord?.name ?? null,
       acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
       developerMode,
       onSelectTab: handleAcpTabSelect,
@@ -2588,6 +2645,7 @@ export function App() {
     }),
     [
       acpView,
+      activeAgentRecord?.name,
       activeAgentRecord?.workdir,
       acpTab,
       developerMode,
@@ -2628,11 +2686,11 @@ export function App() {
     ]
   );
 
-  if (location.pathname.startsWith("/join")) {
+  if (routeLocation.pathname.startsWith("/join")) {
     return <JoinPage onComplete={(next) => setAuth(next)} />;
   }
 
-  if (location.pathname.startsWith("/admin")) {
+  if (routeLocation.pathname.startsWith("/admin")) {
     if (!auth) {
       return <AuthRequired />;
     }
@@ -2668,16 +2726,18 @@ export function App() {
     );
   }
 
-  if (location.pathname.startsWith("/teams")) {
-    if (shouldRedirectTeamsToLogin(location.pathname, auth, token)) {
+  if (isTeamsRoute(routeLocation.pathname)) {
+    if (shouldRedirectTeamsToLogin(routeLocation.pathname, auth, token)) {
       return <AuthRedirect />;
     }
+    const teamRoute = resolveTeamRoute(routeLocation.pathname);
     return (
       <TeamPage
         auth={auth}
         token={token}
         onLogout={onLogout}
         developerMode={developerMode}
+        routeTeamId={teamRoute?.teamId ?? null}
       />
     );
   }
@@ -2687,40 +2747,44 @@ export function App() {
   }
 
   return (
-    <div className="app" ref={appRootRef}>
-      <header ref={appHeaderRef}>
-        <h1>AgentHub</h1>
+    <div
+      className="app bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)]"
+      ref={appRootRef}
+    >
+      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
+        <div className="hidden min-w-0 sm:block">
+          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-semibold tracking-tight text-black">
+            AgentHub
+          </h1>
+          <p className="mt-1 hidden text-[10px] font-medium uppercase tracking-[0.12em] text-black/55 sm:block">
+            Agent runtime workbench
+          </p>
+        </div>
         {auth && (
           <div className="session">
-            <span
-              className={`session-connection ${connectionBadge.tone}`}
-              title={connectionBadge.title}
-              role="status"
-              aria-live="polite"
+            <button
+              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-[#203b2d] text-white"}`}
+              onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
+              title={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-pressed={!agentsCollapsed}
             >
-              <span className="session-connection-dot" aria-hidden="true" />
-              <span>{connectionBadge.label}</span>
-            </span>
-            <span>{auth.username}</span>
-            <a
-              className="icon-button"
-              href="/teams"
-              title="Teams"
-              aria-label="Teams"
-            >
-              <i className="bi bi-diagram-3" aria-hidden="true" />
-            </a>
-            {auth.role === "root" && (
-              <a
-                className="icon-button"
-                href="/admin"
-                title="Admin"
-                aria-label="Admin"
-              >
-                <i className="bi bi-gear" aria-hidden="true" />
-              </a>
-            )}
-            <button onClick={onLogout}>Logout</button>
+              <i
+                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
+                aria-hidden="true"
+              />
+            </button>
+            <WorkbenchConnectionBadge
+              badge={connectionBadge}
+              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
+            />
+            <WorkbenchHeaderMenu
+              active="agents"
+              username={auth.username}
+              isRoot={auth.role === "root"}
+              onLogout={onLogout}
+              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+            />
           </div>
         )}
       </header>
@@ -2793,17 +2857,17 @@ export function App() {
             onDeleteAgent={onDeleteAgent}
           />
           <div className="workspace-right">
-            <OutputHeader
-              activeAgent={activeAgentRecord}
-              activeSessionId={activeSessionId}
-              developerMode={developerMode}
-              agentsCollapsed={agentsCollapsed}
-              hasAcp={acpView.hasAcp}
-              thinkingStartTs={thinkingStartTs}
-              runStatus={acpView.runStatus?.status ?? null}
-              modelLabel={activeAgentModelLabel}
-              onToggleAgents={handleToggleAgents}
-            />
+            <div className={acpView.hasAcp ? "max-[720px]:hidden" : ""}>
+              <OutputHeader
+                activeAgent={activeAgentRecord}
+                activeSessionId={activeSessionId}
+                developerMode={developerMode}
+                hasAcp={acpView.hasAcp}
+                thinkingStartTs={thinkingStartTs}
+                runStatus={acpView.runStatus?.status ?? null}
+                modelLabel={activeAgentModelLabel}
+              />
+            </div>
             {activeAgent ? (
               <OutputErrorBoundary>
                 <OutputBody
@@ -2908,11 +2972,6 @@ export function parseSendInputSessionMismatch(
   const running = match[2]?.trim();
   if (!expected || !running) return null;
   return { expected, running };
-}
-
-function getNavigatorOnline(): boolean {
-  if (typeof navigator === "undefined") return true;
-  return navigator.onLine;
 }
 
 function createAnsiRenderer(): (input: string) => string {

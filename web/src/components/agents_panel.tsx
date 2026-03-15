@@ -13,6 +13,19 @@ import {
   AGENTS_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
+const AGENTS_WORKBENCH_ICON_BUTTON_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fcfbf7] text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const AGENTS_WORKBENCH_ICON_BUTTON_DANGER_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fff4f1] text-[#8d2d20] shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4";
+const AGENTS_WORKBENCH_METRIC_CLASS =
+  "relative grid gap-1 justify-items-center rounded-[14px] border-[2px] border-white/12 bg-[#2b3239] px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/62";
+const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-3 overflow-auto pr-1";
+const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
+  "text-lg font-semibold tracking-tight text-white";
+
 type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
@@ -57,16 +70,16 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         className={agentsCollapsed ? AGENTS_PANEL_COLLAPSED_CLASS : AGENTS_PANEL_EXPANDED_CLASS}
       >
         {agentsCollapsed ? (
-          <div className="agents-rail">
+          <div className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
             <button
-              className="icon-button small"
+              className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
               onClick={onExpand}
               title="Show agents"
               aria-label="Show agents"
             >
               <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
             </button>
-            <div className="agents-rail-metric" title="Agents">
+            <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
               <span className="value">{agents.length}</span>
               <span className="label">Agents</span>
               {hasPendingPermissions ? (
@@ -78,12 +91,12 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 />
               ) : null}
             </div>
-            <div className="agents-rail-metric running" title="Running">
+            <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Running">
               <span className="value">{runningCount}</span>
               <span className="label">Running</span>
             </div>
             <button
-              className="icon-button small"
+              className={AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS}
               onClick={onCreateAgent}
               title="Create agent"
               aria-label="Create agent"
@@ -93,19 +106,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
           </div>
         ) : (
           <>
-            <div className="mode-switch">
-              <a className="mode-tag active" href="/">
-                Agents
-              </a>
-              <a className="mode-tag" href="/teams">
-                Teams
-              </a>
-            </div>
             <div className={AGENTS_TOOLBAR_CLASS}>
-              <h2>Agents</h2>
+              <h2 className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</h2>
               <div className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
                 <button
-                  className="icon-button small agents-collapse-button"
+                  className={`hidden lg:inline-flex ${AGENTS_WORKBENCH_ICON_BUTTON_CLASS}`}
                   onClick={onCollapse}
                   title="Hide agents"
                   aria-label="Hide agents"
@@ -118,7 +123,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               </div>
             </div>
             <div className="agent-layout">
-              <div className="agent-list">
+              <div className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
                   const pendingPermissionCount =
@@ -161,15 +166,15 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             />
                           ) : null}
                           {modelLabel ? (
-                            <span className="agent-tag">{modelLabel}</span>
+                            <span className="agent-tag hidden sm:inline-flex">{modelLabel}</span>
                           ) : null}
                         </div>
                         <div className="agent-row-actions">
                           <button
                             className={
                               agent.code_mode
-                                ? "icon-button small code-active"
-                                : "icon-button small"
+                                ? AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS
+                                : AGENTS_WORKBENCH_ICON_BUTTON_CLASS
                             }
                             onClick={(e) => {
                               e.stopPropagation();
@@ -192,11 +197,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           <StatusBadge
                             label={agent.status}
                             tone={resolveAgentStatusTone(agent.status)}
-                            className={`agent-status status-${agent.status}`}
+                            className={`agent-status status-${agent.status} hidden sm:inline-flex`}
                             title={`status: ${agent.status}`}
                           />
                           <button
-                            className="icon-button small"
+                            className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
                             disabled={isAgentActiveStatus(agent.status) || isStarting}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -220,7 +225,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           </button>
                           {isAgentActiveStatus(agent.status) && (
                             <button
-                              className="icon-button small"
+                              className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onStopAgent(agent.id);
@@ -232,7 +237,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             </button>
                           )}
                           <button
-                            className="icon-button small danger"
+                            className={AGENTS_WORKBENCH_ICON_BUTTON_DANGER_CLASS}
                             onClick={(e) => {
                               e.stopPropagation();
                               onDeleteAgent(agent.id);
@@ -244,7 +249,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           </button>
                         </div>
                       </div>
-                      <div className="agent-row-meta">
+                      <div className="agent-row-meta hidden sm:flex">
                         <span className="agent-workdir">{agent.workdir}</span>
                         <span className="agent-code-mode">
                           Code mode: {agent.code_mode ? "on" : "off"}

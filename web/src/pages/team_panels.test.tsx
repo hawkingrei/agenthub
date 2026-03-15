@@ -338,8 +338,7 @@ describe("team panels interactions", () => {
 
   it("TeamSidebar renders subject rail and triggers navigation callbacks", () => {
     const onRefreshTeams = vi.fn();
-    const onOpenCreateTeamWizard = vi.fn();
-    const onOpenCreateTeamManual = vi.fn();
+    const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
     const onSelectConversation = vi.fn();
     const onSelectAgentTab = vi.fn();
@@ -354,8 +353,7 @@ describe("team panels interactions", () => {
             developerMode={true}
             busy={null}
             onRefreshTeams={onRefreshTeams}
-            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
-            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
             leaderMemberId="leader-agent"
             configuredWorkerCount={2}
@@ -403,12 +401,9 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findInteractiveByText(document.body, "Guided Wizard"));
-    clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findInteractiveByText(document.body, "Manual Spec"));
+    clickElement(findInteractiveByText(document.body, "Create Team"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
@@ -433,14 +428,14 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Worker Agent"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
-    expect(onOpenCreateTeamWizard).toHaveBeenCalledTimes(1);
-    expect(onOpenCreateTeamManual).toHaveBeenCalledTimes(1);
+    expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
-    expect(container.textContent).toContain("Channels");
+    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Channels 1");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).not.toContain("Utilities 1");
+    expect(container.textContent).not.toContain("Operations 1");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");
@@ -454,8 +449,7 @@ describe("team panels interactions", () => {
             developerMode={false}
             busy={null}
             onRefreshTeams={onRefreshTeams}
-            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
-            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
             leaderMemberId="leader-agent"
             configuredWorkerCount={2}
@@ -511,7 +505,8 @@ describe("team panels interactions", () => {
 
     clickElement(findInteractiveByText(container, "Operations", "button, label"));
     expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
-    expect(container.textContent).toContain("Utilities 1");
+    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Operations 1");
     expect(container.textContent).not.toContain("Channels 1");
     expect(container.textContent).not.toContain("Debug");
 
@@ -522,8 +517,7 @@ describe("team panels interactions", () => {
             developerMode={true}
             busy={null}
             onRefreshTeams={onRefreshTeams}
-            onOpenCreateTeamWizard={onOpenCreateTeamWizard}
-            onOpenCreateTeamManual={onOpenCreateTeamManual}
+            onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
             leaderMemberId="leader-agent"
             configuredWorkerCount={2}
@@ -581,8 +575,7 @@ describe("team panels interactions", () => {
             developerMode={false}
             busy={null}
             onRefreshTeams={() => {}}
-            onOpenCreateTeamWizard={() => {}}
-            onOpenCreateTeamManual={() => {}}
+            onOpenCreateTeam={() => {}}
             draftTeamName=""
             leaderMemberId=""
             configuredWorkerCount={0}
@@ -609,8 +602,7 @@ describe("team panels interactions", () => {
     changeInputValue(unmatchedFilterInput, "missing-team");
     expect(container.textContent).toContain("No teams match current filter.");
 
-    const noTeamsCreateWizard = vi.fn();
-    const noTeamsCreateManual = vi.fn();
+    const noTeamsCreate = vi.fn();
     act(() => {
       root.render(
         <MantineProvider>
@@ -618,8 +610,7 @@ describe("team panels interactions", () => {
             developerMode={false}
             busy={null}
             onRefreshTeams={() => {}}
-            onOpenCreateTeamWizard={noTeamsCreateWizard}
-            onOpenCreateTeamManual={noTeamsCreateManual}
+            onOpenCreateTeam={noTeamsCreate}
             draftTeamName=""
             leaderMemberId=""
             configuredWorkerCount={0}
@@ -641,12 +632,8 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No teams yet.");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
-    clickElement(findButtonByText(container, "Guided Wizard"));
-    clickElement(findButtonByText(container, "Manual Spec"));
-    expect(container.textContent).toContain("Guided Wizard");
-    expect(container.textContent).toContain("Manual Spec");
-    expect(noTeamsCreateWizard).toHaveBeenCalledTimes(1);
-    expect(noTeamsCreateManual).toHaveBeenCalledTimes(1);
+    clickElement(findButtonByText(container, "Create Team"));
+    expect(noTeamsCreate).toHaveBeenCalledTimes(1);
   });
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
@@ -663,29 +650,31 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamRunPanel
-          selectedTeam={buildTeam()}
-          developerMode={true}
-          busy={null}
-          onDeleteTeam={onDeleteTeam}
-          onStartRun={onStartRun}
-          runStatusFilter="all"
-          runStatusFilterOptions={[
-            { value: "all", label: "All" },
-            { value: "working", label: "Working" },
-          ]}
-          onRunStatusFilterChange={onRunStatusFilterChange}
-          onRefreshRuns={onRefreshRuns}
-          runsLoading={false}
-          visibleRuns={[activeRun]}
-          activeRunId={null}
-          onActiveRunChange={onActiveRunChange}
-          isActiveRunHiddenByFilter={false}
-          activeRun={activeRun}
-          totalLoadedRunsForTeam={1}
-          pageLimit={20}
-          runsHasMore={true}
-          selectedTeamId="team-1"
-          onLoadMoreRuns={onLoadMoreRuns}
+            selectedTeam={buildTeam()}
+            developerMode={true}
+            busy={null}
+            onDeleteTeam={onDeleteTeam}
+            onStartRun={onStartRun}
+            canStartRun={true}
+            runBlockedReason={null}
+            runStatusFilter="all"
+            runStatusFilterOptions={[
+              { value: "all", label: "All" },
+              { value: "working", label: "Working" },
+            ]}
+            onRunStatusFilterChange={onRunStatusFilterChange}
+            onRefreshRuns={onRefreshRuns}
+            runsLoading={false}
+            visibleRuns={[activeRun]}
+            activeRunId={null}
+            onActiveRunChange={onActiveRunChange}
+            isActiveRunHiddenByFilter={false}
+            activeRun={activeRun}
+            totalLoadedRunsForTeam={1}
+            pageLimit={20}
+            runsHasMore={true}
+            selectedTeamId="team-1"
+            onLoadMoreRuns={onLoadMoreRuns}
           />
         </MantineProvider>
       );
@@ -716,26 +705,28 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamRunPanel
-          selectedTeam={buildTeam()}
-          developerMode={true}
-          busy={null}
-          onDeleteTeam={() => {}}
-          onStartRun={() => {}}
-          runStatusFilter="completed"
-          runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
-          onRunStatusFilterChange={() => {}}
-          onRefreshRuns={() => {}}
-          runsLoading={false}
-          visibleRuns={[]}
-          activeRunId={null}
-          onActiveRunChange={() => {}}
-          isActiveRunHiddenByFilter={true}
-          activeRun={buildRun({ id: "run-hidden" })}
-          totalLoadedRunsForTeam={0}
-          pageLimit={20}
-          runsHasMore={false}
-          selectedTeamId={null}
-          onLoadMoreRuns={() => {}}
+            selectedTeam={buildTeam()}
+            developerMode={true}
+            busy={null}
+            onDeleteTeam={() => {}}
+            onStartRun={() => {}}
+            canStartRun={false}
+            runBlockedReason="Add at least one agent before starting the team runtime or a run."
+            runStatusFilter="completed"
+            runStatusFilterOptions={[{ value: "completed", label: "Completed" }]}
+            onRunStatusFilterChange={() => {}}
+            onRefreshRuns={() => {}}
+            runsLoading={false}
+            visibleRuns={[]}
+            activeRunId={null}
+            onActiveRunChange={() => {}}
+            isActiveRunHiddenByFilter={true}
+            activeRun={buildRun({ id: "run-hidden" })}
+            totalLoadedRunsForTeam={0}
+            pageLimit={20}
+            runsHasMore={false}
+            selectedTeamId={null}
+            onLoadMoreRuns={() => {}}
           />
         </MantineProvider>
       );
@@ -747,37 +738,88 @@ describe("team panels interactions", () => {
     );
   });
 
-  it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
+  it("TeamSidebar hides selector controls in detail mode", () => {
     act(() => {
       root.render(
         <MantineProvider>
-          <TeamRunPanel
-          selectedTeam={buildTeam()}
-          developerMode={false}
-          busy={null}
-          onDeleteTeam={() => {}}
-          onStartRun={() => {}}
-          runStatusFilter="all"
-          runStatusFilterOptions={[{ value: "all", label: "All" }]}
-          onRunStatusFilterChange={() => {}}
-          onRefreshRuns={() => {}}
-          runsLoading={false}
-          visibleRuns={[]}
-          activeRunId={null}
-          onActiveRunChange={() => {}}
-          isActiveRunHiddenByFilter={false}
-          activeRun={null}
-          totalLoadedRunsForTeam={0}
-          pageLimit={20}
-          runsHasMore={false}
-          selectedTeamId="team-1"
-          onLoadMoreRuns={() => {}}
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[buildTeam()]}
+            selectedTeam={buildTeam({ name: "Detail Team" })}
+            selectedTeamId="team-1"
+            teamMemberSummaryByTeamId={new Map([
+              [
+                "team-1",
+                {
+                  active: 1,
+                  inactive: 0,
+                  missing: 0,
+                  total: 1,
+                },
+              ],
+            ])}
+            memberLiveStates={[buildMemberLiveState()]}
+            selectedMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
     });
 
-    expect(container.textContent).toContain("Developer Mode");
+    expect(container.textContent).toContain("Detail Team");
+    expect(container.textContent).toContain("Browse this team's channels, members, and operations.");
+    expect(container.textContent).not.toContain("Team Selector");
+    expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
+    expect(container.textContent).not.toContain("Teams 1");
+    expect(container.textContent).not.toContain("Create Team");
+  });
+
+  it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamRunPanel
+            selectedTeam={buildTeam()}
+            developerMode={false}
+            busy={null}
+            onDeleteTeam={() => {}}
+            onStartRun={() => {}}
+            canStartRun={false}
+            runBlockedReason="Add at least one agent before starting the team runtime or a run."
+            runStatusFilter="all"
+            runStatusFilterOptions={[{ value: "all", label: "All" }]}
+            onRunStatusFilterChange={() => {}}
+            onRefreshRuns={() => {}}
+            runsLoading={false}
+            visibleRuns={[]}
+            activeRunId={null}
+            onActiveRunChange={() => {}}
+            isActiveRunHiddenByFilter={false}
+            activeRun={null}
+            totalLoadedRunsForTeam={0}
+            pageLimit={20}
+            runsHasMore={false}
+            selectedTeamId="team-1"
+            onLoadMoreRuns={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain(
+      "Add at least one agent before starting the team runtime or a run."
+    );
     expect(container.textContent).not.toContain("Debug → Run Ops");
     expect(container.textContent).toContain("Start Run");
     expect(container.textContent).not.toContain("Create Run");

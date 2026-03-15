@@ -16,7 +16,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -133,6 +133,12 @@ pub struct CreateTeamRequest {
     pub name: String,
     pub description: Option<String>,
     pub spec: Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTeamSpecRequest {
+    pub spec: Value,
+    pub expected_updated_at: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -366,6 +372,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team).delete(delete_team))
+        .route("/:id/spec", put(update_team_spec))
         .route("/:id/runtime", get(get_team_runtime))
         .route("/:id/start", post(start_team))
         .route("/:id/stop", post(stop_team))
@@ -445,12 +452,44 @@ async fn create_team(
         )
         .await
         .map_err(map_create_team_error)?;
-    if let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await {
+    if has_configured_team_members(&team.spec)?
+        && let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await
+    {
         let member_ids = parse_member_ids(team.spec.get("members"))?;
         let _ = state.teams.delete_team(&team.id, &member_ids).await;
         return Err(map_runtime_start_error(err));
     }
     Ok(Json(team))
+}
+
+async fn update_team_spec(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<UpdateTeamSpecRequest>,
+) -> Result<Json<TeamDefinitionRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let current = load_team_for_user(&state, &team_id, &user).await?;
+    let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
+    let mut spec = payload.spec;
+    normalize_team_spec(&mut spec)?;
+    validate_team_spec(&spec)?;
+    let updated = state
+        .teams
+        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+        .await
+        .map_err(map_team_internal_error)?
+        .ok_or_else(|| ApiError::conflict("team definition changed concurrently; reload and retry"))?;
+    let next_member_ids = parse_member_ids(updated.spec.get("members"))?;
+    for removed_member_id in previous_member_ids.difference(&next_member_ids) {
+        let _ = state.agents.stop_agent(removed_member_id).await;
+    }
+    if has_configured_team_members(&updated.spec)? {
+        ensure_team_runtime_started(state.agents.as_ref(), &updated)
+            .await
+            .map_err(map_runtime_start_error)?;
+    }
+    Ok(Json(updated))
 }
 
 async fn start_team(
@@ -460,6 +499,7 @@ async fn start_team(
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    ensure_team_execution_ready(&team.spec)?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
         .await
         .map_err(map_runtime_start_error)?;
@@ -721,7 +761,7 @@ async fn compile_team_task_run_preview(
 ) -> Result<Json<TeamTaskRunCompilePreviewResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    validate_team_spec(&team.spec)?;
+    ensure_team_execution_ready(&team.spec)?;
     let task = state
         .teams
         .get_task(&task_id)
@@ -758,7 +798,7 @@ async fn create_team_run(
 ) -> Result<Json<TeamRunRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    validate_team_spec(&team.spec)?;
+    ensure_team_execution_ready(&team.spec)?;
     let run = state
         .teams
         .create_run(
@@ -2507,6 +2547,23 @@ fn compile_task_run_preview_response(
     })
 }
 
+fn has_configured_team_members(spec: &Value) -> Result<bool, ApiError> {
+    let spec_obj = spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    Ok(!parse_member_specs(spec_obj.get("members"))?.is_empty())
+}
+
+fn ensure_team_execution_ready(spec: &Value) -> Result<(), ApiError> {
+    validate_team_spec(spec)?;
+    if !has_configured_team_members(spec)? {
+        return Err(ApiError::bad_request(
+            "team has no members configured; add at least one agent first",
+        ));
+    }
+    Ok(())
+}
+
 fn compile_task_step_template(
     spec_obj: &serde_json::Map<String, Value>,
     member_specs: &[TeamMemberSpec],
@@ -3040,6 +3097,12 @@ fn inject_team_spec_defaults(
     spec_obj: &mut serde_json::Map<String, Value>,
 ) -> Result<(), ApiError> {
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    if member_specs.is_empty() {
+        spec_obj.remove("leader_member_id");
+        spec_obj.remove("entrypoint");
+        spec_obj.remove("steps");
+        return Ok(());
+    }
     let member_specs_by_id = member_specs
         .iter()
         .map(|member| (member.member_id.as_str(), member))
@@ -3235,18 +3298,39 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let _ = parse_team_spec_version(spec_obj.get("spec_version"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
     let entrypoint = spec_obj
         .get("entrypoint")
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| ApiError::bad_request("spec.entrypoint is required"))?;
-    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+        .filter(|value| !value.is_empty());
+
+    if member_specs.is_empty() {
+        if leader_member_id.is_some() {
+            return Err(ApiError::bad_request(
+                "spec.leader_member_id must be omitted until spec.members is configured",
+            ));
+        }
+        if entrypoint.is_some() {
+            return Err(ApiError::bad_request(
+                "spec.entrypoint must be omitted until spec.members is configured",
+            ));
+        }
+        if spec_obj.get("steps").is_some() {
+            return Err(ApiError::bad_request(
+                "spec.steps must be omitted until spec.members is configured",
+            ));
+        }
+        return Ok(());
+    }
+
+    let entrypoint =
+        entrypoint.ok_or_else(|| ApiError::bad_request("spec.entrypoint is required"))?;
     let member_ids = member_specs
         .iter()
         .map(|member| member.member_id.clone())
         .collect::<HashSet<_>>();
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
 
     if let Some(steps_value) = spec_obj.get("steps") {
         validate_steps(entrypoint, steps_value, &member_ids)?;
@@ -3292,9 +3376,6 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
     let members = members_value
         .and_then(Value::as_array)
         .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
-    if members.is_empty() {
-        return Err(ApiError::bad_request("spec.members must not be empty"));
-    }
 
     let mut seen_member_ids = HashSet::with_capacity(members.len());
     let mut out = Vec::with_capacity(members.len());

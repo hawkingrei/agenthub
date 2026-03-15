@@ -19,24 +19,20 @@ type OutputHeaderProps = {
   activeAgent: AgentRecord | null;
   activeSessionId: string | null;
   developerMode: boolean;
-  agentsCollapsed: boolean;
   hasAcp: boolean;
   thinkingStartTs: number | null;
   runStatus?: string | null;
   modelLabel?: string | null;
-  onToggleAgents: () => void;
 };
 
 export const OutputHeader = React.memo(function OutputHeader({
   activeAgent,
   activeSessionId,
   developerMode,
-  agentsCollapsed,
   hasAcp,
   thinkingStartTs,
   runStatus,
   modelLabel,
-  onToggleAgents,
 }: OutputHeaderProps) {
   const titleText = activeAgent ? activeAgent.name : "No agent selected";
   const subtitleText = activeAgent
@@ -62,24 +58,11 @@ export const OutputHeader = React.memo(function OutputHeader({
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
       <div className={OUTPUT_HEADER_TITLE_CLASS}>
-        <button
-          className="icon-button small output-agents-toggle"
-          onClick={onToggleAgents}
-          title={agentsCollapsed ? "Show agents" : "Hide agents"}
-          aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
-        >
-          <i
-            className={
-              agentsCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"
-            }
-            aria-hidden="true"
-          />
-        </button>
         <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
           <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
             <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{titleText}</h2>
             {modelLabel ? (
-              <span className="agent-tag">{modelLabel}</span>
+              <span className="agent-tag hidden sm:inline-flex">{modelLabel}</span>
             ) : null}
           </div>
         </div>

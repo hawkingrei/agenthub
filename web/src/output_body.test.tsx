@@ -146,6 +146,7 @@ describe("OutputBody", () => {
       outputs: [],
       acpOverride: { hasAcp: true },
     });
+    expect(html).toContain("output-body-acp");
     expect(html).toContain("Conversation");
     expect(html).not.toContain("No output yet");
   });

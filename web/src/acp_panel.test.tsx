@@ -139,6 +139,21 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("+3");
   });
 
+  it("renders mobile title inline with tabs when provided", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        subtitle="/repo/workdir"
+        mobileTitle="agenthub"
+      />
+    );
+    expect(html).toContain("agenthub");
+    expect(html).toContain("Conversation");
+    expect(html).toContain("Plan");
+    expect(html).toContain("sm:hidden");
+    expect(html).not.toContain("acp-actions");
+  });
+
   it("invokes tab selection callbacks for both tabs", () => {
     const onSelectTab = vi.fn();
     const tree = AcpPanelView({

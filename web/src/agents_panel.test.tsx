@@ -57,6 +57,8 @@ describe("AgentsPanel", () => {
       <AgentsPanel {...baseProps} agentsCollapsed={true} />
     );
     expect(html).toContain("agents-rail");
+    expect(html).toContain('aria-label="Show agents"');
+    expect(html).toContain('aria-label="Create agent"');
     expect(html).toContain("Agents");
     expect(html).toContain("Running");
     expect(html).not.toContain("Create Agent");
@@ -83,6 +85,7 @@ describe("AgentsPanel", () => {
     );
     expect(html).toContain("agents-backdrop");
     expect(html).toContain("Agents</h2>");
+    expect(html).not.toContain('href="/teams"');
     expect(html).toContain('aria-label="Hide agents"');
     expect(html).toContain("Create Agent");
     expect(html).toContain("Alpha");

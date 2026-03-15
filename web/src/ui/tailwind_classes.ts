@@ -113,13 +113,13 @@ export const TEAM_CREATE_ACTIONS_BAR_CLASS =
   "modal-actions team-create-actions mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-ui-border pt-3";
 
 export const ACP_PANEL_ROOT_CLASS =
-  "acp relative flex min-h-0 flex-1 flex-col rounded-2xl border border-ui-border bg-ui-surface/90 shadow-sm";
+  "acp relative flex min-h-0 flex-1 flex-col rounded-2xl border border-ui-border bg-ui-surface/90 shadow-sm max-[720px]:shadow-none";
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal flex flex-wrap items-start justify-between gap-3 border-b border-ui-border px-ctrl-x py-ctrl-y sm:px-4";
+  "acp-head minimal flex flex-wrap items-start justify-between gap-3 border-b border-ui-border px-ctrl-x py-ctrl-y sm:px-4 max-[720px]:gap-1.5 max-[720px]:border-b-0 max-[720px]:px-2 max-[720px]:py-1.5";
 
 export const ACP_PANEL_TABS_CLASS =
-  "acp-tabs flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
+  "acp-tabs flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1 max-[720px]:w-full max-[720px]:rounded-[10px] max-[720px]:px-[2px] max-[720px]:py-[2px]";
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
   "inline-flex min-h-[30px] items-center rounded-md px-ctrl-x py-ctrl-y-sm text-ui-xs font-medium leading-tight transition sm:text-ui-sm";
@@ -164,10 +164,10 @@ export const ACP_CONVERSATION_TOP_HINT_CLASS =
   "acp-conversation-top-hint rounded-lg border border-ui-border bg-ui-surface-soft px-ctrl-x py-ctrl-y text-ui-xs text-ui-text-muted";
 
 export const ACP_BUBBLE_THINKING_CLASS =
-  "acp-bubble agent_thinking rounded-xl border border-ui-border bg-ui-surface-soft px-ctrl-x py-ctrl-y shadow-sm";
+  "acp-bubble agent_thinking rounded-xl border border-[#ddd9cf] bg-[#f7f4ed] px-ctrl-x py-ctrl-y shadow-[0_1px_0_rgba(15,23,42,0.04)]";
 
 export const ACP_BUBBLE_PLAN_CLASS =
-  "acp-bubble agent_plan rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-2 shadow-sm";
+  "acp-bubble agent_plan rounded-xl border border-[#ddd9cf] bg-[#f8f6f1] px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]";
 
 export const ACP_PLAN_INDEX_BADGE_CLASS =
   "acp-plan-index inline-flex h-5 w-5 items-center justify-center rounded-full border border-ui-border-strong text-ui-xs font-semibold text-ui-text-muted";
@@ -271,56 +271,59 @@ export const TEAM_SIDEBAR_META_GRID_CLASS =
   "teams-create-launch-meta mono mt-3 grid gap-1 text-ui-xs text-ui-text-muted";
 
 export const AGENTS_PANEL_EXPANDED_CLASS =
-  "workspace-left rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+  "workspace-left rounded-[28px] border-[3px] border-black bg-[#23292f] p-3 text-white shadow-[0_4px_0_rgba(0,0,0,0.18)] backdrop-blur";
 
 export const AGENTS_PANEL_COLLAPSED_CLASS =
-  "workspace-left collapsed rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+  "workspace-left collapsed rounded-[24px] border-[3px] border-black bg-[#23292f] p-3 text-white shadow-[0_4px_0_rgba(0,0,0,0.18)] backdrop-blur";
 
 export const AGENTS_TOOLBAR_CLASS = "mb-3 flex items-center justify-between gap-2";
 export const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-2";
 
 export const AGENTS_CREATE_BUTTON_CLASS =
-  "rounded-lg bg-brand-primary px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-inverse hover:bg-brand-primary-hover";
+  "rounded-[14px] border-[3px] border-black bg-[#203b2d] px-4 py-2 text-sm font-semibold text-white shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px]";
 
 export const AGENTS_ROW_CLASS =
-  "agent-row rounded-xl border border-ui-border bg-ui-surface px-ctrl-x py-3 transition hover:border-ui-border-strong";
+  "agent-row rounded-[18px] border-[2px] border-white/12 bg-[#2b3239] px-ctrl-x py-3 text-white transition hover:-translate-y-[1px] hover:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
 
 export const AGENTS_ROW_ACTIVE_CLASS =
-  "agent-row active rounded-xl border border-ui-border-strong bg-ui-surface-soft px-ctrl-x py-3";
+  "agent-row active rounded-[18px] border-[2px] border-black bg-[#203b2d] px-ctrl-x py-3 text-white shadow-[0_2px_0_rgba(0,0,0,0.16)]";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
-  "output-header grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center justify-between gap-x-2.5 gap-y-1.5 rounded-xl border border-ui-border/80 bg-ui-surface/80 px-ctrl-x py-ctrl-y shadow-sm max-[720px]:grid-cols-1 max-[720px]:grid-rows-[auto_auto_auto]";
+  "output-header grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center justify-between gap-x-3 gap-y-2 rounded-[18px] border-[2px] border-black bg-[#f3f1eb] px-3 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:rounded-[24px] sm:border-[3px] sm:px-4 sm:py-3 sm:shadow-[0_3px_0_rgba(0,0,0,0.16)] max-[720px]:grid-cols-[minmax(0,1fr)_auto] max-[720px]:grid-rows-[auto] max-[720px]:gap-x-2 max-[720px]:gap-y-1 max-[720px]:rounded-b-none max-[720px]:border-b-0 max-[720px]:px-2.5 max-[720px]:py-1.5 max-[720px]:shadow-none";
 
 export const OUTPUT_HEADER_TITLE_CLASS =
-  "output-title col-start-1 row-start-1 inline-flex min-w-0 w-fit max-w-[clamp(160px,32vw,360px)] items-center gap-2 max-[720px]:max-w-full";
+  "output-title col-start-1 row-start-1 inline-flex min-w-0 w-fit max-w-[clamp(160px,32vw,360px)] items-center gap-2 max-[720px]:w-full max-[720px]:max-w-full";
 
 export const OUTPUT_HEADER_TITLE_TEXT_CLASS =
   "output-title-text flex min-w-0 flex-col gap-0.5";
 
 export const OUTPUT_HEADER_TITLE_MAIN_CLASS =
-  "output-title-main flex min-w-0 flex-wrap items-center gap-2";
+  "output-title-main flex min-w-0 flex-wrap items-center gap-2 max-[720px]:gap-1.5";
 
 export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
-  "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[18px] leading-[1.05] text-ui-text-primary";
+  "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[1.1] text-black sm:text-[18px]";
 
 export const OUTPUT_HEADER_META_CLASS =
-  "output-meta col-start-2 row-start-1 flex max-w-[52vw] flex-nowrap items-center justify-self-end gap-2 overflow-hidden whitespace-nowrap text-ui-xs text-ui-text-muted max-[720px]:col-start-1 max-[720px]:row-start-2 max-[720px]:grid max-[720px]:max-w-full max-[720px]:grid-cols-2 max-[720px]:gap-x-2 max-[720px]:gap-y-1 max-[720px]:justify-self-start max-[720px]:whitespace-normal [&>*]:min-w-0 [&>*]:overflow-hidden [&>*]:text-ellipsis [&>*]:whitespace-nowrap max-[720px]:[&>*:nth-child(n+5)]:hidden";
+  "output-meta col-start-2 row-start-1 flex max-w-[52vw] flex-nowrap items-center justify-self-end gap-2 overflow-hidden whitespace-nowrap text-ui-xs text-black/60 max-[720px]:col-start-2 max-[720px]:row-start-1 max-[720px]:max-w-[40vw] max-[720px]:justify-self-end [&>*]:min-w-0 [&>*]:overflow-hidden [&>*]:text-ellipsis [&>*]:whitespace-nowrap max-[720px]:[&>*:nth-child(n+2)]:hidden";
 
 export const OUTPUT_HEADER_PILL_CLASS =
-  "output-pill rounded-full border border-ui-border-strong bg-ui-surface px-2 py-1 text-ui-xs font-medium text-ui-text-secondary";
+  "output-pill rounded-full border-[2px] border-black bg-[#fcfbf7] px-3 py-1 text-ui-xs font-medium text-black shadow-[0_1px_0_rgba(0,0,0,0.12)]";
 
-export const OUTPUT_HEADER_SESSION_CLASS = "output-session mono text-[11px] text-ui-text-muted";
+export const OUTPUT_HEADER_SESSION_CLASS = "output-session mono text-[11px] text-black/58";
 
-export const OUTPUT_HEADER_UPDATED_CLASS = "output-updated text-[11px] text-ui-text-muted";
+export const OUTPUT_HEADER_UPDATED_CLASS = "output-updated text-[11px] text-black/58";
 
 export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS =
-  "output-subtitle-row col-start-1 row-start-2 mt-1 flex min-w-0 items-center justify-self-start max-w-full max-[720px]:row-start-3";
+  "output-subtitle-row col-start-1 row-start-2 mt-1 flex min-w-0 items-center justify-self-start max-w-full max-[720px]:hidden";
 
 export const OUTPUT_HEADER_SUBTITLE_CLASS =
-  "output-subtitle overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ui-text-muted";
+  "output-subtitle overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-black/58";
 
 export const OUTPUT_BODY_ROOT_CLASS =
   "output-body rounded-2xl border border-ui-border/80 bg-ui-surface/85 shadow-sm backdrop-blur";
+
+export const OUTPUT_BODY_ACP_ROOT_CLASS =
+  "output-body output-body-acp min-h-0 flex-1 bg-transparent max-[720px]:-mt-[1px]";
 
 export const OUTPUT_BODY_LOADING_CLASS =
   "output-loading flex h-full min-h-40 flex-col items-center justify-center gap-2 text-ui-text-muted";
@@ -329,19 +332,19 @@ export const OUTPUT_BODY_EMPTY_CLASS =
   "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-ui-border-strong bg-ui-surface-soft/60 p-4 text-center";
 
 export const INPUT_DOCK_ROOT_CLASS =
-  "input docked rounded-2xl border border-ui-border/80 bg-ui-surface/85 p-3 shadow-sm backdrop-blur";
+  "input docked rounded-2xl border border-ui-border/80 bg-ui-surface/85 p-2.5 shadow-sm backdrop-blur max-[720px]:rounded-[16px] max-[720px]:p-2 max-[720px]:shadow-none";
 
 export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
-  "acp-interrupt-button input-interrupt-button rounded-lg border border-state-warning-border bg-state-warning-bg px-ctrl-x py-ctrl-y text-ui-sm font-medium text-state-warning-text hover:border-ui-border-emphasis";
+  "acp-interrupt-button input-interrupt-button rounded-lg border border-state-warning-border bg-state-warning-bg px-ctrl-x py-ctrl-y text-ui-sm font-medium text-state-warning-text hover:border-ui-border-emphasis max-[720px]:px-2 max-[720px]:py-1 max-[720px]:text-[11px]";
 
 export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
-  "history-toggle rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-secondary hover:border-ui-border-emphasis";
+  "history-toggle rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-secondary hover:border-ui-border-emphasis max-[720px]:px-2 max-[720px]:py-1 max-[720px]:text-[11px]";
 
 export const INPUT_DOCK_HISTORY_MENU_CLASS =
-  "input-history-menu rounded-lg border border-ui-border-strong bg-ui-surface p-1 shadow";
+  "input-history-menu rounded-lg border border-ui-border-strong bg-ui-surface p-1 shadow max-[720px]:rounded-[10px] max-[720px]:p-0.5";
 
 export const INPUT_DOCK_HISTORY_ITEM_CLASS =
   "input-history-item block w-full rounded-md px-2 py-1 text-left text-ui-sm hover:bg-ui-surface-muted";
 
 export const INPUT_DOCK_TEXTAREA_CLASS =
-  "min-h-16 w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border";
+  "min-h-[3.5rem] w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border max-[720px]:min-h-[3.1rem] max-[720px]:rounded-[12px] max-[720px]:px-2.5 max-[720px]:py-2";
