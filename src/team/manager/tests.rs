@@ -395,6 +395,8 @@ async fn spawn_relay_http_server(
     let health_endpoint = format!("http://{addr}/health");
     let client = reqwest::Client::builder()
         .no_proxy()
+        .connect_timeout(std::time::Duration::from_millis(50))
+        .timeout(std::time::Duration::from_millis(100))
         .build()
         .expect("build probe client");
     let mut ready = false;

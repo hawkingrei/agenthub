@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Verify Bazel-first Rust crate decomposition: `agenthub-logging`, `agenthub-config`, and `agenthub-db` have been successfully extracted from `src/` to standalone workspace crates. Ensure local Bazel builds and cargo test suite continue to pass cleanly in CI; record push + PR CI run IDs after merge (see `docs/journal/2026-03-15-deep-modularization-crates.md`).
+- [ ] Verify Bazel-first Rust crate decomposition: `agenthub-logging`, `agenthub-config`, and `agenthub-db` have been successfully extracted from `src/` to standalone workspace crates. The original modules in `src/` have been removed and replaced with re-exports. Ensure local Bazel builds and cargo test suite continue to pass cleanly in CI; record push + PR CI run IDs after merge (see `docs/journal/2026-03-15-deep-modularization-crates.md`).
 
 - [ ] Implement P2P remote node and remote ACP execution pre-requisites:
     - [ ] Refactor `spawn_acp_session` to use generic `AsyncRead`/`AsyncWrite` instead of `ChildStdin`/`ChildStdout` to support remote/tunneled streams.
