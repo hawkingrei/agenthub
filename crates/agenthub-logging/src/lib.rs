@@ -139,9 +139,7 @@ pub fn split_log_path(path: &str) -> LogSpec {
             .and_then(|name| name.to_str())
             .unwrap_or("agenthub.log")
             .to_string();
-        let dir = path_buf
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let dir = path_buf.parent().unwrap_or_else(|| Path::new("."));
         return (dir.to_path_buf(), file_name);
     }
     (path_buf.to_path_buf(), "agenthub.log".to_string())
@@ -172,12 +170,12 @@ pub fn init_tracing(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
     use std::io::Write;
     use std::sync::{
         Arc,
         atomic::{AtomicI64, Ordering},
     };
-    use chrono::{TimeZone, Utc};
     use tracing_subscriber::EnvFilter;
 
     #[test]
@@ -207,8 +205,8 @@ mod tests {
         );
         let dir = std::env::temp_dir().join(unique);
         let spec = (dir.clone(), "agenthub.log".to_string());
-        let file_guard = init_tracing(EnvFilter::new("info"), Some(&spec))
-            .expect("init tracing for file");
+        let file_guard =
+            init_tracing(EnvFilter::new("info"), Some(&spec)).expect("init tracing for file");
         assert!(file_guard.is_some());
         assert!(dir.exists());
         assert!(dir.join("agenthub.log").exists());
@@ -235,12 +233,9 @@ mod tests {
                 .single()
                 .expect("valid slot timestamp")
         });
-        let mut writer = ActiveHourlyLogWriter::new_with_clock(
-            dir.clone(),
-            "agenthub.log".to_string(),
-            clock,
-        )
-        .expect("create writer");
+        let mut writer =
+            ActiveHourlyLogWriter::new_with_clock(dir.clone(), "agenthub.log".to_string(), clock)
+                .expect("create writer");
 
         writer.write_all(b"line-1\n").expect("write first log line");
 

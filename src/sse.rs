@@ -858,9 +858,10 @@ mod tests {
             "timed-out output should not appear in final live flush: {debug}"
         );
 
-        let final_event = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
-            .await
-            .expect("poll stream termination after backpressure");
+        let final_event =
+            tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+                .await
+                .expect("poll stream termination after backpressure");
         assert!(
             final_event.is_none(),
             "stream should close after sustained backpressure timeout"

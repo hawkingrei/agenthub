@@ -4,11 +4,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
 use super::{TeamManager, TeamRunResumeError};
-use agenthub_db::AgentEventDbRouter;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
     TeamRunStatus, TeamStepStatus, TeamTaskStatus,
 };
+use agenthub_db::AgentEventDbRouter;
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
     ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
@@ -1664,7 +1664,11 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
         .await
         .expect("create team");
     let run = manager
-        .create_run(&team.id, Some("ctx-shared-thread"), json!({"payload":"start"}))
+        .create_run(
+            &team.id,
+            Some("ctx-shared-thread"),
+            json!({"payload":"start"}),
+        )
         .await
         .expect("create run");
 
@@ -1715,7 +1719,10 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
     let shared_task_context: String = shared_task_row.get("context_json");
     let shared_task_context_json: Value =
         serde_json::from_str(&shared_task_context).expect("decode shared task context");
-    assert_eq!(shared_task_context_json["bootstrap_kind"], json!("shared_thread"));
+    assert_eq!(
+        shared_task_context_json["bootstrap_kind"],
+        json!("shared_thread")
+    );
 
     let row = sqlx::query(
         r#"
@@ -1767,7 +1774,11 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
         .await
         .expect("create team");
     let run = manager
-        .create_run(&team.id, Some("ctx-shared-thread-dedup"), json!({"payload":"start"}))
+        .create_run(
+            &team.id,
+            Some("ctx-shared-thread-dedup"),
+            json!({"payload":"start"}),
+        )
         .await
         .expect("create run");
 
@@ -1840,7 +1851,11 @@ async fn actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_
         .await
         .expect("create team");
     let run = manager
-        .create_run(&team.id, Some("ctx-private-chat"), json!({"payload":"start"}))
+        .create_run(
+            &team.id,
+            Some("ctx-private-chat"),
+            json!({"payload":"start"}),
+        )
         .await
         .expect("create run");
 
@@ -1905,7 +1920,11 @@ async fn actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_
         .await
         .expect("create team");
     let run = manager
-        .create_run(&team.id, Some("ctx-stringified-reply"), json!({"payload":"start"}))
+        .create_run(
+            &team.id,
+            Some("ctx-stringified-reply"),
+            json!({"payload":"start"}),
+        )
         .await
         .expect("create run");
 
@@ -1969,7 +1988,11 @@ async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply
         .await
         .expect("create team");
     let run = manager
-        .create_run(&team.id, Some("ctx-existing-shared-thread"), json!({"payload":"start"}))
+        .create_run(
+            &team.id,
+            Some("ctx-existing-shared-thread"),
+            json!({"payload":"start"}),
+        )
         .await
         .expect("create run");
 

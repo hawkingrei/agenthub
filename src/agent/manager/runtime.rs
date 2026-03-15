@@ -14,8 +14,8 @@ use super::codec::{is_acp_message, is_dir_empty};
 use super::{AgentHandle, AgentManager, expand_tilde, normalize_path, worktree_mode_to_str};
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
-use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 use crate::push::PushService;
+use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GitWorktreeEntry {

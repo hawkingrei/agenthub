@@ -191,14 +191,12 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    
-    
 
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
-    
+
     use tower::util::ServiceExt;
 
     #[test]

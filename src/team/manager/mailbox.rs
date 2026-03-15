@@ -22,11 +22,11 @@ use sqlx::{Error as SqlxError, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{TeamManager, redact_sensitive_json};
 use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
+use super::{TeamManager, redact_sensitive_json};
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
 const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -429,15 +429,13 @@ impl TeamRemoteRelayAdapter {
         #[cfg(test)]
         let builder = builder.no_proxy();
 
-        let client = builder
-            .build()
-            .unwrap_or_else(|err| {
-                tracing::warn!(
-                    "build relay client failed, fallback to default client: {}",
-                    err
-                );
-                reqwest::Client::new()
-            });
+        let client = builder.build().unwrap_or_else(|err| {
+            tracing::warn!(
+                "build relay client failed, fallback to default client: {}",
+                err
+            );
+            reqwest::Client::new()
+        });
         Self { client }
     }
 }
@@ -1242,8 +1240,7 @@ fn should_persist_human_visible_chat_reply(cmd: &SendActorMessageCommand) -> boo
 
 fn is_human_actor_id(actor_id: &str) -> bool {
     let trimmed = actor_id.trim();
-    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS
-        || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
 }
 
 fn resolve_canonical_chat_reply(payload: &Value) -> Option<CanonicalChatReply> {
@@ -1306,7 +1303,10 @@ fn parse_stringified_json_payload(raw: &str) -> Option<Value> {
 
 fn build_canonical_chat_payload(reply: &CanonicalChatReply) -> Value {
     let mut payload = Map::new();
-    payload.insert("type".to_string(), Value::String("chat_message".to_string()));
+    payload.insert(
+        "type".to_string(),
+        Value::String("chat_message".to_string()),
+    );
     payload.insert("text".to_string(), Value::String(reply.text.clone()));
     if let Some(correlation_id) = reply.correlation_id.as_deref() {
         payload.insert(
