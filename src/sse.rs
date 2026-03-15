@@ -185,6 +185,9 @@ fn output_stream_with_limits(
                 if *state.disconnect_rx.borrow() {
                     return None;
                 }
+                if !state.output_rx_open && state.batch.is_empty() {
+                    return None;
+                }
                 tokio::select! {
                     _ = state.heartbeat.tick() => {
                         let event = Event::default().data("heartbeat");
@@ -883,6 +886,14 @@ mod tests {
         assert!(
             second.is_some(),
             "stream should emit buffered output before termination"
+        );
+
+        let third = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("poll stream after buffered output");
+        assert!(
+            third.is_none(),
+            "stream should terminate after flushing the final buffered output"
         );
     }
 
