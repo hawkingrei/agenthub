@@ -585,7 +585,7 @@ mod tests {
                 .expect("create auth"),
         );
         let permissions = Arc::new(AcpPermissionService::new(db.clone()));
-        let event_dbs = crate::db::AgentEventDbRouter::new(
+        let event_dbs = agenthub_db::AgentEventDbRouter::new(
             std::env::temp_dir().join(format!("agenthub-sse-eventdb-{}", Uuid::new_v4())),
         );
         let agents = Arc::new(crate::agent::AgentManager::new(
@@ -858,9 +858,10 @@ mod tests {
             "timed-out output should not appear in final live flush: {debug}"
         );
 
-        let final_event = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
-            .await
-            .expect("poll stream termination after backpressure");
+        let final_event =
+            tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+                .await
+                .expect("poll stream termination after backpressure");
         assert!(
             final_event.is_none(),
             "stream should close after sustained backpressure timeout"

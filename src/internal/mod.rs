@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
 
-use crate::config::AppConfig;
 use crate::state::AppState;
+use agenthub_config::AppConfig;
 
 use self::auth::{InternalAuthz, InternalAuthzConfig};
 use self::service::TeamInternalControlService;

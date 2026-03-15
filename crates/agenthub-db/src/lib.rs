@@ -6,7 +6,7 @@ use sqlx::{
 };
 use tokio::sync::Mutex;
 
-use crate::path_utils::expand_tilde;
+use agenthub_config::path_utils::expand_tilde;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
@@ -134,7 +134,6 @@ impl AgentEventIdleGc {
         states.remove(agent_id);
     }
 
-    #[cfg(test)]
     pub async fn tracked_agent_count(&self) -> usize {
         self.states.lock().await.len()
     }
@@ -143,7 +142,7 @@ impl AgentEventIdleGc {
 #[derive(Clone)]
 pub struct AgentEventDbRouter {
     base_dir: PathBuf,
-    pools: Arc<Mutex<HashMap<String, SqlitePool>>>,
+    pools: Arc<Mutex<HashMap<String, Arc<tokio::sync::OnceCell<SqlitePool>>>>>,
 }
 
 impl AgentEventDbRouter {
@@ -159,30 +158,31 @@ impl AgentEventDbRouter {
     }
 
     pub async fn pool_for_agent(&self, agent_id: &str) -> anyhow::Result<SqlitePool> {
-        let existing = {
-            let pools = self.pools.lock().await;
-            pools.get(agent_id).cloned()
+        let cell = {
+            let mut pools = self.pools.lock().await;
+            pools
+                .entry(agent_id.to_string())
+                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
+                .clone()
         };
-        if let Some(pool) = existing {
-            return Ok(pool);
-        }
-        let db_path = self.db_path_for_agent(agent_id);
-        ensure_sqlite_path(&db_path)?;
-        let pool = connect_sqlite_with_defaults(&db_path, 2).await?;
-        init_agent_event_db_schema(&pool).await?;
-        let mut pools = self.pools.lock().await;
-        let pool = pools
-            .entry(agent_id.to_string())
-            .or_insert_with(|| pool)
-            .clone();
-        Ok(pool)
+
+        cell.get_or_try_init(|| async {
+            let db_path = self.db_path_for_agent(agent_id);
+            ensure_sqlite_path(&db_path)?;
+            let pool = connect_sqlite_with_defaults(&db_path, 2).await?;
+            init_agent_event_db_schema(&pool).await?;
+            Ok(pool)
+        })
+        .await
+        .cloned()
     }
 
     pub async fn remove_agent_db(&self, agent_id: &str) -> anyhow::Result<()> {
-        if let Some(pool) = {
+        let cell = {
             let mut pools = self.pools.lock().await;
             pools.remove(agent_id)
-        } {
+        };
+        if let Some(pool) = cell.and_then(|c| c.get().cloned()) {
             pool.close().await;
         }
         let db_path = self.db_path_for_agent(agent_id);
@@ -1543,7 +1543,7 @@ mod tests {
         AgentEventDbRouter, AgentEventIdleGc, cleanup_agent_event_history, create_parent_dir,
         init_db_at_path, try_connect,
     };
-    use crate::path_utils::expand_tilde;
+    use agenthub_config::path_utils::expand_tilde;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::Duration;

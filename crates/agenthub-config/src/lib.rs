@@ -1,7 +1,9 @@
+pub mod path_utils;
+
 use serde::Deserialize;
 use std::collections::HashSet;
 
-use crate::path_utils::expand_tilde;
+use path_utils::expand_tilde;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;

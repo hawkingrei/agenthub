@@ -7,7 +7,7 @@ use agenthub_acp::{AcpEventSink, AcpStream};
 
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, OutputStream};
-use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
+use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
 pub struct AgenthubAcpEventSink {

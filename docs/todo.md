@@ -1,5 +1,14 @@
 # TODO
 
+- [ ] Verify Bazel-first Rust crate decomposition: `agenthub-logging`, `agenthub-config`, and `agenthub-db` have been successfully extracted from `src/` to standalone workspace crates. The original modules in `src/` have been removed and replaced with re-exports in `src/lib.rs`. Ensure local Bazel builds and cargo test suite continue to pass cleanly in CI; record push + PR CI run IDs after merge (see `docs/journal/2026-03-15-deep-modularization-crates.md`).
+
+- [ ] Implement P2P remote node and remote ACP execution pre-requisites:
+    - [ ] Refactor `spawn_acp_session` to use generic `AsyncRead`/`AsyncWrite` instead of `ChildStdin`/`ChildStdout` to support remote/tunneled streams.
+    - [ ] Introduce `AgentExecutor` trait and move current subprocess spawning into `LocalExecutor` implementation to decouple agent management from local process execution.
+    - [ ] Add `target_node_id` to `AgentConfig` and `AgentRecord` to support directing agents to specific P2P nodes.
+    - [ ] Add P2P/Cluster configuration section to `agenthub-config` for node IDs, listen addresses, and bootstrap peers.
+    - [ ] Enhance `ActorMessageTransport` metadata to propagate peer/routing info required for P2P execution coordination.
+
 - [ ] Verify SSE live-output resiliency after transport batching + independent active-agent catch-up polling: high-frequency Codex ACP output should reduce SSE message pressure, single-event and batched SSE payloads should both render correctly, and active-agent `/events` replay should continue recovering output after SSE reconnect/stall; record local validation notes plus push + PR CI run IDs after merge (see `docs/journal/2026-03-14-sse-output-batching-and-poll-watchdog.md`).
 - [ ] Verify refreshed `agenthub-codex-acp` runtime behavior after dependency upgrade to codex rev `ab7a5b87a9e455235f65637f1675c03051481c87`, `agent-client-protocol = 0.10.2`, and `quinn-proto = 0.11.14`: cover auth/login, session load/close, MCP permission prompts, and prompt/replay flows; record local runtime notes plus push/PR CI run IDs (see `docs/journal/2026-03-14-codex-acp-dependency-refresh.md`).
 - [ ] Verify `/teams` Mantine control migration on deployed pages after login: sidebar scope switch + team filter, task status/new-task/compile-preview inputs, and run status filter should preserve existing behavior under the refreshed Mantine + Tailwind shell; record Chrome DevTools MCP notes for both unauthenticated redirect baseline and authenticated workbench regression after deploy (see `docs/journal/2026-03-14-teams-mantine-control-migration.md`).

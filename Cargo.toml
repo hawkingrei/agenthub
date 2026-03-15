@@ -8,6 +8,9 @@ members = [
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",
     "crates/agenthub-team-prompts",
+    "crates/agenthub-logging",
+    "crates/agenthub-config",
+    "crates/agenthub-db",
 ]
 
 [patch.crates-io]
@@ -55,6 +58,9 @@ agenthub-text = { path = "crates/agenthub-text" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
 agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
+agenthub-logging = { path = "crates/agenthub-logging" }
+agenthub-config = { path = "crates/agenthub-config" }
+agenthub-db = { path = "crates/agenthub-db" }
 agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"

@@ -1,5 +1,5 @@
 use crate::agent::OutputStream;
-use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
+use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 // Marker for binary-compressed ACP rows: prefix + zstd(payload).
 // Using a binary prefix keeps detection cheap and avoids text re-encoding.

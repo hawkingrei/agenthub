@@ -150,6 +150,9 @@ version = "0.1.0"
 dependencies = [
  "agent-client-protocol 0.9.5",
  "agenthub-acp",
+ "agenthub-config",
+ "agenthub-db",
+ "agenthub-logging",
  "agenthub-team-actor",
  "agenthub-team-domain",
  "agenthub-team-prompts",
@@ -251,6 +254,40 @@ dependencies = [
  "tracing-subscriber",
  "unicode-segmentation",
  "uuid",
+]
+
+[[package]]
+name = "agenthub-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "agenthub-db"
+version = "0.1.0"
+dependencies = [
+ "agenthub-config",
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "agenthub-logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]

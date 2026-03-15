@@ -42,7 +42,7 @@ enum PendingChallenge {
 }
 
 impl AuthService {
-    pub async fn new(db: SqlitePool, config: &crate::config::AppConfig) -> anyhow::Result<Self> {
+    pub async fn new(db: SqlitePool, config: &agenthub_config::AppConfig) -> anyhow::Result<Self> {
         let rp_id = config.rp_id();
         let rp_origin = config.rp_origin();
         let rp_name = config.rp_name();
