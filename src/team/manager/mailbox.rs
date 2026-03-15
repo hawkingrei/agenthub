@@ -419,13 +419,17 @@ fn shared_remote_relay_adapter() -> &'static TeamRemoteRelayAdapter {
 
 impl TeamRemoteRelayAdapter {
     fn new() -> Self {
-        let client = reqwest::Client::builder()
+        let builder = reqwest::Client::builder()
             .pool_max_idle_per_host(32)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
-            .no_proxy()
             .redirect(reqwest::redirect::Policy::limited(5))
-            .danger_accept_invalid_certs(false)
+            .danger_accept_invalid_certs(false);
+
+        #[cfg(test)]
+        let builder = builder.no_proxy();
+
+        let client = builder
             .build()
             .unwrap_or_else(|err| {
                 tracing::warn!(

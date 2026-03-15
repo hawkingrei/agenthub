@@ -378,6 +378,7 @@ async fn spawn_relay_http_server(
     let captures = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route("/relay", any(relay_http_handler))
+        .route("/health", any(|| async { StatusCode::OK }))
         .with_state(RelayHttpState {
             captures: captures.clone(),
             status,
@@ -389,8 +390,26 @@ async fn spawn_relay_http_server(
     let handle = tokio::spawn(async move {
         let _ = serve(listener, app).await;
     });
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    (format!("http://{addr}/relay"), captures, handle)
+
+    let endpoint = format!("http://{addr}/relay");
+    let health_endpoint = format!("http://{addr}/health");
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .expect("build probe client");
+    let mut ready = false;
+    for _ in 0..50 {
+        if client.get(&health_endpoint).send().await.is_ok() {
+            ready = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    if !ready {
+        panic!("relay test server failed to become ready");
+    }
+
+    (endpoint, captures, handle)
 }
 
 #[test]

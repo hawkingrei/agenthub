@@ -1,17 +1,21 @@
 use std::path::Path;
 
 pub fn expand_tilde(path: &str) -> String {
+    if !path.starts_with('~') {
+        return path.to_string();
+    }
+
+    // Fallback to current dir if HOME is not set, for consistency with other parts of the codebase.
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+
     if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
+        return home;
     }
-    if let Some(stripped) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
-    {
-        return Path::new(&home)
-            .join(stripped)
-            .to_string_lossy()
-            .to_string();
+
+    if let Some(rest) = path.strip_prefix("~/") {
+        return Path::new(&home).join(rest).to_string_lossy().to_string();
     }
+
     path.to_string()
 }
 
