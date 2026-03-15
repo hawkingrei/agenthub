@@ -7,6 +7,7 @@ import {
   decidePermissionJump,
   filterPermissionsForAgent,
   mergePendingPermissionCountMap,
+  normalizeSseOutputLines,
   parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
   resolveGlobalPermissionPollIntervalMs,
@@ -312,6 +313,27 @@ describe("app helper decisions", () => {
     expect(resolved.latestSessionId).toBeNull();
     expect(resolved.resolvedSessionId).toBeNull();
     expect(resolved.scopedEvents.map((item) => item.event_id)).toEqual([1, 2]);
+  });
+
+  it("normalizes single SSE output payload into one line", () => {
+    const event = buildEvent(7, "session-a", "acp");
+    expect(
+      normalizeSseOutputLines({
+        type: "acp",
+        payload: event,
+      })
+    ).toEqual([event]);
+  });
+
+  it("normalizes batched SSE payload and filters invalid entries", () => {
+    const first = buildEvent(8, "session-a", "stdout");
+    const second = buildEvent(9, "session-b", "acp");
+    expect(
+      normalizeSseOutputLines({
+        type: "batch",
+        payload: [first, { nope: true }, second],
+      })
+    ).toEqual([first, second]);
   });
 
   it("resolves viewport size with fallback and clamps to positive pixels", () => {

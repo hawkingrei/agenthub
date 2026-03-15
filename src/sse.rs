@@ -128,6 +128,9 @@ fn parse_agent_ids(raw_ids: &str) -> Vec<String> {
 
 const OUTPUT_STREAM_BUFFER_CAPACITY: usize = 512;
 const OUTPUT_STREAM_SEND_TIMEOUT: Duration = Duration::from_secs(2);
+const OUTPUT_STREAM_BATCH_MAX_EVENTS: usize = 32;
+const OUTPUT_STREAM_BATCH_MAX_BYTES: usize = 64 * 1024;
+const OUTPUT_STREAM_BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
@@ -168,9 +171,13 @@ fn output_stream_with_limits(
         OutputStreamState {
             output_rx,
             heartbeat: tokio::time::interval(heartbeat_interval),
+            batch_flush: tokio::time::interval(OUTPUT_STREAM_BATCH_FLUSH_INTERVAL),
+            batch: Vec::new(),
+            batch_bytes: 0,
             shutdown_tx,
             disconnect_rx,
             disconnect_watch_active: true,
+            output_rx_open: true,
             forwarders,
         },
         |mut state| async move {
@@ -182,6 +189,11 @@ fn output_stream_with_limits(
                     _ = state.heartbeat.tick() => {
                         let event = Event::default().data("heartbeat");
                         return Some((Ok(event), state));
+                    }
+                    _ = state.batch_flush.tick() => {
+                        if let Some(event) = take_batched_event(&mut state) {
+                            return Some((Ok(event), state));
+                        }
                     }
                     changed = state.disconnect_rx.changed(), if state.disconnect_watch_active => {
                         match changed {
@@ -197,15 +209,23 @@ fn output_stream_with_limits(
                             }
                         }
                     }
-                    msg = state.output_rx.recv() => {
+                    msg = state.output_rx.recv(), if state.output_rx_open => {
                         match msg {
                             Some(output) => {
-                                if let Ok(text) = serde_json::to_string(&output_to_message(&output)) {
-                                    let event = Event::default().data(text);
-                                    return Some((Ok(event), state));
+                                push_batched_output(&mut state, output);
+                                if should_flush_batch(&state) {
+                                    if let Some(event) = take_batched_event(&mut state) {
+                                        return Some((Ok(event), state));
+                                    }
                                 }
                             }
-                            None => return None,
+                            None => {
+                                state.output_rx_open = false;
+                                if let Some(event) = take_batched_event(&mut state) {
+                                    return Some((Ok(event), state));
+                                }
+                                return None;
+                            }
                         }
                     }
                 }
@@ -217,9 +237,13 @@ fn output_stream_with_limits(
 struct OutputStreamState {
     output_rx: mpsc::Receiver<AgentOutput>,
     heartbeat: tokio::time::Interval,
+    batch_flush: tokio::time::Interval,
+    batch: Vec<AgentOutput>,
+    batch_bytes: usize,
     shutdown_tx: watch::Sender<bool>,
     disconnect_rx: watch::Receiver<bool>,
     disconnect_watch_active: bool,
+    output_rx_open: bool,
     forwarders: Vec<JoinHandle<()>>,
 }
 
@@ -289,6 +313,12 @@ struct SseServerMessage {
     payload: serde_json::Value,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct SseServerBatchMessage {
+    r#type: String,
+    payload: Vec<AgentOutput>,
+}
+
 fn output_to_message(output: &AgentOutput) -> SseServerMessage {
     let msg_type = if matches!(output.stream, crate::agent::OutputStream::Acp) {
         "acp"
@@ -299,6 +329,42 @@ fn output_to_message(output: &AgentOutput) -> SseServerMessage {
         r#type: msg_type.to_string(),
         payload: serde_json::json!(output),
     }
+}
+
+fn push_batched_output(state: &mut OutputStreamState, output: AgentOutput) {
+    state.batch_bytes = state
+        .batch_bytes
+        .saturating_add(estimate_output_size(&output));
+    state.batch.push(output);
+}
+
+fn should_flush_batch(state: &OutputStreamState) -> bool {
+    state.batch.len() >= OUTPUT_STREAM_BATCH_MAX_EVENTS
+        || state.batch_bytes >= OUTPUT_STREAM_BATCH_MAX_BYTES
+}
+
+fn take_batched_event(state: &mut OutputStreamState) -> Option<Event> {
+    if state.batch.is_empty() {
+        state.batch_bytes = 0;
+        return None;
+    }
+
+    let outputs = std::mem::take(&mut state.batch);
+    state.batch_bytes = 0;
+    let text = if outputs.len() == 1 {
+        serde_json::to_string(&output_to_message(&outputs[0])).ok()?
+    } else {
+        serde_json::to_string(&SseServerBatchMessage {
+            r#type: "batch".to_string(),
+            payload: outputs,
+        })
+        .ok()?
+    };
+    Some(Event::default().data(text))
+}
+
+fn estimate_output_size(output: &AgentOutput) -> usize {
+    output.agent_id.len() + output.session_id.len() + output.seq.len() + output.message.len() + 64
 }
 
 #[cfg(test)]
@@ -586,14 +652,18 @@ mod tests {
     }
 
     fn sample_output(stream: OutputStream) -> AgentOutput {
+        sample_output_with(42, stream, "hello")
+    }
+
+    fn sample_output_with(event_id: i64, stream: OutputStream, message: &str) -> AgentOutput {
         AgentOutput {
-            event_id: 42,
+            event_id,
             agent_id: "agent-x".to_string(),
             session_id: "session-x".to_string(),
-            seq: "0001".to_string(),
+            seq: format!("{event_id:04}"),
             ts: 123,
             stream,
-            message: "hello".to_string(),
+            message: message.to_string(),
         }
     }
 
@@ -813,6 +883,45 @@ mod tests {
         assert!(
             second.is_some(),
             "stream should emit buffered output before termination"
+        );
+    }
+
+    #[tokio::test]
+    async fn output_stream_batches_multiple_messages_into_single_sse_event() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let mut stream = std::pin::pin!(super::output_stream(vec![rx]));
+
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive heartbeat")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
+        assert!(format!("{first:?}").contains("heartbeat"));
+
+        tx.send(sample_output_with(1, OutputStream::Stdout, "alpha"))
+            .expect("send first output");
+        tx.send(sample_output_with(2, OutputStream::Acp, "beta"))
+            .expect("send second output");
+
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive batched output")
+            .expect("stream should not end")
+            .expect("stream event should be ok");
+        let debug = format!("{second:?}");
+        assert!(
+            debug.contains("\\\"type\\\":\\\"batch\\\""),
+            "expected batched SSE payload: {debug}"
+        );
+        assert!(
+            debug.contains("alpha"),
+            "expected first payload in batch: {debug}"
+        );
+        assert!(
+            debug.contains("beta"),
+            "expected second payload in batch: {debug}"
         );
     }
 }
