@@ -310,7 +310,7 @@ describe("team create helpers", () => {
         },
         buildForgeAgent({ id: "worker-1" })
       )
-    ).toThrow("Create the leader agent first");
+    ).toThrow("Create the first agent before adding more agents");
 
     const withLeader = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),

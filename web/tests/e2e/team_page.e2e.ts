@@ -194,9 +194,9 @@ async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
-  const openButtonLabel = options.role === "leader" ? "Add Leader" : "Add Agent";
-  const title = options.role === "leader" ? "Add Leader Agent" : "Add Agent";
-  const confirmLabel = options.role === "leader" ? "Create Leader" : "Create Agent";
+  const openButtonLabel = "Add Agent";
+  const title = "Add Agent";
+  const confirmLabel = "Create Agent";
   await page.getByRole("button", { name: openButtonLabel, exact: true }).first().click();
   const dialog = page
     .locator("[role='dialog']")
@@ -1154,7 +1154,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
     goal: "Build a goal-first team and add members afterward.",
   });
   await expect(page.locator(".team-item", { hasText: "quest-team" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add Leader", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   const payload = fixture.getCreatePayload();
@@ -1168,7 +1168,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
   });
 });
 
-test("team member setup adds leader first and appends workers through spec updates", async ({
+test("team member setup adds the first agent and appends more agents through spec updates", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
@@ -1230,8 +1230,8 @@ test("team create modal only captures mission metadata and points member setup t
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Team name")).toBeVisible();
   await expect(dialog.getByLabel("Team goal")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /Add Leader|Add Agent|New Agent/ })).toHaveCount(0);
-  await expect(dialog.getByText("Add the leader and worker agents afterward")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Add Agent|New Agent/ })).toHaveCount(0);
+  await expect(dialog.getByText("Add agents afterward")).toBeVisible();
 });
 
 test("team page keeps single-column proportions on mobile viewport", async ({
@@ -1517,7 +1517,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(mailboxLayout.overflowing).toEqual([]);
 });
 
-test("team setup switches from add leader to add agent after the first member binds", async ({
+test("team setup keeps add agent wording after the first member binds", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
@@ -1528,7 +1528,7 @@ test("team setup switches from add leader to add agent after the first member bi
     name: "forge-team",
     goal: "Bind leader in-place before worker setup.",
   });
-  await expect(page.getByRole("button", { name: "Add Leader", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {

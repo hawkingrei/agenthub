@@ -922,10 +922,6 @@ export function TeamPage(props: TeamPageProps) {
     () => (selectedTeam ? teamSpecHasConfiguredMembers(selectedTeam.spec) : false),
     [selectedTeam]
   );
-  const selectedTeamHasLeader = useMemo(
-    () => (selectedTeam ? teamSpecHasLeader(selectedTeam.spec) : false),
-    [selectedTeam]
-  );
   const selectedTeamWorkerCount = useMemo(
     () => selectedTeamMembers.filter((member) => member.role === "worker").length,
     [selectedTeamMembers]
@@ -939,7 +935,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     return null;
   }, [selectedTeam, selectedTeamHasConfiguredMembers]);
-  const teamMemberForgeLabel = selectedTeamHasLeader ? "Add Agent" : "Add Leader";
+  const teamMemberForgeLabel = "Add Agent";
   const primaryWorkspaceTabValue = TEAM_PRIMARY_WORKSPACE_TABS.has(tab) ? tab : null;
   useEffect(() => {
     const memberId = selectedMemberId.trim();
@@ -2784,8 +2780,7 @@ export function TeamPage(props: TeamPageProps) {
             <div className="mt-4 flex max-h-[55vh] flex-col gap-2 overflow-y-auto pr-1">
               {teams.length === 0 && (
                 <p className={teamSectionBodyTextClassName}>
-                  No teams yet. Create the team first, then enter its workspace to add the leader
-                  and worker agents.
+                  No teams yet. Create the team first, then enter its workspace to add agents.
                 </p>
               )}
               {teams.length > 0 && selectorVisibleTeams.length === 0 && (
@@ -2832,8 +2827,8 @@ export function TeamPage(props: TeamPageProps) {
               Create the team before you hire the agents.
             </h2>
             <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-              Start with the mission. A new team stays empty until you add the leader and the
-              rest of the agents with their role, skills, and prompt profile.
+              Start with the mission. A new team stays empty until you add the first agent and
+              the rest of the agents with their role, skills, and prompt profile.
             </p>
             <Group gap="sm" mt="md">
               <Button
@@ -3153,7 +3148,7 @@ export function TeamPage(props: TeamPageProps) {
                           </h3>
                           <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
                             The team goal is saved, but runtime and runs stay blocked until you add
-                            {selectedTeamHasLeader ? " another agent." : " the leader agent."}
+                            {" the first agent."}
                           </p>
                         </div>
                         <Button
@@ -3177,9 +3172,9 @@ export function TeamPage(props: TeamPageProps) {
                             1
                           </span>
                           <div>
-                            <p className="font-semibold">Create the leader</p>
+                            <p className="font-semibold">Create the first agent</p>
                             <p className="mt-1 text-black/68">
-                              Define the architecture and review identity first.
+                              The first agent owns planning, review, and synthesis for the team.
                             </p>
                           </div>
                         </div>
@@ -3188,9 +3183,9 @@ export function TeamPage(props: TeamPageProps) {
                             2
                           </span>
                           <div>
-                            <p className="font-semibold">Add execution agents</p>
+                            <p className="font-semibold">Add more agents</p>
                             <p className="mt-1 text-black/68">
-                              Attach workers with their own skills, prompts, and workdirs.
+                              Attach more execution agents with their own skills, prompts, and workdirs.
                             </p>
                           </div>
                         </div>
@@ -3666,8 +3661,8 @@ export function TeamPage(props: TeamPageProps) {
                   Start with the mission, not the agents.
                 </h3>
                 <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
-                  Team creation only stores the workspace identity and goal. Add the leader and
-                  worker agents afterward, each with their own role profile, skills, and prompt.
+                  Team creation only stores the workspace identity and goal. Add agents afterward,
+                  each with their own role profile, skills, and prompt.
                 </p>
               </div>
             </div>
@@ -3694,7 +3689,7 @@ export function TeamPage(props: TeamPageProps) {
 
               <TeamCreateNote tone={newTeamName.trim() ? "info" : "warning"}>
                 {newTeamName.trim()
-                  ? "After the team is created, add the leader first. Worker agents can be added after the leader exists."
+                  ? "After the team is created, add the first agent. More agents can be added after the first agent exists."
                   : "Team name is required before the team can be created."}
               </TeamCreateNote>
             </div>
@@ -3726,8 +3721,8 @@ export function TeamPage(props: TeamPageProps) {
 
       {showForgeAgentForm && teamMemberDraft && (
         <CreateAgentModal
-          title={teamMemberDraft.role === "leader" ? "Add Leader Agent" : "Add Agent"}
-          confirmLabel={teamMemberDraft.role === "leader" ? "Create Leader" : "Create Agent"}
+          title="Add Agent"
+          confirmLabel="Create Agent"
           agentName={forgeAgentName}
           setAgentName={setForgeAgentName}
           agentWorkdir={forgeAgentWorkdir}
@@ -3753,7 +3748,7 @@ export function TeamPage(props: TeamPageProps) {
           <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className={teamWorkbenchBadgeClassName}>
-                {teamMemberDraft.role === "leader" ? "Leader Profile" : "Worker Profile"}
+                {teamMemberDraft.role === "leader" ? "Primary Agent Profile" : "Execution Agent Profile"}
               </span>
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-black/55">
                 member_id follows agent id
@@ -3761,7 +3756,7 @@ export function TeamPage(props: TeamPageProps) {
             </div>
             <p className="mt-2 text-[13px] leading-5 text-black/70">
               {teamMemberDraft.role === "leader"
-                ? "Configure the architect/reviewer identity that owns planning and synthesis."
+                ? "Configure the first agent identity that owns planning, review, and synthesis."
                 : "Configure the execution identity that delivers implementation and evidence."}
             </p>
 

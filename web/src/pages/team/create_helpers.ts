@@ -174,7 +174,7 @@ export function appendTeamMemberToSpec(
     throw new Error("Team already has a leader");
   }
   if (role === "worker" && !leaderId) {
-    throw new Error("Create the leader agent first");
+    throw new Error("Create the first agent before adding more agents");
   }
 
   const normalizedSkills =
