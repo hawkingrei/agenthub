@@ -183,6 +183,9 @@ fn output_stream_with_limits(
         |mut state| async move {
             loop {
                 if *state.disconnect_rx.borrow() {
+                    if let Some(event) = take_disconnect_recovery_event(&mut state) {
+                        return Some((Ok(event), state));
+                    }
                     return None;
                 }
                 if !state.output_rx_open && state.batch.is_empty() {
@@ -202,6 +205,9 @@ fn output_stream_with_limits(
                         match changed {
                             Ok(()) => {
                                 if *state.disconnect_rx.borrow() {
+                                    if let Some(event) = take_disconnect_recovery_event(&mut state) {
+                                        return Some((Ok(event), state));
+                                    }
                                     return None;
                                 }
                             }
@@ -364,6 +370,20 @@ fn take_batched_event(state: &mut OutputStreamState) -> Option<Event> {
         .ok()?
     };
     Some(Event::default().data(text))
+}
+
+fn take_disconnect_recovery_event(state: &mut OutputStreamState) -> Option<Event> {
+    loop {
+        match state.output_rx.try_recv() {
+            Ok(output) => push_batched_output(state, output),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                state.output_rx_open = false;
+                break;
+            }
+        }
+    }
+    take_batched_event(state)
 }
 
 fn estimate_output_size(output: &AgentOutput) -> usize {
@@ -816,18 +836,33 @@ mod tests {
             .expect("stream event should be ok");
         assert!(format!("{first:?}").contains("heartbeat"));
 
-        tx.send(sample_output(OutputStream::Stdout))
+        tx.send(sample_output_with(1, OutputStream::Stdout, "alpha"))
             .expect("send first output");
-        tx.send(sample_output(OutputStream::Stdout))
+        tx.send(sample_output_with(2, OutputStream::Stdout, "beta"))
             .expect("send second output");
 
         tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
         let next = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
             .await
-            .expect("poll stream after backpressure");
+            .expect("poll stream after backpressure")
+            .expect("stream should flush buffered output before termination")
+            .expect("stream event should be ok");
+        let debug = format!("{next:?}");
         assert!(
-            next.is_none(),
+            debug.contains("alpha"),
+            "expected buffered tail output before termination: {debug}"
+        );
+        assert!(
+            !debug.contains("beta"),
+            "timed-out output should not appear in final live flush: {debug}"
+        );
+
+        let final_event = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("poll stream termination after backpressure");
+        assert!(
+            final_event.is_none(),
             "stream should close after sustained backpressure timeout"
         );
     }
