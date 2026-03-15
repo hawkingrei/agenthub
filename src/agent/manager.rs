@@ -35,7 +35,7 @@ use crate::acp::{
     spawn_acp_session,
 };
 use crate::auth::AuthService;
-use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
+use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 

@@ -30,7 +30,7 @@ pub struct PushKeys {
 }
 
 impl PushService {
-    pub fn new(db: SqlitePool, config: &crate::config::AppConfig) -> anyhow::Result<Self> {
+    pub fn new(db: SqlitePool, config: &agenthub_config::AppConfig) -> anyhow::Result<Self> {
         let subject = config.vapid_subject();
         let keys_path = config.vapid_keys_path();
         let keys = load_or_create_vapid_keys(&keys_path)?;

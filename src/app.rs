@@ -10,8 +10,8 @@ use tracing_subscriber::EnvFilter;
 use agenthub_logging::{LogSpec, init_tracing, split_log_path};
 
 fn log_config_details(
-    config: &crate::config::AppConfig,
-    info: &crate::config::ConfigLoadInfo,
+    config: &agenthub_config::AppConfig,
+    info: &agenthub_config::ConfigLoadInfo,
     log_path: Option<&str>,
     log_spec: Option<&LogSpec>,
     web_dir: Option<&str>,
@@ -162,7 +162,7 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let (config, info) = crate::config::AppConfig::load_with_info()?;
+    let (config, info) = agenthub_config::AppConfig::load_with_info()?;
     let log_path = config.log_path();
     let log_spec = log_path.as_deref().map(split_log_path);
     let web_dir = config.effective_web_dir();
@@ -203,13 +203,13 @@ mod tests {
 
     #[test]
     fn log_config_details_handles_all_branches() {
-        let config = crate::config::AppConfig::default();
-        let file_info = crate::config::ConfigLoadInfo {
+        let config = agenthub_config::AppConfig::default();
+        let file_info = agenthub_config::ConfigLoadInfo {
             path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
             file_exists: true,
             env_overrides: vec!["AGENTHUB_LISTEN".to_string()],
         };
-        let default_info = crate::config::ConfigLoadInfo {
+        let default_info = agenthub_config::ConfigLoadInfo {
             path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
             file_exists: false,
             env_overrides: vec![],

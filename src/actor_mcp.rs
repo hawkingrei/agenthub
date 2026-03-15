@@ -697,7 +697,7 @@ fn handle_jsonrpc_notification(initialized: &mut bool, method: &str) {
 }
 
 async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
-    let db = crate::db::init_db().await?;
+    let db = agenthub_db::init_db().await?;
     let manager = TeamManager::new(db);
     let service = manager.actor_mailbox_service();
 

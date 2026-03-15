@@ -715,7 +715,7 @@ mod tests {
     use crate::acp::default_actor_cli_path;
     use crate::agent::AgentManager;
     use crate::auth::AuthService;
-    use crate::config::{AppConfig, PushConfig, WebConfig};
+    use agenthub_config::{AppConfig, PushConfig, WebConfig};
     use crate::push::PushService;
     use crate::state::AppState;
     use crate::team::TeamManager;
@@ -1193,7 +1193,7 @@ mod tests {
                 .expect("create auth service"),
         );
         let permissions = Arc::new(AcpPermissionService::new(db.clone()));
-        let event_dbs = crate::db::AgentEventDbRouter::new(
+        let event_dbs = agenthub_db::AgentEventDbRouter::new(
             std::env::temp_dir().join(format!("agenthub-api-agents-eventdb-{}", Uuid::new_v4())),
         );
         let agents = Arc::new(AgentManager::new(

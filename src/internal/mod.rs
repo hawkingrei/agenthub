@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
 
-use crate::config::AppConfig;
+use agenthub_config::AppConfig;
 use crate::state::AppState;
 
 use self::auth::{InternalAuthz, InternalAuthzConfig};

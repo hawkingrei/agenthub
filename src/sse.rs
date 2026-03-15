@@ -585,7 +585,7 @@ mod tests {
                 .expect("create auth"),
         );
         let permissions = Arc::new(AcpPermissionService::new(db.clone()));
-        let event_dbs = crate::db::AgentEventDbRouter::new(
+        let event_dbs = agenthub_db::AgentEventDbRouter::new(
             std::env::temp_dir().join(format!("agenthub-sse-eventdb-{}", Uuid::new_v4())),
         );
         let agents = Arc::new(crate::agent::AgentManager::new(

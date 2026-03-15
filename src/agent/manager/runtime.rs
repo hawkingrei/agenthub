@@ -14,7 +14,7 @@ use super::codec::{is_acp_message, is_dir_empty};
 use super::{AgentHandle, AgentManager, expand_tilde, normalize_path, worktree_mode_to_str};
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
-use crate::db::{AgentEventDbRouter, AgentEventIdleGc};
+use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 use crate::push::PushService;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -897,7 +897,7 @@ mod tests {
 
     async fn build_test_state_with_idle_gc() -> crate::state::AppState {
         let state = crate::api::team_tests::build_test_state().await;
-        let idle_gc = crate::db::AgentEventIdleGc::new(
+        let idle_gc = agenthub_db::AgentEventIdleGc::new(
             state.agents.event_dbs.clone(),
             5,
             false,

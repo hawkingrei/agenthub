@@ -32,7 +32,7 @@ use super::{
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
-use crate::db::AgentEventDbRouter;
+use agenthub_db::AgentEventDbRouter;
 use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 
 #[derive(Clone)]

@@ -26,9 +26,9 @@ pub struct AppState {
 const IDLE_GC_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 impl AppState {
-    pub async fn init(config: crate::config::AppConfig) -> anyhow::Result<Self> {
+    pub async fn init(config: agenthub_config::AppConfig) -> anyhow::Result<Self> {
         let db = Self::setup_database(&config).await?;
-        let event_dbs = crate::db::AgentEventDbRouter::with_default_base_dir();
+        let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
         let (agents, teams, push, auth, acp_permissions) =
             Self::initialize_services(&config, db.clone(), event_dbs.clone()).await?;
@@ -50,17 +50,17 @@ impl AppState {
         })
     }
 
-    async fn setup_database(config: &crate::config::AppConfig) -> anyhow::Result<SqlitePool> {
-        let db = crate::db::init_db().await?;
+    async fn setup_database(config: &agenthub_config::AppConfig) -> anyhow::Result<SqlitePool> {
+        let db = agenthub_db::init_db().await?;
         Self::ensure_root(&db).await?;
         Self::seed_safe_paths(&db, config).await?;
         Ok(db)
     }
 
     async fn initialize_services(
-        config: &crate::config::AppConfig,
+        config: &agenthub_config::AppConfig,
         db: SqlitePool,
-        event_dbs: crate::db::AgentEventDbRouter,
+        event_dbs: agenthub_db::AgentEventDbRouter,
     ) -> anyhow::Result<(
         Arc<AgentManager>,
         Arc<TeamManager>,
@@ -78,7 +78,7 @@ impl AppState {
                 delete_batch_size,
                 vacuum_on_cleanup,
             );
-            crate::db::AgentEventIdleGc::new(
+            agenthub_db::AgentEventIdleGc::new(
                 event_dbs.clone(),
                 retention_days,
                 vacuum_on_cleanup,
@@ -157,7 +157,7 @@ impl AppState {
 
     async fn seed_safe_paths(
         db: &SqlitePool,
-        config: &crate::config::AppConfig,
+        config: &agenthub_config::AppConfig,
     ) -> anyhow::Result<()> {
         for path in config.safe_paths() {
             let now = chrono::Utc::now().timestamp();
@@ -179,7 +179,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::AppState;
-    use crate::config::AppConfig;
+    use agenthub_config::AppConfig;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 

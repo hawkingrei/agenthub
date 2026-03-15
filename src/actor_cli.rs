@@ -447,7 +447,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             println!("{}", actor_usage());
         }
         ActorCommand::TeamMembers { team_id, run_id } => {
-            let db = crate::db::init_db().await?;
+            let db = agenthub_db::init_db().await?;
             let manager = TeamManager::new(db);
             let team_context = manager
                 .describe_team_context(team_id.as_deref(), run_id.as_deref())
@@ -461,7 +461,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             after_id,
             include_delivered,
         } => {
-            let db = crate::db::init_db().await?;
+            let db = agenthub_db::init_db().await?;
             let manager = TeamManager::new(db);
             let service = manager.actor_mailbox_service();
             let states = if include_delivered {
@@ -494,7 +494,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             actor_id,
             message_id,
         } => {
-            let db = crate::db::init_db().await?;
+            let db = agenthub_db::init_db().await?;
             let manager = TeamManager::new(db);
             let message = manager
                 .ack_actor_message(&run_id, &actor_id, message_id)
@@ -511,7 +511,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             payload,
             idempotency_key,
         } => {
-            let db = crate::db::init_db().await?;
+            let db = agenthub_db::init_db().await?;
             let manager = TeamManager::new(db);
             let message = manager
                 .send_actor_message(SendActorMessageInput {
