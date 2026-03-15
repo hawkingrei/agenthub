@@ -134,7 +134,6 @@ impl AgentEventIdleGc {
         states.remove(agent_id);
     }
 
-    #[cfg(test)]
     pub async fn tracked_agent_count(&self) -> usize {
         self.states.lock().await.len()
     }
@@ -183,10 +182,8 @@ impl AgentEventDbRouter {
             let mut pools = self.pools.lock().await;
             pools.remove(agent_id)
         };
-        if let Some(cell) = cell {
-            if let Some(pool) = cell.get() {
-                pool.close().await;
-            }
+        if let Some(pool) = cell.and_then(|c| c.get().cloned()) {
+            pool.close().await;
         }
         let db_path = self.db_path_for_agent(agent_id);
         if db_path.exists() {
