@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
+  analyzeLiveOutputBatch,
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
   chunkPermissionPollAgentIds,
   decidePermissionJump,
+  dispatchLiveOutputBatch,
   filterPermissionsForAgent,
   mergePendingPermissionCountMap,
   normalizeSseOutputLines,
@@ -12,6 +14,7 @@ import {
   parsePermissionPollAgentIds,
   resolveGlobalPermissionPollIntervalMs,
   resolveOutputHistoryKey,
+  routeLiveOutputBatch,
   resolveSessionScopedEvents,
   resolveRuntimeKeyboardInset,
   resolveRuntimeViewportAxis,
@@ -21,6 +24,7 @@ import {
   setupRuntimeViewportVarSync,
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
+  updateLiveOutputBatchCursors,
 } from "./app";
 
 const buildPermission = (
@@ -334,6 +338,179 @@ describe("app helper decisions", () => {
         payload: [first, { nope: true }, second],
       })
     ).toEqual([first, second]);
+  });
+
+  it("returns empty for invalid SSE payload shapes", () => {
+    expect(normalizeSseOutputLines(null)).toEqual([]);
+    expect(
+      normalizeSseOutputLines({
+        type: "output",
+        payload: { event_id: "bad" },
+      })
+    ).toEqual([]);
+    expect(
+      normalizeSseOutputLines({
+        type: "batch",
+        payload: { nope: true },
+      })
+    ).toEqual([]);
+  });
+
+  it("analyzes live batch groups, active session output, and status updates", () => {
+    const activeStdout = buildEvent(10, "session-a");
+    const activeRunning = {
+      ...buildEvent(11, "session-a", "acp"),
+      message: JSON.stringify({ type: "run_status", status: "running" }),
+    };
+    const activeAcp = {
+      ...buildEvent(12, "session-a", "acp"),
+      message: '{"type":"agent_message","delta":"hello"}',
+    };
+    const inactiveSession = { ...buildEvent(13, "session-b"), agent_id: "agent-1" };
+    const otherAgentCompleted = {
+      ...buildEvent(14, "session-z", "acp"),
+      agent_id: "agent-2",
+      message: JSON.stringify({ type: "run_status", status: "completed" }),
+    };
+
+    const analyzed = analyzeLiveOutputBatch(
+      [
+        activeStdout,
+        activeRunning,
+        activeAcp,
+        inactiveSession,
+        otherAgentCompleted,
+      ],
+      "agent-1",
+      "session-a"
+    );
+
+    expect(analyzed.outputGroups).toEqual({
+      "agent-1:session-a": [activeStdout, activeRunning, activeAcp],
+      "agent-1:session-b": [inactiveSession],
+      "agent-2:session-z": [otherAgentCompleted],
+    });
+    expect(analyzed.acpGroups).toEqual({
+      "agent-1:session-a": [activeRunning, activeAcp],
+      "agent-2:session-z": [otherAgentCompleted],
+    });
+    expect(analyzed.activeLines).toEqual([
+      activeStdout,
+      activeRunning,
+      activeAcp,
+    ]);
+    expect(analyzed.activeAcpLines).toEqual([activeRunning, activeAcp]);
+    expect(analyzed.nextStatuses).toEqual({
+      "agent-1": "running",
+      "agent-2": "stopped",
+    });
+  });
+
+  it("updates event cursors for every line in a live batch", () => {
+    const ref = { current: {} };
+    updateLiveOutputBatchCursors(ref, [
+      buildEvent(4, "session-a"),
+      buildEvent(9, "session-a"),
+      { ...buildEvent(3, "session-b"), agent_id: "agent-2" },
+    ]);
+
+    expect(ref.current).toEqual({
+      "agent-1:session-a": { kind: "event_id", value: 9 },
+      "agent-2:session-b": { kind: "event_id", value: 3 },
+    });
+  });
+
+  it("dispatches live batch side effects and returns active outputs", () => {
+    const ref = { current: {} };
+    const onStatuses = vi.fn();
+    const onOutputGroup = vi.fn();
+    const onAcpGroup = vi.fn();
+    const activeStdout = buildEvent(20, "session-a");
+    const activeRunning = {
+      ...buildEvent(21, "session-a", "acp"),
+      message: JSON.stringify({ type: "run_status", status: "running" }),
+    };
+    const otherAgent = {
+      ...buildEvent(22, "session-b", "acp"),
+      agent_id: "agent-2",
+      message: JSON.stringify({ type: "run_status", status: "failed" }),
+    };
+
+    const dispatched = dispatchLiveOutputBatch({
+      cursorRef: ref,
+      lines: [activeStdout, activeRunning, otherAgent],
+      activeAgent: "agent-1",
+      activeSessionId: "session-a",
+      onStatuses,
+      onOutputGroup,
+      onAcpGroup,
+    });
+
+    expect(onStatuses).toHaveBeenCalledWith({
+      "agent-1": "running",
+      "agent-2": "failed",
+    });
+    expect(onOutputGroup.mock.calls).toEqual([
+      ["agent-1:session-a", [activeStdout, activeRunning]],
+      ["agent-2:session-b", [otherAgent]],
+    ]);
+    expect(onAcpGroup.mock.calls).toEqual([
+      ["agent-1:session-a", [activeRunning]],
+      ["agent-2:session-b", [otherAgent]],
+    ]);
+    expect(dispatched.activeLines).toEqual([activeStdout, activeRunning]);
+    expect(dispatched.activeAcpLines).toEqual([activeRunning]);
+    expect(ref.current).toEqual({
+      "agent-1:session-a": { kind: "event_id", value: 21 },
+      "agent-2:session-b": { kind: "event_id", value: 22 },
+    });
+  });
+
+  it("routes live batch status updates through agent state updater", () => {
+    const ref = { current: {} };
+    const activeRunning = {
+      ...buildEvent(30, "session-a", "acp"),
+      message: JSON.stringify({ type: "run_status", status: "running" }),
+    };
+    const unchangedAgent = {
+      id: "agent-9",
+      name: "Agent 9",
+      workdir: "/tmp/agent-9",
+      command: "codex",
+      args: [],
+      worktree_mode: "use_existing" as const,
+      code_mode: true,
+      status: "stopped",
+      created_at: 1,
+      updated_at: 1,
+    };
+    const activeAgentRecord = {
+      ...unchangedAgent,
+      id: "agent-1",
+      name: "Agent 1",
+    };
+    let nextAgents = [activeAgentRecord, unchangedAgent];
+    const updateAgents = vi.fn((updater: (prev: typeof nextAgents) => typeof nextAgents) => {
+      nextAgents = updater(nextAgents);
+    });
+
+    const routed = routeLiveOutputBatch({
+      cursorRef: ref,
+      lines: [activeRunning],
+      activeAgent: "agent-1",
+      activeSessionId: "session-a",
+      updateAgents,
+      onOutputGroup: vi.fn(),
+      onAcpGroup: vi.fn(),
+    });
+
+    expect(updateAgents).toHaveBeenCalledTimes(1);
+    expect(nextAgents.map((agent) => [agent.id, agent.status])).toEqual([
+      ["agent-1", "running"],
+      ["agent-9", "stopped"],
+    ]);
+    expect(routed.activeLines).toEqual([activeRunning]);
+    expect(routed.activeAcpLines).toEqual([activeRunning]);
   });
 
   it("resolves viewport size with fallback and clamps to positive pixels", () => {

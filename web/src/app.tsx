@@ -33,6 +33,7 @@ import {
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 import {
+  CursorRef,
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
@@ -915,65 +916,17 @@ export function App() {
   const consumeLiveOutputBatch = useCallback(
     (lines: OutputLine[]) => {
       if (lines.length === 0) return;
-      const outputGroups = new Map<string, OutputLine[]>();
-      const acpGroups = new Map<string, OutputLine[]>();
-      const activeLines: OutputLine[] = [];
-      const activeAcpLines: OutputLine[] = [];
-      const nextStatuses = new Map<string, AgentRecord["status"]>();
       const currentActive = activeAgentRef.current;
       const currentSessionId = activeSessionIdRef.current;
-
-      for (const line of lines) {
-        const key = `${line.agent_id}:${line.session_id}`;
-        updateLastEventCursor(lastEventCursorRef, key, line);
-
-        const grouped = outputGroups.get(key);
-        if (grouped) {
-          grouped.push(line);
-        } else {
-          outputGroups.set(key, [line]);
-        }
-
-        if (line.stream === "acp") {
-          const status = parseRunStatus(line.message);
-          if (status) {
-            nextStatuses.set(line.agent_id, statusToAgentStatus(status));
-          }
-          const acpGrouped = acpGroups.get(key);
-          if (acpGrouped) {
-            acpGrouped.push(line);
-          } else {
-            acpGroups.set(key, [line]);
-          }
-        }
-
-        if (line.agent_id !== currentActive) {
-          continue;
-        }
-        if (currentSessionId && line.session_id !== currentSessionId) {
-          continue;
-        }
-        activeLines.push(line);
-        if (line.stream === "acp") {
-          activeAcpLines.push(line);
-        }
-      }
-
-      if (nextStatuses.size > 0) {
-        setAgents((prev) =>
-          prev.map((agent) => {
-            const nextStatus = nextStatuses.get(agent.id);
-            return nextStatus ? { ...agent, status: nextStatus } : agent;
-          })
-        );
-      }
-
-      for (const [key, grouped] of outputGroups) {
-        updateOutputCacheEntry(key, grouped);
-      }
-      for (const [key, grouped] of acpGroups) {
-        updateAcpOutputCacheEntry(key, grouped);
-      }
+      const { activeLines, activeAcpLines } = routeLiveOutputBatch({
+        cursorRef: lastEventCursorRef,
+        lines,
+        activeAgent: currentActive,
+        activeSessionId: currentSessionId,
+        updateAgents: setAgents,
+        onOutputGroup: updateOutputCacheEntry,
+        onAcpGroup: updateAcpOutputCacheEntry,
+      });
 
       if (activeLines.length > 0) {
         setOutputs((prev) => mergeOutputs(prev, activeLines));
@@ -3068,6 +3021,138 @@ function parseRunStatus(message: string): string | null {
     return null;
   }
   return null;
+}
+
+export type LiveOutputBatchAnalysis = {
+  outputGroups: Record<string, OutputLine[]>;
+  acpGroups: Record<string, OutputLine[]>;
+  activeLines: OutputLine[];
+  activeAcpLines: OutputLine[];
+  nextStatuses: Record<string, AgentRecord["status"]>;
+};
+
+export function updateLiveOutputBatchCursors(
+  ref: CursorRef,
+  lines: OutputLine[]
+): void {
+  for (const line of lines) {
+    updateLastEventCursor(ref, `${line.agent_id}:${line.session_id}`, line);
+  }
+}
+
+export function analyzeLiveOutputBatch(
+  lines: OutputLine[],
+  activeAgent: string | null,
+  activeSessionId: string | null
+): LiveOutputBatchAnalysis {
+  const outputGroups: Record<string, OutputLine[]> = {};
+  const acpGroups: Record<string, OutputLine[]> = {};
+  const activeLines: OutputLine[] = [];
+  const activeAcpLines: OutputLine[] = [];
+  const nextStatuses: Record<string, AgentRecord["status"]> = {};
+
+  for (const line of lines) {
+    const key = `${line.agent_id}:${line.session_id}`;
+    (outputGroups[key] ??= []).push(line);
+
+    if (line.stream === "acp") {
+      const status = parseRunStatus(line.message);
+      if (status) {
+        nextStatuses[line.agent_id] = statusToAgentStatus(status);
+      }
+      (acpGroups[key] ??= []).push(line);
+    }
+
+    if (line.agent_id !== activeAgent) {
+      continue;
+    }
+    if (activeSessionId && line.session_id !== activeSessionId) {
+      continue;
+    }
+    activeLines.push(line);
+    if (line.stream === "acp") {
+      activeAcpLines.push(line);
+    }
+  }
+
+  return {
+    outputGroups,
+    acpGroups,
+    activeLines,
+    activeAcpLines,
+    nextStatuses,
+  };
+}
+
+export function dispatchLiveOutputBatch(params: {
+  cursorRef: CursorRef;
+  lines: OutputLine[];
+  activeAgent: string | null;
+  activeSessionId: string | null;
+  onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
+  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
+  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
+}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
+  const {
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    onStatuses,
+    onOutputGroup,
+    onAcpGroup,
+  } = params;
+  updateLiveOutputBatchCursors(cursorRef, lines);
+  const analyzed = analyzeLiveOutputBatch(lines, activeAgent, activeSessionId);
+  if (Object.keys(analyzed.nextStatuses).length > 0) {
+    onStatuses(analyzed.nextStatuses);
+  }
+  for (const [key, grouped] of Object.entries(analyzed.outputGroups)) {
+    onOutputGroup(key, grouped);
+  }
+  for (const [key, grouped] of Object.entries(analyzed.acpGroups)) {
+    onAcpGroup(key, grouped);
+  }
+  return {
+    activeLines: analyzed.activeLines,
+    activeAcpLines: analyzed.activeAcpLines,
+  };
+}
+
+export function routeLiveOutputBatch(params: {
+  cursorRef: CursorRef;
+  lines: OutputLine[];
+  activeAgent: string | null;
+  activeSessionId: string | null;
+  updateAgents: (updater: (prev: AgentRecord[]) => AgentRecord[]) => void;
+  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
+  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
+}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
+  const {
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    updateAgents,
+    onOutputGroup,
+    onAcpGroup,
+  } = params;
+  return dispatchLiveOutputBatch({
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    onStatuses: (nextStatuses) => {
+      updateAgents((prev) =>
+        prev.map((agent) => {
+          const nextStatus = nextStatuses[agent.id];
+          return nextStatus ? { ...agent, status: nextStatus } : agent;
+        })
+      );
+    },
+    onOutputGroup,
+    onAcpGroup,
+  });
 }
 
 export function isValidOutputPayload(
