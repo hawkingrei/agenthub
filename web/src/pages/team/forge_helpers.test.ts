@@ -14,9 +14,11 @@ describe("team forge helpers", () => {
     const workerDraft = buildTeamMemberProfileDraft("worker");
 
     expect(leaderDraft.role).toBe("leader");
+    expect(leaderDraft.model).toBe("codex");
     expect(leaderDraft.skills.length).toBeGreaterThan(0);
     expect(leaderDraft.prompt).not.toBe(workerDraft.prompt);
     expect(workerDraft.role).toBe("worker");
+    expect(workerDraft.model).toBe("codex");
     expect(workerDraft.skills.length).toBeGreaterThan(0);
   });
 
@@ -87,6 +89,7 @@ describe("team forge helpers", () => {
       role: "leader",
       workerCount: 0,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
+      agentPresetId: "gemini",
     });
     expect(leaderDefaults.agentName).toBe("alpha-desk-leader");
     expect(leaderDefaults.agentWorkdir).toMatch(
@@ -94,16 +97,19 @@ describe("team forge helpers", () => {
     );
     expect(leaderDefaults.worktreeMode).toBe("use_existing");
     expect(leaderDefaults.draft.role).toBe("leader");
+    expect(leaderDefaults.draft.model).toBe("gemini");
 
     const workerDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
       role: "worker",
       workerCount: 2,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
+      agentPresetId: "kimi",
     });
     expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
     expect(workerDefaults.agentWorkdir).toBe("");
     expect(workerDefaults.worktreeMode).toBe("use_existing");
     expect(workerDefaults.draft.role).toBe("worker");
+    expect(workerDefaults.draft.model).toBe("kimi");
   });
 });

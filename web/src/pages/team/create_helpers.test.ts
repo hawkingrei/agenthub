@@ -16,7 +16,6 @@ import {
   parseOptionalJson,
   parseRequiredJson,
   resolveUnusedTeamForgeAgentIds,
-  resolveTeamModelOptions,
   teamSpecHasConfiguredMembers,
   teamSpecHasLeader,
 } from "./create_helpers";
@@ -406,19 +405,6 @@ describe("team create helpers", () => {
     expect(clampCreateTeamStage(0)).toBe(0);
     expect(clampCreateTeamStage(2)).toBe(2);
     expect(clampCreateTeamStage(999)).toBe(3);
-  });
-
-  it("resolves model options and appends custom current model when needed", () => {
-    const presetOptions = resolveTeamModelOptions("codex");
-    expect(presetOptions[0]).toEqual({ value: "", label: "Use default model" });
-    expect(presetOptions.some((option) => option.value === "codex")).toBe(true);
-    expect(presetOptions.some((option) => option.label.includes("Custom"))).toBe(false);
-
-    const customOptions = resolveTeamModelOptions("my-custom-model");
-    expect(customOptions.at(-1)).toEqual({
-      value: "my-custom-model",
-      label: "Custom (my-custom-model)",
-    });
   });
 
   it("collects unique member ids from team spec members", () => {

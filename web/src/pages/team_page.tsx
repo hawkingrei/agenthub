@@ -5,7 +5,6 @@ import {
   Button,
   Group,
   Menu,
-  NativeSelect,
   SegmentedControl,
   Tabs,
   TextInput,
@@ -61,7 +60,6 @@ import {
   buildLeaderForgeDefaultWorkdir,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
-  resolveTeamModelOptions,
   teamSpecHasConfiguredMembers,
   teamSpecHasLeader,
   type TeamMemberProfileDraft,
@@ -619,9 +617,15 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamCreate({ forgeAgentWorkdir: resolveUpdater(forgeAgentWorkdir, next) }),
     [forgeAgentWorkdir, patchTeamCreate]
   );
+  const patchTeamMemberDraft = useCallback((patch: Partial<TeamMemberProfileDraft>) => {
+    setTeamMemberDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
   const setForgeAgentPresetId = useCallback(
-    (next: AgentPresetId) => patchTeamCreate({ forgeAgentPresetId: next }),
-    [patchTeamCreate]
+    (next: AgentPresetId) => {
+      patchTeamCreate({ forgeAgentPresetId: next });
+      patchTeamMemberDraft({ model: next });
+    },
+    [patchTeamCreate, patchTeamMemberDraft]
   );
   const setForgeAgentWorktreeMode = useCallback(
     (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
@@ -648,9 +652,6 @@ export function TeamPage(props: TeamPageProps) {
     (next: boolean) => patchTeamCreate({ forgeAgentBusy: next }),
     [patchTeamCreate]
   );
-  const patchTeamMemberDraft = useCallback((patch: Partial<TeamMemberProfileDraft>) => {
-    setTeamMemberDraft((prev) => (prev ? { ...prev, ...patch } : prev));
-  }, []);
   const handleForgeWorktreeModeChange = useCallback(
     (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
       setForgeAgentWorktreeMode(nextMode);
@@ -1136,11 +1137,6 @@ export function TeamPage(props: TeamPageProps) {
     () => selectTeamPreviewEvents(events, selectedMemberId),
     [events, selectedMemberId]
   );
-  const teamMemberModelOptions = useMemo(
-    () => resolveTeamModelOptions(teamMemberDraft?.model ?? ""),
-    [teamMemberDraft?.model]
-  );
-
   const oldestEventId = events.length > 0 ? events[0].event_id : null;
   const oldestMemberEventId =
     memberEvents.length > 0 ? memberEvents[0].event_id : null;
@@ -1502,6 +1498,7 @@ export function TeamPage(props: TeamPageProps) {
       role,
       workerCount: selectedTeamWorkerCount,
       defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+      agentPresetId: DEFAULT_AGENT_PRESET_ID,
     });
 
     setError(null);
@@ -1552,6 +1549,7 @@ export function TeamPage(props: TeamPageProps) {
         role,
         workerCount: selectedTeamWorkerCount,
         defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+        agentPresetId: forgeAgentPresetId,
       });
       setError(null);
       setWarning(null);
@@ -1564,6 +1562,7 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentWorkdir(defaults.agentWorkdir);
     },
     [
+      forgeAgentPresetId,
       forgeDefaultWorktreeRoot,
       selectedTeam,
       selectedTeamWorkerCount,
@@ -3751,6 +3750,8 @@ export function TeamPage(props: TeamPageProps) {
         <CreateAgentModal
           title="Add Agent"
           confirmLabel="Create Agent"
+          agentPresetLabel="Role model"
+          agentPresetSummaryLabel="Model"
           agentName={forgeAgentName}
           setAgentName={setForgeAgentName}
           agentWorkdir={forgeAgentWorkdir}
@@ -3853,19 +3854,6 @@ export function TeamPage(props: TeamPageProps) {
               onChange={(event) =>
                 patchTeamMemberDraft({ description: event.currentTarget.value })
               }
-            />
-            <NativeSelect
-              className="mt-3"
-              radius="md"
-              label="Model override"
-              value={teamMemberDraft.model}
-              onChange={(event) =>
-                patchTeamMemberDraft({ model: event.currentTarget.value })
-              }
-              data={teamMemberModelOptions.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
             />
             <div className="team-skill-tags mt-4 flex flex-wrap gap-2">
               {TEAM_SKILL_OPTIONS.map((skill) => {

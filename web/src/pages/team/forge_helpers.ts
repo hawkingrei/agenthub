@@ -1,4 +1,8 @@
 import {
+  DEFAULT_AGENT_PRESET_ID,
+  type AgentPresetId,
+} from "../../agent_presets";
+import {
   buildLeaderForgeDefaultWorkdir,
   type TeamMemberProfileDraft,
 } from "./create_helpers";
@@ -42,14 +46,18 @@ type ResolveTeamForgeDefaultsArgs = {
   role: TeamMemberRole;
   workerCount: number;
   defaultWorktreeRoot: string;
+  agentPresetId?: AgentPresetId;
 };
 
-export function buildTeamMemberProfileDraft(role: TeamMemberRole): TeamMemberProfileDraft {
+export function buildTeamMemberProfileDraft(
+  role: TeamMemberRole,
+  model: string = DEFAULT_AGENT_PRESET_ID
+): TeamMemberProfileDraft {
   return {
     member_id: "",
     role,
     description: "",
-    model: "",
+    model,
     prompt: role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT,
     skills:
       role === "leader"
@@ -121,6 +129,7 @@ export function resolveTeamForgeDefaults({
   role,
   workerCount,
   defaultWorktreeRoot,
+  agentPresetId = DEFAULT_AGENT_PRESET_ID,
 }: ResolveTeamForgeDefaultsArgs): TeamForgeDefaults {
   const prefix = buildTeamAgentNameToken(teamName);
   const agentName =
@@ -131,7 +140,7 @@ export function resolveTeamForgeDefaults({
     normalizeWorkdirInput(defaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
 
   return {
-    draft: buildTeamMemberProfileDraft(role),
+    draft: buildTeamMemberProfileDraft(role, agentPresetId),
     agentName,
     agentWorkdir:
       role === "leader"

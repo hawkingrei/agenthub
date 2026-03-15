@@ -19,6 +19,7 @@ The Team workbench empty-state and the `Add Agent` modal still carried a heavier
 - made role selection explicit in the `Add Agent` modal with a compact `Leader / Worker` segmented control, while keeping the Team constraints visible in-product (`first agent must be leader`, `one leader per team`)
 - tightened the role-profile copy so the modal no longer repeats `Role` in multiple stacked sections; the lower strip now reads as `Focus / Skills / Prompt Scope`, with role-specific copy resolved from a single helper
 - hardened the worktree default helper chain against `undefined` / `null` inputs so stale defaults payloads or missing modal roots no longer crash on `.trim()` during `Add Agent`
+- removed the extra Team-only `Model override` field and made the role profile inherit its `model` directly from the selected modal preset/runtime, so the setup flow only asks once which model/runtime the role should use
 - removed the duplicated visible `Code mode` label in the modal mode row and left a single `Mode = Code|Chat` value with an unlabeled switch
 - followed up with a broader shell pass across `web/src/pages/team_page.tsx` and `web/src/pages/team_sidebar.tsx` to pull the workbench cards, tab rows, operation chips, runtime pill, and sidebar sections back to the lighter product border/shadow system instead of the earlier thick black outline treatment
 - extracted the role/default-name/workdir calculations into `web/src/pages/team/forge_helpers.ts` so modal role switching reuses a single pure path instead of ad-hoc inline branching
@@ -26,8 +27,8 @@ The Team workbench empty-state and the `Add Agent` modal still carried a heavier
 
 ## Validation
 
-- `cd web && npx vitest run src/create_agent_modal.test.tsx src/create_agent_modal.interaction.test.tsx src/pages/team_panels.test.tsx`
-- `cd web && npm run lint -- src/components/create_agent_modal.tsx src/create_agent_modal.test.tsx src/create_agent_modal.interaction.test.tsx src/pages/team_page.tsx src/pages/team_panels.test.tsx`
+- `cd web && npx vitest run src/pages/team/forge_helpers.test.ts src/pages/team/create_helpers.test.ts src/worktree_defaults.test.ts src/create_agent_modal.test.tsx src/create_agent_modal.interaction.test.tsx src/pages/team_panels.test.tsx`
+- `cd web && npm run lint -- src/components/create_agent_modal.tsx src/pages/team/create_helpers.ts src/pages/team/create_helpers.test.ts src/pages/team/forge_helpers.ts src/pages/team/forge_helpers.test.ts src/pages/team_page.tsx src/worktree_defaults.ts src/worktree_defaults.test.ts`
 - `cd web && npm run build`
 - `git -c core.fsmonitor=false diff --check`
 
@@ -47,4 +48,5 @@ Post-edit local regression:
 
 - rebuilt `web/dist`
 - opened `http://127.0.0.1:4175/teams/team-empty` under a Chrome DevTools MCP page with injected local API mocks
-- confirmed the empty-state now renders a compact `Team Setup` summary strip, the `Add Agent` modal renders the new `Preset / Command / Mode` plus `Role / Skills / Prompt` strips, and the main workspace/sidebar shell no longer rely on the old thick black outline blocks
+- confirmed the empty-state now renders a compact `Team Setup` summary strip, the `Add Agent` modal renders the new `MODEL / COMMAND / MODE` plus `Role / Skills / Prompt` strips, and the main workspace/sidebar shell no longer rely on the old thick black outline blocks
+- confirmed the modal now exposes a single `Role model` selector and no longer shows a separate `Model override` field

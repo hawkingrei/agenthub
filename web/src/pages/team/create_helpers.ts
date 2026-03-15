@@ -1,5 +1,4 @@
 import type { AgentRecord } from "../../api";
-import { listAgentPresets } from "../../agent_presets";
 import {
   DEFAULT_TEAM_LEADER_PROMPT,
   DEFAULT_TEAM_LEADER_SKILLS,
@@ -12,13 +11,6 @@ import {
 } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
 
-const TEAM_MODEL_PRESET_OPTIONS = listAgentPresets().map((preset) => ({
-  value: preset.id,
-  label: preset.label,
-}));
-const TEAM_MODEL_PRESET_VALUES = new Set(
-  TEAM_MODEL_PRESET_OPTIONS.map((option) => option.value)
-);
 const DEFAULT_TEAM_PLAN_STEP_KEY = "leader_plan";
 
 type TeamStepDraft = {
@@ -375,18 +367,6 @@ export function clampCreateTeamStage(next: number): CreateTeamStage {
   if (next <= 0) return 0;
   if (next >= 3) return 3;
   return next as CreateTeamStage;
-}
-
-export function resolveTeamModelOptions(currentModel: string): Array<{
-  value: string;
-  label: string;
-}> {
-  const options = [{ value: "", label: "Use default model" }, ...TEAM_MODEL_PRESET_OPTIONS];
-  const normalized = currentModel.trim();
-  if (normalized && !TEAM_MODEL_PRESET_VALUES.has(normalized)) {
-    options.push({ value: normalized, label: `Custom (${normalized})` });
-  }
-  return options;
 }
 
 export function collectTeamSpecMemberIds(spec: unknown): string[] {

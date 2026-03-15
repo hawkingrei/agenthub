@@ -24,6 +24,8 @@ import {
 type CreateAgentModalProps = {
   title?: string;
   confirmLabel?: string;
+  agentPresetLabel?: string;
+  agentPresetSummaryLabel?: string;
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
@@ -124,6 +126,8 @@ export function shouldAutoExpandCreateAgentAdvancedOptions(
 export function CreateAgentModal({
   title = "Create Agent",
   confirmLabel = "Create Agent",
+  agentPresetLabel = "Agent preset",
+  agentPresetSummaryLabel = "Preset",
   agentName,
   setAgentName,
   agentWorkdir,
@@ -221,7 +225,7 @@ export function CreateAgentModal({
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
           <Select
-            label="Agent preset"
+            label={agentPresetLabel}
             placeholder="Select preset"
             value={agentPresetId}
             data={presetOptions}
@@ -314,7 +318,9 @@ export function CreateAgentModal({
         <div className={TEAM_AGENT_MODAL_INFO_STRIP_CLASS}>
           <div className={TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS}>
             <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
-              <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>Preset</p>
+              <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>
+                {agentPresetSummaryLabel}
+              </p>
               <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{preset.label}</p>
             </div>
             <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
