@@ -33,6 +33,7 @@ import {
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 import {
+  CursorRef,
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
@@ -43,7 +44,6 @@ import {
 } from "./event_polling";
 import { compareEventOrder } from "./seq_order";
 import {
-  appendOutputLine,
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   isSameOutputList,
@@ -781,6 +781,7 @@ export function App() {
   const activeSessionIdRef = useRef<string | null>(null);
   const activeAgentStatusRef = useRef<string | null>(null);
   const activeAgentPrevStatusRef = useRef<Record<string, string | null>>({});
+  const requestSseReconnectRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     outputsRef.current = outputs;
   }, [outputs]);
@@ -911,6 +912,30 @@ export function App() {
       return nextSlice;
     },
     [maxCachedEvents, maxCachedSessions]
+  );
+  const consumeLiveOutputBatch = useCallback(
+    (lines: OutputLine[]) => {
+      if (lines.length === 0) return;
+      const currentActive = activeAgentRef.current;
+      const currentSessionId = activeSessionIdRef.current;
+      const { activeLines, activeAcpLines } = routeLiveOutputBatch({
+        cursorRef: lastEventCursorRef,
+        lines,
+        activeAgent: currentActive,
+        activeSessionId: currentSessionId,
+        updateAgents: setAgents,
+        onOutputGroup: updateOutputCacheEntry,
+        onAcpGroup: updateAcpOutputCacheEntry,
+      });
+
+      if (activeLines.length > 0) {
+        setOutputs((prev) => mergeOutputs(prev, activeLines));
+      }
+      if (activeAcpLines.length > 0) {
+        setAcpOutputs((prev) => mergeOutputs(prev, activeAcpLines));
+      }
+    },
+    [updateAcpOutputCacheEntry, updateOutputCacheEntry]
   );
   const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
   const terminalOutputs = useMemo(
@@ -1423,15 +1448,16 @@ export function App() {
   useEffect(() => {
     if (!token) {
       setSseState("idle");
+      requestSseReconnectRef.current = null;
       return;
     }
     const streamTarget = streamAgentIdsQuery;
     if (!hasSseTarget || streamTarget.length === 0) {
       setSseState("idle");
+      requestSseReconnectRef.current = null;
       return;
     }
     let cancelled = false;
-    const pollState = eventPollRef.current;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
     const clearReconnectTimer = () => {
@@ -1439,13 +1465,6 @@ export function App() {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
-    };
-    const pollActiveAgent = async (): Promise<boolean> => {
-      const currentActive = activeAgentRef.current;
-      if (!currentActive) return false;
-      return (
-        (await loadAgentEvents(currentActive, activeSessionIdRef.current)) === true
-      );
     };
     const scheduleReconnect = () => {
       if (cancelled) return;
@@ -1458,6 +1477,7 @@ export function App() {
         openSource();
       }, delay);
     };
+    requestSseReconnectRef.current = scheduleReconnect;
     const openSource = () => {
       if (cancelled) return;
       setSseState("connecting");
@@ -1472,6 +1492,7 @@ export function App() {
         reconnectAttempt = 0;
         setNetworkOnline(true);
         setSseState("connected");
+        const pollState = eventPollRef.current;
         if (pollState.timer) {
           window.clearTimeout(pollState.timer);
           pollState.timer = null;
@@ -1482,48 +1503,9 @@ export function App() {
         if (event.data === "heartbeat") return;
         try {
           const parsed = JSON.parse(event.data);
-          if (parsed.type === "output" || parsed.type === "acp") {
-            const payload = parsed.payload;
-            if (!isValidOutputPayload(payload)) {
-              return;
-            }
-            const line: OutputLine = {
-              event_id: payload.event_id,
-              ts: payload.ts,
-              stream: payload.stream,
-              message: payload.message,
-              agent_id: payload.agent_id,
-              session_id: payload.session_id,
-              seq: payload.seq,
-            };
-            const key = `${payload.agent_id}:${payload.session_id ?? "latest"}`;
-            updateLastEventCursor(lastEventCursorRef, key, line);
-            if (payload.stream === "acp") {
-              const status = parseRunStatus(payload.message);
-              if (status) {
-                setAgents((prev) =>
-                  prev.map((agent) =>
-                    agent.id === payload.agent_id
-                      ? { ...agent, status: statusToAgentStatus(status) }
-                      : agent
-                    )
-                );
-              }
-              updateAcpOutputCacheEntry(key, [line]);
-            }
-            updateOutputCacheEntry(key, [line]);
-            const currentActive = activeAgentRef.current;
-            if (payload.agent_id !== currentActive) {
-              return;
-            }
-            const currentSessionId = activeSessionIdRef.current;
-            if (currentSessionId && payload.session_id !== currentSessionId) {
-              return;
-            }
-            setOutputs((prev) => appendOutputLine(prev, line));
-            if (line.stream === "acp") {
-              setAcpOutputs((prev) => appendOutputLine(prev, line));
-            }
+          const liveLines = normalizeSseOutputLines(parsed);
+          if (liveLines.length > 0) {
+            consumeLiveOutputBatch(liveLines);
           }
         } catch {
           if (typeof event.data === "string") {
@@ -1557,7 +1539,9 @@ export function App() {
         setSseState("reconnecting");
         source.close();
         sseRef.current = null;
-        schedulePoll(getAdaptivePollInterval(pollState.idleCount));
+        schedulePollRef.current?.(
+          getAdaptivePollInterval(eventPollRef.current.idleCount)
+        );
         const nextError = online ? UPSTREAM_HTML_MESSAGE : OFFLINE_MESSAGE;
         void (async () => {
           const latestAgents = await refreshAgents({ silent: true });
@@ -1580,6 +1564,46 @@ export function App() {
       };
     };
     openSource();
+    return () => {
+      cancelled = true;
+      clearReconnectTimer();
+      requestSseReconnectRef.current = null;
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      setSseState("idle");
+    };
+  }, [
+    token,
+    hasSseTarget,
+    streamAgentIdsQuery,
+    consumeLiveOutputBatch,
+    refreshAgents,
+  ]);
+
+  useEffect(() => {
+    if (!token || !activeAgent) {
+      const pollState = eventPollRef.current;
+      if (pollState.timer) {
+        window.clearTimeout(pollState.timer);
+        pollState.timer = null;
+      }
+      pollState.idleCount = 0;
+      pollState.boostUntil = null;
+      schedulePollRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    const pollState = eventPollRef.current;
+    const pollActiveAgent = async (): Promise<boolean> => {
+      const currentActive = activeAgentRef.current;
+      if (!currentActive) return false;
+      return (
+        (await loadAgentEvents(currentActive, activeSessionIdRef.current)) === true
+      );
+    };
     const schedulePoll = (delay: number) => {
       if (cancelled) return;
       if (pollState.timer) {
@@ -1604,7 +1628,7 @@ export function App() {
           }
         }
         setSseState("reconnecting");
-        scheduleReconnect();
+        requestSseReconnectRef.current?.();
       }
       if (isSseOpen && !boostActive && !sseStale) {
         pollState.timer = null;
@@ -1629,7 +1653,7 @@ export function App() {
             sseRef.current = null;
           }
           setSseState("reconnecting");
-          scheduleReconnect();
+          requestSseReconnectRef.current?.();
         }
         const shouldPoll = shouldPollAgentEvents(
           isOpen,
@@ -1656,11 +1680,11 @@ export function App() {
         }
       }, nextDelay);
     };
+
     schedulePollRef.current = schedulePoll;
-    schedulePoll(getAdaptivePollInterval(0));
+    schedulePoll(getAdaptivePollInterval(pollState.idleCount));
     return () => {
       cancelled = true;
-      clearReconnectTimer();
       if (pollState.timer) {
         window.clearTimeout(pollState.timer);
         pollState.timer = null;
@@ -1668,21 +1692,8 @@ export function App() {
       pollState.idleCount = 0;
       pollState.boostUntil = null;
       schedulePollRef.current = null;
-      if (sseRef.current) {
-        sseRef.current.close();
-        sseRef.current = null;
-      }
-      setSseState("idle");
     };
-  }, [
-    token,
-    hasSseTarget,
-    streamAgentIdsQuery,
-    loadAgentEvents,
-    refreshAgents,
-    updateOutputCacheEntry,
-    updateAcpOutputCacheEntry,
-  ]);
+  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
 
   useEffect(() => {
     if (acpView.hasAcp) return;
@@ -3012,7 +3023,139 @@ function parseRunStatus(message: string): string | null {
   return null;
 }
 
-function isValidOutputPayload(
+export type LiveOutputBatchAnalysis = {
+  outputGroups: Record<string, OutputLine[]>;
+  acpGroups: Record<string, OutputLine[]>;
+  activeLines: OutputLine[];
+  activeAcpLines: OutputLine[];
+  nextStatuses: Record<string, AgentRecord["status"]>;
+};
+
+export function updateLiveOutputBatchCursors(
+  ref: CursorRef,
+  lines: OutputLine[]
+): void {
+  for (const line of lines) {
+    updateLastEventCursor(ref, `${line.agent_id}:${line.session_id}`, line);
+  }
+}
+
+export function analyzeLiveOutputBatch(
+  lines: OutputLine[],
+  activeAgent: string | null,
+  activeSessionId: string | null
+): LiveOutputBatchAnalysis {
+  const outputGroups: Record<string, OutputLine[]> = {};
+  const acpGroups: Record<string, OutputLine[]> = {};
+  const activeLines: OutputLine[] = [];
+  const activeAcpLines: OutputLine[] = [];
+  const nextStatuses: Record<string, AgentRecord["status"]> = {};
+
+  for (const line of lines) {
+    const key = `${line.agent_id}:${line.session_id}`;
+    (outputGroups[key] ??= []).push(line);
+
+    if (line.stream === "acp") {
+      const status = parseRunStatus(line.message);
+      if (status) {
+        nextStatuses[line.agent_id] = statusToAgentStatus(status);
+      }
+      (acpGroups[key] ??= []).push(line);
+    }
+
+    if (line.agent_id !== activeAgent) {
+      continue;
+    }
+    if (activeSessionId && line.session_id !== activeSessionId) {
+      continue;
+    }
+    activeLines.push(line);
+    if (line.stream === "acp") {
+      activeAcpLines.push(line);
+    }
+  }
+
+  return {
+    outputGroups,
+    acpGroups,
+    activeLines,
+    activeAcpLines,
+    nextStatuses,
+  };
+}
+
+export function dispatchLiveOutputBatch(params: {
+  cursorRef: CursorRef;
+  lines: OutputLine[];
+  activeAgent: string | null;
+  activeSessionId: string | null;
+  onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
+  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
+  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
+}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
+  const {
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    onStatuses,
+    onOutputGroup,
+    onAcpGroup,
+  } = params;
+  updateLiveOutputBatchCursors(cursorRef, lines);
+  const analyzed = analyzeLiveOutputBatch(lines, activeAgent, activeSessionId);
+  if (Object.keys(analyzed.nextStatuses).length > 0) {
+    onStatuses(analyzed.nextStatuses);
+  }
+  for (const [key, grouped] of Object.entries(analyzed.outputGroups)) {
+    onOutputGroup(key, grouped);
+  }
+  for (const [key, grouped] of Object.entries(analyzed.acpGroups)) {
+    onAcpGroup(key, grouped);
+  }
+  return {
+    activeLines: analyzed.activeLines,
+    activeAcpLines: analyzed.activeAcpLines,
+  };
+}
+
+export function routeLiveOutputBatch(params: {
+  cursorRef: CursorRef;
+  lines: OutputLine[];
+  activeAgent: string | null;
+  activeSessionId: string | null;
+  updateAgents: (updater: (prev: AgentRecord[]) => AgentRecord[]) => void;
+  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
+  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
+}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
+  const {
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    updateAgents,
+    onOutputGroup,
+    onAcpGroup,
+  } = params;
+  return dispatchLiveOutputBatch({
+    cursorRef,
+    lines,
+    activeAgent,
+    activeSessionId,
+    onStatuses: (nextStatuses) => {
+      updateAgents((prev) =>
+        prev.map((agent) => {
+          const nextStatus = nextStatuses[agent.id];
+          return nextStatus ? { ...agent, status: nextStatus } : agent;
+        })
+      );
+    },
+    onOutputGroup,
+    onAcpGroup,
+  });
+}
+
+export function isValidOutputPayload(
   payload: unknown
 ): payload is {
   event_id: number;
@@ -3048,6 +3191,18 @@ function isValidOutputPayload(
     return false;
   }
   return true;
+}
+
+export function normalizeSseOutputLines(message: unknown): OutputLine[] {
+  if (!message || typeof message !== "object") return [];
+  const parsed = message as { type?: unknown; payload?: unknown };
+  if (parsed.type === "output" || parsed.type === "acp") {
+    return isValidOutputPayload(parsed.payload) ? [parsed.payload] : [];
+  }
+  if (parsed.type !== "batch" || !Array.isArray(parsed.payload)) {
+    return [];
+  }
+  return parsed.payload.filter(isValidOutputPayload);
 }
 
 function statusToAgentStatus(status: string): AgentRecord["status"] {
