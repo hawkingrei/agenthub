@@ -27,8 +27,47 @@ const IDLE_GC_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 impl AppState {
     pub async fn init(config: crate::config::AppConfig) -> anyhow::Result<Self> {
-        let db = crate::db::init_db().await?;
+        let db = Self::setup_database(&config).await?;
         let event_dbs = crate::db::AgentEventDbRouter::with_default_base_dir();
+
+        let (agents, teams, push, auth, acp_permissions) =
+            Self::initialize_services(&config, db.clone(), event_dbs.clone()).await?;
+
+        Self::run_startup_cleanup(&agents, &teams).await?;
+
+        let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
+            .spawn(TeamOrchestratorWorkerSettings::default());
+
+        let default_worktree_root = config.default_worktree_root();
+        Ok(Self {
+            db,
+            agents,
+            teams,
+            push,
+            auth,
+            acp_permissions,
+            default_worktree_root,
+        })
+    }
+
+    async fn setup_database(config: &crate::config::AppConfig) -> anyhow::Result<SqlitePool> {
+        let db = crate::db::init_db().await?;
+        Self::ensure_root(&db).await?;
+        Self::seed_safe_paths(&db, config).await?;
+        Ok(db)
+    }
+
+    async fn initialize_services(
+        config: &crate::config::AppConfig,
+        db: SqlitePool,
+        event_dbs: crate::db::AgentEventDbRouter,
+    ) -> anyhow::Result<(
+        Arc<AgentManager>,
+        Arc<TeamManager>,
+        Arc<PushService>,
+        Arc<AuthService>,
+        Arc<AcpPermissionService>,
+    )> {
         let idle_gc = config.history_event_retention_days().map(|retention_days| {
             let vacuum_on_cleanup = config.history_vacuum_on_cleanup();
             let delete_batch_size = config.history_delete_batch_size();
@@ -47,9 +86,10 @@ impl AppState {
                 std::time::Duration::from_secs(IDLE_GC_TIMEOUT_SECONDS),
             )
         });
-        let push = Arc::new(PushService::new(db.clone(), &config)?);
+
+        let push = Arc::new(PushService::new(db.clone(), config)?);
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
-        let auth = Arc::new(AuthService::new(db.clone(), &config).await?);
+        let auth = Arc::new(AuthService::new(db.clone(), config).await?);
         let agents = Arc::new(AgentManager::new(
             db.clone(),
             event_dbs.clone(),
@@ -61,6 +101,7 @@ impl AppState {
             acp_permissions.clone(),
             auth.clone(),
         ));
+
         let teams = Arc::new(TeamManager::new_with_event_dbs(
             db.clone(),
             event_dbs.clone(),
@@ -68,6 +109,11 @@ impl AppState {
         teams
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
+
+        Ok((agents, teams, push, auth, acp_permissions))
+    }
+
+    async fn run_startup_cleanup(agents: &AgentManager, teams: &TeamManager) -> anyhow::Result<()> {
         agents.mark_exited_on_startup().await?;
         // Startup policy: never auto-resume in-flight team runs after a process restart.
         // We force manual restart so users can re-confirm intent and avoid duplicate execution.
@@ -78,20 +124,7 @@ impl AppState {
                 "team startup policy: canceled active runs to require manual start"
             );
         }
-        let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
-            .spawn(TeamOrchestratorWorkerSettings::default());
-        Self::ensure_root(&db).await?;
-        Self::seed_safe_paths(&db, &config).await?;
-        let default_worktree_root = config.default_worktree_root();
-        Ok(Self {
-            db,
-            agents,
-            teams,
-            push,
-            auth,
-            acp_permissions,
-            default_worktree_root,
-        })
+        Ok(())
     }
 
     async fn ensure_root(db: &SqlitePool) -> anyhow::Result<()> {
