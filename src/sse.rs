@@ -213,10 +213,10 @@ fn output_stream_with_limits(
                         match msg {
                             Some(output) => {
                                 push_batched_output(&mut state, output);
-                                if should_flush_batch(&state) {
-                                    if let Some(event) = take_batched_event(&mut state) {
-                                        return Some((Ok(event), state));
-                                    }
+                                if should_flush_batch(&state)
+                                    && let Some(event) = take_batched_event(&mut state)
+                                {
+                                    return Some((Ok(event), state));
                                 }
                             }
                             None => {
