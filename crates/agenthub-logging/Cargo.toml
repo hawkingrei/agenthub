@@ -1,0 +1,10 @@
+[package]
+name = "agenthub-logging"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["clock"] }
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

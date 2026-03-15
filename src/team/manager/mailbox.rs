@@ -423,6 +423,7 @@ impl TeamRemoteRelayAdapter {
             .pool_max_idle_per_host(32)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::limited(5))
             .danger_accept_invalid_certs(false)
             .build()

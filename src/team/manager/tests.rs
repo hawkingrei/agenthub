@@ -389,6 +389,7 @@ async fn spawn_relay_http_server(
     let handle = tokio::spawn(async move {
         let _ = serve(listener, app).await;
     });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     (format!("http://{addr}/relay"), captures, handle)
 }
 
