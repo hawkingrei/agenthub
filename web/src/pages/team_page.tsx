@@ -6,6 +6,7 @@ import {
   Group,
   Menu,
   NativeSelect,
+  SegmentedControl,
   Tabs,
   TextInput,
   Textarea,
@@ -42,7 +43,6 @@ import { AuthState } from "../types";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
-  resolveWorkdirForModalOpen,
 } from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
@@ -72,6 +72,13 @@ import {
   persistTeamCreateDraft,
 } from "./team/create_draft_storage";
 import {
+  resolveInitialTeamMemberRole,
+  resolveTeamForgeDefaults,
+  resolveTeamMemberRoleOptions,
+  resolveTeamMemberRoleProfile,
+  type TeamMemberRole,
+} from "./team/forge_helpers";
+import {
   MailboxTemplateKey,
   buildMailboxChatPayload,
   buildMailboxConversationKey,
@@ -84,10 +91,6 @@ import {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 import {
-  DEFAULT_TEAM_LEADER_PROMPT,
-  DEFAULT_TEAM_LEADER_SKILLS,
-  DEFAULT_TEAM_WORKER_PROMPT,
-  DEFAULT_TEAM_WORKER_SKILLS,
   REQUIRED_TEAM_LEADER_SKILLS,
   REQUIRED_TEAM_WORKER_SKILLS,
   TEAM_SKILL_OPTIONS,
@@ -283,48 +286,48 @@ function validateRunInputJson(raw: string): RunInputValidation {
 }
 
 const panelSecondaryButtonClassName =
-  "inline-flex items-center justify-center rounded-[12px] border-[2px] border-black bg-white px-2.5 py-1.5 text-[13px] font-semibold text-black shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] hover:shadow-[0_1px_0_rgba(0,0,0,0.12)] disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[12px] border border-ui-border bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[18px] border-[2px] border-black bg-[#f3f1eb] p-3 shadow-[0_3px_0_rgba(0,0,0,0.16)]";
+  "min-h-0 min-w-0 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3 shadow-sm";
 const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[20px] border-[2px] border-black bg-[#f3f1eb] p-3.5 shadow-[0_3px_0_rgba(0,0,0,0.16)]";
+  "min-h-0 rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3.5 shadow-sm";
 const teamSectionHeadingClassName =
-  "text-[10px] font-semibold uppercase tracking-[0.16em] text-black/60";
+  "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
-const teamSectionBodyTextClassName = "mt-2 text-[13px] leading-5 text-black/72";
-const teamSectionHintTextClassName = "mt-2 text-[12px] leading-5 text-black/58";
+const teamSectionBodyTextClassName = "mt-2 text-[13px] leading-5 text-ui-text-secondary";
+const teamSectionHintTextClassName = "mt-2 text-[12px] leading-5 text-ui-text-muted";
 const teamDebugTabsClassName =
-  "flex flex-wrap items-center gap-1.5 rounded-[14px] border-[2px] border-black bg-[#fcfbf7] p-1.5 shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "flex flex-wrap items-center gap-2 border-b border-ui-border pb-1";
 const teamDebugTabBaseClassName =
-  "rounded-[10px] border border-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
+  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
 const teamDebugTabActiveClassName =
-  `${teamDebugTabBaseClassName} bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.12)]`;
+  `${teamDebugTabBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
 const teamDebugTabIdleClassName =
-  `${teamDebugTabBaseClassName} bg-white text-black/70 hover:-translate-y-[1px] hover:text-black`;
+  `${teamDebugTabBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
 const teamCreateModalHeaderClassName =
-  "modal-head flex flex-wrap items-start justify-between gap-3 border-b-[2px] border-black/12 pb-4";
+  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-4";
 const teamRunMetaItemClassName =
-  "rounded-[12px] border border-black bg-[#fcfbf7] px-2.5 py-1.5 text-[11px] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)]";
+  "rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[11px] text-ui-text-primary shadow-sm";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1.5 rounded-[14px] border-[2px] border-black bg-[#fcfbf7] p-1.5 shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "flex flex-wrap items-center gap-2";
 const workspacePrimaryTabsListClassName =
-  "flex flex-wrap items-center gap-1.5 rounded-[14px] border-[2px] border-black bg-[#fcfbf7] p-1.5 shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "flex flex-wrap items-center gap-3 border-b border-ui-border pb-1";
 const workspaceToolbarButtonBaseClassName =
-  "inline-flex items-center gap-1 rounded-[10px] border border-black px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
+  "inline-flex items-center gap-1 rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
 const workspaceToolbarButtonActiveClassName =
-  `${workspaceToolbarButtonBaseClassName} bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.12)]`;
+  `${workspaceToolbarButtonBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
 const workspaceToolbarButtonIdleClassName =
-  `${workspaceToolbarButtonBaseClassName} bg-white text-black/72 hover:-translate-y-[1px] hover:text-black`;
+  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
 const workspacePrimaryTabClassName =
-  "rounded-[10px] border border-black px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-black/72 transition hover:-translate-y-[1px] hover:text-black data-[active=true]:bg-[#203b2d] data-[active=true]:text-white data-[active=true]:shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ui-text-muted transition hover:border-ui-border hover:text-ui-text-primary data-[active=true]:border-brand-primary data-[active=true]:bg-transparent data-[active=true]:text-ui-text-primary";
 const workspaceNoticeClassName =
-  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#fcfbf7] px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-ui-border bg-ui-surface px-3 py-2.5 shadow-sm";
 const workspaceNoticeTextClassName =
-  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-black/60";
+  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-ui-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
 const workspaceMetaDropdownClassName =
-  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-2 rounded-[14px] border-[2px] border-black bg-[#fcfbf7] p-2.5 shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-2 rounded-[14px] border border-ui-border bg-ui-surface p-2.5 shadow-lg";
 const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
   value: TeamTab;
   label: string;
@@ -377,47 +380,31 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
 });
 
 const teamWorkbenchPanelClassName =
-  "rounded-[18px] border-[2px] border-black bg-[#f3f1eb] p-3.5 shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.96)_0%,rgba(244,241,233,0.96)_100%)] p-3.5 shadow-sm";
 const teamWorkbenchAccentButtonClassName =
-  "!border-[2px] !border-black !bg-[#203b2d] !text-white !shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:!translate-y-[1px] hover:!shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
 const teamWorkbenchMutedButtonClassName =
-  "!border-[2px] !border-black !bg-white !text-black !shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:!translate-y-[1px] hover:!shadow-[0_1px_0_rgba(0,0,0,0.12)]";
+  "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
 const teamWorkbenchBadgeClassName =
-  "inline-flex items-center rounded-full border-[2px] border-black bg-[#ced9cf] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black";
+  "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-3 rounded-[18px] border-[2px] border-black bg-[#f3f1eb] px-3.5 py-3 shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3 shadow-sm";
 const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-10 w-10 items-center justify-center rounded-[12px] border-[2px] border-black bg-white text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px]";
+  "inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-2 rounded-full border border-black bg-[#fcfbf7] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)]";
+  "inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted shadow-sm";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[20px] border-[2px] border-black bg-[#f3f1eb] px-3.5 py-3.5 shadow-[0_3px_0_rgba(0,0,0,0.16)]";
+  "rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3.5 shadow-sm";
 const teamWorkbenchSetupChecklistClassName =
-  "rounded-[16px] border-[2px] border-black bg-[#fcfbf7] p-3 shadow-[0_1px_0_rgba(0,0,0,0.12)]";
-
-function buildTeamMemberProfileDraft(role: "leader" | "worker"): TeamMemberProfileDraft {
-  return {
-    member_id: "",
-    role,
-    description: "",
-    model: "",
-    prompt: role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT,
-    skills:
-      role === "leader"
-        ? [...DEFAULT_TEAM_LEADER_SKILLS]
-        : [...DEFAULT_TEAM_WORKER_SKILLS],
-    custom_skills: "",
-  };
-}
-
-function buildTeamAgentNameToken(raw: string): string {
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "team";
-}
+  "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
+const teamWorkbenchInfoStripGridClassName =
+  "grid gap-px bg-ui-border lg:grid-cols-3";
+const teamWorkbenchInfoStripItemClassName =
+  "min-w-0 bg-ui-surface px-3.5 py-3";
+const teamWorkbenchInfoStripLabelClassName =
+  "text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+const teamWorkbenchInfoStripValueClassName =
+  "mt-1.5 text-[13px] leading-5 text-ui-text-primary";
 
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
@@ -923,9 +910,21 @@ export function TeamPage(props: TeamPageProps) {
     () => (selectedTeam ? teamSpecHasConfiguredMembers(selectedTeam.spec) : false),
     [selectedTeam]
   );
+  const selectedTeamHasLeader = useMemo(
+    () => (selectedTeam ? teamSpecHasLeader(selectedTeam.spec) : false),
+    [selectedTeam]
+  );
   const selectedTeamWorkerCount = useMemo(
     () => selectedTeamMembers.filter((member) => member.role === "worker").length,
     [selectedTeamMembers]
+  );
+  const teamMemberRoleOptions = useMemo(
+    () => resolveTeamMemberRoleOptions(selectedTeamHasLeader),
+    [selectedTeamHasLeader]
+  );
+  const teamMemberRoleProfile = useMemo(
+    () => (teamMemberDraft ? resolveTeamMemberRoleProfile(teamMemberDraft.role) : null),
+    [teamMemberDraft]
   );
   const teamExecutionBlockedReason = useMemo(() => {
     if (!selectedTeam) {
@@ -1497,41 +1496,30 @@ export function TeamPage(props: TeamPageProps) {
       setError("Select a team first");
       return;
     }
-    const role = teamSpecHasLeader(selectedTeam.spec) ? "worker" : "leader";
-    const prefix = buildTeamAgentNameToken(selectedTeam.name);
-    const defaultName =
-      role === "leader"
-        ? `${prefix}-leader`
-        : `${prefix}-worker-${Math.max(1, selectedTeamWorkerCount + 1)}`;
-    const normalizedRoot =
-      normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+    const role = resolveInitialTeamMemberRole(selectedTeamHasLeader);
+    const defaults = resolveTeamForgeDefaults({
+      teamName: selectedTeam.name,
+      role,
+      workerCount: selectedTeamWorkerCount,
+      defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+    });
 
     setError(null);
     setWarning(null);
-    setTeamMemberDraft(buildTeamMemberProfileDraft(role));
+    setTeamMemberDraft(defaults.draft);
     setShowForgeAgentForm(true);
-    setForgeAgentName(defaultName);
-    setForgeAgentWorktreeMode("use_existing");
-    setForgeAgentWorktreeRepo("");
-    setForgeAgentWorktreeRef("");
+    setForgeAgentName(defaults.agentName);
+    setForgeAgentWorktreeMode(defaults.worktreeMode);
+    setForgeAgentWorktreeRepo(defaults.worktreeRepo);
+    setForgeAgentWorktreeRef(defaults.worktreeRef);
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
     setForgeAgentCodeMode(true);
     setForgeAgentWorktreeError(null);
-    if (role === "leader") {
-      setForgeAgentWorkdir(buildLeaderForgeDefaultWorkdir(normalizedRoot, defaultName));
-    } else {
-      setForgeAgentWorkdir(() =>
-        resolveWorkdirForModalOpen(
-          "",
-          "use_existing",
-          forgeDefaultWorktreeRoot,
-          DEFAULT_WORKTREE_ROOT
-        )
-      );
-    }
+    setForgeAgentWorkdir(defaults.agentWorkdir);
   }, [
     forgeDefaultWorktreeRoot,
     selectedTeam,
+    selectedTeamHasLeader,
     selectedTeamWorkerCount,
     setError,
     setWarning,
@@ -1545,6 +1533,51 @@ export function TeamPage(props: TeamPageProps) {
     setForgeAgentWorktreeRef,
     setForgeAgentWorktreeRepo,
   ]);
+
+  const handleTeamMemberRoleChange = useCallback(
+    (nextRole: string) => {
+      if (!selectedTeam) {
+        return;
+      }
+      if (nextRole !== "leader" && nextRole !== "worker") {
+        return;
+      }
+      const role = nextRole as TeamMemberRole;
+      const roleOption = teamMemberRoleOptions.find((option) => option.value === role);
+      if (!roleOption || roleOption.disabled) {
+        return;
+      }
+      const defaults = resolveTeamForgeDefaults({
+        teamName: selectedTeam.name,
+        role,
+        workerCount: selectedTeamWorkerCount,
+        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+      });
+      setError(null);
+      setWarning(null);
+      setTeamMemberDraft(defaults.draft);
+      setForgeAgentName(defaults.agentName);
+      setForgeAgentWorktreeMode(defaults.worktreeMode);
+      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
+      setForgeAgentWorktreeRef(defaults.worktreeRef);
+      setForgeAgentWorktreeError(null);
+      setForgeAgentWorkdir(defaults.agentWorkdir);
+    },
+    [
+      forgeDefaultWorktreeRoot,
+      selectedTeam,
+      selectedTeamWorkerCount,
+      setError,
+      setWarning,
+      setForgeAgentName,
+      setForgeAgentWorkdir,
+      setForgeAgentWorktreeError,
+      setForgeAgentWorktreeMode,
+      setForgeAgentWorktreeRef,
+      setForgeAgentWorktreeRepo,
+      teamMemberRoleOptions,
+    ]
+  );
 
   const closeTeamMemberForgeModal = useCallback(() => {
     if (forgeAgentBusy) {
@@ -2920,11 +2953,11 @@ export function TeamPage(props: TeamPageProps) {
                     </h2>
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
                     {selectedTeam.description?.trim() && (
-                      <div className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-[14px] border-[2px] border-black bg-[#fff8ef] px-3 py-2 text-[12px] leading-5 text-black shadow-[0_1px_0_rgba(0,0,0,0.12)]">
-                        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black bg-[#d8b27b] text-[10px] font-semibold">
-                          G
-                        </span>
-                        <span>{selectedTeam.description.trim()}</span>
+                      <div className="mt-3 max-w-3xl border-t border-ui-border pt-3">
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Goal</p>
+                        <p className="mt-1.5 text-[13px] leading-5 text-ui-text-secondary">
+                          {selectedTeam.description.trim()}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -2936,7 +2969,7 @@ export function TeamPage(props: TeamPageProps) {
                       <Group
                         gap={8}
                         wrap="nowrap"
-                        className="rounded-[14px] border-[2px] border-black bg-[#fff8ef] px-2.5 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.12)]"
+                        className="rounded-[14px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
                       >
                         <Badge
                           variant="light"
@@ -3112,7 +3145,7 @@ export function TeamPage(props: TeamPageProps) {
                     <div className="relative">
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border-[2px] border-black bg-white text-black shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px]"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
                         onClick={() => setWorkspaceDetailsOpen((current) => !current)}
                         aria-expanded={workspaceDetailsOpen}
                         aria-label="Toggle workspace details"
@@ -3139,68 +3172,62 @@ export function TeamPage(props: TeamPageProps) {
 
               {!selectedTeamHasConfiguredMembers && (
                 <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}>
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <span className={teamWorkbenchBadgeClassName}>Team Setup</span>
-                          <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
-                            No agents have joined this team yet.
-                          </h3>
-                          <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-                            The team goal is saved, but runtime and runs stay blocked until you add
-                            {" the first agent."}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          radius="md"
-                          className={teamWorkbenchAccentButtonClassName}
-                          leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
-                          onClick={openTeamMemberForgeModal}
-                        >
-                          {teamMemberForgeLabel}
-                        </Button>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <span className={teamWorkbenchBadgeClassName}>Team Setup</span>
+                      <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
+                        No agents have joined this team yet.
+                      </h3>
+                      <p className="mt-2 max-w-2xl text-[13px] leading-5 text-ui-text-secondary">
+                        The team goal is saved, but runtime and runs stay blocked until you add the
+                        first agent.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      radius="md"
+                      className={teamWorkbenchAccentButtonClassName}
+                      leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                      onClick={openTeamMemberForgeModal}
+                    >
+                      {teamMemberForgeLabel}
+                    </Button>
+                  </div>
+                  <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
+                    <div className={teamWorkbenchInfoStripGridClassName}>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Goal</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          {selectedTeam.description?.trim() ||
+                            "Capture the mission, constraints, and what this team should own."}
+                        </p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>First Agent</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          Add the first agent with identity, skills, prompt, and workdir.
+                        </p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Unlocks</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          Runtime, runs, and shared execution views unlock automatically once an
+                          agent exists.
+                        </p>
                       </div>
                     </div>
-                    <div className={teamWorkbenchSetupChecklistClassName}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
-                        Setup order
-                      </p>
-                      <div className="mt-3 space-y-2.5 text-[12px] text-black">
-                        <div className="flex items-start gap-3">
-                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black bg-[#d8b27b] text-[10px] font-semibold">
-                            1
-                          </span>
-                          <div>
-                            <p className="font-semibold">Create the first agent</p>
-                            <p className="mt-1 text-black/68">
-                              The first agent owns planning, review, and synthesis for the team.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black bg-white text-[10px] font-semibold">
-                            2
-                          </span>
-                          <div>
-                            <p className="font-semibold">Add more agents</p>
-                            <p className="mt-1 text-black/68">
-                              Attach more execution agents with their own skills, prompts, and workdirs.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black bg-white text-[10px] font-semibold">
-                            3
-                          </span>
-                          <div>
-                            <p className="font-semibold">Start runtime and runs</p>
-                            <p className="mt-1 text-black/68">
-                              Execution unlocks automatically once members exist.
-                            </p>
-                          </div>
-                        </div>
+                    <div className="grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3">
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 1</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Create the first agent</p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 2</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Add more agents</p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 3</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Start runtime and runs</p>
                       </div>
                     </div>
                   </div>
@@ -3746,20 +3773,76 @@ export function TeamPage(props: TeamPageProps) {
           onCreateAgent={onCreateForgeAgent}
           onClose={closeTeamMemberForgeModal}
         >
-          <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}>
+          <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className={teamWorkbenchBadgeClassName}>
-                {teamMemberDraft.role === "leader" ? "Primary Agent Profile" : "Execution Agent Profile"}
+                {teamMemberRoleProfile?.profileLabel ?? "Agent Profile"}
               </span>
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-black/55">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-ui-text-muted">
                 member_id follows agent id
               </span>
             </div>
-            <p className="mt-2 text-[13px] leading-5 text-black/70">
-              {teamMemberDraft.role === "leader"
-                ? "Configure the first agent identity that owns planning, review, and synthesis."
-                : "Configure the execution identity that delivers implementation and evidence."}
+            <p className="mt-2 text-[13px] leading-5 text-ui-text-secondary">
+              {teamMemberRoleProfile?.intro ??
+                "Configure the agent identity, skills, and prompt before attaching it to the team."}
             </p>
+            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Role Selection</p>
+                  <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                    {selectedTeamHasLeader
+                      ? "This team already has a leader. New agents join as workers."
+                      : "Start with the leader. Worker unlocks after the first leader exists."}
+                  </p>
+                </div>
+                <span className={teamWorkbenchBadgeClassName}>
+                  {teamMemberDraft.role === "leader" ? "Single leader" : "Execution role"}
+                </span>
+              </div>
+              <SegmentedControl
+                className="mt-3"
+                fullWidth
+                radius="xl"
+                size="sm"
+                value={teamMemberDraft.role}
+                onChange={handleTeamMemberRoleChange}
+                data={teamMemberRoleOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  disabled: option.disabled,
+                }))}
+              />
+              <p className="mt-2 text-[11px] leading-5 text-ui-text-muted">
+                {teamMemberRoleOptions.find((option) => option.value === teamMemberDraft.role)
+                  ?.description ?? "Select the role before editing skills and prompt."}
+              </p>
+            </div>
+            <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
+              <div className={teamWorkbenchInfoStripGridClassName}>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Focus</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.focus ??
+                      "Set the role before editing the profile details."}
+                  </p>
+                </div>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Skills</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.skillsHint ??
+                      "Select required skills first, then add optional helpers."}
+                  </p>
+                </div>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Prompt Scope</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.promptHint ??
+                      "Keep the role prompt focused on scope, responsibilities, and delivery rules."}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <TextInput
               className="mt-4"

@@ -65,10 +65,10 @@ type TeamSidebarScope = "subjects" | "operations";
 type TeamSidebarSection = "teams" | "channels" | "agents" | "utilities";
 
 const SEGMENTED_CONTROL_CLASSNAMES = {
-  root: "rounded-xl border border-ui-border bg-ui-surface-soft/80 p-1 shadow-sm",
+  root: "border-b border-ui-border bg-transparent p-0 shadow-none",
   control: "flex-1",
   label:
-    "min-h-[28px] rounded-[10px] border border-transparent px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-ui-text-muted transition data-[active]:border-ui-border data-[active]:bg-ui-surface data-[active]:text-ui-text-primary data-[active]:shadow-sm hover:text-ui-text-primary",
+    "min-h-[28px] rounded-none border-b-2 border-transparent px-1 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-ui-text-muted transition data-[active]:border-brand-primary data-[active]:bg-transparent data-[active]:text-ui-text-primary hover:text-ui-text-primary",
   indicator: "hidden",
   innerLabel: "truncate",
 } as const;
@@ -116,25 +116,25 @@ function resolveSidebarScope(tab: TeamTab): TeamSidebarScope {
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[20px] border border-ui-border bg-ui-surface/95 p-3 shadow-sm";
+  "rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.96)_100%)] p-3 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface-soft/75 p-2 shadow-sm";
+  "rounded-[16px] border border-ui-border bg-ui-surface/80 p-1.5 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface-soft/75 px-3 py-2.5";
+  "rounded-[16px] border border-ui-border bg-ui-surface/85 px-3 py-2.5 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
   "inline-flex items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm ring-1 ring-ui-border";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
   "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-transparent bg-transparent px-2.5 py-2 text-left text-ui-text-primary transition hover:border-ui-border/70 hover:bg-ui-surface";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted shadow-sm";
+  "flex w-full items-center justify-between border-b border-ui-border px-0 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm ring-1 ring-ui-border transition";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-transparent bg-transparent px-2.5 py-2 text-left text-ui-text-primary transition hover:border-ui-border/70 hover:bg-ui-surface";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-transparent bg-transparent px-2.5 py-2 text-left text-ui-text-primary transition hover:bg-ui-surface";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
 

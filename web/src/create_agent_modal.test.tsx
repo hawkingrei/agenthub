@@ -86,7 +86,12 @@ describe("CreateAgentModal", () => {
 
   it("renders the preset command summary", () => {
     const html = renderModal({ agentPresetId: "gemini" as const });
-    expect(html).toContain("Command: gemini --experimental-acp");
+    expect(html).toContain("Preset");
+    expect(html).toContain("Gemini CLI");
+    expect(html).toContain("Command");
+    expect(html).toContain("gemini --experimental-acp");
+    expect(html).toContain("Mode");
+    expect(html).toContain("Chat");
   });
 
   it("renders custom workdir placeholder", () => {

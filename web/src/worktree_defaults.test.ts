@@ -23,6 +23,8 @@ describe("worktree defaults helpers", () => {
     expect(normalizeWorkdirInput("/")).toBe("/");
     expect(normalizeWorkdirInput("\\")).toBe("\\");
     expect(normalizeWorkdirInput("   ")).toBe("");
+    expect(normalizeWorkdirInput(undefined)).toBe("");
+    expect(normalizeWorkdirInput(null)).toBe("");
   });
 
   it("detects when workdir should be replaced by default", () => {
@@ -42,6 +44,7 @@ describe("worktree defaults helpers", () => {
     expect(resolveWorkdirForRuntimeDefaults("", "/srv/worktrees")).toBe(
       "/srv/worktrees"
     );
+    expect(resolveWorkdirForRuntimeDefaults(undefined, undefined)).toBe(DEFAULT_ROOT);
   });
 
   it("replaces fallback placeholder with runtime default root", () => {
@@ -60,6 +63,7 @@ describe("worktree defaults helpers", () => {
     expect(
       resolveWorkdirForCreateModal("/tmp/custom", "/srv/default-worktrees", DEFAULT_ROOT)
     ).toBe("/tmp/custom");
+    expect(resolveWorkdirForCreateModal(undefined, undefined, DEFAULT_ROOT)).toBe(DEFAULT_ROOT);
   });
 
   it("treats both fallback and runtime root as default values", () => {
@@ -129,5 +133,6 @@ describe("worktree defaults helpers", () => {
         DEFAULT_ROOT
       )
     ).toBe("/tmp/custom");
+    expect(resolveWorkdirForModalOpen(undefined, "use_existing", undefined, DEFAULT_ROOT)).toBe("");
   });
 });

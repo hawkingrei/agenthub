@@ -239,7 +239,7 @@ export const TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS =
 export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-2";
 
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.22em] text-ui-text-muted transition hover:text-ui-text-primary";
+  "appearance-none border-0 bg-transparent shadow-none flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.22em] text-ui-text-muted transition hover:text-ui-text-primary";
 
 export const TEAM_SIDEBAR_NAV_LIST_CLASS =
   "flex min-w-0 flex-col gap-1 border-l border-ui-border/70 pl-2";
