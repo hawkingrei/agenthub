@@ -3,12 +3,15 @@ import {
   shouldRedirectOnAuthError,
 } from "./auth_redirect";
 
+export const AGENT_SOURCE_MANUAL = "manual";
+export const AGENT_SOURCE_TEAM_FORGE = "team_forge";
+
 export type AgentConfig = {
   name: string;
   workdir: string;
   command: string;
   args: string[];
-  source?: "manual" | "team_forge";
+  source?: typeof AGENT_SOURCE_MANUAL | typeof AGENT_SOURCE_TEAM_FORGE;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;

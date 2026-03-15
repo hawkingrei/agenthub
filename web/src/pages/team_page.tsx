@@ -13,6 +13,7 @@ import {
 } from "@mantine/core";
 import { deriveConnectionBadge, getNavigatorOnline } from "../connection_status";
 import {
+  AGENT_SOURCE_TEAM_FORGE,
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
@@ -1605,7 +1606,7 @@ export function TeamPage(props: TeamPageProps) {
         workdir: workdirPayload,
         command: preset.command,
         args: preset.args.slice(),
-        source: "team_setup",
+        source: AGENT_SOURCE_TEAM_FORGE,
         worktree_mode: effectiveWorktreeMode,
         worktree_repo: effectiveWorktreeRepo || null,
         worktree_ref: effectiveWorktreeRef || null,
