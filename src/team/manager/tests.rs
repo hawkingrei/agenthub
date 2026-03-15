@@ -401,11 +401,11 @@ async fn spawn_relay_http_server(
         .expect("build probe client");
     let mut ready = false;
     for _ in 0..50 {
-        if let Ok(resp) = client.get(&health_endpoint).send().await {
-            if resp.status().is_success() {
-                ready = true;
-                break;
-            }
+        if let Ok(resp) = client.get(&health_endpoint).send().await
+            && resp.status().is_success()
+        {
+            ready = true;
+            break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
