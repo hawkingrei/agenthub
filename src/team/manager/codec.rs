@@ -176,7 +176,7 @@ pub(super) fn parse_team_step_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resu
         run_id: row.get("run_id"),
         step_key: row.get("step_key"),
         member_id: row.get("member_id"),
-        remote_task_id: row.try_get("remote_task_id")?,
+        runtime_handle_id: row.try_get("remote_task_id")?,
         status: team_step_status_from_str(&status_raw),
         attempt: row.get("attempt"),
         depends_on,

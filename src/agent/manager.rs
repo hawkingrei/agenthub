@@ -59,7 +59,6 @@ const ACP_PROVIDER_GEMINI: &str = "gemini";
 const ACP_PROVIDER_KIMI: &str = "kimi";
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
-const ACTOR_RUNTIME_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
@@ -1160,7 +1159,6 @@ impl AgentManager {
                 .filter(|value| !value.is_empty())
             {
                 command.env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, run_id);
-                command.env(ACTOR_RUNTIME_RUN_ID_ENV, run_id);
             }
         }
 

@@ -1661,10 +1661,7 @@ mod tests {
             .into_iter()
             .map(|row| row.get::<String, _>("path"))
             .collect::<Vec<_>>();
-        assert_eq!(
-            paths,
-            vec![expand_tilde("~/.agenthub/worktrees")]
-        );
+        assert_eq!(paths, vec![expand_tilde("~/.agenthub/worktrees")]);
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

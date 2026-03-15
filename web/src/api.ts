@@ -242,6 +242,7 @@ export type TeamStepRecord = {
   run_id: string;
   step_key: string;
   member_id: string;
+  runtime_handle_id?: string | null;
   remote_task_id?: string | null;
   status: TeamStepStatus;
   attempt: number;
@@ -729,7 +730,7 @@ export const api = {
     token: string,
     runId: string,
     stepId: string,
-    payload: { remote_task_id?: string }
+    payload: { runtime_handle_id?: string }
   ) =>
     apiFetch<TeamStepRecord>(
       `/api/teams/runs/${encodePathSegment(runId)}/steps/${encodePathSegment(stepId)}/start`,
@@ -953,3 +954,14 @@ export const api = {
       body: JSON.stringify(sub),
     }),
 };
+
+export function getTeamStepRuntimeHandleId(
+  step?: Pick<TeamStepRecord, "runtime_handle_id" | "remote_task_id"> | null
+): string | null {
+  const runtimeHandleId = step?.runtime_handle_id ?? step?.remote_task_id ?? null;
+  if (!runtimeHandleId) {
+    return null;
+  }
+  const trimmed = runtimeHandleId.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}

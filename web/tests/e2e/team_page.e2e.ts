@@ -220,7 +220,8 @@ async function selectAgentFromSidebar(
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
   const subjectsScopeButton = sidebar
-    .getByRole("button", { name: "Channels & Agents", exact: true })
+    .getByLabel("Team sidebar scope switch")
+    .getByText("Channels & Agents", { exact: true })
     .first();
   if (await subjectsScopeButton.isVisible()) {
     await subjectsScopeButton.click();
@@ -245,10 +246,15 @@ async function openMainTeamAction(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  const button = page
-    .locator(".teams-main")
-    .getByRole("button", { name: label, exact: true })
-    .first();
+  const scope = page.locator(".teams-main");
+  const tab = scope.getByRole("tab", { name: label, exact: true }).first();
+  if ((await tab.count()) > 0) {
+    await expect(tab).toBeVisible();
+    await tab.click();
+    return;
+  }
+
+  const button = scope.getByRole("button", { name: label, exact: true }).first();
   await expect(button).toBeVisible();
   await button.click();
 }
@@ -1262,13 +1268,17 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   });
   expect(layoutColumns.trim().split(/\s+/).length).toBe(1);
 
-  const runFilterWidth = await page
-    .locator(".teams-run-list-head .actions select")
+  const { runFilterWidth, runFilterParentWidth } = await page
+    .locator(".teams-run-list-head .actions")
     .first()
     .evaluate((element) => {
-      return element.getBoundingClientRect().width;
+      const select = element.querySelector("select");
+      return {
+        runFilterWidth: select?.getBoundingClientRect().width ?? 0,
+        runFilterParentWidth: element.getBoundingClientRect().width,
+      };
     });
-  expect(runFilterWidth).toBeGreaterThan(240);
+  expect(runFilterWidth).toBeGreaterThan(runFilterParentWidth * 0.7);
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;

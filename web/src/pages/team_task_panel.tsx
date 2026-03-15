@@ -1,8 +1,5 @@
 import React from "react";
-import {
-  TeamActorMessageRecord,
-  TeamConversationMessageRecord,
-} from "../api";
+import { TeamConversationMessageRecord } from "../api";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -35,7 +32,6 @@ type TeamTaskPanelProps = {
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
   onRefreshMessages: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
-  mailboxMessages?: TeamActorMessageRecord[];
   seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
@@ -56,8 +52,12 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "mt-3 min-h-[320px] max-h-[min(72vh,760px)] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
 const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
-const TEAM_TASK_ACTIVITY_ITEM_CLASS =
-  "rounded-lg border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
+  "acp-bubble rounded-xl border px-3 py-3 shadow-sm";
+const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-sky-200 bg-sky-50/85 text-sky-950`;
+const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-slate-200 bg-white text-slate-800`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
@@ -65,12 +65,10 @@ const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
 const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
   "text-sm font-semibold text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
-const TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS =
-  "rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 text-sm leading-6 text-ui-text-primary";
+  "acp-text mt-2 text-sm leading-6 text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-2 rounded-md border border-ui-border bg-ui-surface-soft/80";
+  "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
   "mt-2 inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
@@ -85,17 +83,6 @@ const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
-  toPrettyJson: (value: unknown) => string
-): string {
-  const chatText = resolveChatMessageText(message.payload);
-  if (chatText !== null) {
-    return chatText;
-  }
-  return toPrettyJson(message.payload);
-}
-
-function resolveMailboxMessageText(
-  message: TeamActorMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
   const chatText = resolveChatMessageText(message.payload);
@@ -133,6 +120,15 @@ function resolveMentionLabel(
   return actorId;
 }
 
+function resolveActivityItemClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return isHumanMailboxActor(actorId, humanActorId)
+    ? TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS
+    : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
+}
+
 export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const {
     developerMode,
@@ -143,7 +139,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     onSendMessage,
     onRefreshMessages,
     messages,
-    mailboxMessages = [],
     seenByMessageId = {},
     humanActorId = "user",
     memberLiveStates = [],
@@ -247,69 +242,35 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       mentionActorIds: normalizedDraft.mentionActorIds,
     });
   }, [mentionCandidates, messageDraft, onSendMessage]);
-  const waterfallItems = React.useMemo(() => {
-    const conversationItems = messages
-      .map((message) => ({
-        key: `conversation-${message.message_id}`,
-        sequence: message.message_id,
-        createdAt: message.created_at,
-        fromActorId: message.from_actor_id,
-        toActorId: message.to_actor_id ?? null,
-        routeOrStatus: message.route,
-        streamLabel: "conversation",
-        markdownText: resolveMessageText(message, toPrettyJson),
-        renderedHtml: "",
-      }));
-    const conversationSignatures = new Set(
-      conversationItems.map(
-        (item) =>
-          `${item.fromActorId}|${item.toActorId ?? "-"}|${item.createdAt}|${item.markdownText}`
-      )
-    );
-    const mailboxReplyItems = mailboxMessages
-      .filter((message) => {
-        if (message.status !== "delivered") {
-          return false;
-        }
-        if (!isHumanMailboxActor(message.to_actor_id, humanActorId)) {
-          return false;
-        }
-        if (isHumanMailboxActor(message.from_actor_id, humanActorId)) {
-          return false;
-        }
-        const text = resolveMailboxMessageText(message, toPrettyJson);
-        return text.trim().length > 0;
-      })
-      .map((message) => ({
-        key: `mailbox-${message.message_id}`,
-        sequence: message.message_id,
-        createdAt: message.created_at,
-        fromActorId: message.from_actor_id,
-        toActorId: message.to_actor_id ?? null,
-        routeOrStatus: "mailbox",
-        streamLabel: "reply",
-        markdownText: resolveMailboxMessageText(message, toPrettyJson),
-        renderedHtml: "",
-      }))
-      .filter((item) => {
-        const signature = `${item.fromActorId}|${item.toActorId ?? "-"}|${item.createdAt}|${item.markdownText}`;
-        return !conversationSignatures.has(signature);
-      });
-    return [...conversationItems, ...mailboxReplyItems]
-      .sort((left, right) => {
-        if (left.createdAt !== right.createdAt) {
-          return left.createdAt - right.createdAt;
-        }
-        if (left.sequence !== right.sequence) {
-          return left.sequence - right.sequence;
-        }
-        return left.key.localeCompare(right.key);
-      })
-      .map((item) => ({
-        ...item,
-        renderedHtml: renderMarkdownWithMentions(item.markdownText, memberDisplayNamesById),
-      }));
-  }, [humanActorId, mailboxMessages, memberDisplayNamesById, messages, toPrettyJson]);
+  const waterfallItems = React.useMemo(
+    () =>
+      messages
+        .map((message) => ({
+          key: `conversation-${message.message_id}`,
+          sequence: message.message_id,
+          createdAt: message.created_at,
+          fromActorId: message.from_actor_id,
+          toActorId: message.to_actor_id ?? null,
+          routeOrStatus: message.route,
+          streamLabel: "conversation",
+          markdownText: resolveMessageText(message, toPrettyJson),
+          renderedHtml: "",
+        }))
+        .sort((left, right) => {
+          if (left.createdAt !== right.createdAt) {
+            return left.createdAt - right.createdAt;
+          }
+          if (left.sequence !== right.sequence) {
+            return left.sequence - right.sequence;
+          }
+          return left.key.localeCompare(right.key);
+        })
+        .map((item) => ({
+          ...item,
+          renderedHtml: renderMarkdownWithMentions(item.markdownText, memberDisplayNamesById),
+        })),
+    [memberDisplayNamesById, messages, toPrettyJson]
+  );
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -360,19 +321,21 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
+            const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
             const authorLabel = resolveThreadAuthorLabel(
               item.fromActorId,
               humanActorId,
               liveStateByMemberId
             );
             return (
-              <div key={item.key} className={TEAM_TASK_ACTIVITY_ITEM_CLASS}>
+              <div
+                key={item.key}
+                className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
+                data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
+              >
                 <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                   <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
                     <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
-                    {item.streamLabel === "reply" && (
-                      <span className={TEAM_TASK_ACTIVITY_REPLY_BADGE_CLASS}>reply</span>
-                    )}
                   </div>
                   <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
                 </div>
@@ -380,48 +343,51 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                   className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                   dangerouslySetInnerHTML={{ __html: item.renderedHtml }}
                 />
-                {item.streamLabel === "conversation" && (
-                  <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
-                    {(() => {
-                      const seenActorIds = seenByMessageId[item.sequence] ?? [];
-                      if (seenActorIds.length === 0) {
-                        return (
-                          <span className="text-xs text-ui-text-muted">Seen by 0 agents</span>
-                        );
-                      }
-                      const expanded = Boolean(expandedSeenKeys[item.key]);
-                      return (
-                        <>
-                          <button
-                            type="button"
-                            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-                            onClick={() =>
-                              setExpandedSeenKeys((current) => ({
-                                ...current,
-                                [item.key]: !current[item.key],
-                              }))
-                            }
-                            aria-expanded={expanded}
-                          >
-                            {`Seen by ${seenActorIds.length} agent${seenActorIds.length === 1 ? "" : "s"}`}
-                          </button>
-                          {expanded && (
-                            <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                              {seenActorIds.map((actorId) => (
-                                <span
-                                  key={`${item.key}-${actorId}`}
-                                  className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5"
-                                >
-                                  {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
+                {(() => {
+                  const seenActorIds = seenByMessageId[item.sequence] ?? [];
+                  const shouldShowSeenMeta =
+                    isHumanMailboxActor(item.fromActorId, humanActorId) || seenActorIds.length > 0;
+                  if (!shouldShowSeenMeta) {
+                    return null;
+                  }
+                  if (seenActorIds.length === 0) {
+                    return (
+                      <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
+                        <span className="text-xs text-ui-text-muted">Seen by 0 agents</span>
+                      </div>
+                    );
+                  }
+                  const expanded = Boolean(expandedSeenKeys[item.key]);
+                  return (
+                    <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
+                      <button
+                        type="button"
+                        className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                        onClick={() =>
+                          setExpandedSeenKeys((current) => ({
+                            ...current,
+                            [item.key]: !current[item.key],
+                          }))
+                        }
+                        aria-expanded={expanded}
+                      >
+                        {`Seen by ${seenActorIds.length} agent${seenActorIds.length === 1 ? "" : "s"}`}
+                      </button>
+                      {expanded && (
+                        <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                          {seenActorIds.map((actorId) => (
+                            <span
+                              key={`${item.key}-${actorId}`}
+                              className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5"
+                            >
+                              {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {developerMode && (
                   <button
                     type="button"

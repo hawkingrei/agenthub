@@ -276,11 +276,12 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert context flush checkpoint");
 
+    drop(member_event_db);
+
     let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
         .expect("delete team");
     assert_eq!(deleted.id, team.id);
-    drop(member_event_db);
 
     let get_err = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
@@ -361,9 +362,9 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     let event_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id = ?1")
             .bind(&session_id)
-        .fetch_one(&member_event_db)
-        .await
-        .expect("count member events");
+            .fetch_one(&member_event_db)
+            .await
+            .expect("count member events");
     assert_eq!(event_count, 0);
 
     let permission_count: i64 =
@@ -2025,14 +2026,14 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
         headers.clone(),
         Path((run.id.clone(), step.id.clone())),
         Json(StartTeamRunStepRequest {
-            remote_task_id: Some("remote-task-bridge".to_string()),
+            runtime_handle_id: Some("remote-task-bridge".to_string()),
         }),
     )
     .await
     .expect("start step");
     assert_eq!(step_working.status, crate::team::TeamStepStatus::Working);
     assert_eq!(
-        step_working.remote_task_id.as_deref(),
+        step_working.runtime_handle_id.as_deref(),
         Some("remote-task-bridge")
     );
 
@@ -2104,7 +2105,7 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
         headers.clone(),
         Path((run.id.clone(), "missing-step".to_string())),
         Json(StartTeamRunStepRequest {
-            remote_task_id: None,
+            runtime_handle_id: None,
         }),
     )
     .await
@@ -2157,7 +2158,7 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
         headers.clone(),
         Path((run_2.id.clone(), step_2.id.clone())),
         Json(StartTeamRunStepRequest {
-            remote_task_id: Some("remote-task-fail".to_string()),
+            runtime_handle_id: Some("remote-task-fail".to_string()),
         }),
     )
     .await
@@ -2243,7 +2244,7 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
         headers.clone(),
         Path((run.id.clone(), step.id.clone())),
         Json(StartTeamRunStepRequest {
-            remote_task_id: Some("remote-task-input-required".to_string()),
+            runtime_handle_id: Some("remote-task-input-required".to_string()),
         }),
     )
     .await
@@ -3465,7 +3466,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         headers.clone(),
         Path((run.id.clone(), step.id.clone())),
         Json(StartTeamRunStepRequest {
-            remote_task_id: Some("session-leader-1".to_string()),
+            runtime_handle_id: Some("session-leader-1".to_string()),
         }),
     )
     .await
@@ -3613,7 +3614,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         leader
             .latest_step
             .as_ref()
-            .and_then(|step| step.remote_task_id.as_deref()),
+            .and_then(|step| step.runtime_handle_id.as_deref()),
         Some("session-leader-1")
     );
 

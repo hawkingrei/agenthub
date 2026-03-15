@@ -7,7 +7,10 @@ pub(crate) fn expand_tilde(path: &str) -> String {
     if let Some(stripped) = path.strip_prefix("~/")
         && let Ok(home) = std::env::var("HOME")
     {
-        return Path::new(&home).join(stripped).to_string_lossy().to_string();
+        return Path::new(&home)
+            .join(stripped)
+            .to_string_lossy()
+            .to_string();
     }
     path.to_string()
 }

@@ -1,10 +1,10 @@
 import React from "react";
+import { CloseButton, SegmentedControl, TextInput } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
-  TEAM_PANEL_INPUT_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_PANEL_GHOST_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -20,8 +20,6 @@ import {
   TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS,
   TEAM_SIDEBAR_SWITCHER_PANEL_CLASS,
   TEAM_SIDEBAR_SCOPE_SWITCH_CLASS,
-  TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS,
-  TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
@@ -60,11 +58,25 @@ const TEAM_UTILITY_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   { value: "runs", label: "Runs" },
 ];
 
+const TEAM_SCOPE_OPTIONS: ReadonlyArray<{ value: TeamSidebarScope; label: string }> = [
+  { value: "subjects", label: "Channels & Agents" },
+  { value: "operations", label: "Operations" },
+];
+
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 const OPERATIONS_FOCUS_TABS = new Set<TeamTab>(["runs", "overview", "events", "steps", "debug"]);
 
 type TeamSidebarScope = "subjects" | "operations";
 type TeamSidebarSection = "channels" | "agents" | "utilities";
+
+const SEGMENTED_CONTROL_CLASSNAMES = {
+  root: "rounded-full border border-ui-border/70 bg-ui-surface-soft/60 p-1",
+  control: "flex-1",
+  label:
+    "min-h-[30px] rounded-full border border-transparent px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted transition data-[active]:border-ui-border/70 data-[active]:bg-ui-surface data-[active]:text-ui-text-primary data-[active]:shadow-sm hover:text-ui-text-primary",
+  indicator: "hidden",
+  innerLabel: "truncate",
+} as const;
 
 function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
   if (status === "working") return "active";
@@ -261,21 +273,21 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 >
                   Manual Spec
                 </button>
-                {developerMode && (
-                  <>
-                    <div className="my-1 border-t border-ui-border/80" />
-                    <button
-                      type="button"
-                      className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
-                      onClick={() => {
-                        setTeamActionsOpen(false);
-                        setTeamDetailsOpen((current) => !current);
-                      }}
-                    >
-                      {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
-                    </button>
-                  </>
-                )}
+              {developerMode && (
+                <>
+                  <div className="my-1 border-t border-ui-border/80" />
+                  <button
+                    type="button"
+                    className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start`}
+                    onClick={() => {
+                      setTeamActionsOpen(false);
+                      setTeamDetailsOpen((current) => !current);
+                    }}
+                  >
+                    {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                  </button>
+                </>
+              )}
               </div>
             )}
           </div>
@@ -285,25 +297,26 @@ export function TeamSidebar(props: TeamSidebarProps) {
       {teamPickerOpen && (
         <div className={TEAM_SIDEBAR_SWITCHER_PANEL_CLASS}>
           {teams.length > 0 && (
-            <div className="teams-filter flex items-center gap-2">
-              <input
-                className={TEAM_PANEL_INPUT_CLASS}
+            <div className="teams-filter flex items-start gap-2">
+              <TextInput
+                className="flex-1"
                 placeholder="Filter teams by name or id"
                 aria-label="Filter teams"
                 value={teamFilter}
-                onChange={(event) => setTeamFilter(event.target.value)}
+                onChange={(event) => setTeamFilter(event.currentTarget.value)}
+                size="sm"
+                radius="md"
+                rightSection={
+                  hasTeamFilter ? (
+                    <CloseButton
+                      aria-label="Clear team filter"
+                      title="Clear team filter"
+                      onClick={() => setTeamFilter("")}
+                      size="sm"
+                    />
+                  ) : undefined
+                }
               />
-              {hasTeamFilter && (
-                <button
-                  type="button"
-                  className={TEAM_PANEL_GHOST_BUTTON_CLASS}
-                  onClick={() => setTeamFilter("")}
-                  aria-label="Clear team filter"
-                  title="Clear team filter"
-                >
-                  Clear
-                </button>
-              )}
             </div>
           )}
 
@@ -382,28 +395,22 @@ export function TeamSidebar(props: TeamSidebarProps) {
             <span className="shrink-0 px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ui-text-muted">
               Index
             </span>
-            <button
-              type="button"
-              className={
-                sidebarScope === "subjects"
-                  ? TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS
-                  : TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS
-              }
-              onClick={handleSelectSubjectsScope}
-            >
-              Channels & Agents
-            </button>
-            <button
-              type="button"
-              className={
-                sidebarScope === "operations"
-                  ? TEAM_SIDEBAR_SCOPE_BUTTON_ACTIVE_CLASS
-                  : TEAM_SIDEBAR_SCOPE_BUTTON_IDLE_CLASS
-              }
-              onClick={handleSelectOperationsScope}
-            >
-              Operations
-            </button>
+            <SegmentedControl
+              className="min-w-0 flex-1"
+              size="xs"
+              radius="xl"
+              value={sidebarScope}
+              onChange={(value) => {
+                if (value === "subjects") {
+                  handleSelectSubjectsScope();
+                  return;
+                }
+                handleSelectOperationsScope();
+              }}
+              data={TEAM_SCOPE_OPTIONS}
+              aria-label="Team sidebar scope switch"
+              classNames={SEGMENTED_CONTROL_CLASSNAMES}
+            />
           </div>
 
           {sidebarScope === "subjects" && (

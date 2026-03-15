@@ -44,6 +44,14 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }) as MediaQueryList) as typeof window.matchMedia;
 }
 
+if (typeof globalThis.ResizeObserver !== "function") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as typeof ResizeObserver;
+}
+
 function required<T>(value: T | null | undefined, message: string): T {
   if (value == null) {
     throw new Error(message);
@@ -63,6 +71,17 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
     candidate.textContent?.includes(text)
   ) as HTMLButtonElement | undefined;
   return required(button, `button not found: ${text}`);
+}
+
+function findInteractiveByText(
+  container: ParentNode,
+  text: string,
+  selectors = "button, label, [role='menuitem']"
+): HTMLElement {
+  const target = Array.from(container.querySelectorAll(selectors)).find((candidate) =>
+    candidate.textContent?.includes(text)
+  ) as HTMLElement | undefined;
+  return required(target, `interactive element not found: ${text}`);
 }
 
 function findButtonByAriaLabel(container: HTMLElement, label: string): HTMLButtonElement {
@@ -146,6 +165,7 @@ function buildStep(overrides: Partial<TeamStepRecord> = {}): TeamStepRecord {
     run_id: "run-1",
     step_key: "plan",
     member_id: "leader-agent",
+    runtime_handle_id: null,
     remote_task_id: null,
     status: "working",
     attempt: 1,
@@ -386,9 +406,9 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Toggle team switcher"));
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Guided Wizard"));
+    clickElement(findInteractiveByText(document.body, "Guided Wizard"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Manual Spec"));
+    clickElement(findInteractiveByText(document.body, "Manual Spec"));
     const filterInput = required(
       container.querySelector("input[aria-label='Filter teams']"),
       "team filter input missing"
@@ -398,7 +418,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("filtered=1 total=2");
     clickElement(findButtonByAriaLabel(container, "Clear team filter"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
-    clickElement(findButtonByText(document.body, "Show Team Details"));
+    clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");
     expect(container.textContent).toContain("workers=2");
@@ -489,7 +509,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("worker · working");
     expect(container.textContent).not.toContain("team-1");
 
-    clickElement(findButtonByText(container, "Operations"));
+    clickElement(findInteractiveByText(container, "Operations", "button, label"));
     expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
     expect(container.textContent).toContain("Utilities 1");
     expect(container.textContent).not.toContain("Channels 1");
@@ -551,7 +571,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Channels & Agents"));
+    clickElement(findInteractiveByText(container, "Channels & Agents", "button, label"));
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
 
     act(() => {
@@ -641,7 +661,8 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={true}
           busy={null}
@@ -665,7 +686,8 @@ describe("team panels interactions", () => {
           runsHasMore={true}
           selectedTeamId="team-1"
           onLoadMoreRuns={onLoadMoreRuns}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -692,7 +714,8 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={true}
           busy={null}
@@ -713,7 +736,8 @@ describe("team panels interactions", () => {
           runsHasMore={false}
           selectedTeamId={null}
           onLoadMoreRuns={() => {}}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -726,7 +750,8 @@ describe("team panels interactions", () => {
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
     act(() => {
       root.render(
-        <TeamRunPanel
+        <MantineProvider>
+          <TeamRunPanel
           selectedTeam={buildTeam()}
           developerMode={false}
           busy={null}
@@ -747,7 +772,8 @@ describe("team panels interactions", () => {
           runsHasMore={false}
           selectedTeamId="team-1"
           onLoadMoreRuns={() => {}}
-        />
+          />
+        </MantineProvider>
       );
     });
 
@@ -897,8 +923,8 @@ describe("team panels interactions", () => {
     );
     changeInputValue(
       required(
-        container.querySelector('input[placeholder="remote_task_id (optional)"]') as HTMLInputElement | null,
-        "remote_task_id input missing"
+        container.querySelector('input[placeholder="runtime_handle_id (optional)"]') as HTMLInputElement | null,
+        "runtime_handle_id input missing"
       ),
       "task-9"
     );
@@ -1495,7 +1521,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("running");
   });
 
-  it("TeamTaskPanel renders delivered mailbox replies to the human in shared thread", () => {
+  it("TeamTaskPanel renders canonical agent replies already persisted in shared thread", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     act(() => {
@@ -1515,19 +1541,11 @@ describe("team panels interactions", () => {
               route: "group_chat",
               payload: { type: "chat_message", text: "hello team" },
             }),
-          ]}
-          mailboxMessages={[
-            buildMailboxMessage(9, {
+            buildTaskMessage(2, {
               from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
+              to_actor_id: null,
+              route: "group_chat",
               payload: { type: "chat_message", text: "leader reply visible in all" },
-            }),
-            buildMailboxMessage(10, {
-              from_actor_id: "leader-agent",
-              to_actor_id: "worker-agent",
-              status: "delivered",
-              payload: { type: "chat_message", text: "worker-only mailbox message" },
             }),
           ]}
           seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
@@ -1557,14 +1575,17 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Seen by 2 agents"));
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
-    expect(container.textContent).not.toContain("worker-only mailbox message");
-    expect(container.textContent).toContain("reply");
+    expect(container.textContent).not.toContain("Seen by 0 agents");
     expect(container.textContent).toContain("You");
     expect(container.textContent).toContain("LeaderAgent");
     expect(container.textContent).toContain("worker-agent");
+    const activityKinds = Array.from(
+      container.querySelectorAll("[data-activity-author-kind]")
+    ).map((node) => node.getAttribute("data-activity-author-kind"));
+    expect(activityKinds).toEqual(["human", "agent"]);
   });
 
-  it("TeamTaskPanel renders mailbox chat_message payload strings as thread text", () => {
+  it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     act(() => {
@@ -1577,12 +1598,11 @@ describe("team panels interactions", () => {
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
           onRefreshMessages={vi.fn()}
-          messages={[]}
-          mailboxMessages={[
-            buildMailboxMessage(11, {
+          messages={[
+            buildTaskMessage(11, {
               from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
+              to_actor_id: null,
+              route: "group_chat",
               payload:
                 '{"type":"chat_message","current_phase":"Team formation","text":"rendered from string payload"}',
             }),
@@ -1600,45 +1620,6 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("rendered from string payload");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
-    expect(toPrettyJson).not.toHaveBeenCalled();
-  });
-
-  it("TeamTaskPanel renders plain markdown string mailbox payloads without JSON escaping", () => {
-    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
-
-    act(() => {
-      root.render(
-        <TeamTaskPanel
-          developerMode={true}
-          tasksLoading={false}
-          onRefreshTasks={vi.fn()}
-          messageDraft=""
-          onMessageDraftChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
-          messages={[]}
-          mailboxMessages={[
-            buildMailboxMessage(12, {
-              from_actor_id: "leader-agent",
-              to_actor_id: "user",
-              status: "delivered",
-              payload: "line one\n\n- line two",
-            }),
-          ]}
-          humanActorId="user"
-          memberLiveStates={[]}
-          memberIds={["leader-agent"]}
-          messagesLoading={false}
-          busy={null}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={toPrettyJson}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("line one");
-    expect(container.textContent).toContain("line two");
-    expect(container.textContent).not.toContain('"line one\\n\\n- line two"');
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
@@ -1679,54 +1660,56 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamTasksPanel
-          developerMode={true}
-          tasks={[
-            buildPanelTask("task-1", {
-              title: "Investigate bug",
-              status: "open",
-              created_at: 100,
-              updated_at: 200,
-            }),
-            buildPanelTask("task-2", {
-              title: "Prepare rollout",
-              status: "in_progress",
-              context: { owner: "leader" },
-              created_at: 90,
-              updated_at: 220,
-            }),
-          ]}
-          tasksLoading={false}
-          selectedTaskId="task-2"
-          onSelectedTaskIdChange={onSelectedTaskIdChange}
-          onRefreshTasks={onRefreshTasks}
-          newTaskTitle="New task draft"
-          onNewTaskTitleChange={onNewTaskTitleChange}
-          onCreateTask={onCreateTask}
-          busy={null}
-          compilePreviewContextId="ctx-preview"
-          onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
-          onCompileTaskRunPreview={onCompileTaskRunPreview}
-          canCompileTask={true}
-          compiledRunPreview={{
-            conversation_id: "conv-77",
-            run_payload: {
-              context_id: "ctx-preview",
-              input: { objective: "ship" },
-            },
-            plan: { steps: ["review", "ship"] },
-          }}
-          onUseCompiledRunPayload={onUseCompiledRunPayload}
-          onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamTasksPanel
+            developerMode={true}
+            tasks={[
+              buildPanelTask("task-1", {
+                title: "Investigate bug",
+                status: "open",
+                created_at: 100,
+                updated_at: 200,
+              }),
+              buildPanelTask("task-2", {
+                title: "Prepare rollout",
+                status: "in_progress",
+                context: { owner: "leader" },
+                created_at: 90,
+                updated_at: 220,
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-2"
+            onSelectedTaskIdChange={onSelectedTaskIdChange}
+            onRefreshTasks={onRefreshTasks}
+            newTaskTitle="New task draft"
+            onNewTaskTitleChange={onNewTaskTitleChange}
+            onCreateTask={onCreateTask}
+            busy={null}
+            compilePreviewContextId="ctx-preview"
+            onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
+            onCompileTaskRunPreview={onCompileTaskRunPreview}
+            canCompileTask={true}
+            compiledRunPreview={{
+              conversation_id: "conv-77",
+              run_payload: {
+                context_id: "ctx-preview",
+                input: { objective: "ship" },
+              },
+              plan: { steps: ["review", "ship"] },
+            }}
+            onUseCompiledRunPayload={onUseCompiledRunPayload}
+            onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
-    clickElement(findButtonByText(container, "In progress"));
+    clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
         container.querySelector('input[placeholder="New task title"]') as HTMLInputElement | null,
@@ -1764,37 +1747,39 @@ describe("team panels interactions", () => {
   it("TeamTasksPanel keeps details aligned with the active filter", () => {
     act(() => {
       root.render(
-        <TeamTasksPanel
-          developerMode={false}
-          tasks={[
-            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
-            buildPanelTask("task-progress", {
-              title: "Prepare rollout",
-              status: "in_progress",
-            }),
-          ]}
-          tasksLoading={false}
-          selectedTaskId="task-progress"
-          onSelectedTaskIdChange={vi.fn()}
-          onRefreshTasks={vi.fn()}
-          newTaskTitle=""
-          onNewTaskTitleChange={vi.fn()}
-          onCreateTask={vi.fn()}
-          busy={null}
-          compilePreviewContextId=""
-          onCompilePreviewContextIdChange={vi.fn()}
-          onCompileTaskRunPreview={vi.fn()}
-          canCompileTask={false}
-          compiledRunPreview={null}
-          onUseCompiledRunPayload={vi.fn()}
-          onCreateRunFromCompiledPreview={vi.fn()}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamTasksPanel
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            newTaskTitle=""
+            onNewTaskTitleChange={vi.fn()}
+            onCreateTask={vi.fn()}
+            busy={null}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
-    clickElement(findButtonByText(container, "Open"));
+    clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutCompile this task");
   });

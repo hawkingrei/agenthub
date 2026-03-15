@@ -177,7 +177,7 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
             {stepAction === "start" && (
               <input
                 className={TEAM_PANEL_INPUT_CLASS}
-                placeholder="remote_task_id (optional)"
+                placeholder="runtime_handle_id (optional)"
                 value={stepRemoteTaskId}
                 onChange={(event) => onStepRemoteTaskIdChange(event.target.value)}
               />
@@ -264,7 +264,9 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
                 <div>member_id: {step.member_id}</div>
                 <div>attempt: {step.attempt}</div>
                 <div>depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}</div>
-                <div>remote_task_id: {step.remote_task_id ?? "-"}</div>
+                <div>
+                  runtime_handle_id: {step.runtime_handle_id ?? step.remote_task_id ?? "-"}
+                </div>
                 {step.error_text && <div>error_text: {step.error_text}</div>}
               </div>
             </li>
