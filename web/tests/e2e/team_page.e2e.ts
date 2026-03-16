@@ -194,6 +194,11 @@ async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
+  const roleModelLabels: Record<string, string> = {
+    codex: "Codex ACP",
+    gemini: "Gemini CLI",
+    kimi: "Kimi CLI",
+  };
   const openButtonLabel = "Add Agent";
   const title = "Add Agent";
   const confirmLabel = "Create Agent";
@@ -207,7 +212,9 @@ async function createTeamMemberFromModal(
     await dialog.getByLabel("Identity").fill(options.identity);
   }
   if (options.model) {
-    await dialog.getByLabel("Role model").selectOption(options.model);
+    const optionLabel = roleModelLabels[options.model] ?? options.model;
+    await dialog.getByLabel("Role model").click();
+    await page.getByRole("option", { name: optionLabel, exact: true }).click();
   }
   if (options.customSkills) {
     await dialog.getByLabel("Custom skills").fill(options.customSkills);
