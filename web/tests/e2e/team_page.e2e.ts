@@ -207,7 +207,7 @@ async function createTeamMemberFromModal(
     await dialog.getByLabel("Identity").fill(options.identity);
   }
   if (options.model) {
-    await dialog.getByLabel("Model override").selectOption(options.model);
+    await dialog.getByLabel("Role model").selectOption(options.model);
   }
   if (options.customSkills) {
     await dialog.getByLabel("Custom skills").fill(options.customSkills);
@@ -221,6 +221,14 @@ async function openTeamFromSelector(
   page: import("@playwright/test").Page,
   teamName: string
 ): Promise<void> {
+  const isSelected = async (): Promise<boolean> => {
+    const detailPath = new URL(page.url()).pathname;
+    if (!/^\/teams\/[^/]+$/.test(detailPath)) {
+      return false;
+    }
+    const heading = page.getByRole("heading", { name: teamName, exact: true });
+    return heading.isVisible().catch(() => false);
+  };
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
     const selectorButton = page.getByRole("button", { name: "Team Selector", exact: true });
@@ -240,6 +248,7 @@ async function openTeamFromSelector(
     } catch {
       await teamItem.click({ force: true });
     }
+    await page.waitForTimeout(150);
     if (await isSelected()) {
       return;
     }
@@ -1153,7 +1162,8 @@ test("team create flow stores mission metadata before member setup", async ({ pa
     name: "quest-team",
     goal: "Build a goal-first team and add members afterward.",
   });
-  await expect(page.locator(".team-item", { hasText: "quest-team" })).toBeVisible();
+  await expect(page).toHaveURL(/\/teams\/.+/);
+  await expect(page.getByRole("heading", { name: "quest-team", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
@@ -1186,7 +1196,7 @@ test("team member setup adds the first agent and appends more agents through spe
     customSkills: "custom-leader-skill",
     identity: "Principal planner and reviewer",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
 
   await createTeamMemberFromModal(page, {
     role: "worker",
@@ -1528,7 +1538,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: "forge-team",
     goal: "Bind leader in-place before worker setup.",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
@@ -1537,7 +1547,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     identity: "Leader bound in-place",
   });
 
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");

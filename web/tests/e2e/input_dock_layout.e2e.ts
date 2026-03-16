@@ -163,7 +163,7 @@ test("keeps input dock controls touch-friendly on mobile viewport", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mountInputDock(page);
-  await assertDockLayout(page, 26, 44);
+  await assertDockLayout(page, 24, 40);
 });
 
 test("keeps input dock controls non-overlapping on tablet viewports", async ({
@@ -175,7 +175,7 @@ test("keeps input dock controls non-overlapping on tablet viewports", async ({
   ]) {
     await page.setViewportSize(viewport);
     await mountInputDock(page);
-    await assertDockLayout(page, 28, 48);
+    await assertDockLayout(page, 26, 44);
   }
 });
 

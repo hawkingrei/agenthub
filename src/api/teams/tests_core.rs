@@ -1081,7 +1081,6 @@ async fn teams_api_rejects_invalid_spec() {
         json!("invalid"),
         json!({"entrypoint":"planner"}),
         json!({"entrypoint":"","members":[{"member_id":"planner"}]}),
-        json!({"entrypoint":"planner","members":[]}),
         json!({"entrypoint":"planner","members":[{"member_id":"planner"},{"member_id":"planner"}]}),
         json!({"entrypoint":"missing","members":[{"member_id":"planner"}]}),
         json!({"entrypoint":"step-a","members":[{"member_id":"planner"}]}),

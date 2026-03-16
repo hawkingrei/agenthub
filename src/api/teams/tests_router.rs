@@ -12,21 +12,32 @@ async fn teams_router_http_contract() {
         .expect("run unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
-    let invalid_spec_resp = app
+    let empty_team_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
             "/",
             Some(&token),
             Some(json!({
-                "name": "invalid-router-team",
+                "name": "empty-router-team",
                 "description": null,
                 "spec": {"entrypoint":"planner","members":[]}
             })),
         ))
         .await
-        .expect("create invalid team via router");
-    assert_eq!(invalid_spec_resp.status(), StatusCode::BAD_REQUEST);
+        .expect("create empty team via router");
+    assert_eq!(empty_team_resp.status(), StatusCode::OK);
+    let empty_team = decode_json_body(empty_team_resp).await;
+    assert_eq!(empty_team["spec"]["spec_version"], Value::from(1));
+    assert_eq!(empty_team["spec"]["members"], json!([]));
+    assert_eq!(empty_team.get("spec").and_then(|spec| spec.get("entrypoint")), None);
+    assert_eq!(
+        empty_team
+            .get("spec")
+            .and_then(|spec| spec.get("leader_member_id")),
+        None
+    );
+    assert_eq!(empty_team.get("spec").and_then(|spec| spec.get("steps")), None);
 
     let create_team_resp = app
         .clone()
@@ -61,8 +72,9 @@ async fn teams_router_http_contract() {
     assert_eq!(list_teams_resp.status(), StatusCode::OK);
     let listed = decode_json_body(list_teams_resp).await;
     let listed = listed.as_array().expect("teams array");
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0]["id"], team_id);
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0]["id"], empty_team["id"]);
+    assert_eq!(listed[1]["id"], team_id);
 
     let duplicate_resp = app
         .clone()
