@@ -22,6 +22,7 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - removed the unused `role` parameter from the Team E2E member-creation helper to keep the helper signature honest
 - made `src/api/teams/tests_router.rs` order-independent when asserting listed Team ids
 - aligned `ACP_BUBBLE_PLAN_CLASS` with the shipped compatibility background in `web/src/ui/tailwind_classes.ts`
+- replaced the new input-dock `!important` overrides in `web/src/styles.css` with more specific `.input.docked ...` selectors so the compact interrupt/history/history-item sizing still wins without adding new `!important` debt
 
 ## Deferred Follow-Up
 

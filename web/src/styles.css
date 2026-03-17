@@ -600,23 +600,23 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   position: relative;
 }
 
-.input-interrupt-button {
-  height: 26px !important;
+.input.docked .input-row .input-interrupt-button {
+  height: 26px;
   min-height: 26px;
-  padding: 3px 9px !important;
-  border-radius: 999px !important;
-  font-size: 10px !important;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
   line-height: 1.15;
 }
 
-.history-toggle {
-  height: 26px !important;
-  padding: 3px 9px !important;
-  border-radius: 999px !important;
-  font-size: 10px !important;
-  background: #f4f6f8 !important;
-  border: 1px solid #d9dee5 !important;
-  color: #3e4954 !important;
+.input.docked .input-row .history-toggle {
+  height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: #f4f6f8;
+  border: 1px solid #d9dee5;
+  color: #3e4954;
 }
 
 .input-history-menu {
@@ -638,16 +638,16 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   z-index: 8;
 }
 
-.input-history-item {
+.input.docked .input-history .input-history-item {
   width: 100%;
   text-align: left;
-  height: auto !important;
+  height: auto;
   min-height: 28px;
-  padding: 5px 8px !important;
-  border-radius: 8px !important;
-  border: 1px solid transparent !important;
-  background: #fff !important;
-  color: #1f2a36 !important;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #fff;
+  color: #1f2a36;
   font-family: "Source Code Pro", monospace;
   font-size: 11px;
   line-height: 1.25;
@@ -656,9 +656,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   text-overflow: ellipsis;
 }
 
-.input-history-item:hover {
-  background: #f5f8ff !important;
-  border-color: #d8e3ff !important;
+.input.docked .input-history .input-history-item:hover {
+  background: #f5f8ff;
+  border-color: #d8e3ff;
 }
 
 .input button:not([class*="mantine-"]) {
@@ -2545,11 +2545,11 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     font-size: 12px;
   }
 
-  .input-interrupt-button {
-    height: 24px !important;
+  .input.docked .input-row .input-interrupt-button {
+    height: 24px;
     min-height: 24px;
-    padding: 2px 7px !important;
-    font-size: 10px !important;
+    padding: 2px 7px;
+    font-size: 10px;
   }
 
   .input-history-menu {
