@@ -299,6 +299,18 @@ async function selectAgentFromSidebar(
   ).toBeVisible();
 }
 
+async function selectPrimaryTeamEntryFromSidebar(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  const entry = sidebar
+    .locator("button", { hasText: label })
+    .first();
+  await expect(entry).toBeVisible();
+  await entry.click();
+}
+
 async function openMainTeamAction(
   page: import("@playwright/test").Page,
   label: string
@@ -1517,6 +1529,8 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
+  await selectPrimaryTeamEntryFromSidebar(page, "all");
+  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
   await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
