@@ -73,8 +73,17 @@ async fn teams_router_http_contract() {
     let listed = decode_json_body(list_teams_resp).await;
     let listed = listed.as_array().expect("teams array");
     assert_eq!(listed.len(), 2);
-    assert_eq!(listed[0]["id"], empty_team["id"]);
-    assert_eq!(listed[1]["id"], team_id);
+    let mut listed_ids = listed
+        .iter()
+        .map(|team| team["id"].as_str().expect("team id").to_string())
+        .collect::<Vec<_>>();
+    listed_ids.sort();
+    let mut expected_ids = vec![
+        empty_team["id"].as_str().expect("empty team id").to_string(),
+        team_id.clone(),
+    ];
+    expected_ids.sort();
+    assert_eq!(listed_ids, expected_ids);
 
     let duplicate_resp = app
         .clone()
@@ -164,10 +173,15 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("task id")
         .to_string();
+    let auto_run_id = created_task["latest_run"]["id"]
+        .as_str()
+        .expect("auto-created run id")
+        .to_string();
     assert_eq!(
         created_task["task"]["context"]["token"],
         Value::from("[redacted]")
     );
+    assert_eq!(created_task["task"]["status"], Value::from("in_progress"));
     assert!(
         created_task["task"]["created_by_actor_id"]
             .as_str()
@@ -418,8 +432,15 @@ async fn teams_router_http_contract() {
     assert_eq!(list_runs_resp.status(), StatusCode::OK);
     let listed_runs = decode_json_body(list_runs_resp).await;
     let listed_runs = listed_runs.as_array().expect("runs array");
-    assert_eq!(listed_runs.len(), 1);
-    assert_eq!(listed_runs[0]["id"], run_id);
+    assert_eq!(listed_runs.len(), 2);
+    let mut listed_run_ids = listed_runs
+        .iter()
+        .map(|run| run["id"].as_str().expect("run id").to_string())
+        .collect::<Vec<_>>();
+    listed_run_ids.sort();
+    let mut expected_run_ids = vec![auto_run_id, run_id.clone()];
+    expected_run_ids.sort();
+    assert_eq!(listed_run_ids, expected_run_ids);
 
     let invalid_status_runs_resp = app
         .clone()

@@ -49,6 +49,7 @@ function AcpPanelView({
   const tabsNode = (
     <div className={ACP_PANEL_TABS_CLASS}>
       <button
+        type="button"
         className={tabButtonClassName(effectiveTab === "conversation", true)}
         onClick={() => onSelectTab("conversation")}
       >
@@ -60,6 +61,7 @@ function AcpPanelView({
         )}
       </button>
       <button
+        type="button"
         className={tabButtonClassName(effectiveTab === "plan")}
         onClick={() => onSelectTab("plan")}
       >
@@ -67,6 +69,7 @@ function AcpPanelView({
       </button>
       {developerMode && (
         <button
+          type="button"
           className={tabButtonClassName(effectiveTab === "debug")}
           onClick={() => onSelectTab("debug")}
         >
@@ -102,6 +105,7 @@ function AcpPanelView({
       {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
       {effectiveTab === "conversation" && showConversationJump ? (
         <button
+          type="button"
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
           onClick={onJumpToConversationBottom}
           title="Jump to bottom"

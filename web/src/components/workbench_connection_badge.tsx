@@ -12,12 +12,12 @@ export function WorkbenchConnectionBadge({
 }: WorkbenchConnectionBadgeProps) {
   return (
     <div
-      className={className}
+      className={`${className} ${badge.tone}`}
       title={badge.title}
       role="status"
       aria-live="polite"
     >
-      <span className="inline-flex h-2.5 w-2.5 rounded-full bg-black/70" aria-hidden="true" />
+      <span className="session-connection-dot" aria-hidden="true" />
       <span>{badge.label}</span>
     </div>
   );

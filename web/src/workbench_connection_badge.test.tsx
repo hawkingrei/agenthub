@@ -13,6 +13,8 @@ describe("WorkbenchConnectionBadge", () => {
     expect(html).toContain("Online · SSE idle");
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-live="polite"');
+    expect(html).toContain("session-connection muted");
+    expect(html).toContain("session-connection-dot");
   });
 
   it("renders shared offline label", () => {
@@ -21,5 +23,6 @@ describe("WorkbenchConnectionBadge", () => {
       <WorkbenchConnectionBadge badge={badge} className="session-connection" />
     );
     expect(html).toContain("Offline · SSE disconnected");
+    expect(html).toContain("session-connection bad");
   });
 });

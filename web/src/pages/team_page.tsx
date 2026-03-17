@@ -4078,6 +4078,7 @@ export function TeamPage(props: TeamPageProps) {
           confirmLabel="Create Agent"
           agentPresetLabel="Role model"
           agentPresetSummaryLabel="Model"
+          teamStyled
           agentName={forgeAgentName}
           setAgentName={setForgeAgentName}
           agentWorkdir={forgeAgentWorkdir}

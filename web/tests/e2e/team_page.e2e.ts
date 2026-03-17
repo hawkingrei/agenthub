@@ -53,7 +53,7 @@ type CreateTeamPayload = {
 
 type UpdateTeamSpecPayload = {
   spec: TeamSpecPayload;
-  expected_updated_at?: number;
+  expected_updated_at: number;
 };
 
 type TeamDefinitionRecord = {
@@ -187,7 +187,6 @@ async function createTeamFromModal(
 async function createTeamMemberFromModal(
   page: import("@playwright/test").Page,
   options: {
-    role: "leader" | "worker";
     workdir: string;
     model?: string;
     customSkills?: string;
@@ -736,6 +735,10 @@ async function mockTeamPageApis(
       return;
     }
     const payload = request.postDataJSON() as UpdateTeamSpecPayload;
+    if (payload.expected_updated_at !== teams[index].updated_at) {
+      await route.fulfill(jsonResponse({ error: "team spec changed" }, 409));
+      return;
+    }
     updateSpecPayloads.push({ teamId, payload });
     const updated: TeamDefinitionRecord = {
       ...teams[index],
@@ -1197,7 +1200,6 @@ test("team member setup adds the first agent and appends more agents through spe
   });
 
   await createTeamMemberFromModal(page, {
-    role: "leader",
     workdir: "/workspace/member-setup-leader",
     model: "codex",
     customSkills: "custom-leader-skill",
@@ -1206,7 +1208,6 @@ test("team member setup adds the first agent and appends more agents through spe
   await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
 
   await createTeamMemberFromModal(page, {
-    role: "worker",
     workdir: "/workspace/member-setup-worker",
     model: "gemini",
     customSkills: "custom-worker-skill",
@@ -1549,7 +1550,6 @@ test("team setup keeps add agent wording after the first member binds", async ({
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
-    role: "leader",
     workdir: "/workspace/forge-leader",
     identity: "Leader bound in-place",
   });

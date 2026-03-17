@@ -26,6 +26,7 @@ type CreateAgentModalProps = {
   confirmLabel?: string;
   agentPresetLabel?: string;
   agentPresetSummaryLabel?: string;
+  teamStyled?: boolean;
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
@@ -128,6 +129,7 @@ export function CreateAgentModal({
   confirmLabel = "Create Agent",
   agentPresetLabel = "Agent preset",
   agentPresetSummaryLabel = "Preset",
+  teamStyled = false,
   agentName,
   setAgentName,
   agentWorkdir,
@@ -209,12 +211,16 @@ export function CreateAgentModal({
       closeOnClickOutside={false}
       withinPortal={withinPortal}
       overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
-      styles={{
-        content: TEAM_AGENT_MODAL_CONTENT_STYLE,
-        header: TEAM_AGENT_MODAL_HEADER_STYLE,
-        title: TEAM_AGENT_MODAL_TITLE_STYLE,
-        body: TEAM_AGENT_MODAL_BODY_STYLE,
-      }}
+      styles={
+        teamStyled
+          ? {
+              content: TEAM_AGENT_MODAL_CONTENT_STYLE,
+              header: TEAM_AGENT_MODAL_HEADER_STYLE,
+              title: TEAM_AGENT_MODAL_TITLE_STYLE,
+              body: TEAM_AGENT_MODAL_BODY_STYLE,
+            }
+          : undefined
+      }
     >
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">

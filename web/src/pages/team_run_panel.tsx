@@ -19,8 +19,6 @@ type TeamRunStatusFilterOption = {
   label: string;
 };
 
-const RUN_PANEL_DELETE_BUTTON_CLASS =
-  "rounded-md border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-1 text-sm text-[color:var(--status-danger-ink)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
 const RUN_PANEL_LIST_CLASS =
   "teams-run-list flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-4";
 const RUN_PANEL_LIST_HEAD_CLASS =
@@ -38,6 +36,8 @@ const TEAM_WORKBENCH_ACCENT_BUTTON_CLASS =
   "rounded-[14px] border-[3px] border-black bg-[#243243] px-3 py-2 text-sm font-semibold text-white shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
 const TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS =
   "rounded-[14px] border-[3px] border-black bg-white px-3 py-2 text-sm font-semibold text-black shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
+const TEAM_WORKBENCH_DANGER_BUTTON_CLASS =
+  "rounded-[14px] border-[3px] border-[#8d2d20] bg-[#fff4f1] px-3 py-2 text-sm font-semibold text-[#8d2d20] shadow-[0_2px_0_rgba(141,45,32,0.18)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -101,11 +101,12 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             {selectedTeam.id}
           </span>
           <button
+            type="button"
             onClick={() => {
               void onDeleteTeam();
             }}
             disabled={busy === "delete-team"}
-            className={`${RUN_PANEL_DELETE_BUTTON_CLASS} border-[3px] border-black bg-white text-black shadow-[0_2px_0_rgba(0,0,0,0.16)]`}
+            className={TEAM_WORKBENCH_DANGER_BUTTON_CLASS}
           >
             Delete Team
           </button>

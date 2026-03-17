@@ -167,7 +167,7 @@ export const ACP_BUBBLE_THINKING_CLASS =
   "acp-bubble agent_thinking rounded-xl border border-[#ddd9cf] bg-[#f7f4ed] px-ctrl-x py-ctrl-y shadow-[0_1px_0_rgba(15,23,42,0.04)]";
 
 export const ACP_BUBBLE_PLAN_CLASS =
-  "acp-bubble agent_plan rounded-xl border border-[#ddd9cf] bg-[#f8f6f1] px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]";
+  "acp-bubble agent_plan rounded-xl border border-[#ddd9cf] bg-[#f7f4ed] px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]";
 
 export const ACP_PLAN_INDEX_BADGE_CLASS =
   "acp-plan-index inline-flex h-5 w-5 items-center justify-center rounded-full border border-ui-border-strong text-ui-xs font-semibold text-ui-text-muted";
