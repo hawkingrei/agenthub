@@ -390,8 +390,8 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
 }: MarkdownBubbleProps) {
   const bubbleToneClassName =
     className === "agent_message"
-      ? "border-slate-200 bg-white text-slate-800"
-      : "border-sky-200 bg-sky-50 text-sky-900";
+      ? "border-[#d9ddd5] bg-[#fbfcfa] text-slate-800"
+      : "border-[#d8dee7] bg-[#f7f9fc] text-slate-800";
   return (
     <div className={`acp-bubble ${className} rounded-xl border px-3 py-2 shadow-sm ${bubbleToneClassName}`}>
       <div
@@ -974,19 +974,19 @@ const PlanBubble = React.memo(
     return (
       <div className={ACP_BUBBLE_PLAN_CLASS}>
         <details className="acp-thought-fold acp-plan-fold">
-          <summary className="cursor-pointer text-sm font-semibold text-violet-800">{summary}</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">{summary}</summary>
           <div className="acp-text mt-2 text-sm text-slate-700">
             {planSummary.total > 0 ? (
-              <div className="acp-plan-card rounded-lg border border-violet-200 bg-white p-3">
+              <div className="acp-plan-card rounded-lg border border-[#dde2db] bg-white p-3">
                 <div className="acp-plan-progress">
-                  <div className="acp-plan-progress-meta flex flex-wrap gap-3 text-xs text-slate-600">
+                  <div className="acp-plan-progress-meta flex flex-wrap gap-3 text-xs">
                     <span>{planSummary.completed}/{planSummary.total} completed</span>
                     <span>{planSummary.active} active</span>
                     <span>{planSummary.pending} pending</span>
                   </div>
-                  <div className="acp-plan-progress-bar mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div className="acp-plan-progress-bar mt-2 h-2 overflow-hidden rounded-full bg-[#e7ebe5]">
                     <span
-                      className="block h-full rounded-full bg-violet-500"
+                      className="block h-full rounded-full bg-[#203b2d]"
                       style={{ width: `${planSummary.ratio}%` }}
                     />
                   </div>
@@ -997,7 +997,7 @@ const PlanBubble = React.memo(
                     return (
                       <li
                         key={`${idx}-${entry.content}`}
-                        className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5`}
+                        className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#dde2db] bg-[#fbfcfa] px-2 py-1.5`}
                       >
                         <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
                           {idx + 1}
@@ -1849,7 +1849,7 @@ function SegmentedMoreFooter({
 }) {
   return (
     <div className="acp-segmented-footer flex items-center justify-between gap-3">
-      <span className="acp-segmented-meta text-xs text-slate-500">
+      <span className="acp-segmented-meta text-xs">
         {remaining} more {unitLabel}
       </span>
       <button

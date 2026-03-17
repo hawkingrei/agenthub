@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use path_utils::expand_tilde;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
+const DEFAULT_CODEX_ACP_MODE: &str = "auto";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
 
@@ -212,12 +213,14 @@ impl AppConfig {
     }
 
     pub fn codex_acp_default_mode(&self) -> Option<String> {
-        self.codex_acp
+        let configured = self
+            .codex_acp
             .as_ref()
             .and_then(|c| c.default_mode.as_deref())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|value| value.to_string())
+            .map(|value| value.to_string());
+        Some(configured.unwrap_or_else(|| DEFAULT_CODEX_ACP_MODE.to_string()))
     }
 
     pub fn history_event_retention_days(&self) -> Option<u32> {
@@ -406,7 +409,7 @@ fn detect_env_overrides() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, HistoryConfig, WorktreeConfig};
+    use super::{AppConfig, CodexAcpConfig, HistoryConfig, WorktreeConfig};
 
     #[test]
     fn default_worktree_root_uses_builtin_default() {
@@ -511,5 +514,35 @@ mod tests {
         };
         assert_eq!(config.history_event_retention_days(), None);
         assert_eq!(config.history_delete_batch_size(), 100);
+    }
+
+    #[test]
+    fn codex_acp_default_mode_falls_back_to_auto() {
+        let config = AppConfig::default();
+        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+    }
+
+    #[test]
+    fn codex_acp_default_mode_preserves_configured_value() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: Some(" code ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("code"));
+    }
+
+    #[test]
+    fn codex_acp_default_mode_ignores_blank_override() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: Some("   ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
     }
 }

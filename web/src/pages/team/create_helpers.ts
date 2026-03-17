@@ -1,5 +1,4 @@
 import type { AgentRecord } from "../../api";
-import { listAgentPresets } from "../../agent_presets";
 import {
   DEFAULT_TEAM_LEADER_PROMPT,
   DEFAULT_TEAM_LEADER_SKILLS,
@@ -12,18 +11,22 @@ import {
 } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
 
-const TEAM_MODEL_PRESET_OPTIONS = listAgentPresets().map((preset) => ({
-  value: preset.id,
-  label: preset.label,
-}));
-const TEAM_MODEL_PRESET_VALUES = new Set(
-  TEAM_MODEL_PRESET_OPTIONS.map((option) => option.value)
-);
+const DEFAULT_TEAM_PLAN_STEP_KEY = "leader_plan";
 
 type TeamStepDraft = {
   step_key: string;
   member_id: string;
   depends_on: string[];
+};
+
+export type TeamMemberProfileDraft = {
+  member_id: string;
+  role: "leader" | "worker";
+  description: string;
+  model: string;
+  prompt: string;
+  skills: string[];
+  custom_skills: string;
 };
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -95,6 +98,123 @@ export function buildTeamSpecFromForm(
     members,
     steps,
   };
+}
+
+function cloneSpecObject(spec: unknown): Record<string, unknown> {
+  const specObj = asObjectRecord(spec);
+  if (!specObj) {
+    return {};
+  }
+  return JSON.parse(JSON.stringify(specObj)) as Record<string, unknown>;
+}
+
+function readMemberId(member: Record<string, unknown>): string {
+  return typeof member.member_id === "string" ? member.member_id.trim() : "";
+}
+
+function readMemberRole(member: Record<string, unknown>): string {
+  return typeof member.role === "string" ? member.role.trim() : "";
+}
+
+export function buildEmptyTeamSpec(): unknown {
+  return {
+    spec_version: 1,
+    members: [],
+  };
+}
+
+export function teamSpecHasConfiguredMembers(spec: unknown): boolean {
+  return collectTeamSpecMemberIds(spec).length > 0;
+}
+
+export function teamSpecHasLeader(spec: unknown): boolean {
+  const specObj = asObjectRecord(spec);
+  if (!specObj) {
+    return false;
+  }
+  const members = Array.isArray(specObj.members) ? specObj.members : [];
+  return members.some((member) => {
+    const memberObj = asObjectRecord(member);
+    if (!memberObj) {
+      return false;
+    }
+    return readMemberRole(memberObj) === "leader";
+  });
+}
+
+export function appendTeamMemberToSpec(
+  spec: unknown,
+  draft: TeamMemberProfileDraft,
+  agent: AgentRecord
+): unknown {
+  const memberId = draft.member_id.trim();
+  if (!memberId) {
+    throw new Error("Member id is required");
+  }
+  const role = draft.role === "leader" ? "leader" : "worker";
+  const nextSpec = cloneSpecObject(spec);
+  const existingMembers = Array.isArray(nextSpec.members)
+    ? nextSpec.members
+        .map((member) => asObjectRecord(member))
+        .filter((member): member is Record<string, unknown> => Boolean(member))
+    : [];
+  if (existingMembers.some((member) => readMemberId(member) === memberId)) {
+    throw new Error(`Team already includes member ${memberId}`);
+  }
+  const leaderId = existingMembers.find((member) => readMemberRole(member) === "leader");
+  if (role === "leader" && leaderId) {
+    throw new Error("Team already has a leader");
+  }
+  if (role === "worker" && !leaderId) {
+    throw new Error("Create the first agent before adding more agents");
+  }
+
+  const normalizedSkills =
+    role === "leader"
+      ? normalizeSkillSelection(
+          draft.skills,
+          draft.custom_skills,
+          DEFAULT_TEAM_LEADER_SKILLS,
+          REQUIRED_TEAM_LEADER_SKILLS
+        )
+      : normalizeSkillSelection(
+          draft.skills,
+          draft.custom_skills,
+          DEFAULT_TEAM_WORKER_SKILLS,
+          REQUIRED_TEAM_WORKER_SKILLS
+        );
+  const prompt =
+    draft.prompt.trim() ||
+    (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
+
+  existingMembers.push({
+    member_id: memberId,
+    role,
+    description: draft.description.trim() || undefined,
+    model: draft.model.trim() || undefined,
+    prompt,
+    runtime: buildMemberRuntimeHint(agent),
+    skills: normalizedSkills,
+  });
+
+  const resolvedLeaderId =
+    role === "leader"
+      ? memberId
+      : existingMembers.find((member) => readMemberRole(member) === "leader")?.member_id;
+  if (typeof resolvedLeaderId !== "string" || !resolvedLeaderId.trim()) {
+    throw new Error("Team leader is required");
+  }
+  const normalizedLeaderId = resolvedLeaderId.trim();
+  const workerMemberIds = existingMembers
+    .map((member) => readMemberId(member))
+    .filter((candidate) => candidate.length > 0 && candidate !== normalizedLeaderId);
+
+  nextSpec.spec_version = 1;
+  nextSpec.members = existingMembers;
+  nextSpec.leader_member_id = normalizedLeaderId;
+  nextSpec.steps = buildDefaultWorkflowSteps(normalizedLeaderId, workerMemberIds);
+  nextSpec.entrypoint = DEFAULT_TEAM_PLAN_STEP_KEY;
+  return nextSpec;
 }
 
 function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, unknown> | undefined {
@@ -247,18 +367,6 @@ export function clampCreateTeamStage(next: number): CreateTeamStage {
   if (next <= 0) return 0;
   if (next >= 3) return 3;
   return next as CreateTeamStage;
-}
-
-export function resolveTeamModelOptions(currentModel: string): Array<{
-  value: string;
-  label: string;
-}> {
-  const options = [{ value: "", label: "Use default model" }, ...TEAM_MODEL_PRESET_OPTIONS];
-  const normalized = currentModel.trim();
-  if (normalized && !TEAM_MODEL_PRESET_VALUES.has(normalized)) {
-    options.push({ value: normalized, label: `Custom (${normalized})` });
-  }
-  return options;
 }
 
 export function collectTeamSpecMemberIds(spec: unknown): string[] {

@@ -25,14 +25,19 @@ terminology and operating expectations drift.
 ### 1) Three-Layer Team Model
 
 1. Human planning layer
-- Human collaborates through `Conversation` under a `Task`.
-- Human provides goals/constraints; humans do not create internal Team `task` objects directly.
+- Human collaborates through the shared `Conversation` lane (`all`).
+- Human provides goals/constraints/feedback; human messages do not automatically become Team
+  `task` records.
 
 2. Orchestration layer
-- Leader compiles planning output into executable `Run` + `Step` graph and internal tasks.
+- Leader/System turns agreed execution work into internal `task` records.
+- A `task` is the agent-facing work object and should be executable without additional human clicks.
 
 3. Execution layer
-- Members execute steps, exchange mailbox messages, and return evidence.
+- Creating/accepting a `task` should automatically create a `run`.
+- A `run` is the execution record for one task attempt, including status, logs, artifacts, and
+  final summary.
+- Members execute steps, exchange mailbox messages, and return evidence through the run.
 
 ### 2) Role Model
 
@@ -55,14 +60,15 @@ terminology and operating expectations drift.
 ### 4) Team Surface Lanes
 
 - Communication lane:
-  - `Conversation` is the human-facing lane and remains available without an active run.
+  - `Conversation` (`all`) is the human-facing lane and remains available without an active run.
   - Human goals/constraints and `@member` coordination requests are authored here.
   - Conversation is a single shared group stream across human, leader, and workers (not per-member isolated chats).
   - Default routing: messages without `@mention` are team-wide with leader-first response priority.
   - Messages with `@member_id` can target one or multiple members and relax worker speaking guardrails.
   - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
-  - `Runs` is the entry lane for run browsing, `Start Team`, and active-run selection.
+  - `Kanban` is the primary task lane.
+  - `Runs` is the execution-history lane for run browsing, `Start Team`, and active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
 - Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
 
@@ -142,12 +148,15 @@ Constraint:
 ### 5) Team Surface Contract
 
 - `Conversation` does not require an active run.
+- `Conversation` is not a task list; task creation is an internal Team planning/runtime decision.
+- `Kanban` is task-first and should show task state plus linked run history/summary.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
 - Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
+- Manual `compile preview` and `Create Run` actions are debug/advanced tools, not the primary Team workflow.
 
 ## Validation Matrix
 
@@ -159,9 +168,11 @@ Constraint:
 ## Operational Notes
 
 - Keep Team UX conversation-first; keep run/step internals in debug-oriented surfaces.
+- Keep task handling automatic: `task -> run` should happen without human clicks in the normal flow.
 - Keep run browsing and start/select operations in the `Runs` tab.
 - Keep a shared active-run context header for run-scoped tabs to avoid duplicated controls.
-- Team startup should require explicit operator action to begin execution.
+- Team startup may require explicit operator action to bring runtimes online, but once the team is
+  ready, new tasks should execute automatically.
 - Maintain deterministic run isolation and replay boundaries via `run_id`.
 
 ## Open Risks

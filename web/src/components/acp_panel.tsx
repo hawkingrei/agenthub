@@ -18,6 +18,7 @@ type AcpPanelTab = "conversation" | "plan" | "debug";
 type AcpPanelProps = {
   acpView: AcpView;
   subtitle: string | null;
+  mobileTitle?: string | null;
   acpTab: AcpPanelTab;
   developerMode: boolean;
   onSelectTab: (tab: AcpPanelTab) => void;
@@ -31,6 +32,7 @@ type AcpPanelProps = {
 
 function AcpPanelView({
   subtitle,
+  mobileTitle,
   acpTab,
   developerMode,
   onSelectTab,
@@ -44,40 +46,58 @@ function AcpPanelView({
   const effectiveTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const tabButtonClassName = (selected: boolean, withGap = false) =>
     `acp-tab-button ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
+  const tabsNode = (
+    <div className={ACP_PANEL_TABS_CLASS}>
+      <button
+        type="button"
+        className={tabButtonClassName(effectiveTab === "conversation", true)}
+        onClick={() => onSelectTab("conversation")}
+      >
+        Conversation
+        {showConversationBadge && (
+          <span className={ACP_TAB_BADGE_CLASS}>
+            +{conversation.pendingCount}
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        className={tabButtonClassName(effectiveTab === "plan")}
+        onClick={() => onSelectTab("plan")}
+      >
+        Plan
+      </button>
+      {developerMode && (
+        <button
+          type="button"
+          className={tabButtonClassName(effectiveTab === "debug")}
+          onClick={() => onSelectTab("debug")}
+        >
+          Debug
+        </button>
+      )}
+    </div>
+  );
   return (
     <div className={ACP_PANEL_ROOT_CLASS}>
       <div className={ACP_PANEL_HEAD_CLASS}>
-        <div className="acp-subtitle min-h-5 text-xs text-slate-500 sm:text-sm">
+        {mobileTitle ? (
+          <div className="flex min-w-0 items-center gap-2 sm:hidden">
+            <div className="min-w-0 max-w-[42%] flex-none overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-[1.15] text-black">
+              {mobileTitle}
+            </div>
+            <div className="min-w-0 flex-1">
+              {tabsNode}
+            </div>
+          </div>
+        ) : null}
+        <div className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle min-h-5 text-xs text-slate-500 max-[720px]:hidden sm:text-sm`}>
           {subtitle ?? " "}
         </div>
-        <div className="acp-actions flex items-center gap-2">
-          <div className={ACP_PANEL_TABS_CLASS}>
-            <button
-              className={tabButtonClassName(effectiveTab === "conversation", true)}
-              onClick={() => onSelectTab("conversation")}
-            >
-              Conversation
-              {showConversationBadge && (
-                <span className={ACP_TAB_BADGE_CLASS}>
-                  +{conversation.pendingCount}
-                </span>
-              )}
-            </button>
-            <button
-              className={tabButtonClassName(effectiveTab === "plan")}
-              onClick={() => onSelectTab("plan")}
-            >
-              Plan
-            </button>
-            {developerMode && (
-              <button
-                className={tabButtonClassName(effectiveTab === "debug")}
-                onClick={() => onSelectTab("debug")}
-              >
-                Debug
-              </button>
-            )}
-          </div>
+        <div
+          className={`${mobileTitle ? "hidden sm:flex " : "flex "}items-center gap-2 max-[720px]:w-full max-[720px]:justify-start max-[720px]:flex-wrap`}
+        >
+          {tabsNode}
         </div>
       </div>
       {effectiveTab === "conversation" && <AcpConversation {...conversation} />}
@@ -85,6 +105,7 @@ function AcpPanelView({
       {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
       {effectiveTab === "conversation" && showConversationJump ? (
         <button
+          type="button"
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
           onClick={onJumpToConversationBottom}
           title="Jump to bottom"

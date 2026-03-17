@@ -137,6 +137,42 @@ describe("AcpDebug interactions", () => {
     expect(onJumpTerminal).toHaveBeenCalledTimes(1);
   });
 
+  it("filters terminal output down to stderr lines", () => {
+    act(() => {
+      root.render(
+        <AcpDebug
+          {...buildProps({
+            initialTab: "terminal",
+            terminalOutputs: [
+              {
+                event_id: 1,
+                ts: 1,
+                seq: "1",
+                stream: "stdout",
+                message: "stdout line",
+                agent_id: "agent-a",
+                session_id: "session-a",
+              },
+              {
+                event_id: 2,
+                ts: 2,
+                seq: "2",
+                stream: "stderr",
+                message: "stderr line",
+                agent_id: "agent-a",
+                session_id: "session-a",
+              },
+            ],
+          })}
+        />
+      );
+    });
+
+    clickByText(container, "Stderr");
+    expect(container.textContent).toContain("stderr line");
+    expect(container.textContent).not.toContain("stdout line");
+  });
+
   it("invokes jump callback on permission row click", () => {
     const onJump = vi.fn();
     act(() => {

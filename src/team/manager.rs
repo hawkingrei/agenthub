@@ -495,6 +495,33 @@ impl TeamManager {
         parse_team_task_row(&row)
     }
 
+    pub async fn update_task_status(
+        &self,
+        task_id: &str,
+        status: TeamTaskStatus,
+    ) -> anyhow::Result<TeamTaskRecord> {
+        let current = self.get_task(task_id).await?;
+        if current.status == status {
+            return Ok(current);
+        }
+
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE team_tasks
+            SET status = ?2, updated_at = ?3
+            WHERE id = ?1
+            "#,
+        )
+        .bind(task_id)
+        .bind(team_task_status_to_str(&status))
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+
+        self.get_task(task_id).await
+    }
+
     pub async fn get_task_conversation(
         &self,
         task_id: &str,
@@ -661,6 +688,8 @@ impl TeamManager {
         .bind(payload.to_string())
         .execute(&mut *tx)
         .await?;
+        sync_linked_task_status_tx(&mut tx, team_id, &input, TeamTaskStatus::InProgress, now)
+            .await?;
         tx.commit().await?;
 
         Ok(TeamRunRecord {
@@ -669,6 +698,7 @@ impl TeamManager {
             context_id: resolved_context_id,
             status,
             input,
+            summary: None,
             created_at: now,
             started_at: None,
             ended_at: None,
@@ -1031,7 +1061,7 @@ impl TeamManager {
         for row in rows {
             runs.push(parse_team_run_row(&row)?);
         }
-        Ok(runs)
+        self.hydrate_run_summaries(runs).await
     }
 
     // Cancel all non-terminal runs left from a previous process lifetime.
@@ -1047,9 +1077,11 @@ impl TeamManager {
         )
         .fetch_all(&self.db)
         .await?;
+        let linked_task_ids = load_linked_task_ids_for_runs(&self.db, &active_run_ids).await?;
 
         let mut canceled_count = 0usize;
         for run_id in active_run_ids {
+            let linked_task_id = linked_task_ids.get(&run_id).map(String::as_str);
             let canceled = self.cancel_run(&run_id).await?;
             if canceled.status == TeamRunStatus::Canceled {
                 canceled_count += 1;
@@ -1071,6 +1103,36 @@ impl TeamManager {
                         error = %err,
                         "failed to append startup cancellation event"
                     );
+                }
+                if let Some(task_id) = linked_task_id {
+                    match self.get_task(task_id).await {
+                        Ok(task)
+                            if matches!(
+                                task.status,
+                                TeamTaskStatus::InProgress | TeamTaskStatus::Canceled
+                            ) =>
+                        {
+                            if let Err(err) =
+                                self.update_task_status(task_id, TeamTaskStatus::Open).await
+                            {
+                                tracing::warn!(
+                                    run_id = %run_id,
+                                    task_id = %task_id,
+                                    error = %err,
+                                    "failed to reopen linked task after startup run cancellation"
+                                );
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                task_id = %task_id,
+                                error = %err,
+                                "failed to load linked task after startup run cancellation"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1109,7 +1171,7 @@ impl TeamManager {
         for row in rows {
             runs.push(parse_team_run_row(&row)?);
         }
-        Ok(runs)
+        self.hydrate_run_summaries(runs).await
     }
 
     pub async fn get_agent_session_status(
@@ -1901,6 +1963,14 @@ impl TeamManager {
                     .bind(run_payload.to_string())
                     .execute(&mut *tx)
                     .await?;
+                    sync_linked_task_status_tx(
+                        &mut tx,
+                        &team_id,
+                        &run_input,
+                        TeamTaskStatus::Completed,
+                        now,
+                    )
+                    .await?;
                 }
             }
         }
@@ -2025,7 +2095,53 @@ impl TeamManager {
         .bind(run_id)
         .fetch_one(&self.db)
         .await?;
-        parse_team_run_row(&row)
+        self.hydrate_run_summary(parse_team_run_row(&row)?).await
+    }
+
+    pub async fn get_latest_run_for_task(
+        &self,
+        team_id: &str,
+        task_id: &str,
+    ) -> anyhow::Result<Option<TeamRunRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE team_id = ?1
+              AND trim(COALESCE(json_extract(input_json, '$.task_id'), '')) = ?2
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(team_id)
+        .bind(task_id)
+        .fetch_optional(&self.db)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(
+                self.hydrate_run_summary(parse_team_run_row(&row)?).await?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    async fn hydrate_run_summary(&self, mut run: TeamRunRecord) -> anyhow::Result<TeamRunRecord> {
+        run.summary = load_run_summary(&self.db, &run.id, &run.status).await?;
+        Ok(run)
+    }
+
+    async fn hydrate_run_summaries(
+        &self,
+        mut runs: Vec<TeamRunRecord>,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let summaries = load_run_summaries(&self.db, &runs).await?;
+        for run in &mut runs {
+            run.summary = summaries
+                .get(&run.id)
+                .cloned()
+                .unwrap_or_else(|| fallback_run_summary(&run.status));
+        }
+        Ok(runs)
     }
 
     pub async fn update_team_spec_if_unchanged(
@@ -2129,6 +2245,20 @@ impl TeamManager {
         .await?;
 
         if result.rows_affected() > 0 {
+            let run_meta_row = sqlx::query(
+                r#"
+                SELECT team_id, input_json
+                FROM team_runs
+                WHERE id = ?1
+                "#,
+            )
+            .bind(run_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            let team_id: String = run_meta_row.get("team_id");
+            let run_input_json: String = run_meta_row.get("input_json");
+            let run_input: Value =
+                serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
             let active_steps = sqlx::query(
                 r#"
                 SELECT id, step_key
@@ -2190,6 +2320,14 @@ impl TeamManager {
             .bind(now)
             .bind(payload.to_string())
             .execute(&mut *tx)
+            .await?;
+            sync_linked_task_status_tx(
+                &mut tx,
+                &team_id,
+                &run_input,
+                TeamTaskStatus::Canceled,
+                now,
+            )
             .await?;
         }
         tx.commit().await?;
@@ -2851,6 +2989,188 @@ async fn resolve_memory_flush_session_id_tx(
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
     }))
+}
+
+async fn load_run_summary(
+    db: &SqlitePool,
+    run_id: &str,
+    status: &TeamRunStatus,
+) -> anyhow::Result<Option<String>> {
+    let row = sqlx::query(
+        r#"
+        SELECT output_json, error_text
+        FROM team_steps
+        WHERE run_id = ?1
+          AND (output_json IS NOT NULL OR error_text IS NOT NULL)
+        ORDER BY COALESCE(ended_at, started_at, 0) DESC, attempt DESC, id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_optional(db)
+    .await?;
+
+    if let Some(row) = row {
+        let output_json = row.try_get::<Option<String>, _>("output_json")?;
+        let error_text = row.try_get::<Option<String>, _>("error_text")?;
+        if let Some(summary) =
+            summarize_run_summary_fields(output_json.as_deref(), error_text.as_deref())
+        {
+            return Ok(Some(summary));
+        }
+    }
+
+    Ok(fallback_run_summary(status))
+}
+
+async fn load_run_summaries(
+    db: &SqlitePool,
+    runs: &[TeamRunRecord],
+) -> anyhow::Result<HashMap<String, Option<String>>> {
+    let mut summaries = HashMap::with_capacity(runs.len());
+    if runs.is_empty() {
+        return Ok(summaries);
+    }
+
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT run_id, output_json, error_text
+        FROM team_steps
+        WHERE run_id IN (
+        "#,
+    );
+    {
+        let mut separated = builder.separated(", ");
+        for run in runs {
+            separated.push_bind(&run.id);
+        }
+    }
+    builder.push(
+        r#")
+          AND (output_json IS NOT NULL OR error_text IS NOT NULL)
+        ORDER BY run_id ASC, COALESCE(ended_at, started_at, 0) DESC, attempt DESC, id DESC
+        "#,
+    );
+
+    let rows = builder.build().fetch_all(db).await?;
+    for row in rows {
+        let run_id = row.try_get::<String, _>("run_id")?;
+        let output_json = row.try_get::<Option<String>, _>("output_json")?;
+        let error_text = row.try_get::<Option<String>, _>("error_text")?;
+        summaries.entry(run_id).or_insert_with(|| {
+            summarize_run_summary_fields(output_json.as_deref(), error_text.as_deref())
+        });
+    }
+
+    for run in runs {
+        summaries
+            .entry(run.id.clone())
+            .or_insert_with(|| fallback_run_summary(&run.status));
+    }
+    Ok(summaries)
+}
+
+fn summarize_run_summary_fields(
+    output_json: Option<&str>,
+    error_text: Option<&str>,
+) -> Option<String> {
+    if let Some(output_json) = output_json
+        && let Ok(output) = serde_json::from_str::<Value>(output_json)
+    {
+        let summary = build_continuity_snapshot(Some(&output)).summary_text;
+        if !summary.trim().is_empty() {
+            return Some(summary);
+        }
+    }
+    if let Some(error_text) = error_text {
+        let trimmed = error_text.trim();
+        if !trimmed.is_empty() {
+            return Some(truncate_chars(trimmed, CONTINUITY_MAX_SUMMARY_CHARS));
+        }
+    }
+    None
+}
+
+fn fallback_run_summary(status: &TeamRunStatus) -> Option<String> {
+    let fallback = match status {
+        TeamRunStatus::Completed => Some("Completed without a structured summary."),
+        TeamRunStatus::Failed => Some("Run failed before a structured summary was recorded."),
+        TeamRunStatus::Canceled => Some("Run was canceled before completion."),
+        TeamRunStatus::Submitted | TeamRunStatus::Working | TeamRunStatus::InputRequired => None,
+    };
+    fallback.map(str::to_string)
+}
+
+async fn load_linked_task_ids_for_runs(
+    db: &SqlitePool,
+    run_ids: &[String],
+) -> anyhow::Result<HashMap<String, String>> {
+    let mut linked_task_ids = HashMap::new();
+    if run_ids.is_empty() {
+        return Ok(linked_task_ids);
+    }
+
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT id, trim(COALESCE(json_extract(input_json, '$.task_id'), '')) AS task_id
+        FROM team_runs
+        WHERE id IN (
+        "#,
+    );
+    {
+        let mut separated = builder.separated(", ");
+        for run_id in run_ids {
+            separated.push_bind(run_id);
+        }
+    }
+    builder.push(")");
+
+    let rows = builder.build().fetch_all(db).await?;
+    for row in rows {
+        let run_id = row.try_get::<String, _>("id")?;
+        let task_id = row.try_get::<String, _>("task_id")?;
+        let task_id = task_id.trim();
+        if !task_id.is_empty() {
+            linked_task_ids.insert(run_id, task_id.to_string());
+        }
+    }
+    Ok(linked_task_ids)
+}
+
+fn extract_linked_task_id_from_run_input(input: &Value) -> Option<&str> {
+    input
+        .as_object()
+        .and_then(|obj| obj.get("task_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+async fn sync_linked_task_status_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    team_id: &str,
+    input: &Value,
+    status: TeamTaskStatus,
+    now: i64,
+) -> anyhow::Result<()> {
+    let Some(task_id) = extract_linked_task_id_from_run_input(input) else {
+        return Ok(());
+    };
+
+    sqlx::query(
+        r#"
+        UPDATE team_tasks
+        SET status = ?3, updated_at = ?4
+        WHERE id = ?1 AND team_id = ?2 AND status <> ?3
+        "#,
+    )
+    .bind(task_id)
+    .bind(team_id)
+    .bind(team_task_status_to_str(&status))
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 fn normalize_memory_flush_trigger(raw: &str) -> &'static str {

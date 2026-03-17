@@ -75,6 +75,174 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
 }
 
 #[tokio::test]
+async fn teams_api_allows_creating_team_without_members() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "empty-team".to_string(),
+            description: Some("goal only".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create team without members");
+
+    assert_eq!(created.spec["spec_version"], Value::from(1));
+    assert_eq!(created.spec["members"], json!([]));
+    assert!(created.spec.get("entrypoint").is_none());
+    assert!(created.spec.get("leader_member_id").is_none());
+    assert!(created.spec.get("steps").is_none());
+
+    let Json(runtime) = get_team_runtime(
+        State(state),
+        headers,
+        Path(created.id.clone()),
+    )
+    .await
+    .expect("describe empty team runtime");
+    assert_eq!(runtime.team_id, created.id);
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Stopped);
+    assert!(runtime.members.is_empty());
+}
+
+#[tokio::test]
+async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    insert_legacy_team_member_agent(&state, "planner").await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "bootstrap-team".to_string(),
+            description: Some("team bootstrap".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create empty team");
+
+    let Json(updated) = update_team_spec(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(UpdateTeamSpecRequest {
+            expected_updated_at: created.updated_at,
+            spec: json!({
+                "spec_version": 1,
+                "entrypoint": "planner",
+                "members": [
+                    {
+                        "member_id": "planner",
+                        "role": "leader",
+                    }
+                ],
+            }),
+        }),
+    )
+    .await
+    .expect("update team spec");
+
+    assert_eq!(updated.spec["leader_member_id"], Value::from("planner"));
+    assert_eq!(updated.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(updated.spec["steps"][0]["member_id"], Value::from("planner"));
+    let Json(runtime) = get_team_runtime(
+        State(state),
+        headers,
+        Path(updated.id.clone()),
+    )
+    .await
+    .expect("describe updated team runtime");
+    assert_eq!(runtime.team_id, updated.id);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "planner");
+}
+
+#[tokio::test]
+async fn teams_api_rejects_execution_until_team_has_members() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "empty-execution-team".to_string(),
+            description: Some("members added later".to_string()),
+            spec: json!({
+                "spec_version": 1,
+                "members": [],
+            }),
+        }),
+    )
+    .await
+    .expect("create empty execution team");
+
+    let start_err = start_team(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect_err("start should fail without members");
+    let start_body = decode_json_body(start_err.into_response()).await;
+    assert_eq!(start_body["error"], Value::from("team has no members configured; add at least one agent first"));
+
+    let run_err = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-empty-team".to_string()),
+            input: Some(json!({"task": "noop"})),
+        }),
+    )
+    .await
+    .expect_err("run creation should fail without members");
+    let run_body = decode_json_body(run_err.into_response()).await;
+    assert_eq!(run_body["error"], Value::from("team has no members configured; add at least one agent first"));
+
+    let Json(task_detail) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Investigate".to_string(),
+            created_by_actor_id: None,
+            context: None,
+            conversation_mode: None,
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task without members");
+
+    let compile_err = compile_team_task_run_preview(
+        State(state),
+        headers,
+        Path((team.id.clone(), task_detail.task.id.clone())),
+        Json(CompileTeamTaskRunPreviewRequest {
+            context_id: Some("ctx-empty-team-compile".to_string()),
+        }),
+    )
+    .await
+    .expect_err("compile preview should fail without members");
+    let compile_body = decode_json_body(compile_err.into_response()).await;
+    assert_eq!(compile_body["error"], Value::from("team has no members configured; add at least one agent first"));
+}
+
+#[tokio::test]
 async fn teams_api_delete_team_cascades_related_run_data() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -913,7 +1081,6 @@ async fn teams_api_rejects_invalid_spec() {
         json!("invalid"),
         json!({"entrypoint":"planner"}),
         json!({"entrypoint":"","members":[{"member_id":"planner"}]}),
-        json!({"entrypoint":"planner","members":[]}),
         json!({"entrypoint":"planner","members":[{"member_id":"planner"},{"member_id":"planner"}]}),
         json!({"entrypoint":"missing","members":[{"member_id":"planner"}]}),
         json!({"entrypoint":"step-a","members":[{"member_id":"planner"}]}),
@@ -3680,6 +3847,14 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     );
     assert_eq!(created.conversation.mode, "group_chat");
     assert_eq!(created.conversation.task_id, created.task.id);
+    assert_eq!(created.task.status, crate::team::TeamTaskStatus::InProgress);
+    let created_run = created.latest_run.expect("expected auto-created run");
+    assert_eq!(created_run.team_id, team.id);
+    assert_eq!(created_run.input["task_id"], Value::from(created.task.id.clone()));
+    assert_eq!(
+        created_run.input["conversation_id"],
+        Value::from(created.conversation.id.clone())
+    );
 
     let Json(listed) = list_team_tasks(
         State(state.clone()),
@@ -3701,6 +3876,114 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     .expect("get task");
     assert_eq!(found.task.id, created.task.id);
     assert_eq!(found.conversation.id, created.conversation.id);
+    assert_eq!(
+        found.latest_run.expect("expected latest run").id,
+        created_run.id
+    );
+}
+
+#[tokio::test]
+async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-team".to_string(),
+            description: Some("shared thread task coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create shared thread task");
+
+    assert_eq!(created.task.status, crate::team::TeamTaskStatus::Open);
+    assert!(created.latest_run.is_none());
+}
+
+#[tokio::test]
+async fn teams_api_updates_task_status_and_rejects_invalid_values() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-status-api-team".to_string(),
+            description: Some("status update".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Promote kanban card".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({"source":"ui"})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("status".to_string()),
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(updated) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: "in_progress".to_string(),
+        }),
+    )
+    .await
+    .expect("update task status");
+    assert_eq!(updated.id, created.task.id);
+    assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+
+    let err = update_team_task(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(UpdateTeamTaskRequest {
+            status: "paused".to_string(),
+        }),
+    )
+    .await
+    .expect_err("invalid status should fail");
+    let body = decode_json_body(err.into_response()).await;
+    assert_eq!(
+        body["error"],
+        Value::from("status must be one of: open, in_progress, completed, canceled")
+    );
 }
 
 #[tokio::test]
@@ -4016,17 +4299,10 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .await
     .expect("create task");
 
-    let Json(run) = create_team_run(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamRunRequest {
-            context_id: Some("ctx-task-mailbox-forward".to_string()),
-            input: Some(json!({"prompt":"forward task message to mailbox"})),
-        }),
-    )
-    .await
-    .expect("create run");
+    let run = task_created
+        .latest_run
+        .clone()
+        .expect("task create should auto-create a linked run");
 
     let Json(directed_message) = send_team_task_message(
         State(state.clone()),

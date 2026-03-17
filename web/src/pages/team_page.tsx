@@ -5,47 +5,52 @@ import {
   Button,
   Group,
   Menu,
-  NativeSelect,
-  Stepper,
+  SegmentedControl,
   Tabs,
   TextInput,
   Textarea,
   Tooltip,
 } from "@mantine/core";
+import { deriveConnectionBadge, getNavigatorOnline } from "../connection_status";
 import {
+  AGENT_SOURCE_TEAM_FORGE,
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
   api,
+  getTeamStepRuntimeHandleId,
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
   TeamDefinitionRecord,
   TeamRuntimeRecord,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
+  TeamTaskStatus,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
+import { AGENT_NOT_RUNNING_ERROR } from "../agent_ws";
 import {
   DEFAULT_AGENT_PRESET_ID,
   getAgentPreset,
   type AgentPresetId,
 } from "../agent_presets";
 import { CreateAgentModal } from "../components/create_agent_modal";
+import { WorkbenchConnectionBadge } from "../components/workbench_connection_badge";
+import { WorkbenchHeaderMenu } from "../components/workbench_header_menu";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
-  resolveWorkdirForModalOpen,
 } from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
-import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
+import { normalizeTeamMemberLifecycle } from "./team_member_status_strip";
 import { TeamTaskPanel } from "./team_task_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
@@ -53,23 +58,27 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import {
-  buildTeamForgeCleanupWarning,
+  appendTeamMemberToSpec,
+  buildEmptyTeamSpec,
   buildLeaderForgeDefaultWorkdir,
-  buildTeamSpecFromForm,
-  clampCreateTeamStage,
-  cleanupUnusedTeamForgeAgents,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
-  parseRequiredJson,
-  resolveUnusedTeamForgeAgentIds,
-  resolveTeamModelOptions,
+  teamSpecHasConfiguredMembers,
+  teamSpecHasLeader,
+  type TeamMemberProfileDraft,
 } from "./team/create_helpers";
 import {
   clearTeamCreateDraft,
   loadTeamCreateDraft,
   persistTeamCreateDraft,
-  type TeamCreateEntryMode,
 } from "./team/create_draft_storage";
+import {
+  resolveInitialTeamMemberRole,
+  resolveTeamForgeDefaults,
+  resolveTeamMemberRoleOptions,
+  resolveTeamMemberRoleProfile,
+  type TeamMemberRole,
+} from "./team/forge_helpers";
 import {
   MailboxTemplateKey,
   buildMailboxChatPayload,
@@ -89,22 +98,17 @@ import {
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   buildTeamMemberLiveStates,
-  buildDefaultWorkerDraft,
-  createInitialTeamDraftState,
   parseTeamSpecMembers,
   resolveTeamMemberAgentStatuses,
-  selectTeamForgeAgents,
   summarizeTeamMemberAgentStatuses,
   toggleSkillSelection,
-  type WorkerDraft,
-  assignCreatedWorkerToDraft,
 } from "./team/member_helpers";
 import {
-  buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
   listTeamWorkspaceTasks,
-  pickNextWorkerAgentId,
+  resolveAgentWorkspaceStatusView,
+  resolveSelectedAgentWorkspaceLabel,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
@@ -119,7 +123,6 @@ import {
   selectTeamPreviewEvents,
   type TeamRunStatusFilter,
 } from "./team/run_helpers";
-import { useTeamCreateModalLifecycleEffects } from "./team/use_team_create_modal_lifecycle_effects";
 import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
@@ -127,7 +130,6 @@ import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycl
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import { useTeamStepActions } from "./team/use_team_step_actions";
 import {
-  CREATE_TEAM_STAGE_TITLES,
   DEFAULT_TEAM_CONTROL_STATE,
   DEFAULT_TEAM_MAILBOX_STATE,
   DEFAULT_TEAM_RUN_BROWSER_STATE,
@@ -145,11 +147,9 @@ import {
   reduceTeamUiState,
   resolveUpdater,
   type TeamTab,
-  type CreateTeamStage,
   type StepAction,
   type TeamControlState,
   type TeamCreateState,
-  type TeamForgeRoleTag,
   type TeamMailboxState,
   type TeamRunBrowserState,
 } from "./team/state";
@@ -160,12 +160,7 @@ import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_IDLE_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
-  TEAM_CREATE_STAGE_BADGE_CLASS,
-  TEAM_CREATE_STEP_PREVIEW_CLASS,
-  TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS,
-  TEAM_CREATE_WORKER_CARD_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -205,11 +200,11 @@ export {
   mergeRunPages,
   mergeTeamRunList,
   resolveRunStatusFilter,
+  selectRunsForTask,
   selectTeamPreviewEvents,
 } from "./team/run_helpers";
 export type { MailboxTemplateKey, TeamMailboxChatActors } from "./team/mailbox_helpers";
 export type {
-  TeamCreateDraftState,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   TeamMemberLiveState,
@@ -222,9 +217,39 @@ type TeamPageProps = {
   token: string;
   onLogout: () => void;
   developerMode: boolean;
+  routeTeamId: string | null;
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 type TeamCreateNoteTone = "info" | "warning";
+
+function parseTeamAgentInputSessionMismatch(
+  message: string
+): { expected: string; running: string } | null {
+  const match = message.match(
+    /agent session mismatch:\s*expected=([^\s]+)\s+running=([^\s]+)/
+  );
+  if (!match) {
+    return null;
+  }
+  const expected = match[1]?.trim();
+  const running = match[2]?.trim();
+  if (!expected || !running) {
+    return null;
+  }
+  return { expected, running };
+}
+
+function buildTeamDetailPath(teamId: string): string {
+  return `/teams/${encodeURIComponent(teamId)}`;
+}
+
+function navigateTeamRoute(pathname: string): void {
+  if (location.pathname === pathname) {
+    return;
+  }
+  window.history.pushState({}, "", pathname);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
 
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
   "conversation",
@@ -281,68 +306,56 @@ function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
+const panelSecondaryButtonClassName =
+  "inline-flex items-center justify-center rounded-[12px] border border-ui-border bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-sm";
+  "min-h-0 min-w-0 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3 shadow-sm";
 const teamSectionCardLargeClassName =
-  "min-h-0 rounded-2xl border border-ui-border bg-ui-surface p-5 shadow-sm";
-const teamSectionHeadingClassName = "text-sm font-semibold text-ui-text-primary";
-const teamSectionTitleClassName = "text-base font-semibold text-ui-text-primary";
-const teamSectionBodyTextClassName = "mt-2 text-sm text-ui-text-muted";
-const teamSectionHintTextClassName = "mt-2 text-xs text-ui-text-muted";
+  "min-h-0 rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3.5 shadow-sm";
+const teamSectionHeadingClassName =
+  "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
+const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
+const teamSectionBodyTextClassName = "mt-2 text-[13px] leading-5 text-ui-text-secondary";
+const teamSectionHintTextClassName = "mt-2 text-[12px] leading-5 text-ui-text-muted";
 const teamDebugTabsClassName =
-  "flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1";
+  "flex flex-wrap items-center gap-2 border-b border-ui-border pb-1";
 const teamDebugTabBaseClassName =
-  "rounded-md px-3 py-1.5 text-xs font-medium transition sm:text-sm";
+  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
 const teamDebugTabActiveClassName =
-  `${teamDebugTabBaseClassName} bg-brand-primary text-ui-text-inverse shadow-sm`;
+  `${teamDebugTabBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
 const teamDebugTabIdleClassName =
-  `${teamDebugTabBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  `${teamDebugTabBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
 const teamCreateModalHeaderClassName =
-  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-3";
-const teamCreateModalTitleClassName =
-  "text-lg font-semibold tracking-tight text-ui-text-primary";
-const teamCreateCheckItemReadyClassName =
-  "team-create-check-item ready flex items-center gap-2 rounded-lg border border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] px-3 py-2 text-sm text-[color:var(--status-active-ink)]";
-const teamCreateCheckItemPendingClassName =
-  "team-create-check-item pending flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2 text-sm text-ui-text-muted";
-const teamCreateAgentEntryClassName =
-  "team-create-agent-entry rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
-const teamCreateForgeMetaClassName =
-  "team-create-forge-agent-meta mono mt-2 grid grid-cols-2 gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-xs text-ui-text-muted";
-const teamCreateLaunchMetaClassName =
-  "mono mt-3 grid min-w-0 gap-2 text-xs text-ui-text-secondary sm:grid-cols-3";
-const teamCreateLaunchMetaItemClassName =
-  "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-4";
 const teamRunMetaItemClassName =
-  "rounded-lg border border-ui-border bg-ui-surface-soft px-3 py-2";
+  "rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[11px] text-ui-text-primary shadow-sm";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+  "flex flex-wrap items-center gap-2";
 const workspacePrimaryTabsListClassName =
-  "flex flex-wrap items-center gap-1 rounded-lg border border-ui-border/80 bg-ui-surface-soft/80 p-1";
+  "flex flex-wrap items-center gap-3 border-b border-ui-border pb-1";
 const workspaceToolbarButtonBaseClassName =
-  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition";
+  "inline-flex items-center gap-1 rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
 const workspaceToolbarButtonActiveClassName =
-  `${workspaceToolbarButtonBaseClassName} border border-ui-border/80 bg-ui-surface text-ui-text-primary shadow-sm`;
+  `${workspaceToolbarButtonBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
 const workspaceToolbarButtonIdleClassName =
-  `${workspaceToolbarButtonBaseClassName} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
 const workspacePrimaryTabClassName =
-  "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition hover:bg-ui-surface hover:text-ui-text-primary data-[active=true]:border data-[active=true]:border-ui-border/80 data-[active=true]:bg-ui-surface data-[active=true]:text-ui-text-primary data-[active=true]:shadow-sm";
+  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ui-text-muted transition hover:border-ui-border hover:text-ui-text-primary data-[active=true]:border-brand-primary data-[active=true]:bg-transparent data-[active=true]:text-ui-text-primary";
 const workspaceNoticeClassName =
-  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-3 py-2";
+  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-ui-border bg-ui-surface px-3 py-2.5 shadow-sm";
 const workspaceNoticeTextClassName =
-  "flex min-w-0 flex-1 items-center gap-2 text-xs text-ui-text-muted";
+  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-ui-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
 const workspaceMetaDropdownClassName =
-  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface p-2 shadow-lg";
+  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-2 rounded-[14px] border border-ui-border bg-ui-surface p-2.5 shadow-lg";
 const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
   value: TeamTab;
   label: string;
   icon: string;
 }> = [
-  { value: "conversation", label: "Conversation", icon: "bi bi-chat-square-text" },
-  { value: "tasks", label: "Tasks", icon: "bi bi-list-check" },
+  { value: "conversation", label: "all", icon: "bi bi-chat-square-text" },
+  { value: "tasks", label: "Kanban", icon: "bi bi-list-check" },
   { value: "mailbox", label: "Mailbox", icon: "bi bi-inboxes" },
 ];
 
@@ -387,10 +400,42 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
   );
 });
 
+const teamWorkbenchPanelClassName =
+  "rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.96)_0%,rgba(244,241,233,0.96)_100%)] p-3.5 shadow-sm";
+const teamWorkbenchAccentButtonClassName =
+  "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
+const teamWorkbenchMutedButtonClassName =
+  "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
+const teamWorkbenchHeaderActionsClassName = "flex flex-wrap items-center gap-2";
+const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
+const teamWorkbenchBadgeClassName =
+  "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+const teamWorkbenchHeaderShellClassName =
+  "flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3 shadow-sm";
+const teamWorkbenchHeaderIconButtonClassName =
+  "inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+const teamWorkbenchHeaderStatusClassName =
+  "inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted shadow-sm";
+const teamWorkbenchWorkspaceShellClassName =
+  "rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3.5 shadow-sm";
+const teamWorkbenchSetupChecklistClassName =
+  "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
+const teamWorkbenchInfoStripGridClassName =
+  "grid gap-px bg-ui-border lg:grid-cols-3";
+const teamWorkbenchInfoStripItemClassName =
+  "min-w-0 bg-ui-surface px-3.5 py-3";
+const teamWorkbenchInfoStripLabelClassName =
+  "text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+const teamWorkbenchInfoStripValueClassName =
+  "mt-1.5 text-[13px] leading-5 text-ui-text-primary";
+
 export function TeamPage(props: TeamPageProps) {
+  const routeTeamId = props.routeTeamId?.trim() || null;
+  const isSelectorRoute = routeTeamId == null;
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [networkOnline, setNetworkOnline] = useState<boolean>(getNavigatorOnline);
   const [teamRuntimeByTeamId, setTeamRuntimeByTeamId] = useState<Record<string, TeamRuntimeRecord>>(
     {}
   );
@@ -402,6 +447,31 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       document.body.classList.remove("teams-page");
     };
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnline = () => {
+      setNetworkOnline(true);
+    };
+    const onOffline = () => {
+      setNetworkOnline(false);
+    };
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+  const connectionBadge = useMemo(
+    () => deriveConnectionBadge(networkOnline, false, "idle"),
+    [networkOnline]
+  );
+  const navigateToTeamDetail = useCallback((teamId: string) => {
+    navigateTeamRoute(buildTeamDetailPath(teamId));
+  }, []);
+  const navigateToTeamSelector = useCallback(() => {
+    navigateTeamRoute("/teams");
   }, []);
 
   const [teamUiState, dispatchTeamUi] = useReducer(
@@ -503,7 +573,23 @@ export function TeamPage(props: TeamPageProps) {
     Record<string, AgentRecord | null>
   >({});
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [teamSelectorFilter, setTeamSelectorFilter] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(routeTeamId);
+  const setRouteScopedSelectedTeamId = useCallback<React.Dispatch<React.SetStateAction<string | null>>>(
+    (next) => {
+      setSelectedTeamId((current) => {
+        const resolved = typeof next === "function" ? next(current) : next;
+        if (isSelectorRoute) {
+          return null;
+        }
+        if (routeTeamId && resolved && resolved !== routeTeamId) {
+          return routeTeamId;
+        }
+        return resolved;
+      });
+    },
+    [isSelectorRoute, routeTeamId]
+  );
 
   const [teamCreateState, dispatchTeamCreate] = useReducer(
     reduceTeamCreateState,
@@ -513,16 +599,7 @@ export function TeamPage(props: TeamPageProps) {
   const createDraftPersistErrorRef = useRef<string | null>(null);
   const newTeamName = teamCreateState.newTeamName;
   const newTeamDescription = teamCreateState.newTeamDescription;
-  const useSpecOverride = teamCreateState.useSpecOverride;
-  const newTeamSpec = teamCreateState.newTeamSpec;
   const showCreateTeamModal = teamCreateState.showCreateTeamModal;
-  const createTeamStage = teamCreateState.createTeamStage;
-  const leaderMemberId = teamCreateState.leaderMemberId;
-  const leaderModel = teamCreateState.leaderModel;
-  const leaderPrompt = teamCreateState.leaderPrompt;
-  const leaderSkills = teamCreateState.leaderSkills;
-  const leaderCustomSkills = teamCreateState.leaderCustomSkills;
-  const workers = teamCreateState.workers;
   const showForgeAgentForm = teamCreateState.showForgeAgentForm;
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
@@ -533,10 +610,10 @@ export function TeamPage(props: TeamPageProps) {
   const forgeAgentCodeMode = teamCreateState.forgeAgentCodeMode;
   const forgeAgentWorktreeError = teamCreateState.forgeAgentWorktreeError;
   const forgeAgentBusy = teamCreateState.forgeAgentBusy;
-  const teamForgeAgentIds = teamCreateState.teamForgeAgentIds;
   const [forgeDefaultWorktreeRoot, setForgeDefaultWorktreeRoot] = useState(
     DEFAULT_WORKTREE_ROOT
   );
+  const [teamMemberDraft, setTeamMemberDraft] = useState<TeamMemberProfileDraft | null>(null);
   const patchTeamCreate = useCallback((patch: Partial<TeamCreateState>) => {
     dispatchTeamCreate({ type: "patch", patch });
   }, []);
@@ -548,48 +625,9 @@ export function TeamPage(props: TeamPageProps) {
     (next: string) => patchTeamCreate({ newTeamDescription: next }),
     [patchTeamCreate]
   );
-  const setUseSpecOverride = useCallback(
-    (next: boolean) => patchTeamCreate({ useSpecOverride: next }),
-    [patchTeamCreate]
-  );
-  const setNewTeamSpec = useCallback(
-    (next: string) => patchTeamCreate({ newTeamSpec: next }),
-    [patchTeamCreate]
-  );
   const setShowCreateTeamModal = useCallback(
     (next: boolean) => patchTeamCreate({ showCreateTeamModal: next }),
     [patchTeamCreate]
-  );
-  const setCreateTeamStage = useCallback(
-    (next: CreateTeamStage | ((prev: CreateTeamStage) => CreateTeamStage)) =>
-      patchTeamCreate({ createTeamStage: resolveUpdater(createTeamStage, next) }),
-    [createTeamStage, patchTeamCreate]
-  );
-  const setLeaderMemberId = useCallback(
-    (next: string) => patchTeamCreate({ leaderMemberId: next }),
-    [patchTeamCreate]
-  );
-  const setLeaderModel = useCallback(
-    (next: string) => patchTeamCreate({ leaderModel: next }),
-    [patchTeamCreate]
-  );
-  const setLeaderPrompt = useCallback(
-    (next: string) => patchTeamCreate({ leaderPrompt: next }),
-    [patchTeamCreate]
-  );
-  const setLeaderSkills = useCallback(
-    (next: string[] | ((prev: string[]) => string[])) =>
-      patchTeamCreate({ leaderSkills: resolveUpdater(leaderSkills, next) }),
-    [leaderSkills, patchTeamCreate]
-  );
-  const setLeaderCustomSkills = useCallback(
-    (next: string) => patchTeamCreate({ leaderCustomSkills: next }),
-    [patchTeamCreate]
-  );
-  const setWorkers = useCallback(
-    (next: WorkerDraft[] | ((prev: WorkerDraft[]) => WorkerDraft[])) =>
-      patchTeamCreate({ workers: resolveUpdater(workers, next) }),
-    [patchTeamCreate, workers]
   );
   const setShowForgeAgentForm = useCallback(
     (next: boolean) => patchTeamCreate({ showForgeAgentForm: next }),
@@ -604,9 +642,15 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamCreate({ forgeAgentWorkdir: resolveUpdater(forgeAgentWorkdir, next) }),
     [forgeAgentWorkdir, patchTeamCreate]
   );
+  const patchTeamMemberDraft = useCallback((patch: Partial<TeamMemberProfileDraft>) => {
+    setTeamMemberDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
   const setForgeAgentPresetId = useCallback(
-    (next: AgentPresetId) => patchTeamCreate({ forgeAgentPresetId: next }),
-    [patchTeamCreate]
+    (next: AgentPresetId) => {
+      patchTeamCreate({ forgeAgentPresetId: next });
+      patchTeamMemberDraft({ model: next });
+    },
+    [patchTeamCreate, patchTeamMemberDraft]
   );
   const setForgeAgentWorktreeMode = useCallback(
     (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
@@ -632,11 +676,6 @@ export function TeamPage(props: TeamPageProps) {
   const setForgeAgentBusy = useCallback(
     (next: boolean) => patchTeamCreate({ forgeAgentBusy: next }),
     [patchTeamCreate]
-  );
-  const setTeamForgeAgentIds = useCallback(
-    (next: string[] | ((prev: string[]) => string[])) =>
-      patchTeamCreate({ teamForgeAgentIds: resolveUpdater(teamForgeAgentIds, next) }),
-    [patchTeamCreate, teamForgeAgentIds]
   );
   const handleForgeWorktreeModeChange = useCallback(
     (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
@@ -784,11 +823,15 @@ export function TeamPage(props: TeamPageProps) {
   const [memberEventsHasMore, setMemberEventsHasMore] = useState(false);
   const [memberEventsLoading, setMemberEventsLoading] = useState(false);
   const memberEventsRef = useRef<AgentEvent[]>([]);
+  const [focusedAgentMemberId, setFocusedAgentMemberId] = useState("");
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
+  useEffect(() => {
+    setSelectedTeamId(routeTeamId);
+  }, [routeTeamId]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -800,6 +843,7 @@ export function TeamPage(props: TeamPageProps) {
     setTaskMessageDraft("");
     setNewTaskTitle("");
     setSelectedMemberId("");
+    setFocusedAgentMemberId("");
   }, [selectedTeamId, setSelectedMemberId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
@@ -822,11 +866,16 @@ export function TeamPage(props: TeamPageProps) {
     for (const team of teams) {
       next.set(
         team.id,
-        resolveTeamMemberAgentStatuses(team.spec, agents, teamMemberAgentsById)
+        resolveTeamMemberAgentStatuses(
+          team.spec,
+          agents,
+          teamMemberAgentsById,
+          teamRuntimeByTeamId[team.id]?.members
+        )
       );
     }
     return next;
-  }, [agents, teamMemberAgentsById, teams]);
+  }, [agents, teamMemberAgentsById, teamRuntimeByTeamId, teams]);
   const teamMemberSummaryByTeamId = useMemo(() => {
     const next = new Map<string, TeamMemberAgentStatusSummary>();
     for (const team of teams) {
@@ -835,6 +884,17 @@ export function TeamPage(props: TeamPageProps) {
     }
     return next;
   }, [teamMemberStatusByTeamId, teams]);
+  const normalizedTeamSelectorFilter = teamSelectorFilter.trim().toLowerCase();
+  const selectorVisibleTeams = useMemo(() => {
+    if (!normalizedTeamSelectorFilter) {
+      return teams;
+    }
+    return teams.filter((team) => {
+      const name = team.name.toLowerCase();
+      const id = team.id.toLowerCase();
+      return name.includes(normalizedTeamSelectorFilter) || id.includes(normalizedTeamSelectorFilter);
+    });
+  }, [normalizedTeamSelectorFilter, teams]);
   const selectedTeamMemberStatuses = useMemo(() => {
     if (!selectedTeam) {
       return [];
@@ -875,6 +935,40 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveTeamRuntimeControlTone(selectedTeamRuntimeStatus.status),
     [selectedTeamRuntimeStatus.status]
   );
+  const selectedTeamMembers = useMemo(
+    () => (selectedTeam ? parseTeamSpecMembers(selectedTeam.spec) : []),
+    [selectedTeam]
+  );
+  const selectedTeamHasConfiguredMembers = useMemo(
+    () => (selectedTeam ? teamSpecHasConfiguredMembers(selectedTeam.spec) : false),
+    [selectedTeam]
+  );
+  const selectedTeamHasLeader = useMemo(
+    () => (selectedTeam ? teamSpecHasLeader(selectedTeam.spec) : false),
+    [selectedTeam]
+  );
+  const selectedTeamWorkerCount = useMemo(
+    () => selectedTeamMembers.filter((member) => member.role === "worker").length,
+    [selectedTeamMembers]
+  );
+  const teamMemberRoleOptions = useMemo(
+    () => resolveTeamMemberRoleOptions(selectedTeamHasLeader),
+    [selectedTeamHasLeader]
+  );
+  const teamMemberRoleProfile = useMemo(
+    () => (teamMemberDraft ? resolveTeamMemberRoleProfile(teamMemberDraft.role) : null),
+    [teamMemberDraft]
+  );
+  const teamExecutionBlockedReason = useMemo(() => {
+    if (!selectedTeam) {
+      return null;
+    }
+    if (!selectedTeamHasConfiguredMembers) {
+      return "Add at least one agent before starting the team runtime or a run.";
+    }
+    return null;
+  }, [selectedTeam, selectedTeamHasConfiguredMembers]);
+  const teamMemberForgeLabel = "Add Agent";
   const primaryWorkspaceTabValue = TEAM_PRIMARY_WORKSPACE_TABS.has(tab) ? tab : null;
   useEffect(() => {
     const memberId = selectedMemberId.trim();
@@ -889,6 +983,18 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [selectedMemberId, selectedTeamMemberLiveStates, setSelectedMemberId]);
   useEffect(() => {
+    const memberId = focusedAgentMemberId.trim();
+    if (!memberId) {
+      return;
+    }
+    const hasFocusedMember = selectedTeamMemberLiveStates.some(
+      (member) => member.member_id === memberId
+    );
+    if (!hasFocusedMember) {
+      setFocusedAgentMemberId("");
+    }
+  }, [focusedAgentMemberId, selectedTeamMemberLiveStates]);
+  useEffect(() => {
     if (tab !== "mailbox" || !snapshot || selectedMemberId.trim()) {
       return;
     }
@@ -901,25 +1007,6 @@ export function TeamPage(props: TeamPageProps) {
       setSelectedMemberId(defaultMailboxMemberId);
     }
   }, [selectedMemberId, setSelectedMemberId, snapshot, tab]);
-  const teamForgeAgents = useMemo(
-    () => selectTeamForgeAgents(agents, teamForgeAgentIds),
-    [agents, teamForgeAgentIds]
-  );
-  const leaderAgent = useMemo(
-    () => teamForgeAgents.find((agent) => agent.id === leaderMemberId) ?? null,
-    [teamForgeAgents, leaderMemberId]
-  );
-  const hasForgeAgents = teamForgeAgents.length > 0;
-  const forgeRoleTag = useMemo<TeamForgeRoleTag | null>(() => {
-    if (createTeamStage === 1) {
-      return "leader";
-    }
-    if (createTeamStage === 2) {
-      return "worker";
-    }
-    return null;
-  }, [createTeamStage]);
-  const canForgeAgentsInStage = !useSpecOverride && forgeRoleTag !== null;
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -978,39 +1065,40 @@ export function TeamPage(props: TeamPageProps) {
     return activeRunForSelectedTeam.status !== runStatusFilter;
   }, [activeRunForSelectedTeam, runStatusFilter, selectedTeamId]);
 
-  const builtTeamSpec = useMemo(
-    () =>
-      buildTeamSpecFromForm(
-        leaderMemberId,
-        leaderModel,
-        leaderPrompt,
-        leaderSkills,
-        leaderCustomSkills,
-        workers,
-        teamForgeAgents
-      ),
-    [
-      leaderMemberId,
-      leaderModel,
-      leaderPrompt,
-      leaderSkills,
-      leaderCustomSkills,
-      workers,
-      teamForgeAgents,
-    ]
-  );
-
-  const displayedTeamSpec = useMemo(() => {
-    if (useSpecOverride) {
-      return newTeamSpec;
-    }
-    return JSON.stringify(builtTeamSpec, null, 2);
-  }, [builtTeamSpec, newTeamSpec, useSpecOverride]);
-
   const selectedMemberSnapshot = useMemo(
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
   );
+  const selectedAgentWorkspaceMemberId = useMemo(
+    () => selectedMemberId.trim() || focusedAgentMemberId.trim(),
+    [focusedAgentMemberId, selectedMemberId]
+  );
+  const selectedAgentWorkspaceSnapshot = useMemo(
+    () =>
+      snapshot?.members.find((member) => member.member_id === selectedAgentWorkspaceMemberId) ??
+      null,
+    [selectedAgentWorkspaceMemberId, snapshot]
+  );
+  const selectedAgentWorkspaceRuntimeMember = useMemo(() => {
+    if (!selectedAgentWorkspaceMemberId) {
+      return null;
+    }
+    return (
+      selectedTeamRuntime?.members.find(
+        (member) => member.member_id === selectedAgentWorkspaceMemberId
+      ) ?? null
+    );
+  }, [selectedAgentWorkspaceMemberId, selectedTeamRuntime]);
+  const selectedAgentWorkspaceSessionId = useMemo(() => {
+    const snapshotSessionId = getTeamStepRuntimeHandleId(
+      selectedAgentWorkspaceSnapshot?.latest_step
+    );
+    if (snapshotSessionId) {
+      return snapshotSessionId;
+    }
+    const runtimeSessionId = selectedAgentWorkspaceRuntimeMember?.session_id?.trim();
+    return runtimeSessionId && runtimeSessionId.length > 0 ? runtimeSessionId : null;
+  }, [selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) return null;
@@ -1123,193 +1211,54 @@ export function TeamPage(props: TeamPageProps) {
     () => selectTeamPreviewEvents(events, selectedMemberId),
     [events, selectedMemberId]
   );
-  const configuredWorkerCount = useMemo(
-    () => workers.filter((worker) => worker.member_id.trim().length > 0).length,
-    [workers]
-  );
-  const workerAgentIds = useMemo(
-    () =>
-      workers
-        .map((worker) => worker.member_id.trim())
-        .filter((memberId) => memberId.length > 0),
-    [workers]
-  );
-  const selectedMemberIds = useMemo(
-    () => [leaderMemberId.trim(), ...workerAgentIds].filter((item) => item.length > 0),
-    [leaderMemberId, workerAgentIds]
-  );
-  const duplicateMemberIds = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const memberId of selectedMemberIds) {
-      counts.set(memberId, (counts.get(memberId) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .filter(([, count]) => count > 1)
-      .map(([memberId]) => memberId);
-  }, [selectedMemberIds]);
-  const hasDuplicateMembers = duplicateMemberIds.length > 0;
-  const unassignedWorkerSlots = useMemo(
-    () => workers.filter((worker) => worker.member_id.trim().length === 0).length,
-    [workers]
-  );
-  const availableWorkerAgentCount = useMemo(() => {
-    const used = new Set<string>([leaderMemberId.trim(), ...workerAgentIds]);
-    return teamForgeAgents.filter((agent) => !used.has(agent.id)).length;
-  }, [leaderMemberId, teamForgeAgents, workerAgentIds]);
-  const isMissionBriefReady = useMemo(
-    () => newTeamName.trim().length > 0,
-    [newTeamName]
-  );
-  const isLeaderForgeReady = useMemo(
-    () =>
-      useSpecOverride ||
-      leaderMemberId.trim().length > 0 &&
-      teamForgeAgents.some((agent) => agent.id === leaderMemberId),
-    [leaderMemberId, teamForgeAgents, useSpecOverride]
-  );
-  const isRecruitWorkersReady = useMemo(
-    () => useSpecOverride || !hasDuplicateMembers,
-    [hasDuplicateMembers, useSpecOverride]
-  );
-  const createStageReadiness = useMemo(
-    () =>
-      ({
-        0: isMissionBriefReady,
-        1: isLeaderForgeReady,
-        2: isRecruitWorkersReady,
-        3: true,
-      }) as Record<CreateTeamStage, boolean>,
-    [isLeaderForgeReady, isMissionBriefReady, isRecruitWorkersReady]
-  );
-  const currentStageBlockReason = useMemo(() => {
-    if (createTeamStage === 0 && !isMissionBriefReady) {
-      return "Team name is required to continue.";
-    }
-    if (createTeamStage === 1 && !isLeaderForgeReady) {
-      return "Select a valid leader agent before continuing.";
-    }
-    if (createTeamStage === 2 && !isRecruitWorkersReady) {
-      return "Resolve duplicate member assignments before continuing.";
-    }
-    return null;
-  }, [
-    createTeamStage,
-    isLeaderForgeReady,
-    isMissionBriefReady,
-    isRecruitWorkersReady,
-  ]);
-  const canAdvanceCreateStage = useMemo(() => {
-    return createStageReadiness[createTeamStage];
-  }, [createStageReadiness, createTeamStage]);
-  const canEnterCreateStage = useCallback(
-    (target: CreateTeamStage): boolean => {
-      if (useSpecOverride && target !== 0 && target !== 3) {
-        return false;
-      }
-      if (target <= createTeamStage) {
-        return true;
-      }
-      for (let index = 0; index < target; index += 1) {
-        const stage = index as CreateTeamStage;
-        if (!createStageReadiness[stage]) {
-          return false;
-        }
-      }
-      return true;
-    },
-    [createStageReadiness, createTeamStage, useSpecOverride]
-  );
-  const questChecklist = useMemo(
-    () => [
-      {
-        key: "brief",
-        label: "Mission name set",
-        ready: isMissionBriefReady,
-      },
-      {
-        key: "leader",
-        label: useSpecOverride
-          ? "Leader/worker forge skipped (manual spec mode)"
-          : "Leader selected",
-        ready: isLeaderForgeReady,
-      },
-      {
-        key: "party",
-        label: useSpecOverride
-          ? "Member assignments provided in manual spec JSON"
-          : hasDuplicateMembers
-          ? "Resolve duplicate member assignments"
-          : "Party assignments are unique",
-        ready: isRecruitWorkersReady,
-      },
-      {
-        key: "launch",
-        label: useSpecOverride ? "Manual spec override enabled" : "Auto workflow ready",
-        ready: true,
-      },
-    ],
-    [
-      hasDuplicateMembers,
-      isLeaderForgeReady,
-      isMissionBriefReady,
-      isRecruitWorkersReady,
-      useSpecOverride,
-    ]
-  );
-  const leaderModelOptions = useMemo(
-    () => resolveTeamModelOptions(leaderModel),
-    [leaderModel]
-  );
-  const leaderForgeAgentOptions = useMemo(
-    () =>
-      teamForgeAgents.map((agent) => ({
-        value: agent.id,
-        label: buildAgentLabel(agent),
-      })),
-    [teamForgeAgents]
-  );
-  const leaderAgentSelectOptions = useMemo(() => {
-    const options = [...leaderForgeAgentOptions];
-    const hasSelected = options.some((option) => option.value === leaderMemberId);
-    if (leaderMemberId && !hasSelected) {
-      options.unshift({
-        value: leaderMemberId,
-        label: `Missing forged agent (${leaderMemberId})`,
-      });
-    }
-    return options;
-  }, [leaderForgeAgentOptions, leaderMemberId]);
-
   const oldestEventId = events.length > 0 ? events[0].event_id : null;
   const oldestMemberEventId =
     memberEvents.length > 0 ? memberEvents[0].event_id : null;
 
   const resetTeamDraft = useCallback(() => {
-    const initial = createInitialTeamDraftState();
+    const initial = createInitialTeamCreateState();
     patchTeamCreate({
-      newTeamName: "",
-      newTeamDescription: "",
-      leaderMemberId: initial.leaderMemberId,
-      leaderModel: initial.leaderModel,
-      leaderPrompt: initial.leaderPrompt,
-      leaderSkills: initial.leaderSkills,
-      leaderCustomSkills: initial.leaderCustomSkills,
-      workers: initial.workers,
-      useSpecOverride: initial.useSpecOverride,
-      newTeamSpec: initial.newTeamSpec,
-      teamForgeAgentIds: initial.teamForgeAgentIds,
-      showForgeAgentForm: false,
-      forgeAgentName: "",
-      forgeAgentWorkdir: "",
-      forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
-      forgeAgentWorktreeMode: "use_existing",
-      forgeAgentWorktreeRepo: "",
-      forgeAgentWorktreeRef: "",
-      forgeAgentCodeMode: true,
-      forgeAgentWorktreeError: null,
-      forgeAgentBusy: false,
+      newTeamName: initial.newTeamName,
+      newTeamDescription: initial.newTeamDescription,
+      showForgeAgentForm: initial.showForgeAgentForm,
+      forgeAgentName: initial.forgeAgentName,
+      forgeAgentWorkdir: initial.forgeAgentWorkdir,
+      forgeAgentPresetId: initial.forgeAgentPresetId,
+      forgeAgentWorktreeMode: initial.forgeAgentWorktreeMode,
+      forgeAgentWorktreeRepo: initial.forgeAgentWorktreeRepo,
+      forgeAgentWorktreeRef: initial.forgeAgentWorktreeRef,
+      forgeAgentCodeMode: initial.forgeAgentCodeMode,
+      forgeAgentWorktreeError: initial.forgeAgentWorktreeError,
+      forgeAgentBusy: initial.forgeAgentBusy,
     });
+    setTeamMemberDraft(null);
   }, [patchTeamCreate]);
+
+  useEffect(() => {
+    if (!props.token) {
+      setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      return;
+    }
+    let active = true;
+    void api
+      .getRuntimeDefaults(props.token)
+      .then((defaults) => {
+        if (!active) {
+          return;
+        }
+        const root = normalizeWorkdirInput(defaults.default_worktree_root);
+        setForgeDefaultWorktreeRoot(root || DEFAULT_WORKTREE_ROOT);
+      })
+      .catch((err) => {
+        if (!active || (!showCreateTeamModal && !showForgeAgentForm)) {
+          return;
+        }
+        setError(`Failed to load Team defaults: ${parseErrorMessage(err)}`);
+      });
+    return () => {
+      active = false;
+    };
+  }, [props.token, setError, showCreateTeamModal, showForgeAgentForm]);
 
   useEffect(() => {
     if (!showCreateTeamModal || busy === "create-team") {
@@ -1367,7 +1316,7 @@ export function TeamPage(props: TeamPageProps) {
     refreshSnapshot,
     loadInbox,
     loadMemberEvents,
-    onCreateRun,
+    onCreateRun: triggerCreateRun,
     onLoadRunById,
     onRefreshRuns,
     onLoadMoreRuns,
@@ -1391,7 +1340,9 @@ export function TeamPage(props: TeamPageProps) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberSnapshot,
+    selectedMemberId: selectedAgentWorkspaceMemberId,
+    selectedMemberSessionId: selectedAgentWorkspaceSessionId,
+    selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
     activeRunIdRef,
     eventsRef,
     memberEventsRef,
@@ -1399,7 +1350,7 @@ export function TeamPage(props: TeamPageProps) {
     setError,
     setAgents,
     setTeams,
-    setSelectedTeamId,
+    setSelectedTeamId: setRouteScopedSelectedTeamId,
     setRuns,
     setTeamRunBrowserByTeam,
     setRunsLoading,
@@ -1575,139 +1526,166 @@ export function TeamPage(props: TeamPageProps) {
     markConversationSeen,
   });
 
-  useTeamCreateModalLifecycleEffects({
-    token: props.token,
-    busy,
-    showCreateTeamModal,
-    leaderMemberId,
-    teamForgeAgents,
-    parseError: parseErrorMessage,
-    setError,
-    setForgeDefaultWorktreeRoot,
-    setLeaderMemberId,
+  const openCreateTeamModal = useCallback(() => {
+    const { draft: restoredDraft, error: restoreError } = loadTeamCreateDraft("wizard");
+    setError(null);
+    setWarning(null);
+    if (restoreError) {
+      setError(restoreError);
+    }
+    resetTeamDraft();
+    if (restoredDraft) {
+      patchTeamCreate({
+        ...restoredDraft,
+        showCreateTeamModal: true,
+        showForgeAgentForm: false,
+        forgeAgentWorktreeError: null,
+        forgeAgentBusy: false,
+      });
+      return;
+    }
+    setShowCreateTeamModal(true);
+    setShowForgeAgentForm(false);
+    setForgeAgentWorktreeError(null);
+  }, [
+    patchTeamCreate,
+    resetTeamDraft,
     setShowCreateTeamModal,
-    setCreateTeamStage,
-  });
+    setShowForgeAgentForm,
+    setForgeAgentWorktreeError,
+    setWarning,
+  ]);
 
-  const openCreateTeamModal = useCallback(
-    (mode: TeamCreateEntryMode) => {
-      const isManualSpec = mode === "manual_spec";
-      const { draft: restoredDraft, error: restoreError } = loadTeamCreateDraft(mode);
+  const closeCreateTeamModal = useCallback(() => {
+    if (busy === "create-team") {
+      return;
+    }
+    setShowCreateTeamModal(false);
+  }, [busy, setShowCreateTeamModal]);
+
+  const openTeamMemberForgeModal = useCallback(() => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    const role = resolveInitialTeamMemberRole(selectedTeamHasLeader);
+    const defaults = resolveTeamForgeDefaults({
+      teamName: selectedTeam.name,
+      role,
+      workerCount: selectedTeamWorkerCount,
+      defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+      agentPresetId: DEFAULT_AGENT_PRESET_ID,
+    });
+
+    setError(null);
+    setWarning(null);
+    setTeamMemberDraft(defaults.draft);
+    setShowForgeAgentForm(true);
+    setForgeAgentName(defaults.agentName);
+    setForgeAgentWorktreeMode(defaults.worktreeMode);
+    setForgeAgentWorktreeRepo(defaults.worktreeRepo);
+    setForgeAgentWorktreeRef(defaults.worktreeRef);
+    setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+    setForgeAgentCodeMode(true);
+    setForgeAgentWorktreeError(null);
+    setForgeAgentWorkdir(defaults.agentWorkdir);
+  }, [
+    forgeDefaultWorktreeRoot,
+    selectedTeam,
+    selectedTeamHasLeader,
+    selectedTeamWorkerCount,
+    setError,
+    setWarning,
+    setShowForgeAgentForm,
+    setForgeAgentCodeMode,
+    setForgeAgentName,
+    setForgeAgentPresetId,
+    setForgeAgentWorkdir,
+    setForgeAgentWorktreeError,
+    setForgeAgentWorktreeMode,
+    setForgeAgentWorktreeRef,
+    setForgeAgentWorktreeRepo,
+  ]);
+
+  const handleTeamMemberRoleChange = useCallback(
+    (nextRole: string) => {
+      if (!selectedTeam) {
+        return;
+      }
+      if (nextRole !== "leader" && nextRole !== "worker") {
+        return;
+      }
+      const role = nextRole as TeamMemberRole;
+      const roleOption = teamMemberRoleOptions.find((option) => option.value === role);
+      if (!roleOption || roleOption.disabled) {
+        return;
+      }
+      const defaults = resolveTeamForgeDefaults({
+        teamName: selectedTeam.name,
+        role,
+        workerCount: selectedTeamWorkerCount,
+        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+        agentPresetId: forgeAgentPresetId,
+      });
       setError(null);
       setWarning(null);
-      if (restoreError) {
-        setError(restoreError);
-      }
-      resetTeamDraft();
-      if (restoredDraft) {
-        patchTeamCreate({
-          ...restoredDraft,
-          showCreateTeamModal: true,
-          showForgeAgentForm: false,
-          forgeAgentWorktreeError: null,
-          forgeAgentBusy: false,
-        });
-      } else {
-        setCreateTeamStage(0);
-        setUseSpecOverride(isManualSpec);
-        setShowCreateTeamModal(true);
-        setShowForgeAgentForm(false);
-        setForgeAgentWorktreeError(null);
-      }
-      void refreshAgents().catch((err) => {
-        setError(parseErrorMessage(err));
-      });
+      setTeamMemberDraft(defaults.draft);
+      setForgeAgentName(defaults.agentName);
+      setForgeAgentWorktreeMode(defaults.worktreeMode);
+      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
+      setForgeAgentWorktreeRef(defaults.worktreeRef);
+      setForgeAgentWorktreeError(null);
+      setForgeAgentWorkdir(defaults.agentWorkdir);
     },
     [
-      patchTeamCreate,
-      refreshAgents,
-      resetTeamDraft,
+      forgeAgentPresetId,
+      forgeDefaultWorktreeRoot,
+      selectedTeam,
+      selectedTeamWorkerCount,
+      setError,
       setWarning,
-      setCreateTeamStage,
-      setShowCreateTeamModal,
-      setShowForgeAgentForm,
+      setForgeAgentName,
+      setForgeAgentWorkdir,
       setForgeAgentWorktreeError,
-      setUseSpecOverride,
+      setForgeAgentWorktreeMode,
+      setForgeAgentWorktreeRef,
+      setForgeAgentWorktreeRepo,
+      teamMemberRoleOptions,
     ]
   );
 
-  const openCreateTeamWizardModal = useCallback(() => {
-    openCreateTeamModal("wizard");
-  }, [openCreateTeamModal]);
-
-  const openCreateTeamManualModal = useCallback(() => {
-    openCreateTeamModal("manual_spec");
-  }, [openCreateTeamModal]);
-
-  const closeCreateTeamModal = () => {
-    setShowCreateTeamModal(false);
-    setCreateTeamStage(0);
-    setShowForgeAgentForm(false);
-    setForgeAgentWorktreeError(null);
-  };
-
-  const openForgeAgentForm = () => {
-    if (!forgeRoleTag) {
-      setError("Open Agent Forge in Leader Forge or Recruit Workers stage.");
+  const closeTeamMemberForgeModal = useCallback(() => {
+    if (forgeAgentBusy) {
       return;
     }
-    setError(null);
-    setForgeAgentWorktreeError(null);
-    setShowForgeAgentForm(true);
-    const teamToken = newTeamName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const prefix = teamToken || "team";
-    const defaultName =
-      forgeRoleTag === "leader"
-        ? `${prefix}-leader`
-        : forgeRoleTag === "worker"
-          ? `${prefix}-worker-${Math.max(1, workers.length + 1)}`
-          : `${prefix}-agent-${Math.max(1, agents.length + 1)}`;
-    setForgeAgentName(defaultName);
-    setForgeAgentWorktreeMode("use_existing");
-    if (forgeRoleTag === "leader") {
-      const normalizedRoot =
-        normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
-      setForgeAgentWorkdir(buildLeaderForgeDefaultWorkdir(normalizedRoot, defaultName));
-    } else {
-      setForgeAgentWorkdir((prev) =>
-        resolveWorkdirForModalOpen(
-          prev,
-          "use_existing",
-          forgeDefaultWorktreeRoot,
-          DEFAULT_WORKTREE_ROOT
-        )
-      );
-    }
-    setForgeAgentWorktreeRepo("");
-    setForgeAgentWorktreeRef("");
-    setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
-    setForgeAgentCodeMode(true);
-  };
-
-  const closeForgeAgentForm = () => {
-    if (forgeAgentBusy) return;
     setShowForgeAgentForm(false);
     setForgeAgentWorktreeError(null);
-  };
+    setTeamMemberDraft(null);
+  }, [forgeAgentBusy, setShowForgeAgentForm, setForgeAgentWorktreeError]);
 
   const onCreateForgeAgent = async () => {
-    if (forgeAgentBusy) return;
-    if (!forgeRoleTag) {
-      setError("Role tag is unavailable in this stage. Switch to Leader or Worker stage.");
+    if (forgeAgentBusy) {
       return;
     }
-    const isLeaderForge = forgeRoleTag === "leader";
-    const effectiveWorktreeMode = isLeaderForge
-      ? "use_existing"
-      : forgeAgentWorktreeMode;
-    const effectiveWorktreeRepo = isLeaderForge ? "" : forgeAgentWorktreeRepo.trim();
-    const effectiveWorktreeRef = isLeaderForge ? "" : forgeAgentWorktreeRef.trim();
-    const name = forgeAgentName.trim() || "agent";
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    if (!teamMemberDraft) {
+      setError("Open Add Agent first");
+      return;
+    }
+
+    const isLeaderRole = teamMemberDraft.role === "leader";
+    const effectiveWorktreeMode = isLeaderRole ? "use_existing" : forgeAgentWorktreeMode;
+    const effectiveWorktreeRepo = isLeaderRole ? "" : forgeAgentWorktreeRepo.trim();
+    const effectiveWorktreeRef = isLeaderRole ? "" : forgeAgentWorktreeRef.trim();
     const normalizedRoot =
       normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
+    const name = forgeAgentName.trim() || "agent";
     const workdirInput = normalizeWorkdirInput(forgeAgentWorkdir);
     const workdir =
-      isLeaderForge && !workdirInput
+      isLeaderRole && !workdirInput
         ? buildLeaderForgeDefaultWorkdir(normalizedRoot, name)
         : workdirInput;
     const workdirPayload =
@@ -1716,14 +1694,16 @@ export function TeamPage(props: TeamPageProps) {
       workdir === normalizedRoot
         ? ""
         : workdir;
+
     if (!workdirPayload && effectiveWorktreeMode !== "create_worktree") {
-      setError("Forge agent workdir is required");
+      setError("Agent workdir is required");
       return;
     }
     if (effectiveWorktreeMode !== "use_existing" && !effectiveWorktreeRepo) {
       setError("Worktree repo is required");
       return;
     }
+
     setForgeAgentBusy(true);
     setError(null);
     setForgeAgentWorktreeError(null);
@@ -1734,23 +1714,32 @@ export function TeamPage(props: TeamPageProps) {
         workdir: workdirPayload,
         command: preset.command,
         args: preset.args.slice(),
-        source: "team_forge",
+        source: AGENT_SOURCE_TEAM_FORGE,
         worktree_mode: effectiveWorktreeMode,
         worktree_repo: effectiveWorktreeRepo || null,
         worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
       });
-      setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
-      setTeamForgeAgentIds((prev) =>
-        prev.includes(created.id) ? prev : [...prev, created.id]
+      const nextSpec = appendTeamMemberToSpec(
+        selectedTeam.spec,
+        { ...teamMemberDraft, member_id: created.id },
+        created
       );
-      if (forgeRoleTag === "leader") {
-        setLeaderMemberId(created.id);
-      } else if (forgeRoleTag === "worker") {
-        setWorkers((prev) => assignCreatedWorkerToDraft(prev, created.id));
-      }
+      const updated = await api.updateTeamSpec(props.token, selectedTeam.id, {
+        spec: nextSpec,
+        expected_updated_at: selectedTeam.updated_at,
+      });
+      setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
+      setTeams((prev) =>
+        [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        )
+      );
+      setSelectedTeamId(updated.id);
       setShowForgeAgentForm(false);
       setForgeAgentWorktreeError(null);
+      setTeamMemberDraft(null);
+      void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
       const hint = formatTeamForgeWorktreeError(err);
       setForgeAgentWorktreeError(hint);
@@ -1760,94 +1749,26 @@ export function TeamPage(props: TeamPageProps) {
     }
   };
 
-  const onSelectCreateTeamStage = (target: CreateTeamStage) => {
-    if (canEnterCreateStage(target)) {
-      setError(null);
-      setCreateTeamStage(target);
-      return;
-    }
-    setError("Complete previous stage requirements before advancing.");
-  };
-
-  const goToNextCreateTeamStage = () => {
-    if (!canAdvanceCreateStage) {
-      setError(currentStageBlockReason ?? "Complete current stage requirements first.");
-      return;
-    }
-    setError(null);
-    setCreateTeamStage((prev) => {
-      if (useSpecOverride && prev === 0) {
-        return 3;
-      }
-      return clampCreateTeamStage(prev + 1);
-    });
-  };
-
-  const goToPrevCreateTeamStage = () => {
-    setError(null);
-    setCreateTeamStage((prev) => {
-      if (useSpecOverride && prev === 3) {
-        return 0;
-      }
-      return clampCreateTeamStage(prev - 1);
-    });
-  };
-
   const onCreateTeam = async () => {
     const name = newTeamName.trim();
     if (!name) {
       setError("Team name is required");
       return;
     }
-    if (!useSpecOverride && !leaderMemberId.trim()) {
-      setError("Leader member is required");
-      return;
-    }
-    if (
-      !useSpecOverride &&
-      !teamForgeAgents.some((agent) => agent.id === leaderMemberId.trim())
-    ) {
-      setError("Leader must be selected from Team Forge agents");
-      return;
-    }
-    if (!useSpecOverride && hasDuplicateMembers) {
-      setError("Leader/member assignments must be unique");
-      return;
-    }
     setBusy("create-team");
     setError(null);
     setWarning(null);
     try {
-      const specPayload = useSpecOverride
-        ? parseRequiredJson(newTeamSpec, "Team spec")
-        : builtTeamSpec;
       const created = await api.createTeam(props.token, {
         name,
         description: newTeamDescription.trim() || undefined,
-        spec: specPayload,
+        spec: buildEmptyTeamSpec(),
       });
-      const staleForgeAgentIds = resolveUnusedTeamForgeAgentIds(
-        teamForgeAgentIds,
-        created.spec
-      );
-      const { deletedForgeAgentIds, cleanupErrors } = await cleanupUnusedTeamForgeAgents(
-        props.token,
-        staleForgeAgentIds,
-        api.deleteAgent
-      );
-      if (deletedForgeAgentIds.length > 0) {
-        const deletedSet = new Set(deletedForgeAgentIds);
-        setAgents((prev) => prev.filter((agent) => !deletedSet.has(agent.id)));
-      }
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setSelectedTeamId(created.id);
       clearTeamCreateDraft();
       resetTeamDraft();
-      closeCreateTeamModal();
-      const cleanupWarning = buildTeamForgeCleanupWarning(cleanupErrors);
-      if (cleanupWarning) {
-        setWarning(cleanupWarning);
-      }
+      setShowCreateTeamModal(false);
+      navigateToTeamDetail(created.id);
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -1882,13 +1803,12 @@ export function TeamPage(props: TeamPageProps) {
         delete next[selectedTeam.id];
         return next;
       });
-      setSelectedTeamId((current) =>
-        current === selectedTeam.id ? (remainingTeams[0]?.id ?? null) : current
-      );
+      setSelectedTeamId((current) => (current === selectedTeam.id ? null : current));
       setActiveRunId((current) =>
         current && remainingRuns.some((run) => run.id === current) ? current : null
       );
       setRunLookupId("");
+      navigateToTeamSelector();
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -2072,13 +1992,39 @@ export function TeamPage(props: TeamPageProps) {
       setSelectedTaskId(created.task.id);
       setCompiledRunPreview(null);
       setNewTaskTitle("");
+      if (created.latest_run) {
+        applyCreatedRunState(created.latest_run, false);
+      }
       setTab("tasks");
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
-  }, [newTaskTitle, props.token, selectedTeamId, setBusy, setTab]);
+  }, [applyCreatedRunState, newTaskTitle, props.token, selectedTeamId, setBusy, setTab]);
+
+  const onUpdateTaskStatus = useCallback(
+    async (taskId: string, status: TeamTaskStatus) => {
+      if (!selectedTeamId) {
+        setError("Select a team first");
+        return;
+      }
+      setBusy("update-task-status");
+      setError(null);
+      try {
+        const updated = await api.updateTeamTask(props.token, selectedTeamId, taskId, { status });
+        setTaskList((prev) =>
+          sortTasksByActivity([updated, ...prev.filter((task) => task.id !== updated.id)])
+        );
+        setSelectedTaskId(updated.id);
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [props.token, selectedTeamId]
+  );
 
   const onSendTaskMessage = useCallback(async (payload: {
     text: string;
@@ -2136,21 +2082,70 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   const onRefreshMemberConsole = useCallback(async () => {
-    if (selectedMemberSnapshot) {
+    if (selectedAgentWorkspaceMemberId && selectedAgentWorkspaceSessionId) {
       await loadMemberEvents("replace");
       return;
     }
     if (activeRunIdForSelectedTeam) {
       await refreshEvents(activeRunIdForSelectedTeam);
     }
-  }, [activeRunIdForSelectedTeam, loadMemberEvents, refreshEvents, selectedMemberSnapshot]);
+  }, [
+    activeRunIdForSelectedTeam,
+    loadMemberEvents,
+    refreshEvents,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceSessionId,
+  ]);
 
   const onLoadOlderMemberConsole = useCallback(async () => {
-    if (!selectedMemberSnapshot) {
+    if (!selectedAgentWorkspaceMemberId || !selectedAgentWorkspaceSessionId) {
       return;
     }
     await loadMemberEvents("prepend");
-  }, [loadMemberEvents, selectedMemberSnapshot]);
+  }, [loadMemberEvents, selectedAgentWorkspaceMemberId, selectedAgentWorkspaceSessionId]);
+
+  useEffect(() => {
+    if (
+      (tab !== "agent_acp" && tab !== "member_console") ||
+      !selectedAgentWorkspaceMemberId
+    ) {
+      return;
+    }
+    if (!selectedAgentWorkspaceSessionId) {
+      setMemberEvents([]);
+      setMemberEventsHasMore(false);
+      return;
+    }
+    void loadMemberEvents("replace");
+  }, [
+    loadMemberEvents,
+    setMemberEventsHasMore,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceSessionId,
+    tab,
+  ]);
+  useEffect(() => {
+    if (
+      !eventsAutoRefresh ||
+      (tab !== "agent_acp" && tab !== "member_console") ||
+      !selectedAgentWorkspaceMemberId ||
+      !selectedAgentWorkspaceSessionId
+    ) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadMemberEvents("replace").catch(() => undefined);
+    }, 4000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    eventsAutoRefresh,
+    loadMemberEvents,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceSessionId,
+    tab,
+  ]);
 
   const onRefreshOverviewSnapshot = useCallback(async () => {
     if (!activeRunIdForSelectedTeam) return;
@@ -2164,20 +2159,28 @@ export function TeamPage(props: TeamPageProps) {
 
   const onOpenMailboxForMember = useCallback((memberId: string) => {
     setSelectedMemberId(memberId);
+    setFocusedAgentMemberId("");
     setTab("mailbox");
   }, [setSelectedMemberId, setTab]);
   const onSelectConversationSubject = useCallback(() => {
+    setFocusedAgentMemberId("");
     setTab("conversation");
+  }, [setTab]);
+  const onSelectKanbanSubject = useCallback(() => {
+    setFocusedAgentMemberId("");
+    setTab("tasks");
   }, [setTab]);
   const onSelectAgentWorkspace = useCallback(
     (memberId: string, nextTab: TeamTab = "mailbox") => {
       setSelectedMemberId(memberId);
+      setFocusedAgentMemberId(memberId);
       setTab(nextTab);
     },
     [setSelectedMemberId, setTab]
   );
   const onSelectUtilityWorkspace = useCallback(
     (nextTab: TeamTab) => {
+      setFocusedAgentMemberId("");
       setTab(nextTab);
     },
     [setTab]
@@ -2203,102 +2206,19 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [activeRunForSelectedTeam, refreshEvents]);
 
-  const onUpdateWorker = (
-    index: number,
-    field: "member_id" | "description" | "model" | "prompt" | "custom_skills",
-    value: string
-  ) => {
-    setWorkers((prev) =>
-      prev.map((worker, workerIndex) =>
-        workerIndex === index ? { ...worker, [field]: value } : worker
-      )
-    );
-  };
-
-  const onToggleWorkerSkill = (index: number, skill: string) => {
-    setWorkers((prev) =>
-      prev.map((worker, workerIndex) =>
-        workerIndex === index
-          ? {
-              ...worker,
-              skills: toggleSkillSelection(
-                worker.skills,
-                skill,
-                REQUIRED_TEAM_WORKER_SKILLS
-              ),
-            }
-          : worker
-      )
-    );
-  };
-
-  const onAddWorker = () => {
-    setWorkers((prev) => {
-      const excluded = new Set<string>([
-        leaderMemberId.trim(),
-        ...prev
-          .map((worker) => worker.member_id.trim())
-          .filter((memberId) => memberId.length > 0),
-      ]);
-      const memberId = pickNextWorkerAgentId(teamForgeAgents, excluded);
-      return [...prev, buildDefaultWorkerDraft(memberId)];
-    });
-  };
-
-  const onAddAllRemainingWorkers = () => {
-    setWorkers((prev) => {
-      const used = new Set<string>([
-        leaderMemberId.trim(),
-        ...prev
-          .map((worker) => worker.member_id.trim())
-          .filter((memberId) => memberId.length > 0),
-      ]);
-      const next = [...prev];
-      for (const agent of teamForgeAgents) {
-        if (used.has(agent.id)) {
-          continue;
-        }
-        used.add(agent.id);
-        next.push(buildDefaultWorkerDraft(agent.id));
-      }
-      return next;
-    });
-  };
-
-  const onResolveDuplicateWorkers = () => {
-    setWorkers((prev) => {
-      const used = new Set<string>();
-      const leaderId = leaderMemberId.trim();
-      if (leaderId) {
-        used.add(leaderId);
-      }
-      return prev.map((worker) => {
-        const memberId = worker.member_id.trim();
-        if (!memberId) {
-          return worker;
-        }
-        if (!used.has(memberId)) {
-          used.add(memberId);
-          return worker;
-        }
-        const replacement = pickNextWorkerAgentId(teamForgeAgents, used);
-        if (!replacement) {
-          return { ...worker, member_id: "" };
-        }
-        used.add(replacement);
-        return { ...worker, member_id: replacement };
-      });
-    });
-  };
-
-  const onRemoveWorker = (index: number) => {
-    setWorkers((prev) => prev.filter((_, workerIndex) => workerIndex !== index));
-  };
-
   const runInputValidation = useMemo(() => validateRunInputJson(runInput), [runInput]);
   const runInputHasError = runInputValidation.error !== null;
-  const canCreateRun = busy !== "create-run" && !runInputHasError;
-  const canCompileTask = busy !== "compile-task" && selectedTask !== null;
+  const canCreateRun =
+    busy !== "create-run" && !runInputHasError && selectedTeamHasConfiguredMembers;
+  const canCompileTask =
+    busy !== "compile-task" && selectedTask !== null && selectedTeamHasConfiguredMembers;
+  const onCreateRun = useCallback(async () => {
+    if (!selectedTeamHasConfiguredMembers) {
+      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
+      return;
+    }
+    await triggerCreateRun();
+  }, [selectedTeamHasConfiguredMembers, setError, teamExecutionBlockedReason, triggerCreateRun]);
   const tabNeedsActiveRun = tabRequiresActiveRun(tab);
   const showRunContextLoading = tab !== "runs" && tabNeedsActiveRun && runsLoading && !activeRunForSelectedTeam;
   const showNoActiveRunNotice = tab !== "runs" && tabNeedsActiveRun && !runsLoading && !activeRunForSelectedTeam;
@@ -2307,7 +2227,20 @@ export function TeamPage(props: TeamPageProps) {
       selectedTeamMemberLiveStates.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, selectedTeamMemberLiveStates]
   );
-  const hasSelectedAgentContext = selectedMemberId.trim().length > 0;
+  const selectedAgentWorkspaceLiveState = useMemo(
+    () =>
+      selectedTeamMemberLiveStates.find(
+        (member) => member.member_id === selectedAgentWorkspaceMemberId
+      ) ?? null,
+    [selectedAgentWorkspaceMemberId, selectedTeamMemberLiveStates]
+  );
+  const selectedAgentLiveState = useMemo(
+    () =>
+      selectedTeamMemberLiveStates.find((member) => member.member_id === focusedAgentMemberId) ??
+      null,
+    [focusedAgentMemberId, selectedTeamMemberLiveStates]
+  );
+  const hasSelectedAgentContext = focusedAgentMemberId.trim().length > 0;
   const isAgentWorkspace =
     hasSelectedAgentContext && (TEAM_AGENT_WORKSPACE_TABS.has(tab) || tab === "mailbox");
   const workspaceAdvancedTabItems = (isAgentWorkspace
@@ -2318,6 +2251,8 @@ export function TeamPage(props: TeamPageProps) {
   const showRunActionsInAdvanced = Boolean(activeRunForSelectedTeam && tab !== "runs");
   const workspaceEyebrow = !selectedTeam
     ? "Team Workbench"
+    : isAgentWorkspace
+      ? "Agent Workspace"
     : tab === "runs"
       ? "Run Workspace"
       : TEAM_PRIMARY_WORKSPACE_TABS.has(tab)
@@ -2325,19 +2260,38 @@ export function TeamPage(props: TeamPageProps) {
         : !isAgentWorkspace && tab !== "conversation"
         ? "Team Utility"
         : null;
-  const selectedAgentLabel = useMemo(() => {
-    const agentName = selectedMemberLiveState?.agent_name?.trim();
-    if (agentName) {
-      return agentName;
+  const selectedAgentFallbackName = useMemo(() => {
+    const memberId = focusedAgentMemberId.trim();
+    if (!memberId) {
+      return null;
     }
-    return selectedMemberLiveState?.member_id ?? selectedTeam?.name ?? "Agent";
-  }, [selectedMemberLiveState?.agent_name, selectedMemberLiveState?.member_id, selectedTeam?.name]);
+    return (
+      teamMemberAgentsById[memberId]?.name?.trim() ??
+      agents.find((agent) => agent.id === memberId)?.name?.trim() ??
+      null
+    );
+  }, [agents, focusedAgentMemberId, teamMemberAgentsById]);
+  const selectedAgentLabel = useMemo(
+    () =>
+      resolveSelectedAgentWorkspaceLabel(
+        focusedAgentMemberId,
+        selectedAgentLiveState,
+        selectedAgentFallbackName
+      ),
+    [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
+  );
+  const selectedAgentStatusView = useMemo(
+    () => resolveAgentWorkspaceStatusView(selectedAgentLiveState),
+    [selectedAgentLiveState]
+  );
   const workspaceTitle = !selectedTeam
     ? "Team Workbench"
+    : isAgentWorkspace
+      ? selectedAgentLabel
     : tab === "conversation"
       ? selectedConversation?.title ?? DEFAULT_TEAM_THREAD_TITLE
     : tab === "tasks"
-      ? "Tasks"
+      ? "Kanban"
     : tab === "mailbox"
       ? selectedMemberLiveState
         ? selectedAgentLabel
@@ -2349,10 +2303,12 @@ export function TeamPage(props: TeamPageProps) {
         : selectedTeam.name;
   const workspaceDescription = !selectedTeam
     ? "Select a team from the left rail to start team conversations and supervise execution."
+    : isAgentWorkspace
+      ? "Inspect the selected agent, its direct thread, and its current runtime state."
     : tab === "conversation"
       ? "Shared planning and broadcast thread."
     : tab === "tasks"
-        ? "Plan work, inspect compile preview, and create runs from selected tasks."
+        ? "Track agent-owned tasks, linked runs, and the latest execution summaries."
       : tab === "mailbox"
         ? selectedMemberLiveState
           ? "Direct mailbox thread for the selected agent."
@@ -2386,6 +2342,17 @@ export function TeamPage(props: TeamPageProps) {
     return { online, offline, missing };
   }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
   const workspaceNoticeText = useMemo(() => {
+    if (isAgentWorkspace) {
+      return [
+        selectedAgentLabel,
+        selectedAgentStatusView.lifecycle,
+        selectedAgentStatusView.work,
+        `inbox ${selectedAgentStatusView.inbox}`,
+        activeRunForSelectedTeam ? `run ${activeRunForSelectedTeam.status}` : "no active run",
+      ]
+        .filter((value): value is string => Boolean(value && value !== "unknown"))
+        .join(" · ");
+    }
     const runtimeLabel = selectedTeam ? selectedTeamRuntimeStatus.label : null;
     const runLabel = activeRunForSelectedTeam
       ? `run ${activeRunForSelectedTeam.status}`
@@ -2397,34 +2364,41 @@ export function TeamPage(props: TeamPageProps) {
         : workspaceMemberAvailability.offline > 0
           ? `${workspaceMemberAvailability.offline} offline`
           : `${workspaceMemberAvailability.online} online`;
-    const agentLabel = (() => {
-      if (!isAgentWorkspace || !selectedMemberLiveState) {
-        return null;
-      }
-      const lifecycle = normalizeTeamMemberLifecycle(selectedMemberLiveState);
-      if (lifecycle !== "unknown") {
-        return `${selectedAgentLabel} ${lifecycle}`;
-      }
-      const workStatus = normalizeTeamMemberWorkStatus(selectedMemberLiveState);
-      if (workStatus !== "unknown") {
-        return `${selectedAgentLabel} ${workStatus === "no_run" ? "waiting for a run" : workStatus}`;
-      }
-      return null;
-    })();
-    return [runtimeLabel, runLabel, rosterLabel, availabilityLabel, agentLabel]
+    return [runtimeLabel, runLabel, rosterLabel, availabilityLabel]
       .filter((value): value is string => Boolean(value))
       .join(" · ");
   }, [
     activeRunForSelectedTeam,
     isAgentWorkspace,
-    selectedTeam,
     selectedAgentLabel,
-    selectedMemberLiveState,
+    selectedAgentStatusView.inbox,
+    selectedAgentStatusView.lifecycle,
+    selectedAgentStatusView.work,
+    selectedTeam,
     selectedTeamMemberLiveStates.length,
     selectedTeamRuntimeStatus.label,
     workspaceMemberAvailability,
   ]);
   const workspaceNoticeDotClassName = useMemo(() => {
+    if (isAgentWorkspace) {
+      if (selectedAgentStatusView.lifecycle === "missing") {
+        return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+      }
+      if (selectedAgentStatusView.work === "blocked") {
+        return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
+      }
+      if (
+        selectedAgentStatusView.lifecycle === "working" ||
+        selectedAgentStatusView.work === "working" ||
+        selectedAgentStatusView.work === "pending" ||
+        selectedAgentStatusView.work === "done"
+      ) {
+        return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
+      }
+      if (selectedAgentStatusView.lifecycle === "stopped") {
+        return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
+      }
+    }
     if (workspaceMemberAvailability.missing > 0) {
       return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
     }
@@ -2450,7 +2424,14 @@ export function TeamPage(props: TeamPageProps) {
       return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
     }
     return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-  }, [activeRunForSelectedTeam, selectedTeamRuntimeStatus.status, workspaceMemberAvailability.missing]);
+  }, [
+    activeRunForSelectedTeam,
+    isAgentWorkspace,
+    selectedAgentStatusView.lifecycle,
+    selectedAgentStatusView.work,
+    selectedTeamRuntimeStatus.status,
+    workspaceMemberAvailability.missing,
+  ]);
   const workspaceDetailItems = useMemo(
     () =>
       [
@@ -2460,19 +2441,19 @@ export function TeamPage(props: TeamPageProps) {
         `run_status=${activeRunForSelectedTeam?.status ?? "-"}`,
         `context=${activeRunForSelectedTeam?.context_id ?? "-"}`,
         isAgentWorkspace &&
-        selectedMemberLiveState?.agent_name &&
-        selectedMemberLiveState.agent_name !== selectedMemberLiveState.member_id
-          ? `agent=${selectedMemberLiveState.agent_name}`
+        selectedAgentWorkspaceLiveState?.agent_name &&
+        selectedAgentWorkspaceLiveState.agent_name !== selectedAgentWorkspaceLiveState.member_id
+          ? `agent=${selectedAgentWorkspaceLiveState.agent_name}`
           : null,
-        isAgentWorkspace ? `member=${selectedMemberLiveState?.member_id ?? "-"}` : null,
+        isAgentWorkspace ? `member=${selectedAgentWorkspaceLiveState?.member_id ?? "-"}` : null,
       ].filter((value): value is string => value !== null),
     [
       activeRunForSelectedTeam?.context_id,
       activeRunForSelectedTeam?.status,
       activeRunIdForSelectedTeam,
       isAgentWorkspace,
-      selectedMemberLiveState?.agent_name,
-      selectedMemberLiveState?.member_id,
+      selectedAgentWorkspaceLiveState?.agent_name,
+      selectedAgentWorkspaceLiveState?.member_id,
       selectedTeam?.id,
       selectedTeamRuntimeStatus.status,
     ]
@@ -2489,8 +2470,18 @@ export function TeamPage(props: TeamPageProps) {
     [selectedTeamMemberLiveStates]
   );
   const onOpenRunsWorkspace = useCallback(() => {
+    setFocusedAgentMemberId("");
     setTab("runs");
   }, [setTab]);
+  const onOpenTaskRun = useCallback(
+    (runId: string) => {
+      setActiveRunId(runId);
+      setRunLookupId(runId);
+      setFocusedAgentMemberId("");
+      setTab("runs");
+    },
+    [setActiveRunId, setRunLookupId, setTab]
+  );
   React.useEffect(() => {
     setWorkspaceDetailsOpen(false);
   }, [props.developerMode, selectedTeamId, tab]);
@@ -2513,6 +2504,58 @@ export function TeamPage(props: TeamPageProps) {
       return runtime;
     },
     [props.token]
+  );
+  const onSendAgentAcpInput = useCallback(
+    async (text: string, sessionId: string) => {
+      const agentId = selectedAgentWorkspaceMemberId;
+      const normalizedText = text.trim();
+      if (!props.token || !agentId || !normalizedText || !sessionId) {
+        return;
+      }
+      setError(null);
+      const messageId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `team-agent-acp-${Date.now()}`;
+      const sendForSession = (nextSessionId: string) =>
+        api.sendInput(props.token, agentId, normalizedText, messageId, nextSessionId);
+      try {
+        await sendForSession(sessionId);
+        await loadMemberEvents("replace");
+      } catch (err) {
+        const msg = parseErrorMessage(err);
+        const mismatch = parseTeamAgentInputSessionMismatch(msg);
+        if (mismatch) {
+          try {
+            await sendForSession(mismatch.running);
+            if (selectedTeamId) {
+              void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
+            }
+            await loadMemberEvents("replace");
+            return;
+          } catch (retryErr) {
+            setError(parseErrorMessage(retryErr));
+            return;
+          }
+        }
+        setError(msg);
+        if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
+          if (selectedTeamId) {
+            void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
+          }
+          void refreshAgents().catch(() => undefined);
+        }
+      }
+    },
+    [
+      loadMemberEvents,
+      props.token,
+      refreshAgents,
+      refreshTeamRuntime,
+      selectedAgentWorkspaceMemberId,
+      selectedTeamId,
+      setError,
+    ]
   );
   useEffect(() => {
     if (!selectedTeamId) {
@@ -2539,6 +2582,10 @@ export function TeamPage(props: TeamPageProps) {
   const onStartTeamRuntime = useCallback(async () => {
     if (!selectedTeam) {
       setError("Select a team first");
+      return;
+    }
+    if (!selectedTeamHasConfiguredMembers) {
+      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
       return;
     }
     setBusy("start-team");
@@ -2582,10 +2629,12 @@ export function TeamPage(props: TeamPageProps) {
     refreshAgents,
     refreshTeamRuntime,
     refreshTeams,
+    selectedTeamHasConfiguredMembers,
     selectedTeam,
     setBusy,
     setError,
     setWarning,
+    teamExecutionBlockedReason,
   ]);
   const onStopTeamRuntime = useCallback(async () => {
     if (!selectedTeam) {
@@ -2646,6 +2695,10 @@ export function TeamPage(props: TeamPageProps) {
       setError("Select a team first");
       return;
     }
+    if (!selectedTeamHasConfiguredMembers) {
+      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
+      return;
+    }
     const taskId = selectedTask?.id ?? "";
     if (!taskId) {
       setError("Select a task first");
@@ -2671,10 +2724,12 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     compilePreviewContextId,
     props.token,
+    selectedTeamHasConfiguredMembers,
     selectedTask?.id,
     selectedTeamId,
     setBusy,
     setError,
+    teamExecutionBlockedReason,
   ]);
   const onUseCompiledRunPayload = useCallback(() => {
     if (!compiledRunPreview) {
@@ -2686,6 +2741,10 @@ export function TeamPage(props: TeamPageProps) {
   const onCreateRunFromCompiledPreview = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
+      return;
+    }
+    if (!selectedTeamHasConfiguredMembers) {
+      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
       return;
     }
     if (!compiledRunPreview) {
@@ -2709,9 +2768,11 @@ export function TeamPage(props: TeamPageProps) {
     applyCreatedRunState,
     compiledRunPreview,
     props.token,
+    selectedTeamHasConfiguredMembers,
     selectedTeamId,
     setBusy,
     setError,
+    teamExecutionBlockedReason,
   ]);
   const conversationPanel = (
     <div className="space-y-3">
@@ -2747,7 +2808,10 @@ export function TeamPage(props: TeamPageProps) {
       newTaskTitle={newTaskTitle}
       onNewTaskTitleChange={setNewTaskTitle}
       onCreateTask={onCreateTask}
+      onUpdateTaskStatus={onUpdateTaskStatus}
       busy={busy}
+      runs={runs}
+      onOpenRun={onOpenTaskRun}
       compilePreviewContextId={compilePreviewContextId}
       onCompilePreviewContextIdChange={setCompilePreviewContextId}
       onCompileTaskRunPreview={onCompileTaskRunPreview}
@@ -2780,7 +2844,7 @@ export function TeamPage(props: TeamPageProps) {
             color="dark"
             onClick={onCreateRun}
             disabled={!canCreateRun}
-            title={runInputValidation.error ?? "Create run"}
+            title={runInputValidation.error ?? teamExecutionBlockedReason ?? "Create run"}
           >
             Create Run
           </Button>
@@ -2813,7 +2877,8 @@ export function TeamPage(props: TeamPageProps) {
           </p>
         ) : (
           <p className={teamSectionHintTextClassName}>
-            Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run.
+            {teamExecutionBlockedReason ??
+              "Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run."}
           </p>
         )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -2914,47 +2979,59 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   return (
-    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1600px] flex-col gap-5 overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
-      <header>
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            className="icon-button output-agents-toggle"
-            onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
-            title={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
-            aria-label={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
-          >
-            <i
-              className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
-              aria-hidden="true"
-            />
-          </button>
-          <h1>AgentHub Teams</h1>
-        </div>
-        <div className="session team-session">
-          <span
-            className="session-connection muted"
-            title="Teams console"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="session-connection-dot" aria-hidden="true" />
-            <span>Teams</span>
-          </span>
-          <span>{props.auth.username}</span>
-          <a className="icon-button" href="/" title="Agents" aria-label="Agents">
-            <i className="bi bi-arrow-left" aria-hidden="true" />
-          </a>
-          {props.auth.role === "root" && (
-            <a className="icon-button" href="/admin" title="Admin" aria-label="Admin">
-              <i className="bi bi-gear" aria-hidden="true" />
-            </a>
+    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-5 overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)] px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
+      <header className={teamWorkbenchHeaderShellClassName}>
+        <div className="flex min-w-0 items-center gap-3">
+          {!isSelectorRoute && (
+            <button
+              className={teamWorkbenchHeaderIconButtonClassName}
+              onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
+              title={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
+              aria-label={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
+            >
+              <i
+                className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
+                aria-hidden="true"
+              />
+            </button>
           )}
-          <button
-            className="rounded-[var(--radius-sm)] border-0 bg-[var(--ink)] px-[14px] py-2 font-semibold tracking-[0.01em] text-white transition hover:opacity-90"
-            onClick={props.onLogout}
-          >
-            Logout
-          </button>
+          <div className="min-w-0">
+            <h1 className="text-[clamp(1.5rem,2.4vw,1.95rem)] font-semibold tracking-tight text-black">
+              {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
+            </h1>
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-black/55">
+              {isSelectorRoute
+                ? "Choose a team before entering its workbench"
+                : "Mission-first multi-agent workbench"}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {!isSelectorRoute && (
+            <Button
+              type="button"
+              size="xs"
+              radius="md"
+              variant="default"
+              className={teamWorkbenchMutedButtonClassName}
+              leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
+              onClick={navigateToTeamSelector}
+            >
+              Team Selector
+            </Button>
+          )}
+          <WorkbenchConnectionBadge
+            badge={connectionBadge}
+            className={teamWorkbenchHeaderStatusClassName}
+          />
+          <WorkbenchHeaderMenu
+            active="teams"
+            username={props.auth.username}
+            isRoot={props.auth.role === "root"}
+            onLogout={props.onLogout}
+            onNavigate={navigateTeamRoute}
+            buttonClassName={`${teamWorkbenchHeaderIconButtonClassName} h-auto w-auto gap-1.5 px-2 sm:px-3`}
+          />
         </div>
       </header>
 
@@ -2974,89 +3051,226 @@ export function TeamPage(props: TeamPageProps) {
         </Alert>
       )}
 
-      <div
-        className={
-          teamsSidebarCollapsed
-            ? "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]"
-            : "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
-        }
-      >
-        {!teamsSidebarCollapsed && (
-          <TeamSidebar
-            developerMode={props.developerMode}
-            busy={busy}
-            onRefreshTeams={refreshTeams}
-            onOpenCreateTeamWizard={openCreateTeamWizardModal}
-            onOpenCreateTeamManual={openCreateTeamManualModal}
-            draftTeamName={newTeamName}
-            leaderMemberId={leaderMemberId}
-            configuredWorkerCount={configuredWorkerCount}
-            teams={teams}
-            selectedTeam={selectedTeam}
-            selectedTeamId={selectedTeamId}
-            teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
-            memberLiveStates={selectedTeamMemberLiveStates}
-            selectedMemberId={selectedMemberId}
-            tab={tab}
-            onSelectTeam={(teamId) => {
-              if (teamId !== selectedTeamId) {
-                setActiveRunId(null);
-              }
-              setSelectedTeamId(teamId);
-              setRunLookupId("");
-            }}
-            onSelectConversation={onSelectConversationSubject}
-            onSelectAgentTab={onSelectAgentWorkspace}
-            onSelectUtilityTab={onSelectUtilityWorkspace}
-          />
-        )}
-
-        <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
-          {!selectedTeam && (
-            <div className={teamSectionCardLargeClassName}>
-              <h2 className="text-lg font-semibold tracking-tight text-ui-text-primary">
-                Team Workbench
-              </h2>
-              <p className={teamSectionBodyTextClassName}>
-                Create a team or select one from the left panel to start team conversations and supervise execution.
-              </p>
-              <Group gap="sm" mt="md">
+      {isSelectorRoute ? (
+        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
+          <section className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <span className={teamWorkbenchBadgeClassName}>Team Directory</span>
+                <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
+                  Select a team
+                </h2>
+                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
+                  Team selection lives on its own page. Enter a team to open its workspace,
+                  members, and operations.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={panelSecondaryButtonClassName}
+                  onClick={() => {
+                    void refreshTeams();
+                  }}
+                  disabled={busy === "refresh-teams"}
+                >
+                  Refresh
+                </button>
                 <Button
                   type="button"
                   radius="md"
-                  color="dark"
-                  onClick={openCreateTeamWizardModal}
+                  className={teamWorkbenchAccentButtonClassName}
+                  onClick={openCreateTeamModal}
                 >
-                  Guided Wizard
+                  Create Team
                 </Button>
-                <Button
-                  type="button"
-                  radius="md"
-                  variant="default"
-                  color="gray"
-                  onClick={openCreateTeamManualModal}
-                >
-                  Manual Spec
-                </Button>
-              </Group>
+              </div>
             </div>
+
+            <div className="mt-4">
+              <TextInput
+                radius="md"
+                placeholder="Filter teams by name or id"
+                aria-label="Filter teams"
+                value={teamSelectorFilter}
+                onChange={(event) => setTeamSelectorFilter(event.target.value)}
+              />
+            </div>
+
+            <div className="mt-4 flex max-h-[55vh] flex-col gap-2 overflow-y-auto pr-1">
+              {teams.length === 0 && (
+                <p className={teamSectionBodyTextClassName}>
+                  No teams yet. Create the team first, then enter its workspace to add agents.
+                </p>
+              )}
+              {teams.length > 0 && selectorVisibleTeams.length === 0 && (
+                <p className={teamSectionBodyTextClassName}>No teams match the current filter.</p>
+              )}
+              {selectorVisibleTeams.map((team) => {
+                const summary = teamMemberSummaryByTeamId.get(team.id);
+                const summaryLabel = summary
+                  ? `${summary.total} members · ${summary.active} active${
+                      summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
+                    }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
+                  : "No agents configured yet";
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    className="team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-ui-border bg-ui-surface px-3 py-3 text-left shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                    onClick={() => navigateToTeamDetail(team.id)}
+                  >
+                    <span className="flex w-full items-start justify-between gap-3">
+                      <span className="truncate text-[15px] font-semibold text-ui-text-primary">
+                        {team.name}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted">
+                        Open
+                      </span>
+                    </span>
+                    <span className="text-[12px] leading-5 text-ui-text-secondary">
+                      {team.description?.trim() || "Open this team workspace to manage members and runs."}
+                    </span>
+                    <span className="mono text-ui-xs text-ui-text-muted">{summaryLabel}</span>
+                    {props.developerMode && (
+                      <span className="mono text-ui-xs text-ui-text-muted/90">{team.id}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
+            <span className={teamWorkbenchBadgeClassName}>Goal First</span>
+            <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
+              Create the team before you hire the agents.
+            </h2>
+            <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
+              Start with the mission. A new team stays empty until you add the first agent and
+              the rest of the agents with their role, skills, and prompt profile.
+            </p>
+            <Group gap="sm" mt="md">
+              <Button
+                type="button"
+                radius="md"
+                className={teamWorkbenchAccentButtonClassName}
+                onClick={openCreateTeamModal}
+              >
+                Create Team
+              </Button>
+            </Group>
+          </section>
+        </div>
+      ) : (
+        <div
+          className={
+            teamsSidebarCollapsed
+              ? "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]"
+              : "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
+          }
+        >
+          {!teamsSidebarCollapsed && (
+            <TeamSidebar
+              showTeamSelector={false}
+              developerMode={props.developerMode}
+              busy={busy}
+              onRefreshTeams={refreshTeams}
+              onOpenCreateTeam={openCreateTeamModal}
+              draftTeamName={newTeamName}
+              leaderMemberId={
+                selectedTeamMembers.find((member) => member.role === "leader")?.member_id ?? ""
+              }
+              configuredWorkerCount={selectedTeamWorkerCount}
+              teams={teams}
+              selectedTeam={selectedTeam}
+              selectedTeamId={selectedTeamId}
+              teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
+              memberLiveStates={selectedTeamMemberLiveStates}
+              focusedAgentMemberId={focusedAgentMemberId}
+              tab={tab}
+              onSelectTeam={(teamId) => {
+                if (teamId !== selectedTeamId) {
+                  navigateToTeamDetail(teamId);
+                }
+              }}
+              onSelectConversation={onSelectConversationSubject}
+              onSelectKanban={onSelectKanbanSubject}
+              onSelectAgentTab={onSelectAgentWorkspace}
+              onSelectUtilityTab={onSelectUtilityWorkspace}
+            />
           )}
 
-          {selectedTeam && (
-            <>
-              <div className={teamSectionCardClassName}>
+          <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
+            {!selectedTeam && (
+              <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
+                <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
+                <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
+                  This team is unavailable.
+                </h2>
+                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
+                  The requested team could not be loaded. Return to the selector to choose another
+                  team or create a new one.
+                </p>
+                <Group gap="sm" mt="md">
+                  <Button
+                    type="button"
+                    radius="md"
+                    className={teamWorkbenchAccentButtonClassName}
+                    onClick={navigateToTeamSelector}
+                  >
+                    Back to Team Selector
+                  </Button>
+                </Group>
+              </div>
+            )}
+
+            {selectedTeam && (
+              <>
+                <div className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {workspaceEyebrow && (
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
                         {workspaceEyebrow}
                       </p>
                     )}
-                    <h2 className={`${workspaceEyebrow ? "mt-1" : ""} text-xl font-semibold tracking-tight text-ui-text-primary`}>
+                    <h2 className={`${workspaceEyebrow ? "mt-1" : ""} text-[18px] font-semibold tracking-tight text-black`}>
                       {workspaceTitle}
                     </h2>
                     <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
+                    {isAgentWorkspace ? (
+                      <div className="mt-3 max-w-4xl border-t border-ui-border pt-3">
+                        <div className="grid gap-px overflow-hidden rounded-[16px] border border-ui-border bg-ui-border sm:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            { label: "Role", value: selectedAgentStatusView.role },
+                            { label: "Lifecycle", value: selectedAgentStatusView.lifecycle },
+                            { label: "Work", value: selectedAgentStatusView.work },
+                            { label: "Inbox", value: selectedAgentStatusView.inbox },
+                          ].map((item) => (
+                            <div key={item.label} className={teamWorkbenchInfoStripItemClassName}>
+                              <p className={teamWorkbenchInfoStripLabelClassName}>{item.label}</p>
+                              <p className={teamWorkbenchInfoStripValueClassName}>{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 rounded-[14px] border border-ui-border bg-ui-surface px-3.5 py-3">
+                          <p className={teamWorkbenchInfoStripLabelClassName}>Current Work</p>
+                          <p className="mt-1.5 text-[13px] leading-5 text-ui-text-secondary">
+                            {selectedAgentStatusView.currentWork}
+                          </p>
+                        </div>
+                      </div>
+                    ) : selectedTeam.description?.trim() ? (
+                      <div className="mt-3 max-w-3xl border-t border-ui-border pt-3">
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Goal</p>
+                        <p className="mt-1.5 text-[13px] leading-5 text-ui-text-secondary">
+                          {selectedTeam.description.trim()}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
+                  {!isAgentWorkspace && (
                   <div className="flex flex-wrap items-center gap-2">
                     <Tooltip
                       label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
@@ -3065,7 +3279,7 @@ export function TeamPage(props: TeamPageProps) {
                       <Group
                         gap={8}
                         wrap="nowrap"
-                        className="rounded-xl border border-ui-border/80 bg-ui-surface-soft/80 px-2 py-1"
+                        className="rounded-[14px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
                       >
                         <Badge
                           variant="light"
@@ -3083,19 +3297,29 @@ export function TeamPage(props: TeamPageProps) {
                         </Badge>
                       </Group>
                     </Tooltip>
-                    <Group gap="xs">
+                    <div className={teamWorkbenchHeaderActionsClassName}>
                       <Button
                         type="button"
                         size="xs"
                         radius="md"
-                        variant={
-                          selectedTeamRuntimeStatus.status === "running" ? "default" : "filled"
-                        }
-                        color="dark"
+                        className={`${teamWorkbenchAccentButtonClassName} ${teamWorkbenchHeaderActionButtonClassName}`}
+                        leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                        onClick={openTeamMemberForgeModal}
+                      >
+                        {teamMemberForgeLabel}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        radius="md"
+                        className={`${teamWorkbenchAccentButtonClassName} ${teamWorkbenchHeaderActionButtonClassName}`}
                         loading={busy === "start-team"}
                         disabled={
-                          busy === "stop-team" || selectedTeamRuntimeStatus.status === "running"
+                          busy === "stop-team" ||
+                          selectedTeamRuntimeStatus.status === "running" ||
+                          !selectedTeamHasConfiguredMembers
                         }
+                        title={teamExecutionBlockedReason ?? "Start team runtime"}
                         leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
                         onClick={onStartTeamRuntime}
                       >
@@ -3106,7 +3330,7 @@ export function TeamPage(props: TeamPageProps) {
                         size="xs"
                         radius="md"
                         variant="default"
-                        color="gray"
+                        className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName}`}
                         loading={busy === "stop-team"}
                         disabled={
                           busy === "start-team" || selectedTeamRuntimeStatus.status === "stopped"
@@ -3116,12 +3340,16 @@ export function TeamPage(props: TeamPageProps) {
                       >
                         Stop Team
                       </Button>
-                    </Group>
+                    </div>
+                  </div>
+                  )}
                     <div className="flex flex-wrap items-center gap-2">
+                      {!isAgentWorkspace && (
                       <Tabs
                         value={primaryWorkspaceTabValue}
                         onChange={(value) => {
                           if (value) {
+                            setFocusedAgentMemberId("");
                             setTab(value as TeamTab);
                           }
                         }}
@@ -3141,6 +3369,7 @@ export function TeamPage(props: TeamPageProps) {
                           ))}
                         </Tabs.List>
                       </Tabs>
+                      )}
                       <div className={workspaceToolbarClassName}>
                       <button
                         type="button"
@@ -3220,7 +3449,6 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                     </div>
                   </div>
-                </div>
                 <div className={workspaceNoticeClassName}>
                   <div className={workspaceNoticeTextClassName}>
                     <span className={workspaceNoticeDotClassName} aria-hidden="true" />
@@ -3232,7 +3460,7 @@ export function TeamPage(props: TeamPageProps) {
                     <div className="relative">
                       <button
                         type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border/80 bg-ui-surface-soft text-ui-text-muted transition hover:border-ui-border-emphasis hover:text-ui-text-primary"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
                         onClick={() => setWorkspaceDetailsOpen((current) => !current)}
                         aria-expanded={workspaceDetailsOpen}
                         aria-label="Toggle workspace details"
@@ -3257,6 +3485,70 @@ export function TeamPage(props: TeamPageProps) {
                 </div>
               </div>
 
+              {!selectedTeamHasConfiguredMembers && (
+                <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <span className={teamWorkbenchBadgeClassName}>Team Setup</span>
+                      <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
+                        No agents have joined this team yet.
+                      </h3>
+                      <p className="mt-2 max-w-2xl text-[13px] leading-5 text-ui-text-secondary">
+                        The team goal is saved, but runtime and runs stay blocked until you add the
+                        first agent.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      radius="md"
+                      className={teamWorkbenchAccentButtonClassName}
+                      leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                      onClick={openTeamMemberForgeModal}
+                    >
+                      {teamMemberForgeLabel}
+                    </Button>
+                  </div>
+                  <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
+                    <div className={teamWorkbenchInfoStripGridClassName}>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Goal</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          {selectedTeam.description?.trim() ||
+                            "Capture the mission, constraints, and what this team should own."}
+                        </p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>First Agent</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          Add the first agent with identity, skills, prompt, and workdir.
+                        </p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Unlocks</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>
+                          Runtime, runs, and shared execution views unlock automatically once an
+                          agent exists.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3">
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 1</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Create the first agent</p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 2</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Add more agents</p>
+                      </div>
+                      <div className={teamWorkbenchInfoStripItemClassName}>
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 3</p>
+                        <p className={teamWorkbenchInfoStripValueClassName}>Start runtime and runs</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {tab === "runs" && (
                 <TeamRunPanel
                   selectedTeam={selectedTeam}
@@ -3264,6 +3556,8 @@ export function TeamPage(props: TeamPageProps) {
                   busy={busy}
                   onDeleteTeam={onDeleteTeam}
                   onStartRun={onCreateRun}
+                  canStartRun={selectedTeamHasConfiguredMembers}
+                  runBlockedReason={teamExecutionBlockedReason}
                   runStatusFilter={runStatusFilter}
                   runStatusFilterOptions={TEAM_RUN_STATUS_FILTER_OPTIONS}
                   onRunStatusFilterChange={onRunStatusFilterChange}
@@ -3315,7 +3609,7 @@ export function TeamPage(props: TeamPageProps) {
                       {!activeRunForSelectedTeam && (
                         <div className={teamSectionCardClassName}>
                           <p className={teamSectionBodyTextClassName}>
-                            Conversation is available before execution starts.
+                            The shared thread is available before execution starts.
                           </p>
                         </div>
                       )}
@@ -3325,16 +3619,23 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "tasks" && tasksPanel}
 
-                  {tab === "agent_acp" && activeRunForSelectedTeam && (
+                  {tab === "agent_acp" && (
                     <TeamMemberAcpPanel
                       developerMode={props.developerMode}
-                      selectedMemberId={selectedMemberId}
-                      selectedMemberSnapshot={selectedMemberSnapshot}
+                      selectedMemberId={selectedAgentWorkspaceMemberId}
+                      selectedMemberSnapshot={selectedAgentWorkspaceSnapshot}
+                      selectedMemberRole={
+                        selectedAgentWorkspaceRuntimeMember?.role ??
+                        selectedAgentWorkspaceSnapshot?.role ??
+                        null
+                      }
+                      selectedSessionId={selectedAgentWorkspaceSessionId}
                       memberEvents={memberEvents}
                       memberEventsHasMore={memberEventsHasMore}
                       memberEventsLoading={memberEventsLoading}
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
+                      onSendInput={onSendAgentAcpInput}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}
                     />
@@ -3408,10 +3709,13 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "mailbox" && !activeRunForSelectedTeam && (
                     <div className={teamSectionCardClassName}>
-                      <h3 className={teamSectionTitleClassName}>Mailbox</h3>
+                      <h3 className={teamSectionTitleClassName}>
+                        {isAgentWorkspace ? selectedAgentLabel : "Mailbox"}
+                      </h3>
                       <p className={teamSectionBodyTextClassName}>
-                        Start or select a run to inspect mailbox delivery and direct member
-                        conversations.
+                        {isAgentWorkspace
+                          ? "This agent is selected, but there is no active run context for its direct thread yet. Use Runs to inspect execution history or wait for the next task."
+                          : "Start or select a run to inspect mailbox delivery and direct member conversations."}
                       </p>
                       <div className="mt-3">
                         <button
@@ -3683,8 +3987,9 @@ export function TeamPage(props: TeamPageProps) {
               )}
             </>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
       {showCreateTeamModal && (
         <div
@@ -3697,517 +4002,56 @@ export function TeamPage(props: TeamPageProps) {
           }}
         >
           <div
-            className={TEAM_CREATE_MODAL_CARD_CLASS}
+            className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="team-create-title"
           >
             <div className={teamCreateModalHeaderClassName}>
-              <h3 id="team-create-title" className={teamCreateModalTitleClassName}>
-                Team Forge
-              </h3>
-              <div className="team-create-head-meta flex flex-wrap items-center gap-2">
-                <span className={TEAM_CREATE_STAGE_BADGE_CLASS}>
-                  Stage {createTeamStage + 1}/{CREATE_TEAM_STAGE_TITLES.length}
-                </span>
-                <span className={TEAM_CREATE_STAGE_BADGE_CLASS}>
-                  {useSpecOverride ? "Manual Spec" : "Guided Wizard"}
-                </span>
+              <div className="min-w-0 flex-1">
+                <span className={teamWorkbenchBadgeClassName}>Create Team</span>
+                <h3 id="team-create-title" className="mt-2 text-[18px] font-semibold tracking-tight text-black">
+                  Start with the mission, not the agents.
+                </h3>
+                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
+                  Team creation only stores the workspace identity and goal. Add agents afterward,
+                  each with their own role profile, skills, and prompt.
+                </p>
               </div>
             </div>
-
-            <Stepper
-              active={createTeamStage}
-              onStepClick={(index) => onSelectCreateTeamStage(index as CreateTeamStage)}
-              iconPosition="left"
-              className="mt-4"
-              classNames={{
-                steps: "gap-2",
-                step: "min-w-0",
-                stepWrapper: "min-w-0",
-                stepBody: "min-w-0",
-                stepLabel: "text-sm font-semibold text-ui-text-primary",
-                stepDescription: "text-xs text-ui-text-muted",
-                stepIcon: "shadow-sm",
-                separator: "mx-1",
-              }}
-            >
-              {CREATE_TEAM_STAGE_TITLES.map((title, index) => {
-                const stageIndex = index as CreateTeamStage;
-                const isActive = stageIndex === createTeamStage;
-                const isCompleted = stageIndex < createTeamStage;
-                const isManualSkipped =
-                  useSpecOverride && stageIndex !== 0 && stageIndex !== 3;
-                const isLocked = isManualSkipped || !canEnterCreateStage(stageIndex);
-                return (
-                  <Stepper.Step
-                    key={title}
-                    label={title}
-                    icon={index + 1}
-                    completedIcon={<i className="bi bi-check-lg" aria-hidden="true" />}
-                    allowStepSelect={!isLocked || isActive || isCompleted}
-                    description={
-                      isManualSkipped
-                        ? "Skipped in manual spec"
-                        : isLocked && !isActive && !isCompleted
-                          ? "Complete previous stage requirements first"
-                          : `Stage ${index + 1}`
-                    }
-                  />
-                );
-              })}
-            </Stepper>
-
             <div className="modal-body mt-4 space-y-4">
-              <div className="team-create-checklist grid gap-2 sm:grid-cols-2">
-                {questChecklist.map((item) => (
-                  <div
-                    key={item.key}
-                    className={`${
-                      item.ready
-                        ? teamCreateCheckItemReadyClassName
-                        : teamCreateCheckItemPendingClassName
-                    }`}
-                  >
-                    <span
-                      className="team-create-check-icon inline-flex h-5 w-5 items-center justify-center rounded-full border border-current text-[11px]"
-                      aria-hidden="true"
-                    >
-                      {item.ready ? "✓" : "○"}
-                    </span>
-                    <span>{item.label}</span>
-                  </div>
-                ))}
+              <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
+                <TextInput
+                  label="Team name"
+                  radius="md"
+                  placeholder="growth-hive"
+                  value={newTeamName}
+                  onChange={(event) => setNewTeamName(event.target.value)}
+                />
+                <Textarea
+                  className="mt-3"
+                  label="Team goal"
+                  radius="md"
+                  minRows={5}
+                  autosize
+                  placeholder="Describe the mission, constraints, and what this team should own."
+                  value={newTeamDescription}
+                  onChange={(event) => setNewTeamDescription(event.target.value)}
+                />
               </div>
 
-              {createTeamStage !== 0 && !useSpecOverride && (
-                <div className={teamCreateAgentEntryClassName}>
-                  <div className="team-create-agent-entry-head flex flex-wrap items-center justify-between gap-2">
-                    <h4 className={teamSectionTitleClassName}>Agent Forge</h4>
-                    <Button
-                      size="xs"
-                      radius="md"
-                      variant="default"
-                      color="gray"
-                      onClick={showForgeAgentForm ? closeForgeAgentForm : openForgeAgentForm}
-                      disabled={!canForgeAgentsInStage || forgeAgentBusy}
-                      type="button"
-                    >
-                      {showForgeAgentForm ? "Hide" : "New Agent"}
-                    </Button>
-                  </div>
-                  <p className={teamSectionBodyTextClassName}>
-                    Role tag follows the current stage. In Team, worker is a role assigned to a
-                    forged agent.
-                  </p>
-                  <div className={teamCreateForgeMetaClassName}>
-                    <span>role_tag</span>
-                    <span className="text-ui-text-primary">{forgeRoleTag ?? "-"}</span>
-                  </div>
-                  {!canForgeAgentsInStage && (
-                    <TeamCreateNote tone="warning">
-                      Agent Forge is available only in Leader Forge or Recruit Workers stage.
-                    </TeamCreateNote>
-                  )}
-                  {showForgeAgentForm && (
-                    <TeamCreateNote tone="info">
-                      Agent create modal is open. Submit to create and auto-assign by role tag.
-                    </TeamCreateNote>
-                  )}
-                </div>
-              )}
-
-              {createTeamStage === 0 && (
-                <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className={teamSectionTitleClassName}>Mission Brief</h4>
-                  <div className="team-create-mission-intro mt-2">
-                    <p className="text-sm text-ui-text-muted">
-                      Pick a team name and description first. This is the party identity shown in
-                      the workbench.
-                    </p>
-                  </div>
-                  <TeamCreateNote tone="info">
-                    {useSpecOverride
-                      ? "Manual Spec entry selected. Next stage jumps directly to Launch Team."
-                      : "Guided Wizard entry selected. Continue to Leader Forge next."}
-                  </TeamCreateNote>
-                  {!isMissionBriefReady && (
-                    <TeamCreateNote tone="warning">
-                      Team name is required before entering the next stage.
-                    </TeamCreateNote>
-                  )}
-                  <TextInput
-                    className="mt-3"
-                    radius="md"
-                    placeholder="team name"
-                    value={newTeamName}
-                    onChange={(event) => setNewTeamName(event.target.value)}
-                  />
-                  <TextInput
-                    className="mt-3"
-                    radius="md"
-                    placeholder="description (optional)"
-                    value={newTeamDescription}
-                    onChange={(event) => setNewTeamDescription(event.target.value)}
-                  />
-                </div>
-              )}
-
-              {createTeamStage === 1 && (
-                <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className={teamSectionTitleClassName}>Leader Forge</h4>
-                  <p className={teamSectionBodyTextClassName}>
-                    Choose the leader from member agents created in this Team Forge session only.
-                  </p>
-                  {!isLeaderForgeReady && hasForgeAgents && (
-                    <TeamCreateNote tone="warning">
-                      Select one forged leader agent to continue.
-                    </TeamCreateNote>
-                  )}
-                  {!hasForgeAgents && (
-                    <p className={teamSectionBodyTextClassName}>
-                      No forged agents yet. Create one in the Agent Forge entry above.
-                    </p>
-                  )}
-                  <NativeSelect
-                    className="mt-3"
-                    radius="md"
-                    value={leaderMemberId}
-                    onChange={(event) => setLeaderMemberId(event.target.value)}
-                    disabled={useSpecOverride || !hasForgeAgents}
-                    data={[
-                      { value: "", label: "Select forged leader agent" },
-                      ...leaderAgentSelectOptions.map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                      })),
-                    ]}
-                  />
-                  <div className={TEAM_CREATE_STEP_PREVIEW_CLASS}>
-                    <div>agent_id: {leaderMemberId || "-"}</div>
-                    <div>workdir: {leaderAgent?.workdir ?? "-"}</div>
-                  </div>
-                  <NativeSelect
-                    className="mt-3"
-                    radius="md"
-                    value={leaderModel}
-                    onChange={(event) => setLeaderModel(event.target.value)}
-                    disabled={useSpecOverride}
-                    data={leaderModelOptions.map((option) => ({
-                      value: option.value,
-                      label: option.label,
-                    }))}
-                  />
-                  <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
-                    {TEAM_SKILL_OPTIONS.map((skill) => {
-                      const selected = leaderSkills.includes(skill);
-                      const isRequired = REQUIRED_TEAM_LEADER_SKILLS.includes(skill);
-                      return (
-                        <button
-                          key={`leader-skill-${skill}`}
-                          type="button"
-                          className={
-                            selected
-                              ? TEAM_CREATE_SKILL_TAG_SELECTED_CLASS
-                              : TEAM_CREATE_SKILL_TAG_IDLE_CLASS
-                          }
-                          onClick={() =>
-                            setLeaderSkills((prev) =>
-                              toggleSkillSelection(
-                                prev,
-                                skill,
-                                REQUIRED_TEAM_LEADER_SKILLS
-                              )
-                            )
-                          }
-                          disabled={useSpecOverride || isRequired}
-                          title={isRequired ? "Required for leader role" : undefined}
-                        >
-                          {skill}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <TextInput
-                    className="mt-3"
-                    radius="md"
-                    placeholder="leader custom skills (comma separated, optional)"
-                    value={leaderCustomSkills}
-                    onChange={(event) => setLeaderCustomSkills(event.target.value)}
-                    disabled={useSpecOverride}
-                  />
-                  <Textarea
-                    className="mt-3"
-                    radius="md"
-                    minRows={4}
-                    autosize
-                    placeholder="leader prompt"
-                    value={leaderPrompt}
-                    onChange={(event) => setLeaderPrompt(event.target.value)}
-                    disabled={useSpecOverride}
-                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
-                  />
-                </div>
-              )}
-
-              {createTeamStage === 2 && (
-                <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className={teamSectionTitleClassName}>Recruit Workers</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="xs"
-                        radius="md"
-                        variant="default"
-                        color="gray"
-                        onClick={onAddWorker}
-                        disabled={useSpecOverride || !hasForgeAgents}
-                        type="button"
-                      >
-                        Add Worker
-                      </Button>
-                      <Button
-                        size="xs"
-                        radius="md"
-                        variant="default"
-                        color="gray"
-                        onClick={onAddAllRemainingWorkers}
-                        disabled={
-                          useSpecOverride || !hasForgeAgents || availableWorkerAgentCount === 0
-                        }
-                        type="button"
-                      >
-                        Auto Fill Party
-                      </Button>
-                    </div>
-                  </div>
-                  <p className={teamSectionBodyTextClassName}>
-                    Build your party from Team Forge member agents only. Worker is a role
-                    assignment for those agents, and model/prompt/skills can still be customized at
-                    team level.
-                  </p>
-                  {unassignedWorkerSlots > 0 && (
-                    <TeamCreateNote tone="warning">
-                      {unassignedWorkerSlots} worker slot
-                      {unassignedWorkerSlots > 1 ? "s are" : " is"} currently unassigned and will
-                      be ignored unless selected.
-                    </TeamCreateNote>
-                  )}
-                  <div className="team-create-worker-grid mt-3 grid gap-3 lg:grid-cols-2">
-                    {workers.map((worker, index) => {
-                      const selectedByOthers = new Set(
-                        workers
-                          .filter((_, workerIndex) => workerIndex !== index)
-                          .map((item) => item.member_id.trim())
-                          .filter((item) => item.length > 0)
-                      );
-                      const workerOptions = leaderForgeAgentOptions.filter((option) => {
-                        if (option.value === worker.member_id) return true;
-                        if (option.value === leaderMemberId.trim()) return false;
-                        return !selectedByOthers.has(option.value);
-                      });
-                      const hasSelectedWorker = workerOptions.some(
-                        (option) => option.value === worker.member_id
-                      );
-                      if (worker.member_id && !hasSelectedWorker) {
-                        workerOptions.unshift({
-                          value: worker.member_id,
-                          label: `Missing agent (${worker.member_id})`,
-                        });
-                      }
-                      const workerAgent = agents.find(
-                        (agent) => agent.id === worker.member_id
-                      );
-                      return (
-                        <div
-                          key={`worker-${index}`}
-                          className={TEAM_CREATE_WORKER_CARD_CLASS}
-                        >
-                          <div className="team-create-worker-head flex items-center justify-between gap-2">
-                            <strong>Worker {index + 1}</strong>
-                            <Button
-                              size="xs"
-                              radius="md"
-                              variant="subtle"
-                              color="gray"
-                              onClick={() => onRemoveWorker(index)}
-                              disabled={useSpecOverride}
-                              type="button"
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                          <NativeSelect
-                            className="mt-3"
-                            radius="md"
-                            value={worker.member_id}
-                            onChange={(event) =>
-                              onUpdateWorker(index, "member_id", event.target.value)
-                            }
-                            disabled={useSpecOverride || !hasForgeAgents}
-                            data={[
-                              { value: "", label: "Select forged worker agent" },
-                              ...workerOptions.map((option) => ({
-                                value: option.value,
-                                label: option.label,
-                              })),
-                            ]}
-                          />
-                          <div className={TEAM_CREATE_STEP_PREVIEW_MUTED_CLASS}>
-                            <div>agent_id: {worker.member_id || "-"}</div>
-                            <div>workdir: {workerAgent?.workdir ?? "-"}</div>
-                          </div>
-                          <TextInput
-                            className="mt-3"
-                            radius="md"
-                            placeholder="worker description (identity card)"
-                            value={worker.description}
-                            onChange={(event) =>
-                              onUpdateWorker(index, "description", event.target.value)
-                            }
-                            disabled={useSpecOverride}
-                          />
-                          <NativeSelect
-                            className="mt-3"
-                            radius="md"
-                            value={worker.model}
-                            onChange={(event) =>
-                              onUpdateWorker(index, "model", event.target.value)
-                            }
-                            disabled={useSpecOverride}
-                            data={resolveTeamModelOptions(worker.model).map((option) => ({
-                              value: option.value,
-                              label: option.label,
-                            }))}
-                          />
-                          <div className="team-skill-tags mt-3 flex flex-wrap gap-2">
-                            {TEAM_SKILL_OPTIONS.map((skill) => {
-                              const selected = worker.skills.includes(skill);
-                              const isRequired = REQUIRED_TEAM_WORKER_SKILLS.includes(skill);
-                              return (
-                                <button
-                                  key={`worker-skill-${index}-${skill}`}
-                                  type="button"
-                                  className={
-                                    selected
-                                      ? TEAM_CREATE_SKILL_TAG_SELECTED_CLASS
-                                      : TEAM_CREATE_SKILL_TAG_IDLE_CLASS
-                                  }
-                                  onClick={() => onToggleWorkerSkill(index, skill)}
-                                  disabled={useSpecOverride || isRequired}
-                                  title={isRequired ? "Required for worker role" : undefined}
-                                >
-                                  {skill}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <TextInput
-                            className="mt-3"
-                            radius="md"
-                            placeholder="worker custom skills (comma separated, optional)"
-                            value={worker.custom_skills}
-                            onChange={(event) =>
-                              onUpdateWorker(index, "custom_skills", event.target.value)
-                            }
-                            disabled={useSpecOverride}
-                          />
-                          <Textarea
-                            className="mt-3"
-                            radius="md"
-                            minRows={3}
-                            autosize
-                            placeholder="worker prompt"
-                            value={worker.prompt}
-                            onChange={(event) =>
-                              onUpdateWorker(index, "prompt", event.target.value)
-                            }
-                            disabled={useSpecOverride}
-                            styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {workers.length === 0 && (
-                    <p className="mt-3 text-sm text-ui-text-muted">
-                      No workers configured. Team will run with leader only.
-                    </p>
-                  )}
-                  {hasDuplicateMembers && (
-                    <TeamCreateNote
-                      tone="warning"
-                      action={
-                        <Button
-                          type="button"
-                          size="xs"
-                          radius="md"
-                          variant="default"
-                          color="gray"
-                          onClick={onResolveDuplicateWorkers}
-                        >
-                          Resolve Duplicates
-                        </Button>
-                      }
-                    >
-                        Duplicate assignments detected: {duplicateMemberIds.join(", ")}. Leader
-                        and member assignments must reference different agents.
-                    </TeamCreateNote>
-                  )}
-                </div>
-              )}
-
-              {createTeamStage === 3 && (
-                <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                  <h4 className={teamSectionTitleClassName}>Launch Team</h4>
-                  <p className={teamSectionBodyTextClassName}>
-                    Final review before deployment.
-                  </p>
-                  <div className={teamCreateLaunchMetaClassName}>
-                    <span className={teamCreateLaunchMetaItemClassName}>
-                      team={newTeamName.trim() || "-"}
-                    </span>
-                    <span className={teamCreateLaunchMetaItemClassName}>
-                      leader={leaderMemberId.trim() || "-"}
-                    </span>
-                    <span className={teamCreateLaunchMetaItemClassName}>
-                      workers={configuredWorkerCount}
-                    </span>
-                  </div>
-                  {useSpecOverride ? (
-                    <p className="mt-3 text-sm text-ui-text-muted">
-                      Manual Spec entry: edit full team spec JSON directly.
-                    </p>
-                  ) : (
-                    <p className="mt-3 text-sm text-ui-text-muted">
-                      Guided wizard generated this spec:
-                      `leader_plan` → `worker_*` → `leader_synthesize`.
-                    </p>
-                  )}
-                  <Textarea
-                    className="mt-3"
-                    radius="md"
-                    minRows={12}
-                    autosize
-                    value={displayedTeamSpec}
-                    onChange={(event) => setNewTeamSpec(event.target.value)}
-                    readOnly={!useSpecOverride}
-                    styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
-                  />
-                </div>
-              )}
+              <TeamCreateNote tone={newTeamName.trim() ? "info" : "warning"}>
+                {newTeamName.trim()
+                  ? "After the team is created, add the first agent. More agents can be added after the first agent exists."
+                  : "Team name is required before the team can be created."}
+              </TeamCreateNote>
             </div>
 
             <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
-              {!canAdvanceCreateStage && currentStageBlockReason && (
-                <span className="team-create-actions-note mr-auto text-sm text-amber-700">
-                  {currentStageBlockReason}
-                </span>
-              )}
               <Button
                 radius="md"
-                variant="subtle"
-                color="gray"
+                variant="default"
+                className={teamWorkbenchMutedButtonClassName}
                 onClick={closeCreateTeamModal}
                 disabled={busy === "create-team"}
                 type="button"
@@ -4216,69 +4060,193 @@ export function TeamPage(props: TeamPageProps) {
               </Button>
               <Button
                 radius="md"
-                variant="subtle"
-                color="gray"
-                onClick={goToPrevCreateTeamStage}
-                disabled={createTeamStage === 0 || busy === "create-team"}
+                className={teamWorkbenchAccentButtonClassName}
+                onClick={onCreateTeam}
+                disabled={busy === "create-team" || !newTeamName.trim()}
+                loading={busy === "create-team"}
                 type="button"
               >
-                Back
+                Create Team
               </Button>
-              {createTeamStage < 3 && (
-                <Button
-                  radius="md"
-                  color="dark"
-                  onClick={goToNextCreateTeamStage}
-                  disabled={!canAdvanceCreateStage || busy === "create-team"}
-                  type="button"
-                >
-                  Next Stage
-                </Button>
-              )}
-              {createTeamStage === 3 && (
-                <Button
-                  radius="md"
-                  color="dark"
-                  onClick={onCreateTeam}
-                  disabled={
-                    busy === "create-team" ||
-                    (!useSpecOverride &&
-                      (!hasForgeAgents || !leaderMemberId.trim() || hasDuplicateMembers))
-                  }
-                  loading={busy === "create-team"}
-                  type="button"
-                >
-                  Create Team
-                </Button>
-              )}
             </div>
           </div>
-          {showForgeAgentForm && (
-            <CreateAgentModal
-              agentName={forgeAgentName}
-              setAgentName={setForgeAgentName}
-              agentWorkdir={forgeAgentWorkdir}
-              setAgentWorkdir={setForgeAgentWorkdir}
-              agentPresetId={forgeAgentPresetId}
-              setAgentPresetId={setForgeAgentPresetId}
-              worktreeMode={forgeAgentWorktreeMode}
-              setWorktreeMode={handleForgeWorktreeModeChange}
-              worktreeRepo={forgeAgentWorktreeRepo}
-              setWorktreeRepo={setForgeAgentWorktreeRepo}
-              worktreeRef={forgeAgentWorktreeRef}
-              setWorktreeRef={setForgeAgentWorktreeRef}
-              codeMode={forgeAgentCodeMode}
-              setCodeMode={setForgeAgentCodeMode}
-              worktreeError={forgeAgentWorktreeError}
-              showWorktreeAdvancedOptions={forgeRoleTag !== "leader"}
-              createBusy={forgeAgentBusy}
-              workdirPlaceholder={forgeDefaultWorktreeRoot}
-              withinPortal
-              onCreateAgent={onCreateForgeAgent}
-              onClose={closeForgeAgentForm}
-            />
-          )}
         </div>
+      )}
+
+      {showForgeAgentForm && teamMemberDraft && (
+        <CreateAgentModal
+          title="Add Agent"
+          confirmLabel="Create Agent"
+          agentPresetLabel="Role model"
+          agentPresetSummaryLabel="Model"
+          teamStyled
+          agentName={forgeAgentName}
+          setAgentName={setForgeAgentName}
+          agentWorkdir={forgeAgentWorkdir}
+          setAgentWorkdir={setForgeAgentWorkdir}
+          agentPresetId={forgeAgentPresetId}
+          setAgentPresetId={setForgeAgentPresetId}
+          worktreeMode={forgeAgentWorktreeMode}
+          setWorktreeMode={handleForgeWorktreeModeChange}
+          worktreeRepo={forgeAgentWorktreeRepo}
+          setWorktreeRepo={setForgeAgentWorktreeRepo}
+          worktreeRef={forgeAgentWorktreeRef}
+          setWorktreeRef={setForgeAgentWorktreeRef}
+          codeMode={forgeAgentCodeMode}
+          setCodeMode={setForgeAgentCodeMode}
+          worktreeError={forgeAgentWorktreeError}
+          showWorktreeAdvancedOptions={teamMemberDraft.role !== "leader"}
+          createBusy={forgeAgentBusy}
+          workdirPlaceholder={forgeDefaultWorktreeRoot}
+          withinPortal
+          onCreateAgent={onCreateForgeAgent}
+          onClose={closeTeamMemberForgeModal}
+        >
+          <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={teamWorkbenchBadgeClassName}>
+                {teamMemberRoleProfile?.profileLabel ?? "Agent Profile"}
+              </span>
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-ui-text-muted">
+                member_id follows agent id
+              </span>
+            </div>
+            <p className="mt-2 text-[13px] leading-5 text-ui-text-secondary">
+              {teamMemberRoleProfile?.intro ??
+                "Configure the agent identity, skills, and prompt before attaching it to the team."}
+            </p>
+            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Role Selection</p>
+                  <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                    {selectedTeamHasLeader
+                      ? "This team already has a leader. New agents join as workers."
+                      : "Start with the leader. Worker unlocks after the first leader exists."}
+                  </p>
+                </div>
+                <span className={teamWorkbenchBadgeClassName}>
+                  {teamMemberDraft.role === "leader" ? "Single leader" : "Execution role"}
+                </span>
+              </div>
+              <SegmentedControl
+                className="mt-3"
+                fullWidth
+                radius="xl"
+                size="sm"
+                value={teamMemberDraft.role}
+                onChange={handleTeamMemberRoleChange}
+                data={teamMemberRoleOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  disabled: option.disabled,
+                }))}
+              />
+              <p className="mt-2 text-[11px] leading-5 text-ui-text-muted">
+                {teamMemberRoleOptions.find((option) => option.value === teamMemberDraft.role)
+                  ?.description ?? "Select the role before editing skills and prompt."}
+              </p>
+            </div>
+            <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
+              <div className={teamWorkbenchInfoStripGridClassName}>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Focus</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.focus ??
+                      "Set the role before editing the profile details."}
+                  </p>
+                </div>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Skills</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.skillsHint ??
+                      "Select required skills first, then add optional helpers."}
+                  </p>
+                </div>
+                <div className={teamWorkbenchInfoStripItemClassName}>
+                  <p className={teamWorkbenchInfoStripLabelClassName}>Prompt Scope</p>
+                  <p className={teamWorkbenchInfoStripValueClassName}>
+                    {teamMemberRoleProfile?.promptHint ??
+                      "Keep the role prompt focused on scope, responsibilities, and delivery rules."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <TextInput
+              className="mt-4"
+              radius="md"
+              label="Identity"
+              placeholder="Short role description exposed on the agent card"
+              value={teamMemberDraft.description}
+              onChange={(event) =>
+                patchTeamMemberDraft({ description: event.currentTarget.value })
+              }
+            />
+            <div className="team-skill-tags mt-4 flex flex-wrap gap-2">
+              {TEAM_SKILL_OPTIONS.map((skill) => {
+                const selected = teamMemberDraft.skills.includes(skill);
+                const requiredSkills =
+                  teamMemberDraft.role === "leader"
+                    ? REQUIRED_TEAM_LEADER_SKILLS
+                    : REQUIRED_TEAM_WORKER_SKILLS;
+                const isRequired = requiredSkills.includes(skill);
+                return (
+                  <button
+                    key={`${teamMemberDraft.role}-skill-${skill}`}
+                    type="button"
+                    className={
+                      selected
+                        ? TEAM_CREATE_SKILL_TAG_SELECTED_CLASS
+                        : TEAM_CREATE_SKILL_TAG_IDLE_CLASS
+                    }
+                    onClick={() =>
+                      patchTeamMemberDraft({
+                        skills: toggleSkillSelection(
+                          teamMemberDraft.skills,
+                          skill,
+                          requiredSkills
+                        ),
+                      })
+                    }
+                    disabled={isRequired}
+                    title={isRequired ? "Required for this role" : undefined}
+                  >
+                    {skill}
+                  </button>
+                );
+              })}
+            </div>
+            <TextInput
+              className="mt-3"
+              radius="md"
+              label="Custom skills"
+              placeholder="comma separated, optional"
+              value={teamMemberDraft.custom_skills}
+              onChange={(event) =>
+                patchTeamMemberDraft({ custom_skills: event.currentTarget.value })
+              }
+            />
+            <Textarea
+              className="mt-3"
+              radius="md"
+              label="Prompt"
+              minRows={6}
+              autosize
+              value={teamMemberDraft.prompt}
+              onChange={(event) =>
+                patchTeamMemberDraft({ prompt: event.currentTarget.value })
+              }
+              styles={{
+                input: {
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  lineHeight: "1.5",
+                },
+              }}
+            />
+          </div>
+        </CreateAgentModal>
       )}
     </div>
   );

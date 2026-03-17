@@ -22,6 +22,11 @@ import {
 } from "../agent_presets";
 
 type CreateAgentModalProps = {
+  title?: string;
+  confirmLabel?: string;
+  agentPresetLabel?: string;
+  agentPresetSummaryLabel?: string;
+  teamStyled?: boolean;
   agentName: string;
   setAgentName: (value: string) => void;
   agentWorkdir: string;
@@ -43,6 +48,7 @@ type CreateAgentModalProps = {
   createBusy: boolean;
   workdirPlaceholder?: string;
   withinPortal?: boolean;
+  children?: React.ReactNode;
   onCreateAgent: () => void;
   onClose: () => void;
 };
@@ -52,6 +58,40 @@ const worktreeOptions = [
   { value: "create_worktree", label: "Create git worktree" },
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
+const TEAM_AGENT_MODAL_CONTENT_STYLE = {
+  backgroundColor: "#f8f5ee",
+  border: "1px solid rgba(33, 42, 52, 0.12)",
+  boxShadow: "0 28px 60px rgba(15, 23, 42, 0.18)",
+};
+const TEAM_AGENT_MODAL_HEADER_STYLE = {
+  backgroundColor: "transparent",
+  borderBottom: "1px solid rgba(33, 42, 52, 0.12)",
+  paddingBottom: "10px",
+};
+const TEAM_AGENT_MODAL_TITLE_STYLE = {
+  color: "#5b6775",
+  fontSize: "0.78rem",
+  fontWeight: 800,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase" as const,
+};
+const TEAM_AGENT_MODAL_BODY_STYLE = {
+  paddingTop: "14px",
+};
+const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
+  "!border !border-ui-border-emphasis !bg-[#243243] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1d2936]";
+const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
+  "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
+const TEAM_AGENT_MODAL_INFO_STRIP_CLASS =
+  "overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm";
+const TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS =
+  "grid gap-px bg-ui-border sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_170px]";
+const TEAM_AGENT_MODAL_INFO_ITEM_CLASS =
+  "min-w-0 bg-ui-surface px-3 py-2.5";
+const TEAM_AGENT_MODAL_INFO_LABEL_CLASS =
+  "text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+const TEAM_AGENT_MODAL_INFO_VALUE_CLASS =
+  "mt-1 text-[13px] leading-5 text-ui-text-primary";
 
 export function resolveCreateAgentPresetId(value: string | null): AgentPresetId {
   if (value && isAgentPresetId(value)) {
@@ -85,6 +125,11 @@ export function shouldAutoExpandCreateAgentAdvancedOptions(
 }
 
 export function CreateAgentModal({
+  title = "Create Agent",
+  confirmLabel = "Create Agent",
+  agentPresetLabel = "Agent preset",
+  agentPresetSummaryLabel = "Preset",
+  teamStyled = false,
   agentName,
   setAgentName,
   agentWorkdir,
@@ -104,6 +149,7 @@ export function CreateAgentModal({
   createBusy,
   workdirPlaceholder = "Workdir",
   withinPortal = true,
+  children,
   onCreateAgent,
   onClose,
 }: CreateAgentModalProps) {
@@ -134,6 +180,7 @@ export function CreateAgentModal({
     value: entry.id,
     label: entry.label,
   }));
+  const runtimeModeLabel = codeMode ? "Code" : "Chat";
 
   React.useEffect(() => {
     if (!isCreateWorktreeMode) {
@@ -156,7 +203,7 @@ export function CreateAgentModal({
     <Modal
       opened
       onClose={onClose}
-      title="Create Agent"
+      title={title}
       size="lg"
       radius="md"
       withCloseButton={false}
@@ -164,6 +211,16 @@ export function CreateAgentModal({
       closeOnClickOutside={false}
       withinPortal={withinPortal}
       overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
+      styles={
+        teamStyled
+          ? {
+              content: TEAM_AGENT_MODAL_CONTENT_STYLE,
+              header: TEAM_AGENT_MODAL_HEADER_STYLE,
+              title: TEAM_AGENT_MODAL_TITLE_STYLE,
+              body: TEAM_AGENT_MODAL_BODY_STYLE,
+            }
+          : undefined
+      }
     >
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -174,7 +231,7 @@ export function CreateAgentModal({
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
           <Select
-            label="Agent preset"
+            label={agentPresetLabel}
             placeholder="Select preset"
             value={agentPresetId}
             data={presetOptions}
@@ -264,17 +321,35 @@ export function CreateAgentModal({
           </SimpleGrid>
         ) : null}
 
-        {commandSummary ? (
-          <Text size="sm" c="dimmed">
-            Command: {commandSummary}
-          </Text>
-        ) : null}
+        <div className={TEAM_AGENT_MODAL_INFO_STRIP_CLASS}>
+          <div className={TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS}>
+            <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
+              <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>
+                {agentPresetSummaryLabel}
+              </p>
+              <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{preset.label}</p>
+            </div>
+            <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
+              <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>Command</p>
+              <p className={`${TEAM_AGENT_MODAL_INFO_VALUE_CLASS} break-all font-mono text-[12px]`}>
+                {commandSummary || "Auto resolve from preset"}
+              </p>
+            </div>
+            <div className={`${TEAM_AGENT_MODAL_INFO_ITEM_CLASS} flex items-center justify-between gap-3`}>
+              <div className="min-w-0">
+                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>Mode</p>
+                <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{runtimeModeLabel}</p>
+              </div>
+              <Switch
+                aria-label="Toggle code mode"
+                checked={codeMode}
+                onChange={(event) => setCodeMode(event.currentTarget.checked)}
+              />
+            </div>
+          </div>
+        </div>
 
-        <Switch
-          label="Code mode"
-          checked={codeMode}
-          onChange={(event) => setCodeMode(event.currentTarget.checked)}
-        />
+        {children}
 
         {worktreeError ? (
           <Alert color="red" title="Worktree Setup Failed" variant="light">
@@ -293,14 +368,20 @@ export function CreateAgentModal({
 
         <Group justify="flex-end" mt="xs">
           <Button
+            variant="default"
+            onClick={onClose}
+            disabled={createBusy}
+            className={TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS}
+          >
+            Cancel
+          </Button>
+          <Button
             onClick={onCreateAgent}
             loading={createBusy}
             disabled={createBusy}
+            className={TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS}
           >
-            Create Agent
-          </Button>
-          <Button variant="default" onClick={onClose} disabled={createBusy}>
-            Cancel
+            {confirmLabel}
           </Button>
         </Group>
       </Stack>

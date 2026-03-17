@@ -43,21 +43,23 @@ type TeamTaskPanelProps = {
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-4 flex flex-col gap-3 rounded-xl border border-ui-border-strong bg-ui-surface p-3 shadow-sm";
+  "mt-3 flex flex-col gap-3 border-t border-ui-border pt-3";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
-  "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm text-ui-text-muted";
+  "px-1 py-3 text-ui-sm text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-3 min-h-[320px] max-h-[min(72vh,760px)] overflow-y-auto rounded-xl border border-ui-border bg-ui-surface-soft/40 p-2";
-const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col gap-2";
+  "mt-2 min-h-[240px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
+const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
+  "mt-2 min-h-[120px] overflow-y-auto pr-1";
+const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble rounded-xl border px-3 py-3 shadow-sm";
+  "acp-bubble border-b border-ui-border/70 px-1 py-3";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-sky-200 bg-sky-50/85 text-sky-950`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} bg-transparent text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-slate-200 bg-white text-slate-800`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} bg-transparent text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
@@ -66,7 +68,7 @@ const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
   "text-sm font-semibold text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "acp-text mt-2 text-sm leading-6 text-ui-text-primary";
+  "acp-text mt-1.5 text-sm leading-6 text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
@@ -271,6 +273,10 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         })),
     [memberDisplayNamesById, messages, toPrettyJson]
   );
+  const activityListClassName =
+    messagesLoading || waterfallItems.length > 0
+      ? TEAM_TASK_ACTIVITY_LIST_CLASS
+      : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
@@ -317,7 +323,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         </div>
       )}
 
-      <div className={TEAM_TASK_ACTIVITY_LIST_CLASS}>
+      <div className={activityListClassName}>
         <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);

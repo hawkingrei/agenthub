@@ -26,6 +26,7 @@ import {
 } from "./auth_redirect";
 import {
   deriveConnectionBadge,
+  getNavigatorOnline,
   OFFLINE_MESSAGE,
   sanitizeErrorBannerMessage,
   shouldHideErrorBannerMessage,
@@ -69,6 +70,8 @@ import { OutputHeader } from "./components/output_header";
 import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { PermissionModal } from "./components/permission_modal";
+import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
+import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
@@ -120,7 +123,23 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
+const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
+const AGENTS_PANEL_DEFAULT_WIDTH = 360;
+const AGENTS_PANEL_MIN_WIDTH = 320;
+const AGENTS_PANEL_MAX_WIDTH = 640;
+const AGENTS_PANEL_MIN_RIGHT_WIDTH = 520;
+const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
+const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
+const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 420;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+const APP_WORKBENCH_HEADER_CLASS =
+  "flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#f3f1eb] px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:gap-3 sm:rounded-[20px] sm:px-3.5 sm:py-3 sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const APP_WORKBENCH_HEADER_STATUS_CLASS =
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-black bg-[#fcfbf7] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)] sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[10px] sm:tracking-[0.14em]";
+const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border-[2px] border-black text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] lg:hidden";
+const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
 
 function AuthRedirect(): null {
   useEffect(() => {
@@ -141,7 +160,40 @@ export function shouldRedirectTeamsToLogin(
   auth: AuthState | null,
   token: string | null
 ): boolean {
-  return pathname.startsWith("/teams") && (!auth || !token);
+  return isTeamsRoute(pathname) && (!auth || !token);
+}
+
+function isTeamsRoute(pathname: string): boolean {
+  return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
+}
+
+export function resolveTeamRoute(pathname: string): {
+  mode: "selector" | "detail";
+  teamId: string | null;
+} | null {
+  if (!isTeamsRoute(pathname)) {
+    return null;
+  }
+  const suffix = pathname.slice("/teams".length);
+  if (!suffix || suffix === "/") {
+    return { mode: "selector", teamId: null };
+  }
+  const normalized = suffix.startsWith("/") ? suffix.slice(1) : suffix;
+  const [rawTeamId] = normalized.split("/");
+  if (!rawTeamId) {
+    return { mode: "selector", teamId: null };
+  }
+  try {
+    return {
+      mode: "detail",
+      teamId: decodeURIComponent(rawTeamId),
+    };
+  } catch {
+    return {
+      mode: "detail",
+      teamId: rawTeamId,
+    };
+  }
 }
 
 export function resolvePostAuthRedirectTarget(
@@ -340,6 +392,54 @@ export function chunkPermissionPollAgentIds(
     chunks.push(agentIds.slice(i, i + limit));
   }
   return chunks;
+}
+
+export function resolveAgentsPanelMaxWidth(workspaceWidth: number): number {
+  if (!Number.isFinite(workspaceWidth) || workspaceWidth <= 0) {
+    return AGENTS_PANEL_MAX_WIDTH;
+  }
+  return Math.max(
+    AGENTS_PANEL_MIN_WIDTH,
+    Math.min(
+      AGENTS_PANEL_MAX_WIDTH,
+      Math.round(
+        workspaceWidth -
+          AGENTS_PANEL_MIN_RIGHT_WIDTH -
+          AGENTS_WORKSPACE_SPLITTER_WIDTH
+      )
+    )
+  );
+}
+
+export function clampAgentsPanelWidth(
+  value: number,
+  maxWidth = AGENTS_PANEL_MAX_WIDTH
+): number {
+  if (!Number.isFinite(value)) {
+    return AGENTS_PANEL_DEFAULT_WIDTH;
+  }
+  const effectiveMax = Math.max(
+    AGENTS_PANEL_MIN_WIDTH,
+    Math.min(AGENTS_PANEL_MAX_WIDTH, maxWidth)
+  );
+  return Math.max(
+    AGENTS_PANEL_MIN_WIDTH,
+    Math.min(effectiveMax, Math.round(value))
+  );
+}
+
+export function loadAgentsPanelWidthPreference(
+  raw = getLocalStorageItemSafe(AGENTS_PANEL_WIDTH_STORAGE_KEY)
+): number {
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return clampAgentsPanelWidth(parsed);
+}
+
+export function persistAgentsPanelWidthPreference(width: number): void {
+  setLocalStorageItemSafe(
+    AGENTS_PANEL_WIDTH_STORAGE_KEY,
+    String(clampAgentsPanelWidth(width))
+  );
 }
 
 export function buildPendingPermissionCountMap(
@@ -621,6 +721,20 @@ export function App() {
   const eventLimit = 200;
   const maxCachedEvents = 800;
   const maxCachedSessions = 40;
+  const [routeLocation, setRouteLocation] = useState(() => ({
+    pathname: location.pathname,
+    search: location.search,
+  }));
+  const navigateWorkbenchRoute = useCallback(
+    (pathname: string) => {
+      if (routeLocation.pathname === pathname) {
+        return;
+      }
+      window.history.pushState({}, "", pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    },
+    [routeLocation.pathname]
+  );
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = getLocalStorageItemSafe("agenthub_auth");
     if (!raw) return null;
@@ -724,7 +838,11 @@ export function App() {
     >
   >({});
   const [agentsCollapsed, setAgentsCollapsed] = useState(true);
+  const [agentsPanelWidth, setAgentsPanelWidth] = useState(() =>
+    loadAgentsPanelWidthPreference()
+  );
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
+  const [authBusy, setAuthBusy] = useState<"login" | "register" | null>(null);
   const [developerMode, setDeveloperMode] = useState<boolean>(() =>
     loadDeveloperModePreference()
   );
@@ -755,8 +873,11 @@ export function App() {
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const appHeaderRef = useRef<HTMLElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const agentsPanelWidthRef = useRef(agentsPanelWidth);
+  const agentsResizeCleanupRef = useRef<(() => void) | null>(null);
   const [, setThinkingTick] = useState(0);
   const createAgentBusyRef = useRef(false);
+  const authBusyRef = useRef<"login" | "register" | null>(null);
   const lastEventCursorRef = useRef<Record<string, EventCursor>>({});
   const eventPollRef = useRef<{
     timer: number | null;
@@ -824,6 +945,36 @@ export function App() {
       typeof ResizeObserver === "undefined" ? undefined : ResizeObserver
     );
   }, [auth, normalizedError, agentsCollapsed]);
+
+  useEffect(() => {
+    agentsPanelWidthRef.current = agentsPanelWidth;
+  }, [agentsPanelWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncAgentsPanelWidth = () => {
+      if (window.innerWidth <= AGENTS_DESKTOP_BREAKPOINT_PX) {
+        return;
+      }
+      const workspaceWidth = workspaceRef.current?.getBoundingClientRect().width ?? 0;
+      if (workspaceWidth <= 0) {
+        return;
+      }
+      const nextMaxWidth = resolveAgentsPanelMaxWidth(workspaceWidth);
+      setAgentsPanelWidth((current) => clampAgentsPanelWidth(current, nextMaxWidth));
+    };
+    syncAgentsPanelWidth();
+    window.addEventListener("resize", syncAgentsPanelWidth);
+    return () => {
+      window.removeEventListener("resize", syncAgentsPanelWidth);
+    };
+  }, [agentsCollapsed]);
+
+  useEffect(() => {
+    return () => {
+      agentsResizeCleanupRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -927,6 +1078,34 @@ export function App() {
         onOutputGroup: updateOutputCacheEntry,
         onAcpGroup: updateAcpOutputCacheEntry,
       });
+      const latestSessions = buildLatestLiveSessionMap(lines);
+      if (Object.keys(latestSessions).length > 0) {
+        setAgentSessions((prev) => {
+          let next = prev;
+          for (const [agentId, sessionId] of Object.entries(latestSessions)) {
+            if (prev[agentId] === sessionId || next[agentId] === sessionId) {
+              continue;
+            }
+            if (next === prev) {
+              next = { ...prev };
+            }
+            next[agentId] = sessionId;
+          }
+          return next;
+        });
+      }
+      const liveSessionSwitch = resolveLiveSessionSwitch(
+        lines,
+        currentActive,
+        currentSessionId
+      );
+      if (
+        liveSessionSwitch &&
+        liveSessionSwitch !== currentSessionId &&
+        isAgentActiveStatus(activeAgentStatusRef.current)
+      ) {
+        setActiveSessionId(liveSessionSwitch);
+      }
 
       if (activeLines.length > 0) {
         setOutputs((prev) => mergeOutputs(prev, activeLines));
@@ -1002,11 +1181,23 @@ export function App() {
 
   const token = auth?.token ?? null;
   const postAuthRedirectTarget = resolvePostAuthRedirectTarget(
-    location.pathname,
-    location.search,
+    routeLocation.pathname,
+    routeLocation.search,
     auth,
     token
   );
+  useEffect(() => {
+    const syncRouteLocation = () => {
+      setRouteLocation({
+        pathname: location.pathname,
+        search: location.search,
+      });
+    };
+    window.addEventListener("popstate", syncRouteLocation);
+    return () => {
+      window.removeEventListener("popstate", syncRouteLocation);
+    };
+  }, []);
   useEffect(() => {
     activeAgentRef.current = activeAgent;
   }, [activeAgent]);
@@ -1853,6 +2044,9 @@ export function App() {
   }, [token, activeAgent, activeSessionId]);
 
   const onRegister = async (role?: string) => {
+    if (authBusyRef.current) return;
+    authBusyRef.current = "register";
+    setAuthBusy("register");
     setError(null);
     try {
       const start = await api.registerStart(
@@ -1877,10 +2071,16 @@ export function App() {
       await ensurePushSubscription(finish.token);
     } catch (err) {
       setError(formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err));
+    } finally {
+      authBusyRef.current = null;
+      setAuthBusy(null);
     }
   };
 
   const onLogin = async () => {
+    if (authBusyRef.current) return;
+    authBusyRef.current = "login";
+    setAuthBusy("login");
     setError(null);
     try {
       const start = await api.loginStart(username, password);
@@ -1900,6 +2100,9 @@ export function App() {
       await ensurePushSubscription(finish.token);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
+    } finally {
+      authBusyRef.current = null;
+      setAuthBusy(null);
     }
   };
 
@@ -2260,9 +2463,56 @@ export function App() {
     setAgentsCollapsed(false);
   }, []);
 
-  const handleToggleAgents = useCallback(() => {
-    setAgentsCollapsed((prev) => !prev);
-  }, []);
+  const handleAgentsSplitterPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (typeof window === "undefined") return;
+      if (window.innerWidth <= AGENTS_DESKTOP_BREAKPOINT_PX) return;
+      const workspace = workspaceRef.current;
+      if (!workspace) return;
+
+      agentsResizeCleanupRef.current?.();
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startWidth = agentsPanelWidthRef.current;
+      const bodyStyle = document.body.style;
+      const previousCursor = bodyStyle.cursor;
+      const previousUserSelect = bodyStyle.userSelect;
+      bodyStyle.cursor = "col-resize";
+      bodyStyle.userSelect = "none";
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+        bodyStyle.cursor = previousCursor;
+        bodyStyle.userSelect = previousUserSelect;
+        persistAgentsPanelWidthPreference(agentsPanelWidthRef.current);
+        agentsResizeCleanupRef.current = null;
+      };
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const workspaceWidth = workspace.getBoundingClientRect().width;
+        const nextMaxWidth = resolveAgentsPanelMaxWidth(workspaceWidth);
+        const nextWidth = clampAgentsPanelWidth(
+          startWidth + (moveEvent.clientX - startX),
+          nextMaxWidth
+        );
+        agentsPanelWidthRef.current = nextWidth;
+        setAgentsPanelWidth(nextWidth);
+      };
+
+      const onPointerUp = () => {
+        cleanup();
+      };
+
+      agentsResizeCleanupRef.current = cleanup;
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    },
+    []
+  );
 
   const handleSelectAgent = useCallback((id: string) => {
     setActiveAgent(id);
@@ -2574,6 +2824,7 @@ export function App() {
     () => ({
       acpView,
       subtitle: activeAgentRecord?.workdir ?? null,
+      mobileTitle: activeAgentRecord?.name ?? null,
       acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
       developerMode,
       onSelectTab: handleAcpTabSelect,
@@ -2588,6 +2839,7 @@ export function App() {
     }),
     [
       acpView,
+      activeAgentRecord?.name,
       activeAgentRecord?.workdir,
       acpTab,
       developerMode,
@@ -2627,12 +2879,22 @@ export function App() {
       jumpToTerminalBottom,
     ]
   );
+  const workspaceStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (agentsCollapsed) {
+      return undefined;
+    }
+    return {
+      ["--agents-panel-width" as string]: `${agentsPanelWidth}px`,
+    };
+  }, [agentsCollapsed, agentsPanelWidth]);
+  const agentsPanelShowsCompactRows =
+    !agentsCollapsed && agentsPanelWidth <= AGENTS_PANEL_COMPACT_ROWS_THRESHOLD;
 
-  if (location.pathname.startsWith("/join")) {
+  if (routeLocation.pathname.startsWith("/join")) {
     return <JoinPage onComplete={(next) => setAuth(next)} />;
   }
 
-  if (location.pathname.startsWith("/admin")) {
+  if (routeLocation.pathname.startsWith("/admin")) {
     if (!auth) {
       return <AuthRequired />;
     }
@@ -2668,16 +2930,18 @@ export function App() {
     );
   }
 
-  if (location.pathname.startsWith("/teams")) {
-    if (shouldRedirectTeamsToLogin(location.pathname, auth, token)) {
+  if (isTeamsRoute(routeLocation.pathname)) {
+    if (shouldRedirectTeamsToLogin(routeLocation.pathname, auth, token)) {
       return <AuthRedirect />;
     }
+    const teamRoute = resolveTeamRoute(routeLocation.pathname);
     return (
       <TeamPage
         auth={auth}
         token={token}
         onLogout={onLogout}
         developerMode={developerMode}
+        routeTeamId={teamRoute?.teamId ?? null}
       />
     );
   }
@@ -2687,40 +2951,45 @@ export function App() {
   }
 
   return (
-    <div className="app" ref={appRootRef}>
-      <header ref={appHeaderRef}>
-        <h1>AgentHub</h1>
+    <div
+      className="app bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)]"
+      ref={appRootRef}
+    >
+      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
+        <div className="hidden min-w-0 sm:block">
+          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-semibold tracking-tight text-black">
+            AgentHub
+          </h1>
+          <p className="mt-1 hidden text-[10px] font-medium uppercase tracking-[0.12em] text-black/55 sm:block">
+            Agent runtime workbench
+          </p>
+        </div>
         {auth && (
           <div className="session">
-            <span
-              className={`session-connection ${connectionBadge.tone}`}
-              title={connectionBadge.title}
-              role="status"
-              aria-live="polite"
+            <button
+              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-[#203b2d] text-white"}`}
+              onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
+              title={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-pressed={!agentsCollapsed}
             >
-              <span className="session-connection-dot" aria-hidden="true" />
-              <span>{connectionBadge.label}</span>
-            </span>
-            <span>{auth.username}</span>
-            <a
-              className="icon-button"
-              href="/teams"
-              title="Teams"
-              aria-label="Teams"
-            >
-              <i className="bi bi-diagram-3" aria-hidden="true" />
-            </a>
-            {auth.role === "root" && (
-              <a
-                className="icon-button"
-                href="/admin"
-                title="Admin"
-                aria-label="Admin"
-              >
-                <i className="bi bi-gear" aria-hidden="true" />
-              </a>
-            )}
-            <button onClick={onLogout}>Logout</button>
+              <i
+                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
+                aria-hidden="true"
+              />
+            </button>
+            <WorkbenchConnectionBadge
+              badge={connectionBadge}
+              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
+            />
+            <WorkbenchHeaderMenu
+              active="agents"
+              username={auth.username}
+              isRoot={auth.role === "root"}
+              onLogout={onLogout}
+              onNavigate={navigateWorkbenchRoute}
+              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+            />
           </div>
         )}
       </header>
@@ -2738,6 +3007,7 @@ export function App() {
             className={AUTH_INPUT_CLASS}
             placeholder="Username"
             value={username}
+            disabled={authBusy !== null}
             onChange={(e) => setUsername(e.target.value)}
           />
           <input
@@ -2745,6 +3015,7 @@ export function App() {
             placeholder="Password"
             type="password"
             value={password}
+            disabled={authBusy !== null}
             onChange={(e) => setPassword(e.target.value)}
           />
           {rootInitialized === false && (
@@ -2752,6 +3023,7 @@ export function App() {
               className={AUTH_INPUT_CLASS}
               placeholder="Display Name"
               value={displayName}
+              disabled={authBusy !== null}
               onChange={(e) => setDisplayName(e.target.value)}
             />
           )}
@@ -2759,13 +3031,18 @@ export function App() {
             {rootInitialized === false && (
               <button
                 className={AUTH_SECONDARY_BUTTON_CLASS}
+                disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
               >
-                Bootstrap Root
+                {authBusy === "register" ? "Bootstrapping..." : "Bootstrap Root"}
               </button>
             )}
-            <button className={AUTH_PRIMARY_BUTTON_CLASS} onClick={onLogin}>
-              Login
+            <button
+              className={AUTH_PRIMARY_BUTTON_CLASS}
+              disabled={authBusy !== null}
+              onClick={onLogin}
+            >
+              {authBusy === "login" ? "Logging in..." : "Login"}
             </button>
           </div>
         </section>
@@ -2775,11 +3052,13 @@ export function App() {
         <section
           className={agentsCollapsed ? "workspace collapsed" : "workspace"}
           ref={workspaceRef}
+          style={workspaceStyle}
         >
           <AgentsPanel
             agents={agents}
             activeAgent={activeAgent}
             agentsCollapsed={agentsCollapsed}
+            compactRows={agentsPanelShowsCompactRows}
             hasPendingPermissions={hasPendingPermissions}
             pendingPermissionCounts={pendingPermissionCounts}
             startingAgentIds={startingAgentIds}
@@ -2792,18 +3071,25 @@ export function App() {
             onStopAgent={onStopAgent}
             onDeleteAgent={onDeleteAgent}
           />
+          <div
+            className="workspace-splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize agents sidebar"
+            onPointerDown={handleAgentsSplitterPointerDown}
+          />
           <div className="workspace-right">
-            <OutputHeader
-              activeAgent={activeAgentRecord}
-              activeSessionId={activeSessionId}
-              developerMode={developerMode}
-              agentsCollapsed={agentsCollapsed}
-              hasAcp={acpView.hasAcp}
-              thinkingStartTs={thinkingStartTs}
-              runStatus={acpView.runStatus?.status ?? null}
-              modelLabel={activeAgentModelLabel}
-              onToggleAgents={handleToggleAgents}
-            />
+            <div className={acpView.hasAcp ? "max-[720px]:hidden" : ""}>
+              <OutputHeader
+                activeAgent={activeAgentRecord}
+                activeSessionId={activeSessionId}
+                developerMode={developerMode}
+                hasAcp={acpView.hasAcp}
+                thinkingStartTs={thinkingStartTs}
+                runStatus={acpView.runStatus?.status ?? null}
+                modelLabel={activeAgentModelLabel}
+              />
+            </div>
             {activeAgent ? (
               <OutputErrorBoundary>
                 <OutputBody
@@ -2908,11 +3194,6 @@ export function parseSendInputSessionMismatch(
   const running = match[2]?.trim();
   if (!expected || !running) return null;
   return { expected, running };
-}
-
-function getNavigatorOnline(): boolean {
-  if (typeof navigator === "undefined") return true;
-  return navigator.onLine;
 }
 
 function createAnsiRenderer(): (input: string) => string {
@@ -3082,6 +3363,41 @@ export function analyzeLiveOutputBatch(
     activeAcpLines,
     nextStatuses,
   };
+}
+
+export function buildLatestLiveSessionMap(
+  lines: OutputLine[]
+): Record<string, string> {
+  const latestByAgent = new Map<string, OutputLine>();
+  for (const line of lines) {
+    const previous = latestByAgent.get(line.agent_id);
+    if (!previous || compareEventOrder(line, previous) > 0) {
+      latestByAgent.set(line.agent_id, line);
+    }
+  }
+  return Object.fromEntries(
+    Array.from(latestByAgent.entries()).map(([agentId, line]) => [
+      agentId,
+      line.session_id,
+    ])
+  );
+}
+
+export function resolveLiveSessionSwitch(
+  lines: OutputLine[],
+  activeAgent: string | null,
+  activeSessionId: string | null
+): string | null {
+  if (!activeAgent) return null;
+  let latestReplacement: OutputLine | null = null;
+  for (const line of lines) {
+    if (line.agent_id !== activeAgent) continue;
+    if (activeSessionId && line.session_id === activeSessionId) continue;
+    if (!latestReplacement || compareEventOrder(line, latestReplacement) > 0) {
+      latestReplacement = line;
+    }
+  }
+  return latestReplacement?.session_id ?? null;
 }
 
 export function dispatchLiveOutputBatch(params: {

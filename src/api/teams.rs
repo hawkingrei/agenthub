@@ -16,7 +16,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -27,11 +27,11 @@ use crate::api::error::ApiError;
 use crate::auth::UserRecord;
 use crate::state::AppState;
 use crate::team::{
-    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
-    TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord, ensure_team_runtime_started,
-    stop_team_runtime,
+    TEAM_RUN_STATUS_VALUES, TEAM_TASK_STATUS_VALUES, TeamActorMessageRecord,
+    TeamActorMessageTransport, TeamConversationMessageRecord, TeamConversationRecord,
+    TeamDefinitionConfig, TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
+    TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
+    TeamTaskRecord, TeamTaskStatus, ensure_team_runtime_started, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -67,6 +67,7 @@ const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "gro
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_TASK_COMPILE_VERSION: i64 = 1;
 const TEAM_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
 const DEFAULT_TEAM_TASK_ACCEPTANCE_CRITERION: &str =
@@ -136,6 +137,12 @@ pub struct CreateTeamRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UpdateTeamSpecRequest {
+    pub spec: Value,
+    pub expected_updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateTeamRunRequest {
     pub context_id: Option<String>,
     pub input: Option<Value>,
@@ -153,6 +160,11 @@ pub struct CreateTeamTaskRequest {
 #[derive(Debug, Deserialize)]
 pub struct ListTeamTasksQuery {
     pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTeamTaskRequest {
+    pub status: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -319,6 +331,7 @@ pub struct TeamMailboxSnapshot {
 pub struct TeamTaskDetailResponse {
     pub task: TeamTaskRecord,
     pub conversation: TeamConversationRecord,
+    pub latest_run: Option<TeamRunRecord>,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -366,11 +379,15 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
         .route("/:id", get(get_team).delete(delete_team))
+        .route("/:id/spec", put(update_team_spec))
         .route("/:id/runtime", get(get_team_runtime))
         .route("/:id/start", post(start_team))
         .route("/:id/stop", post(stop_team))
         .route("/:id/tasks", post(create_team_task).get(list_team_tasks))
-        .route("/:id/tasks/:task_id", get(get_team_task))
+        .route(
+            "/:id/tasks/:task_id",
+            get(get_team_task).patch(update_team_task),
+        )
         .route(
             "/:id/tasks/:task_id/messages",
             post(send_team_task_message).get(list_team_task_messages),
@@ -445,12 +462,46 @@ async fn create_team(
         )
         .await
         .map_err(map_create_team_error)?;
-    if let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await {
+    if has_configured_team_members(&team.spec)?
+        && let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await
+    {
         let member_ids = parse_member_ids(team.spec.get("members"))?;
         let _ = state.teams.delete_team(&team.id, &member_ids).await;
         return Err(map_runtime_start_error(err));
     }
     Ok(Json(team))
+}
+
+async fn update_team_spec(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<UpdateTeamSpecRequest>,
+) -> Result<Json<TeamDefinitionRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let current = load_team_for_user(&state, &team_id, &user).await?;
+    let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
+    let mut spec = payload.spec;
+    normalize_team_spec(&mut spec)?;
+    validate_team_spec(&spec)?;
+    let updated = state
+        .teams
+        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+        .await
+        .map_err(map_team_internal_error)?
+        .ok_or_else(|| {
+            ApiError::conflict("team definition changed concurrently; reload and retry")
+        })?;
+    let next_member_ids = parse_member_ids(updated.spec.get("members"))?;
+    for removed_member_id in previous_member_ids.difference(&next_member_ids) {
+        let _ = state.agents.stop_agent(removed_member_id).await;
+    }
+    if has_configured_team_members(&updated.spec)? {
+        ensure_team_runtime_started(state.agents.as_ref(), &updated)
+            .await
+            .map_err(map_runtime_start_error)?;
+    }
+    Ok(Json(updated))
 }
 
 async fn start_team(
@@ -460,6 +511,7 @@ async fn start_team(
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    ensure_team_execution_ready(&team.spec)?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
         .await
         .map_err(map_runtime_start_error)?;
@@ -557,7 +609,7 @@ async fn create_team_task(
     Json(payload): Json<CreateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(ApiError::bad_request("title is required"));
@@ -565,19 +617,56 @@ async fn create_team_task(
     let created_by_actor_id =
         normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
     let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
+    let raw_context = payload.context.unwrap_or_else(|| serde_json::json!({}));
+    let should_auto_dispatch = should_auto_dispatch_task(&conversation_mode, &raw_context);
+    let can_auto_dispatch = if should_auto_dispatch {
+        can_auto_dispatch_task(&team.spec)?
+    } else {
+        false
+    };
     let (task, conversation) = state
         .teams
         .create_task(
             &team_id,
             &title,
             &created_by_actor_id,
-            payload.context.unwrap_or_else(|| serde_json::json!({})),
+            raw_context,
             &conversation_mode,
             payload.topic.as_deref(),
         )
         .await
         .map_err(map_team_internal_error)?;
-    Ok(Json(TeamTaskDetailResponse { task, conversation }))
+    let latest_run = if can_auto_dispatch {
+        let preview =
+            compile_task_run_preview_response(&team.spec, &task, &conversation, &[], None)?;
+        Some(
+            state
+                .teams
+                .create_run(
+                    &team.id,
+                    Some(preview.run_payload.context_id.as_str()),
+                    preview.run_payload.input,
+                )
+                .await
+                .map_err(map_team_internal_error)?,
+        )
+    } else {
+        None
+    };
+    let task = if latest_run.is_some() {
+        state
+            .teams
+            .get_task(&task.id)
+            .await
+            .map_err(map_team_internal_error)?
+    } else {
+        task
+    };
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run,
+    }))
 }
 
 async fn list_team_tasks(
@@ -616,7 +705,41 @@ async fn get_team_task(
         .get_task_conversation(&task_id)
         .await
         .map_err(|err| map_not_found_error(err, "conversation not found"))?;
-    Ok(Json(TeamTaskDetailResponse { task, conversation }))
+    let latest_run = state
+        .teams
+        .get_latest_run_for_task(&team_id, &task_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run,
+    }))
+}
+
+async fn update_team_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<UpdateTeamTaskRequest>,
+) -> Result<Json<TeamTaskRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    let status = normalize_task_status(Some(payload.status.as_str()))?;
+    let updated = state
+        .teams
+        .update_task_status(&task_id, status)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(updated))
 }
 
 async fn send_team_task_message(
@@ -721,7 +844,7 @@ async fn compile_team_task_run_preview(
 ) -> Result<Json<TeamTaskRunCompilePreviewResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    validate_team_spec(&team.spec)?;
+    ensure_team_execution_ready(&team.spec)?;
     let task = state
         .teams
         .get_task(&task_id)
@@ -758,7 +881,7 @@ async fn create_team_run(
 ) -> Result<Json<TeamRunRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    validate_team_spec(&team.spec)?;
+    ensure_team_execution_ready(&team.spec)?;
     let run = state
         .teams
         .create_run(
@@ -1963,6 +2086,22 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
     )))
 }
 
+fn normalize_task_status(value: Option<&str>) -> Result<TeamTaskStatus, ApiError> {
+    match value
+        .map(str::trim)
+        .filter(|candidate| !candidate.is_empty())
+    {
+        Some("open") => Ok(TeamTaskStatus::Open),
+        Some("in_progress") => Ok(TeamTaskStatus::InProgress),
+        Some("completed") => Ok(TeamTaskStatus::Completed),
+        Some("canceled") => Ok(TeamTaskStatus::Canceled),
+        _ => Err(ApiError::bad_request(&format!(
+            "status must be one of: {}",
+            TEAM_TASK_STATUS_VALUES.join(", ")
+        ))),
+    }
+}
+
 fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, ApiError> {
     match value
         .map(str::trim)
@@ -2507,6 +2646,43 @@ fn compile_task_run_preview_response(
     })
 }
 
+fn has_configured_team_members(spec: &Value) -> Result<bool, ApiError> {
+    let spec_obj = spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    Ok(!parse_member_specs(spec_obj.get("members"))?.is_empty())
+}
+
+fn should_auto_dispatch_task(conversation_mode: &str, context: &Value) -> bool {
+    if conversation_mode == "group_chat" {
+        let bootstrap_kind = context
+            .as_object()
+            .and_then(|obj| obj.get("bootstrap_kind"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        if bootstrap_kind.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND) {
+            return false;
+        }
+    }
+    true
+}
+
+fn can_auto_dispatch_task(spec: &Value) -> Result<bool, ApiError> {
+    validate_team_spec(spec)?;
+    has_configured_team_members(spec)
+}
+
+fn ensure_team_execution_ready(spec: &Value) -> Result<(), ApiError> {
+    validate_team_spec(spec)?;
+    if !has_configured_team_members(spec)? {
+        return Err(ApiError::bad_request(
+            "team has no members configured; add at least one agent first",
+        ));
+    }
+    Ok(())
+}
+
 fn compile_task_step_template(
     spec_obj: &serde_json::Map<String, Value>,
     member_specs: &[TeamMemberSpec],
@@ -3040,6 +3216,12 @@ fn inject_team_spec_defaults(
     spec_obj: &mut serde_json::Map<String, Value>,
 ) -> Result<(), ApiError> {
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    if member_specs.is_empty() {
+        spec_obj.remove("leader_member_id");
+        spec_obj.remove("entrypoint");
+        spec_obj.remove("steps");
+        return Ok(());
+    }
     let member_specs_by_id = member_specs
         .iter()
         .map(|member| (member.member_id.as_str(), member))
@@ -3235,18 +3417,39 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let _ = parse_team_spec_version(spec_obj.get("spec_version"))?;
+    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
     let entrypoint = spec_obj
         .get("entrypoint")
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| ApiError::bad_request("spec.entrypoint is required"))?;
-    let member_specs = parse_member_specs(spec_obj.get("members"))?;
+        .filter(|value| !value.is_empty());
+
+    if member_specs.is_empty() {
+        if leader_member_id.is_some() {
+            return Err(ApiError::bad_request(
+                "spec.leader_member_id must be omitted until spec.members is configured",
+            ));
+        }
+        if entrypoint.is_some() {
+            return Err(ApiError::bad_request(
+                "spec.entrypoint must be omitted until spec.members is configured",
+            ));
+        }
+        if spec_obj.get("steps").is_some() {
+            return Err(ApiError::bad_request(
+                "spec.steps must be omitted until spec.members is configured",
+            ));
+        }
+        return Ok(());
+    }
+
+    let entrypoint =
+        entrypoint.ok_or_else(|| ApiError::bad_request("spec.entrypoint is required"))?;
     let member_ids = member_specs
         .iter()
         .map(|member| member.member_id.clone())
         .collect::<HashSet<_>>();
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
 
     if let Some(steps_value) = spec_obj.get("steps") {
         validate_steps(entrypoint, steps_value, &member_ids)?;
@@ -3292,9 +3495,6 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
     let members = members_value
         .and_then(Value::as_array)
         .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
-    if members.is_empty() {
-        return Err(ApiError::bad_request("spec.members must not be empty"));
-    }
 
     let mut seen_member_ids = HashSet::with_capacity(members.len());
     let mut out = Vec::with_capacity(members.len());

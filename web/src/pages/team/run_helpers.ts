@@ -61,6 +61,26 @@ export function selectTeamPreviewEvents(
   return events.slice(events.length - limit);
 }
 
+export function extractTaskIdFromRunInput(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  const rawTaskId = (input as { task_id?: unknown }).task_id;
+  return typeof rawTaskId === "string" && rawTaskId.trim().length > 0
+    ? rawTaskId.trim()
+    : null;
+}
+
+export function selectRunsForTask(runs: TeamRunRecord[], taskId: string): TeamRunRecord[] {
+  const normalizedTaskId = taskId.trim();
+  if (!normalizedTaskId) {
+    return [];
+  }
+  return runs
+    .filter((run) => extractTaskIdFromRunInput(run.input) === normalizedTaskId)
+    .sort((left, right) => right.created_at - left.created_at);
+}
+
 export function resolveActiveRunIdForSelectedTeam(
   runs: TeamRunRecord[],
   selectedTeamId: string | null,

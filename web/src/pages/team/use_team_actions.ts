@@ -55,6 +55,8 @@ type UseTeamActionsOptions = {
   inboxLimit: string;
   inboxAfterId: string;
   inboxIncludeDelivered: boolean;
+  selectedMemberId: string;
+  selectedMemberSessionId: string | null;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   activeRunIdRef: MutableRefObject<string | null>;
   eventsRef: MutableRefObject<TeamRunEventRecord[]>;
@@ -182,6 +184,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
+    selectedMemberId,
+    selectedMemberSessionId,
     selectedMemberSnapshot,
     activeRunIdRef,
     eventsRef,
@@ -403,13 +407,16 @@ export function useTeamActions(options: UseTeamActionsOptions) {
 
   const loadMemberEvents = useCallback(
     async (mode: "replace" | "prepend" = "replace") => {
-      if (!selectedMemberSnapshot) {
+      const memberAgentId = selectedMemberSnapshot?.member_id ?? selectedMemberId.trim();
+      if (!memberAgentId) {
         setMemberEvents([]);
         setMemberEventsHasMore(false);
         return;
       }
-      const memberAgentId = selectedMemberSnapshot.member_id;
-      const sessionId = getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) ?? undefined;
+      const sessionId =
+        selectedMemberSessionId ??
+        getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step) ??
+        undefined;
       if (!sessionId) {
         setMemberEvents([]);
         setMemberEventsHasMore(false);
@@ -434,6 +441,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     },
     [
       memberEventsRef,
+      selectedMemberId,
+      selectedMemberSessionId,
       selectedMemberSnapshot,
       setMemberEvents,
       setMemberEventsHasMore,

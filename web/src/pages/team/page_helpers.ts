@@ -10,7 +10,8 @@ import type {
   TeamTaskRecord,
 } from "../../api";
 import type { StatusTone } from "../../components/status_badge";
-import type { TeamMemberAgentStatusSummary } from "./member_helpers";
+import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "../team_member_status_strip";
+import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
@@ -31,10 +32,54 @@ export type TeamRuntimeControlTone = {
   countColor: "teal" | "yellow" | "gray";
 };
 
+export type AgentWorkspaceStatusView = {
+  role: string;
+  lifecycle: string;
+  work: string;
+  inbox: string;
+  currentWork: string;
+};
+
 type TeamRuntimeStatusRecord = {
   status: TeamRuntimeRecord["status"];
   members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
 };
+
+export function resolveSelectedAgentWorkspaceLabel(
+  selectedMemberId: string,
+  member: TeamMemberLiveState | null,
+  fallbackAgentName?: string | null
+): string {
+  const liveAgentName = member?.agent_name?.trim();
+  if (liveAgentName) {
+    return liveAgentName;
+  }
+  const fallbackName = fallbackAgentName?.trim();
+  if (fallbackName) {
+    return fallbackName;
+  }
+  const memberId = selectedMemberId.trim();
+  if (memberId) {
+    return memberId;
+  }
+  return "Agent";
+}
+
+export function resolveAgentWorkspaceStatusView(
+  member: TeamMemberLiveState | null
+): AgentWorkspaceStatusView {
+  const lifecycle = member ? normalizeTeamMemberLifecycle(member) : "unknown";
+  const workStatus = member ? normalizeTeamMemberWorkStatus(member) : "unknown";
+  return {
+    role: member?.role ?? "-",
+    lifecycle,
+    work: workStatus === "no_run" ? "no run" : workStatus,
+    inbox:
+      member?.pending_inbox_count == null ? "-" : String(member.pending_inbox_count),
+    currentWork:
+      member?.current_work?.trim() || "No direct activity reported yet.",
+  };
+}
 
 export function resolveTeamRuntimeStatus(
   summary: TeamMemberAgentStatusSummary | null,

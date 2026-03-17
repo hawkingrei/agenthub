@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TeamRunEventRecord, TeamRunRecord } from "../../api";
 import {
+  extractTaskIdFromRunInput,
   resolveActiveRunIdForSelectedTeam,
   resolveRunStatusFilter,
+  selectRunsForTask,
   selectTeamPreviewEvents,
 } from "./run_helpers";
 
@@ -59,5 +61,21 @@ describe("team run helpers", () => {
     expect(
       selectTeamPreviewEvents(events, "agent-worker-1", 2).map((event) => event.event_id)
     ).toEqual([1, 2, 3, 4]);
+  });
+
+  it("extracts task ids from run input and filters related runs", () => {
+    const runs = [
+      buildRun("run-a", "team-a", 20),
+      { ...buildRun("run-b", "team-a", 30), input: { task_id: "task-1" } },
+      { ...buildRun("run-c", "team-a", 40), input: { task_id: "task-2" } },
+      { ...buildRun("run-d", "team-a", 50), input: { task_id: "task-1" } },
+    ];
+
+    expect(extractTaskIdFromRunInput({ task_id: "task-7" })).toBe("task-7");
+    expect(extractTaskIdFromRunInput({})).toBeNull();
+    expect(selectRunsForTask(runs, "task-1").map((run) => run.id)).toEqual([
+      "run-d",
+      "run-b",
+    ]);
   });
 });

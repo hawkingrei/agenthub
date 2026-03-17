@@ -376,6 +376,68 @@ describe("team run list helpers", () => {
     ]);
   });
 
+  it("prefers runtime session status over stale agent catalog status", () => {
+    const statuses = resolveTeamMemberAgentStatuses(
+      {
+        members: [
+          { member_id: "leader-agent", role: "leader" },
+          { member_id: "worker-agent", role: "worker" },
+        ],
+      },
+      [buildAgent("leader-agent", "stopped"), buildAgent("worker-agent", "stopped")],
+      undefined,
+      [
+        {
+          member_id: "leader-agent",
+          display_name: "leader-agent",
+          role: "leader",
+          description: null,
+          agent_status: "running",
+          session_id: "session-leader",
+          session_status: "running",
+          card: {
+            card_id: "card-leader",
+            schema_version: "1",
+            description: "leader",
+            capability_tags: [],
+          },
+        },
+        {
+          member_id: "worker-agent",
+          display_name: "worker-agent",
+          role: "worker",
+          description: null,
+          agent_status: "running",
+          session_id: "session-worker",
+          session_status: "running",
+          card: {
+            card_id: "card-worker",
+            schema_version: "1",
+            description: "worker",
+            capability_tags: [],
+          },
+        },
+      ]
+    );
+
+    expect(statuses).toEqual([
+      {
+        member_id: "leader-agent",
+        role: "leader",
+        agent_name: "leader-agent",
+        status: "running",
+        missing_agent: false,
+      },
+      {
+        member_id: "worker-agent",
+        role: "worker",
+        agent_name: "worker-agent",
+        status: "running",
+        missing_agent: false,
+      },
+    ]);
+  });
+
   it("summarizes active/inactive/missing team member counts", () => {
     const summary = summarizeTeamMemberAgentStatuses([
       {

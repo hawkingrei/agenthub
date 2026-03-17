@@ -16,6 +16,11 @@ export const UPSTREAM_HTML_MESSAGE =
 const GENERIC_REQUEST_MESSAGE = "Request failed.";
 const MAX_ERROR_TEXT_LENGTH = 240;
 
+export function getNavigatorOnline(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine;
+}
+
 export function deriveConnectionBadge(
   networkOnline: boolean,
   hasStreamTarget: boolean,

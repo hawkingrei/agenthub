@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../api";
 import type { WorkerDraft } from "./member_helpers";
 import {
+  appendTeamMemberToSpec,
   buildTeamForgeCleanupWarning,
+  buildEmptyTeamSpec,
   buildLeaderForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
@@ -14,7 +16,8 @@ import {
   parseOptionalJson,
   parseRequiredJson,
   resolveUnusedTeamForgeAgentIds,
-  resolveTeamModelOptions,
+  teamSpecHasConfiguredMembers,
+  teamSpecHasLeader,
 } from "./create_helpers";
 
 function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
@@ -196,6 +199,148 @@ describe("team create helpers", () => {
     });
   });
 
+  it("builds an empty team spec with no configured members", () => {
+    const spec = buildEmptyTeamSpec() as { spec_version: number; members: unknown[] };
+    expect(spec).toEqual({
+      spec_version: 1,
+      members: [],
+    });
+    expect(teamSpecHasConfiguredMembers(spec)).toBe(false);
+    expect(teamSpecHasLeader(spec)).toBe(false);
+  });
+
+  it("appends leader and worker profiles into a team spec with derived workflow", () => {
+    const leaderAgent = buildForgeAgent({
+      id: "leader-1",
+      name: "leader-1-name",
+      workdir: "/tmp/leader-1",
+      code_mode: true,
+    });
+    const workerAgent = buildForgeAgent({
+      id: "worker-1",
+      name: "worker-1-name",
+      workdir: "/tmp/worker-1",
+      worktree_mode: "create_worktree",
+      worktree_repo: "/tmp/repos/agenthub",
+      worktree_ref: "main",
+      code_mode: true,
+    });
+    const withLeader = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "Team architect",
+        model: "codex",
+        prompt: "",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "",
+      },
+      leaderAgent
+    ) as {
+      leader_member_id: string;
+      entrypoint: string;
+      members: Array<Record<string, unknown>>;
+      steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
+    };
+    expect(teamSpecHasConfiguredMembers(withLeader)).toBe(true);
+    expect(teamSpecHasLeader(withLeader)).toBe(true);
+    expect(withLeader.leader_member_id).toBe("leader-1");
+    expect(withLeader.entrypoint).toBe("leader_plan");
+    expect(withLeader.members).toHaveLength(1);
+    expect(withLeader.steps).toEqual([
+      {
+        step_key: "leader_plan",
+        member_id: "leader-1",
+        depends_on: [],
+      },
+    ]);
+
+    const withWorker = appendTeamMemberToSpec(
+      withLeader,
+      {
+        member_id: "worker-1",
+        role: "worker",
+        description: "Implementation agent",
+        model: "",
+        prompt: "Execute with evidence",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "custom-worker-skill",
+      },
+      workerAgent
+    ) as {
+      leader_member_id: string;
+      members: Array<Record<string, unknown>>;
+      steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
+    };
+    expect(withWorker.leader_member_id).toBe("leader-1");
+    expect(withWorker.members).toHaveLength(2);
+    expect(withWorker.steps).toEqual([
+      {
+        step_key: "leader_plan",
+        member_id: "leader-1",
+        depends_on: [],
+      },
+      {
+        step_key: "worker_1_worker_1",
+        member_id: "worker-1",
+        depends_on: ["leader_plan"],
+      },
+      {
+        step_key: "leader_synthesize",
+        member_id: "leader-1",
+        depends_on: ["worker_1_worker_1"],
+      },
+    ]);
+  });
+
+  it("rejects worker-first and duplicate leader append operations", () => {
+    expect(() =>
+      appendTeamMemberToSpec(
+        buildEmptyTeamSpec(),
+        {
+          member_id: "worker-1",
+          role: "worker",
+          description: "",
+          model: "",
+          prompt: "",
+          skills: [],
+          custom_skills: "",
+        },
+        buildForgeAgent({ id: "worker-1" })
+      )
+    ).toThrow("Create the first agent before adding more agents");
+
+    const withLeader = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "",
+        model: "",
+        prompt: "",
+        skills: [],
+        custom_skills: "",
+      },
+      buildForgeAgent({ id: "leader-1" })
+    );
+    expect(() =>
+      appendTeamMemberToSpec(
+        withLeader,
+        {
+          member_id: "leader-2",
+          role: "leader",
+          description: "",
+          model: "",
+          prompt: "",
+          skills: [],
+          custom_skills: "",
+        },
+        buildForgeAgent({ id: "leader-2" })
+      )
+    ).toThrow("Team already has a leader");
+  });
+
   it("parses error message from plain and JSON-formatted errors", () => {
     expect(parseErrorMessage(new Error("request failed"))).toBe("request failed");
     expect(parseErrorMessage(new Error("{\"error\":\"forbidden\"}"))).toBe("forbidden");
@@ -260,19 +405,6 @@ describe("team create helpers", () => {
     expect(clampCreateTeamStage(0)).toBe(0);
     expect(clampCreateTeamStage(2)).toBe(2);
     expect(clampCreateTeamStage(999)).toBe(3);
-  });
-
-  it("resolves model options and appends custom current model when needed", () => {
-    const presetOptions = resolveTeamModelOptions("codex");
-    expect(presetOptions[0]).toEqual({ value: "", label: "Use default model" });
-    expect(presetOptions.some((option) => option.value === "codex")).toBe(true);
-    expect(presetOptions.some((option) => option.label.includes("Custom"))).toBe(false);
-
-    const customOptions = resolveTeamModelOptions("my-custom-model");
-    expect(customOptions.at(-1)).toEqual({
-      value: "my-custom-model",
-      label: "Custom (my-custom-model)",
-    });
   });
 
   it("collects unique member ids from team spec members", () => {

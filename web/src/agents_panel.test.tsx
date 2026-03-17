@@ -38,6 +38,7 @@ const agents: AgentRecord[] = [
 const baseProps = {
   agents,
   activeAgent: "agent-1",
+  compactRows: false,
   hasPendingPermissions: false,
   pendingPermissionCounts: {},
   startingAgentIds: {},
@@ -57,6 +58,8 @@ describe("AgentsPanel", () => {
       <AgentsPanel {...baseProps} agentsCollapsed={true} />
     );
     expect(html).toContain("agents-rail");
+    expect(html).toContain('aria-label="Show agents"');
+    expect(html).toContain('aria-label="Create agent"');
     expect(html).toContain("Agents");
     expect(html).toContain("Running");
     expect(html).not.toContain("Create Agent");
@@ -83,10 +86,13 @@ describe("AgentsPanel", () => {
     );
     expect(html).toContain("agents-backdrop");
     expect(html).toContain("Agents</h2>");
+    expect(html).not.toContain('href="/teams"');
     expect(html).toContain('aria-label="Hide agents"');
     expect(html).toContain("Create Agent");
     expect(html).toContain("Alpha");
     expect(html).toContain("Beta");
+    expect(html).toContain("agents-workbench-row");
+    expect(html).toContain("agents-workbench-name");
     expect(html).toContain("running");
   });
 
@@ -98,7 +104,7 @@ describe("AgentsPanel", () => {
         pendingPermissionCounts={{ "agent-1": 2 }}
       />
     );
-    expect(html).toContain("agent-permission-dot");
+    expect(html).toContain("agents-workbench-permission-dot");
     expect(html).toContain('aria-label="2 pending permissions for Alpha"');
   });
 
@@ -121,7 +127,7 @@ describe("AgentsPanel", () => {
         pendingPermissionCounts={{ "agent-1": 0 }}
       />
     );
-    expect(html).not.toContain("agent-permission-dot");
+    expect(html).not.toContain("agents-workbench-permission-dot");
   });
 
   it("renders spinning start icon when agent is starting", () => {
@@ -135,5 +141,12 @@ describe("AgentsPanel", () => {
     expect(html).toContain("bi-arrow-repeat");
     expect(html).toContain("animate-spin");
     expect(html).toContain('aria-label="Starting"');
+  });
+
+  it("marks the expanded panel for compact two-line rows when requested", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel {...baseProps} agentsCollapsed={false} compactRows={true} />
+    );
+    expect(html).toContain("agents-panel-compact-rows");
   });
 });

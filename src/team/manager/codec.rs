@@ -36,6 +36,7 @@ pub(super) fn parse_team_run_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resul
         context_id: row.get("context_id"),
         status: team_run_status_from_str(&status_raw),
         input,
+        summary: None,
         created_at: row.get("created_at"),
         started_at: row.get("started_at"),
         ended_at: row.get("ended_at"),

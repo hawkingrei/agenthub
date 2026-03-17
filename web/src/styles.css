@@ -300,7 +300,7 @@ section {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
+  grid-template-columns: var(--agents-panel-width, 360px) 12px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 6px;
   align-items: stretch;
@@ -312,6 +312,43 @@ section {
 
 .workspace.collapsed {
   grid-template-columns: 56px minmax(0, 1fr);
+}
+
+.workspace-splitter {
+  min-height: 0;
+  align-self: stretch;
+  border-radius: 999px;
+  cursor: col-resize;
+  touch-action: none;
+  background:
+    linear-gradient(180deg, rgba(32, 59, 45, 0.06), rgba(32, 59, 45, 0.16));
+  position: relative;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.workspace-splitter::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(32, 59, 45, 0.25);
+}
+
+.workspace-splitter:hover {
+  background:
+    linear-gradient(180deg, rgba(32, 59, 45, 0.1), rgba(32, 59, 45, 0.2));
+}
+
+.workspace-splitter:active {
+  box-shadow: inset 0 0 0 1px rgba(32, 59, 45, 0.14);
+}
+
+.workspace.collapsed .workspace-splitter {
+  display: none;
 }
 
 .workspace-left {
@@ -513,13 +550,13 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .input.docked {
   background: #fff;
   border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 10px;
-  box-shadow: var(--shadow);
+  border-radius: 11px;
+  padding: 8px;
+  box-shadow: 0 6px 20px rgba(18, 26, 35, 0.08);
   margin-top: auto;
   position: relative;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-rows: auto auto;
   align-items: stretch;
   flex: 0 0 auto;
@@ -531,15 +568,15 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   align-items: center;
   justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 6px;
-  min-height: 28px;
+  gap: 5px;
+  min-height: 24px;
 }
 
 .input-editor-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -549,12 +586,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input.docked .input-editor-row .input-send-button {
-  height: 48px;
-  min-height: 48px;
-  min-width: 92px;
-  padding: 0 16px;
+  height: 44px;
+  min-height: 44px;
+  min-width: 82px;
+  padding: 0 14px;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.1;
   align-self: stretch;
 }
@@ -563,77 +600,77 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   position: relative;
 }
 
-.input-interrupt-button {
-  height: 28px !important;
-  min-height: 28px;
-  padding: 4px 10px !important;
-  border-radius: 999px !important;
-  font-size: 11px !important;
+.input.docked .input-row .input-interrupt-button {
+  height: 26px;
+  min-height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
   line-height: 1.15;
 }
 
-.history-toggle {
-  height: 28px !important;
-  padding: 4px 10px !important;
-  border-radius: 999px !important;
-  font-size: 11px !important;
-  background: #f4f6f8 !important;
-  border: 1px solid #d9dee5 !important;
-  color: #3e4954 !important;
+.input.docked .input-row .history-toggle {
+  height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: #f4f6f8;
+  border: 1px solid #d9dee5;
+  color: #3e4954;
 }
 
 .input-history-menu {
   position: absolute;
   left: 0;
   right: auto;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   width: min(560px, calc(100vw - 32px));
   max-width: min(560px, calc(100vw - 32px));
-  max-height: 260px;
+  max-height: 236px;
   overflow: auto;
   border: 1px solid #d9dee5;
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 12px 30px rgba(18, 26, 35, 0.12);
-  padding: 6px;
+  box-shadow: 0 10px 24px rgba(18, 26, 35, 0.1);
+  padding: 4px;
   display: grid;
-  gap: 4px;
+  gap: 3px;
   z-index: 8;
 }
 
-.input-history-item {
+.input.docked .input-history .input-history-item {
   width: 100%;
   text-align: left;
-  height: auto !important;
-  min-height: 30px;
-  padding: 6px 8px !important;
-  border-radius: 8px !important;
-  border: 1px solid transparent !important;
-  background: #fff !important;
-  color: #1f2a36 !important;
+  height: auto;
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #fff;
+  color: #1f2a36;
   font-family: "Source Code Pro", monospace;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.input-history-item:hover {
-  background: #f5f8ff !important;
-  border-color: #d8e3ff !important;
+.input.docked .input-history .input-history-item:hover {
+  background: #f5f8ff;
+  border-color: #d8e3ff;
 }
 
 .input button:not([class*="mantine-"]) {
-  height: 44px;
+  height: 40px;
 }
 
 .jump-bottom {
   position: static;
   justify-self: end;
   margin-left: auto;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   border: 1px solid #d0d0d0;
   background: #fff;
@@ -646,7 +683,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .jump-bottom .bi {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .jump-bottom:hover {
@@ -667,58 +704,67 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   align-content: start;
 }
 
-.agent-row {
+.agents-workbench-row {
   text-align: left;
-  border: 1px solid #e0e0e0;
-  border-radius: var(--radius-md);
-  padding: 6px;
-  background: #fff;
   cursor: pointer;
   user-select: none;
+  min-width: 0;
 }
 
-.agent-row:hover {
-  border-color: #bdbdbd;
-}
-
-.agent-row.active {
-  border-color: #222;
-  box-shadow: 0 0 0 1px #222 inset;
-}
-
-.agent-row-head {
+.agents-workbench-row-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
-.agent-row-title {
-  flex: 1;
+.agents-workbench-row-title {
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
 }
 
-.agent-row-actions {
+.agents-workbench-row-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
-.agent-name {
+.agents-panel-compact-rows .agents-workbench-row-head {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.agents-panel-compact-rows .agents-workbench-row-title {
+  width: 100%;
+}
+
+.agents-panel-compact-rows .agents-workbench-row-actions {
+  width: 100%;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.agents-workbench-name {
   font-weight: 700;
   font-size: 16px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
+  flex: 1 1 auto;
 }
 
-.agent-tag {
+.agents-workbench-tag {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 999px;
@@ -728,7 +774,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   flex-shrink: 0;
 }
 
-.agent-permission-dot {
+.agents-workbench-permission-dot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
@@ -738,7 +784,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   flex: 0 0 auto;
 }
 
-.agent-row-meta {
+.agents-workbench-row-meta {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -748,7 +794,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   min-width: 0;
 }
 
-.agent-workdir {
+.agents-workbench-workdir {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -756,13 +802,13 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   white-space: nowrap;
 }
 
-.agent-code-mode {
+.agents-workbench-code-mode {
   font-size: 11px;
   color: #7a7a7a;
 }
 
 .status-badge,
-.agent-status {
+.agents-workbench-status {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
@@ -773,6 +819,15 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .status-badge,
+  .agent-status {
+    font-size: 10px;
+    padding: 1px 6px;
+    gap: 3px;
+  }
 }
 
 .status-badge.tone-active,
@@ -1413,12 +1468,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   border: 1px solid #e2e6ea;
 }
 
-.acp-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .acp-interrupt-button {
   border: 1px solid #f0c3c3;
   background: #ffe9e9;
@@ -1580,23 +1629,23 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-bubble {
-  background: #f4f6f8;
-  border: 1px solid #e3e8ee;
+  background: #fbfbf9;
+  border: 1px solid #d8ddd6;
   border-radius: 14px;
   padding: 10px 12px;
   line-height: 1.6;
   max-width: 100%;
   overflow-wrap: anywhere;
   text-align: left;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .acp-text {
   word-break: break-word;
   white-space: normal;
   font-size: 14px;
-  line-height: 1.72;
-  letter-spacing: 0.01em;
-  color: #1b1f23;
+  line-height: 1.68;
+  color: #18212b;
 }
 
 .acp-text > * {
@@ -1623,20 +1672,20 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-text a {
-  color: #1b3a57;
+  color: #29455e;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .acp-text a:hover {
-  color: #0f2a44;
+  color: #1f3346;
 }
 
 .acp-text blockquote {
   padding: 6px 12px;
-  border-left: 3px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
+  border-left: 3px solid #d6dce3;
+  background: #f7f9fb;
+  color: #51616f;
   border-radius: 6px;
 }
 
@@ -1648,9 +1697,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .acp-text :not(pre) > code,
 .acp-text p code,
 .acp-text li code {
-  background: #eef2f6;
+  background: #f1f4f6;
   color: #0f172a;
-  border: 1px solid #d9e1ea;
+  border: 1px solid #dbe2e7;
   border-radius: 4px;
   padding: 1px 4px;
   font-size: 0.92em;
@@ -1701,44 +1750,44 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-bubble.user_message {
-  background: #e9f5ff;
-  border-color: #cfe6ff;
+  background: #f7f9fc;
+  border-color: #d8dee7;
 }
 
 .acp-bubble.agent_message {
-  background: #ecfff4;
-  border-color: #bfe9cf;
+  background: #fbfcfa;
+  border-color: #d9ddd5;
 }
 
 .acp-bubble.agent_thought,
 .acp-bubble.agent_thinking,
 .acp-bubble.agent_plan {
-  background: #fff8e6;
-  border-color: #f0d9a5;
+  background: #f7f4ed;
+  border-color: #ddd9cf;
   width: 100%;
 }
 
 .acp-thinking-title {
   font-size: 12px;
-  color: #6a5a7a;
+  color: #66717c;
   margin-bottom: 6px;
 }
 
 .acp-bubble.tool_call {
-  background: #fff3e4;
-  border-color: #f0c99a;
+  background: #f8f6f1;
+  border-color: #ddd9cf;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
 }
 
 .acp-bubble.tool_call.tool_call_group {
-  background: #fff7ed;
+  background: #faf8f3;
 }
 
 .acp-bubble.tool_call.tool_call_group.explore_group {
-  background: #fff4e8;
-  border-color: #f0d6b1;
+  background: #f6f8fb;
+  border-color: #d8dee7;
 }
 
 .acp-thought-more {
@@ -1764,7 +1813,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .acp-tool-fold summary {
   cursor: pointer;
   font-size: 12px;
-  color: #295d52;
+  color: #51616f;
   margin-bottom: 6px;
   display: flex;
   align-items: flex-start;
@@ -1776,7 +1825,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .acp-tool-group-fold summary {
   cursor: pointer;
   font-size: 12px;
-  color: #245a46;
+  color: #51616f;
   margin-bottom: 6px;
   display: flex;
   align-items: flex-start;
@@ -1786,7 +1835,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-explore-group-fold summary {
-  color: #2b4f84;
+  color: #445b72;
 }
 
 .acp-tool-fold pre {
@@ -1832,7 +1881,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   height: 14px;
   border-radius: 999px;
   border: 1px solid transparent;
-  color: #475467;
+  color: #66717c;
 }
 
 .acp-tool-status-dot {
@@ -1879,9 +1928,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-tool-group-entry {
-  background: #fff8ef;
-  border-color: #f2d7ad;
-  padding: 8px 10px;
+  background: #f8f6f1;
+  border-color: #ddd9cf;
+  padding: 7px 9px;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -1892,8 +1941,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-explore-thinking-item .acp-bubble.agent_thinking {
-  background: #fff8e6;
-  border-color: #f0d9a5;
+  background: #f6f8fb;
+  border-color: #d8dee7;
 }
 
 @keyframes acp-tool-group-expand {
@@ -1916,54 +1965,57 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-subfold {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .acp-subfold > summary {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: #4d5a65;
-  margin-bottom: 6px;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #5f6b77;
+  margin-bottom: 4px;
 }
 
 .acp-subfold-preview {
-  color: #6b7a87;
+  color: #74808c;
   font-family: "Source Code Pro", monospace;
-  font-size: 11px;
+  font-size: 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(64vw, 520px);
+  max-width: min(60vw, 460px);
 }
 
 .acp-payload-card {
-  border: 1px solid #d7e6da;
+  border: 1px solid #dde2db;
   border-radius: 10px;
-  background: #f6fbf7;
-  padding: 8px;
+  background: #fcfcfa;
+  padding: 6px 7px;
   overflow: hidden;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
 }
 
 .acp-payload-grid {
   margin: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .acp-payload-row {
   display: grid;
-  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+  grid-template-columns: minmax(84px, 128px) minmax(0, 1fr);
   align-items: start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .acp-payload-row dt {
   font-family: "Source Code Pro", monospace;
-  font-size: 12px;
-  color: #2b4f3e;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #55606b;
   word-break: break-word;
 }
 
@@ -1976,21 +2028,22 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   display: inline-block;
   max-width: 100%;
   font-family: "Source Code Pro", monospace;
-  font-size: 12px;
-  color: #1e2a22;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #1f2933;
   word-break: break-word;
 }
 
 .acp-payload-scalar.muted {
-  color: #5f6f66;
+  color: #74808c;
 }
 
 .acp-payload-text {
   margin: 0;
   white-space: pre-wrap;
   font-family: "Source Code Pro", monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .acp-payload-ascii {
@@ -1999,8 +2052,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-payload-markdown {
-  font-size: 13px;
-  line-height: 1.62;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .acp-payload-markdown pre {
@@ -2009,7 +2062,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .acp-payload-segmented {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .acp-payload-list {
@@ -2017,7 +2070,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   padding-left: 0;
   list-style: none;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .acp-payload-list > li {
@@ -2028,12 +2081,13 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .acp-payload-nested > summary {
   cursor: pointer;
   font-family: "Source Code Pro", monospace;
-  font-size: 11px;
-  color: #476253;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #5b6976;
 }
 
 .acp-payload-nested-body {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .acp-diff-view {
@@ -2042,31 +2096,31 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .acp-segmented-block {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .acp-segmented-note {
   font-size: 11px;
-  color: #5f6f66;
+  color: #5f6b77;
 }
 
 .acp-segmented-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .acp-segmented-meta {
   font-size: 11px;
-  color: #5f6f66;
+  color: #5f6b77;
 }
 
 .acp-segmented-button {
-  border: 1px solid #b9cbc0;
-  background: #f4faf6;
-  color: #295d52;
+  border: 1px solid #d7ddd5;
+  background: #fbfcfa;
+  color: #334155;
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 11px;
@@ -2074,7 +2128,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .acp-segmented-button:hover {
-  background: #e9f6ee;
+  background: #f4f6f8;
 }
 
 .acp-segmented-button:focus-visible {
@@ -2100,23 +2154,23 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .acp-plan-progress-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   font-size: 11px;
-  color: #6f5e33;
+  color: #5f6b77;
 }
 
 .acp-plan-progress-bar {
   width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: #f2e4be;
+  background: #e7ebe5;
   overflow: hidden;
 }
 
 .acp-plan-progress-bar > span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #b48a2c, #7fcb76);
+  background: linear-gradient(90deg, #203b2d, #4b6b5d);
 }
 
 .acp-plan-list {
@@ -2295,12 +2349,17 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     padding: calc(2px + env(safe-area-inset-top, 0px)) 6px 0;
   }
 
-  .workspace {
+  .workspace,
+  .workspace.collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .workspace.collapsed {
-    grid-template-columns: minmax(0, 1fr);
+  .workspace-splitter {
+    display: none;
+  }
+
+  .workspace {
+    gap: 0;
   }
 
   .workspace-left.collapsed {
@@ -2376,6 +2435,10 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     padding: 4px 4px 0;
   }
 
+  .workspace-right {
+    gap: 4px;
+  }
+
   .workspace.collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2394,14 +2457,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .acp-head.minimal {
     flex-direction: column;
     align-items: stretch;
-    gap: 6px;
-  }
-
-  .acp-actions {
-    width: 100%;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: clamp(4px, 1.6vw, 8px);
+    gap: 4px;
   }
 
   .acp-tabs {
@@ -2411,9 +2467,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
-    padding: clamp(2px, 0.6vw, 3px);
+    padding: 2px;
     gap: clamp(3px, 1vw, 5px);
-    border-radius: 12px;
+    border-radius: 10px;
   }
 
   .acp-tabs .tab {
@@ -2469,52 +2525,52 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .input.docked {
-    gap: 6px;
+    gap: 4px;
   }
 
   .input-row {
     justify-content: flex-start;
-    min-height: 26px;
+    min-height: 24px;
   }
 
   .input-editor-row {
-    gap: 8px;
+    gap: 6px;
   }
 
   .input.docked .input-editor-row .input-send-button {
-    height: 44px;
-    min-height: 44px;
-    min-width: 88px;
-    padding: 0 14px;
-    font-size: 13px;
+    height: 40px;
+    min-height: 40px;
+    min-width: 78px;
+    padding: 0 12px;
+    font-size: 12px;
   }
 
-  .input-interrupt-button {
-    height: 26px !important;
-    min-height: 26px;
-    padding: 3px 8px !important;
-    font-size: 10px !important;
+  .input.docked .input-row .input-interrupt-button {
+    height: 24px;
+    min-height: 24px;
+    padding: 2px 7px;
+    font-size: 10px;
   }
 
   .input-history-menu {
     width: min(92vw, calc(100vw - 16px));
     max-width: min(92vw, calc(100vw - 16px));
-    max-height: 220px;
+    max-height: 200px;
   }
 
   .input.docked textarea:not([class*="mantine-"]) {
-    min-height: 80px;
+    min-height: 70px;
   }
 
   .input.docked button:not([class*="mantine-"]) {
-    height: 38px;
-    font-size: 12px;
-    padding: 6px 10px;
+    height: 34px;
+    font-size: 11px;
+    padding: 5px 9px;
   }
 
   .jump-bottom {
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
   }
 
   .acp-bubble {
@@ -2549,27 +2605,28 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .acp-tool-group-entry {
-    padding: 7px 8px;
+    padding: 6px 7px;
   }
 
   .acp-subfold > summary {
     align-items: flex-start;
     gap: 6px;
+    font-size: 10px;
   }
 
   .acp-subfold-preview {
-    max-width: min(68vw, 320px);
+    max-width: min(64vw, 300px);
     font-size: 10px;
   }
 
   .acp-payload-card {
     border-radius: 8px;
-    padding: 6px;
+    padding: 5px 6px;
   }
 
   .acp-payload-row {
-    grid-template-columns: minmax(70px, 110px) minmax(0, 1fr);
-    gap: 6px;
+    grid-template-columns: minmax(64px, 96px) minmax(0, 1fr);
+    gap: 5px;
   }
 
   .acp-payload-scalar,

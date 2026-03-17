@@ -12,21 +12,32 @@ async fn teams_router_http_contract() {
         .expect("run unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
-    let invalid_spec_resp = app
+    let empty_team_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
             "/",
             Some(&token),
             Some(json!({
-                "name": "invalid-router-team",
+                "name": "empty-router-team",
                 "description": null,
                 "spec": {"entrypoint":"planner","members":[]}
             })),
         ))
         .await
-        .expect("create invalid team via router");
-    assert_eq!(invalid_spec_resp.status(), StatusCode::BAD_REQUEST);
+        .expect("create empty team via router");
+    assert_eq!(empty_team_resp.status(), StatusCode::OK);
+    let empty_team = decode_json_body(empty_team_resp).await;
+    assert_eq!(empty_team["spec"]["spec_version"], Value::from(1));
+    assert_eq!(empty_team["spec"]["members"], json!([]));
+    assert_eq!(empty_team.get("spec").and_then(|spec| spec.get("entrypoint")), None);
+    assert_eq!(
+        empty_team
+            .get("spec")
+            .and_then(|spec| spec.get("leader_member_id")),
+        None
+    );
+    assert_eq!(empty_team.get("spec").and_then(|spec| spec.get("steps")), None);
 
     let create_team_resp = app
         .clone()
@@ -61,8 +72,18 @@ async fn teams_router_http_contract() {
     assert_eq!(list_teams_resp.status(), StatusCode::OK);
     let listed = decode_json_body(list_teams_resp).await;
     let listed = listed.as_array().expect("teams array");
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0]["id"], team_id);
+    assert_eq!(listed.len(), 2);
+    let mut listed_ids = listed
+        .iter()
+        .map(|team| team["id"].as_str().expect("team id").to_string())
+        .collect::<Vec<_>>();
+    listed_ids.sort();
+    let mut expected_ids = vec![
+        empty_team["id"].as_str().expect("empty team id").to_string(),
+        team_id.clone(),
+    ];
+    expected_ids.sort();
+    assert_eq!(listed_ids, expected_ids);
 
     let duplicate_resp = app
         .clone()
@@ -152,10 +173,15 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("task id")
         .to_string();
+    let auto_run_id = created_task["latest_run"]["id"]
+        .as_str()
+        .expect("auto-created run id")
+        .to_string();
     assert_eq!(
         created_task["task"]["context"]["token"],
         Value::from("[redacted]")
     );
+    assert_eq!(created_task["task"]["status"], Value::from("in_progress"));
     assert!(
         created_task["task"]["created_by_actor_id"]
             .as_str()
@@ -204,6 +230,37 @@ async fn teams_router_http_contract() {
         .await
         .expect("get task via router");
     assert_eq!(get_task_resp.status(), StatusCode::OK);
+
+    let update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("update task via router");
+    assert_eq!(update_task_resp.status(), StatusCode::OK);
+    let updated_task = decode_json_body(update_task_resp).await;
+    assert_eq!(updated_task["id"], task_id);
+    assert_eq!(updated_task["status"], Value::from("in_progress"));
+
+    let invalid_update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&token),
+            Some(json!({
+                "status": "paused"
+            })),
+        ))
+        .await
+        .expect("invalid task status via router");
+    assert_eq!(invalid_update_task_resp.status(), StatusCode::BAD_REQUEST);
 
     let send_human_task_message_resp = app
         .clone()
@@ -375,8 +432,15 @@ async fn teams_router_http_contract() {
     assert_eq!(list_runs_resp.status(), StatusCode::OK);
     let listed_runs = decode_json_body(list_runs_resp).await;
     let listed_runs = listed_runs.as_array().expect("runs array");
-    assert_eq!(listed_runs.len(), 1);
-    assert_eq!(listed_runs[0]["id"], run_id);
+    assert_eq!(listed_runs.len(), 2);
+    let mut listed_run_ids = listed_runs
+        .iter()
+        .map(|run| run["id"].as_str().expect("run id").to_string())
+        .collect::<Vec<_>>();
+    listed_run_ids.sort();
+    let mut expected_run_ids = vec![auto_run_id, run_id.clone()];
+    expected_run_ids.sort();
+    assert_eq!(listed_run_ids, expected_run_ids);
 
     let invalid_status_runs_resp = app
         .clone()

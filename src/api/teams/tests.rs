@@ -36,14 +36,14 @@ use super::{
     ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery,
-    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
-    create_team, create_team_run, create_team_task, delete_team, fail_team_run_step,
-    flush_team_run_context, get_team, get_team_run, get_team_run_snapshot, get_team_task,
-    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
-    list_team_task_messages, list_team_tasks, list_teams, restart_team_run, resume_team_run,
-    resume_team_run_step, send_team_run_message, send_team_task_message,
-    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
-    submit_team_run_step,
+    UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run,
+    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_run,
+    create_team_task, delete_team, fail_team_run_step, flush_team_run_context, get_team,
+    get_team_run, get_team_run_snapshot, get_team_runtime, get_team_task, list_team_run_events,
+    list_team_run_inbox, list_team_run_steps, list_team_runs, list_team_task_messages,
+    list_team_tasks, list_teams, restart_team_run, resume_team_run, resume_team_run_step,
+    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
+    start_team_run_step, stop_team, submit_team_run_step, update_team_spec, update_team_task,
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();

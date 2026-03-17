@@ -1,0 +1,115 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildTeamAgentNameToken,
+  buildTeamMemberProfileDraft,
+  resolveInitialTeamMemberRole,
+  resolveTeamForgeDefaults,
+  resolveTeamMemberRoleOptions,
+  resolveTeamMemberRoleProfile,
+} from "./forge_helpers";
+
+describe("team forge helpers", () => {
+  it("builds role-specific default drafts", () => {
+    const leaderDraft = buildTeamMemberProfileDraft("leader");
+    const workerDraft = buildTeamMemberProfileDraft("worker");
+
+    expect(leaderDraft.role).toBe("leader");
+    expect(leaderDraft.model).toBe("codex");
+    expect(leaderDraft.skills.length).toBeGreaterThan(0);
+    expect(leaderDraft.prompt).not.toBe(workerDraft.prompt);
+    expect(workerDraft.role).toBe("worker");
+    expect(workerDraft.model).toBe("codex");
+    expect(workerDraft.skills.length).toBeGreaterThan(0);
+  });
+
+  it("normalizes agent name tokens and initial role", () => {
+    expect(buildTeamAgentNameToken("  Alpha Desk / Team  ")).toBe("alpha-desk-team");
+    expect(resolveInitialTeamMemberRole(false)).toBe("leader");
+    expect(resolveInitialTeamMemberRole(true)).toBe("worker");
+  });
+
+  it("exposes role options with team constraints", () => {
+    expect(resolveTeamMemberRoleOptions(false)).toEqual([
+      {
+        value: "leader",
+        label: "Leader",
+        description: "Own planning, review, and final synthesis.",
+        disabled: false,
+      },
+      {
+        value: "worker",
+        label: "Worker",
+        description: "Unlock after the first leader exists.",
+        disabled: true,
+      },
+    ]);
+
+    expect(resolveTeamMemberRoleOptions(true)).toEqual([
+      {
+        value: "leader",
+        label: "Leader",
+        description: "Already assigned for this team.",
+        disabled: true,
+      },
+      {
+        value: "worker",
+        label: "Worker",
+        description: "Deliver execution, evidence, and implementation.",
+        disabled: false,
+      },
+    ]);
+  });
+
+  it("resolves distinct role profile copy", () => {
+    expect(resolveTeamMemberRoleProfile("leader")).toEqual({
+      profileLabel: "Leader Profile",
+      intro:
+        "Configure the planning identity that owns delegation, review, and final synthesis.",
+      focus: "Own planning, review, and final synthesis.",
+      skillsHint:
+        "Keep orchestration and deliberation skills pinned, then add helpers only when the leader truly needs them.",
+      promptHint:
+        "Keep the prompt focused on planning policy, delegation rules, and synthesis expectations.",
+    });
+    expect(resolveTeamMemberRoleProfile("worker")).toEqual({
+      profileLabel: "Worker Profile",
+      intro:
+        "Configure the execution identity that implements scoped work and reports evidence.",
+      focus: "Deliver implementation, validation, and execution evidence.",
+      skillsHint:
+        "Keep the execution profile lean, then add optional helpers only for the assigned delivery lane.",
+      promptHint:
+        "Keep the prompt focused on scope boundaries, evidence quality, and handoff discipline.",
+    });
+  });
+
+  it("resolves leader and worker forge defaults", () => {
+    const leaderDefaults = resolveTeamForgeDefaults({
+      teamName: "Alpha Desk",
+      role: "leader",
+      workerCount: 0,
+      defaultWorktreeRoot: "~/.agenthub/worktrees",
+      agentPresetId: "gemini",
+    });
+    expect(leaderDefaults.agentName).toBe("alpha-desk-leader");
+    expect(leaderDefaults.agentWorkdir).toMatch(
+      /^~\/\.agenthub\/worktrees\/alpha-desk-leader-[a-z0-9]+$/
+    );
+    expect(leaderDefaults.worktreeMode).toBe("use_existing");
+    expect(leaderDefaults.draft.role).toBe("leader");
+    expect(leaderDefaults.draft.model).toBe("gemini");
+
+    const workerDefaults = resolveTeamForgeDefaults({
+      teamName: "Alpha Desk",
+      role: "worker",
+      workerCount: 2,
+      defaultWorktreeRoot: "~/.agenthub/worktrees",
+      agentPresetId: "kimi",
+    });
+    expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
+    expect(workerDefaults.agentWorkdir).toBe("");
+    expect(workerDefaults.worktreeMode).toBe("use_existing");
+    expect(workerDefaults.draft.role).toBe("worker");
+    expect(workerDefaults.draft.model).toBe("kimi");
+  });
+});

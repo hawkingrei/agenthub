@@ -59,6 +59,7 @@ pub struct TeamRunRecord {
     pub context_id: String,
     pub status: TeamRunStatus,
     pub input: Value,
+    pub summary: Option<String>,
     pub created_at: i64,
     pub started_at: Option<i64>,
     pub ended_at: Option<i64>,

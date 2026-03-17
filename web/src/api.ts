@@ -3,12 +3,15 @@ import {
   shouldRedirectOnAuthError,
 } from "./auth_redirect";
 
+export const AGENT_SOURCE_MANUAL = "manual";
+export const AGENT_SOURCE_TEAM_FORGE = "team_forge";
+
 export type AgentConfig = {
   name: string;
   workdir: string;
   command: string;
   args: string[];
-  source?: "manual" | "team_forge";
+  source?: typeof AGENT_SOURCE_MANUAL | typeof AGENT_SOURCE_TEAM_FORGE;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;
@@ -215,6 +218,7 @@ export type TeamConversationMessageRecord = {
 export type TeamTaskDetailResponse = {
   task: TeamTaskRecord;
   conversation: TeamConversationRecord;
+  latest_run?: TeamRunRecord | null;
 };
 
 export type TeamRunRecord = {
@@ -223,6 +227,7 @@ export type TeamRunRecord = {
   context_id: string;
   status: TeamRunStatus;
   input: unknown;
+  summary?: string | null;
   created_at: number;
   started_at?: number | null;
   ended_at?: number | null;
@@ -526,6 +531,15 @@ export const api = {
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token),
+  updateTeamSpec: (
+    token: string,
+    id: string,
+    payload: { spec: unknown; expected_updated_at: number }
+  ) =>
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}/spec`, token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   getTeamRuntime: (token: string, id: string) =>
     apiFetch<TeamRuntimeRecord>(`/api/teams/${encodePathSegment(id)}/runtime`, token),
   startTeam: (token: string, id: string) =>
@@ -576,6 +590,20 @@ export const api = {
     apiFetch<TeamTaskDetailResponse>(
       `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
       token
+    ),
+  updateTeamTask: (
+    token: string,
+    teamId: string,
+    taskId: string,
+    payload: { status: TeamTaskStatus }
+  ) =>
+    apiFetch<TeamTaskRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
     ),
   sendTeamTaskMessage: (
     token: string,

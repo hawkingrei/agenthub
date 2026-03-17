@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePostAuthRedirectTarget, shouldRedirectTeamsToLogin } from "./app";
+import {
+  resolvePostAuthRedirectTarget,
+  resolveTeamRoute,
+  shouldRedirectTeamsToLogin,
+} from "./app";
 
 describe("team route auth redirect", () => {
   it("redirects unauthenticated teams route to login", () => {
@@ -32,6 +36,22 @@ describe("team route auth redirect", () => {
   it("does not affect non-team routes", () => {
     expect(shouldRedirectTeamsToLogin("/", null, null)).toBe(false);
     expect(shouldRedirectTeamsToLogin("/admin", null, null)).toBe(false);
+    expect(shouldRedirectTeamsToLogin("/teams-workbench", null, null)).toBe(false);
+  });
+
+  it("resolves selector and detail team routes", () => {
+    expect(resolveTeamRoute("/teams")).toEqual({ mode: "selector", teamId: null });
+    expect(resolveTeamRoute("/teams/")).toEqual({ mode: "selector", teamId: null });
+    expect(resolveTeamRoute("/teams/team-1")).toEqual({
+      mode: "detail",
+      teamId: "team-1",
+    });
+    expect(resolveTeamRoute("/teams/team%2F1")).toEqual({
+      mode: "detail",
+      teamId: "team/1",
+    });
+    expect(resolveTeamRoute("/teams-workbench")).toBeNull();
+    expect(resolveTeamRoute("/agents")).toBeNull();
   });
 
   it("returns to the pending route after authentication succeeds", () => {

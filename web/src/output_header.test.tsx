@@ -25,10 +25,8 @@ const renderHeader = (props: Partial<React.ComponentProps<typeof OutputHeader>>)
       activeAgent={baseAgent}
       activeSessionId="session-12345678"
       developerMode={true}
-      agentsCollapsed={false}
       hasAcp={true}
       thinkingStartTs={null}
-      onToggleAgents={() => {}}
       {...props}
     />
   );
@@ -40,10 +38,8 @@ describe("OutputHeader", () => {
         activeAgent={null}
         activeSessionId={null}
         developerMode={true}
-        agentsCollapsed={false}
         hasAcp={false}
         thinkingStartTs={null}
-        onToggleAgents={() => {}}
       />
     );
     expect(html).toContain("No agent selected");
@@ -55,7 +51,7 @@ describe("OutputHeader", () => {
     expect(html).toContain("Code mode on");
     expect(html).toContain("Session session-");
     expect(html).toContain("Updated");
-    expect(html).toContain("output-agents-toggle");
+    expect(html).not.toContain("output-agents-toggle");
   });
 
   it("shows subtitle row when ACP is absent", () => {

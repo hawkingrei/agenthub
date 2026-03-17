@@ -1,26 +1,26 @@
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 type WorktreeMode = "use_existing" | "create_worktree" | "reuse_worktree";
 
-export function normalizeWorkdirInput(value: string): string {
-  const trimmed = value.trim();
+export function normalizeWorkdirInput(value?: string | null): string {
+  const trimmed = (value ?? "").trim();
   if (!trimmed) return "";
   const stripped = trimmed.replace(/[\\/]+$/, "");
   return stripped || trimmed;
 }
 
-function normalizePathForCompare(value: string): string {
+function normalizePathForCompare(value?: string | null): string {
   return normalizeWorkdirInput(value);
 }
 
 export function normalizeRuntimeWorktreeRoot(
-  value: string,
+  value?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
   return normalizeWorkdirInput(value) || fallback;
 }
 
 export function shouldApplyDefaultWorkdir(
-  currentWorkdir: string,
+  currentWorkdir?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): boolean {
   return !normalizePathForCompare(currentWorkdir) ||
@@ -28,30 +28,30 @@ export function shouldApplyDefaultWorkdir(
 }
 
 export function resolveWorkdirForRuntimeDefaults(
-  currentWorkdir: string,
-  runtimeDefaultRoot: string,
+  currentWorkdir?: string | null,
+  runtimeDefaultRoot?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
   if (!shouldApplyDefaultWorkdir(currentWorkdir, fallback)) {
-    return currentWorkdir;
+    return normalizeWorkdirInput(currentWorkdir);
   }
   return normalizeRuntimeWorktreeRoot(runtimeDefaultRoot, fallback);
 }
 
 export function resolveWorkdirForCreateModal(
-  currentWorkdir: string,
-  defaultRoot: string,
+  currentWorkdir?: string | null,
+  defaultRoot?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
   if (!shouldApplyDefaultWorkdir(currentWorkdir, fallback)) {
-    return currentWorkdir;
+    return normalizeWorkdirInput(currentWorkdir);
   }
-  return defaultRoot;
+  return normalizeRuntimeWorktreeRoot(defaultRoot, fallback);
 }
 
 export function isDefaultWorkdirValue(
-  currentWorkdir: string,
-  defaultRoot: string,
+  currentWorkdir?: string | null,
+  defaultRoot?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): boolean {
   const current = normalizePathForCompare(currentWorkdir);
@@ -62,9 +62,9 @@ export function isDefaultWorkdirValue(
 }
 
 export function resolveWorkdirForModeChange(
-  currentWorkdir: string,
+  currentWorkdir?: string | null,
   nextMode: WorktreeMode,
-  defaultRoot: string,
+  defaultRoot?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
   if (nextMode === "create_worktree") {
@@ -73,13 +73,13 @@ export function resolveWorkdirForModeChange(
   if (nextMode === "use_existing" && isDefaultWorkdirValue(currentWorkdir, defaultRoot, fallback)) {
     return "";
   }
-  return currentWorkdir;
+  return normalizeWorkdirInput(currentWorkdir);
 }
 
 export function resolveWorkdirForModalOpen(
-  currentWorkdir: string,
+  currentWorkdir?: string | null,
   mode: WorktreeMode,
-  defaultRoot: string,
+  defaultRoot?: string | null,
   fallback: string = DEFAULT_WORKTREE_ROOT
 ): string {
   if (mode === "create_worktree") {
@@ -88,5 +88,5 @@ export function resolveWorkdirForModalOpen(
   if (mode === "use_existing" && isDefaultWorkdirValue(currentWorkdir, defaultRoot, fallback)) {
     return "";
   }
-  return currentWorkdir;
+  return normalizeWorkdirInput(currentWorkdir);
 }

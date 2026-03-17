@@ -3,6 +3,7 @@ import { AcpPanel, AcpPanelProps } from "./acp_panel";
 import { TerminalOutput } from "./terminal_output";
 import { OutputLine } from "../output_cache";
 import {
+  OUTPUT_BODY_ACP_ROOT_CLASS,
   OUTPUT_BODY_EMPTY_CLASS,
   OUTPUT_BODY_LOADING_CLASS,
   OUTPUT_BODY_ROOT_CLASS,
@@ -28,8 +29,11 @@ export const OutputBody = React.memo(function OutputBody({
   acpPanelProps,
 }: OutputBodyProps) {
   const showLoading = isOutputLoading || isConversationLoading;
+  const bodyRootClassName = acpPanelProps.acpView.hasAcp
+    ? OUTPUT_BODY_ACP_ROOT_CLASS
+    : OUTPUT_BODY_ROOT_CLASS;
   return (
-    <div className={OUTPUT_BODY_ROOT_CLASS}>
+    <div className={bodyRootClassName}>
       {showLoading ? (
         <div className={OUTPUT_BODY_LOADING_CLASS}>
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />

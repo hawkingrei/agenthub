@@ -88,6 +88,11 @@ describe("AcpDebug", () => {
     );
     expect(html).toContain("Terminal");
     expect(html).toContain("hello terminal");
+    expect(html).toContain("1 stdout");
+    expect(html).toContain("0 stderr");
+    expect(html).toContain("All");
+    expect(html).toContain("Stderr");
+    expect(html).toContain("System");
   });
 
   it("renders runtime metrics tab when initial tab is runtime", () => {

@@ -2,17 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord, AgentEvent } from "./api";
 import {
   analyzeLiveOutputBatch,
+  buildLatestLiveSessionMap,
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
+  clampAgentsPanelWidth,
   chunkPermissionPollAgentIds,
   decidePermissionJump,
   dispatchLiveOutputBatch,
   filterPermissionsForAgent,
+  loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
   normalizeSseOutputLines,
   parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
+  resolveAgentsPanelMaxWidth,
   resolveGlobalPermissionPollIntervalMs,
+  resolveLiveSessionSwitch,
   resolveOutputHistoryKey,
   routeLiveOutputBatch,
   resolveSessionScopedEvents,
@@ -115,6 +120,29 @@ describe("filterPermissionsForAgent", () => {
 });
 
 describe("app helper decisions", () => {
+  it("clamps persisted agents panel widths within the supported desktop bounds", () => {
+    expect(clampAgentsPanelWidth(Number.NaN)).toBe(360);
+    expect(clampAgentsPanelWidth(160)).toBe(320);
+    expect(clampAgentsPanelWidth(512)).toBe(512);
+    expect(clampAgentsPanelWidth(800)).toBe(640);
+    expect(clampAgentsPanelWidth(620, 540)).toBe(540);
+  });
+
+  it("derives the maximum agents panel width from workspace width", () => {
+    expect(resolveAgentsPanelMaxWidth(Number.NaN)).toBe(640);
+    expect(resolveAgentsPanelMaxWidth(1200)).toBe(640);
+    expect(resolveAgentsPanelMaxWidth(980)).toBe(448);
+    expect(resolveAgentsPanelMaxWidth(720)).toBe(320);
+  });
+
+  it("loads the saved agents panel width preference with clamp + fallback behavior", () => {
+    expect(loadAgentsPanelWidthPreference("512")).toBe(512);
+    expect(loadAgentsPanelWidthPreference("120")).toBe(320);
+    expect(loadAgentsPanelWidthPreference("999")).toBe(640);
+    expect(loadAgentsPanelWidthPreference("bad")).toBe(360);
+    expect(loadAgentsPanelWidthPreference(null)).toBe(360);
+  });
+
   it("parses permission poll agent ids from stable key", () => {
     expect(parsePermissionPollAgentIds("")).toEqual([]);
     expect(parsePermissionPollAgentIds("agent-a,agent-b")).toEqual([
@@ -418,6 +446,44 @@ describe("app helper decisions", () => {
       "agent-1:session-a": { kind: "event_id", value: 9 },
       "agent-2:session-b": { kind: "event_id", value: 3 },
     });
+  });
+
+  it("tracks the latest live session id for each agent", () => {
+    expect(
+      buildLatestLiveSessionMap([
+        buildEvent(4, "session-a"),
+        buildEvent(9, "session-b"),
+        { ...buildEvent(7, "session-z"), agent_id: "agent-2" },
+        { ...buildEvent(12, "session-y"), agent_id: "agent-2" },
+      ])
+    ).toEqual({
+      "agent-1": "session-b",
+      "agent-2": "session-y",
+    });
+  });
+
+  it("switches active session when live output arrives on a newer session", () => {
+    expect(
+      resolveLiveSessionSwitch(
+        [
+          buildEvent(40, "session-old"),
+          buildEvent(41, "session-new"),
+          { ...buildEvent(42, "session-z"), agent_id: "agent-2" },
+        ],
+        "agent-1",
+        "session-old"
+      )
+    ).toBe("session-new");
+  });
+
+  it("keeps the current session when live output stays on the active session", () => {
+    expect(
+      resolveLiveSessionSwitch(
+        [buildEvent(50, "session-a"), buildEvent(51, "session-a", "acp")],
+        "agent-1",
+        "session-a"
+      )
+    ).toBeNull();
   });
 
   it("dispatches live batch side effects and returns active outputs", () => {

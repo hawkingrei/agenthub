@@ -534,6 +534,307 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
 }
 
 #[tokio::test]
+async fn task_status_updates_are_persisted() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-status-team".to_string(),
+            description: Some("team for task status updates".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Ship kanban",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("status"),
+        )
+        .await
+        .expect("create task");
+    assert_eq!(task.status, TeamTaskStatus::Open);
+
+    let updated = manager
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("update task status");
+    assert_eq!(updated.id, task.id);
+    assert_eq!(updated.status, TeamTaskStatus::InProgress);
+
+    let reloaded = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload updated task");
+    assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+}
+
+#[tokio::test]
+async fn create_run_marks_linked_task_in_progress() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-run-team".to_string(),
+            description: Some("team with linked task run".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Compile linked plan",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("linked-run"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"run linked task"}),
+        )
+        .await
+        .expect("create linked run");
+    assert_eq!(run.status, TeamRunStatus::Submitted);
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+}
+
+#[tokio::test]
+async fn linked_run_completion_marks_task_completed() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-complete-team".to_string(),
+            description: Some("team with linked run completion".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Ship linked completion",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("complete"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"finish linked task"}),
+        )
+        .await
+        .expect("create linked run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "planner_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"complete linked task"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("linked-session-complete"))
+        .await
+        .expect("start step");
+    let _ = manager
+        .complete_step(&step.id, Some(json!({"result":"done"})))
+        .await
+        .expect("complete step");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::Completed);
+}
+
+#[tokio::test]
+async fn linked_run_failure_keeps_task_in_progress() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-fail-team".to_string(),
+            description: Some("team with linked run failure".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Handle linked failure",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("failure"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"fail linked task"}),
+        )
+        .await
+        .expect("create linked run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "planner_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"fail linked task"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("linked-session-fail"))
+        .await
+        .expect("start step");
+    let _ = manager
+        .fail_step(&step.id, "linked run failed")
+        .await
+        .expect("fail step");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+}
+
+#[tokio::test]
+async fn cancel_run_marks_linked_task_canceled() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-cancel-team".to_string(),
+            description: Some("team with linked run cancellation".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Cancel linked run",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("cancel"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"cancel linked task"}),
+        )
+        .await
+        .expect("create linked run");
+    let _ = manager.cancel_run(&run.id).await.expect("cancel run");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::Canceled);
+}
+
+#[tokio::test]
+async fn startup_cancellation_reopens_linked_task() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-startup-cancel-team".to_string(),
+            description: Some("team with startup run cancellation".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Resume after restart",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("startup-cancel"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"restart-sensitive task"}),
+        )
+        .await
+        .expect("create linked run");
+    assert_eq!(
+        manager
+            .get_task(&task.id)
+            .await
+            .expect("reload in-progress task")
+            .status,
+        TeamTaskStatus::InProgress
+    );
+
+    let canceled_count = manager
+        .cancel_active_runs_on_startup()
+        .await
+        .expect("cancel active runs on startup");
+    assert_eq!(canceled_count, 1);
+    assert_eq!(
+        manager
+            .get_run(&run.id)
+            .await
+            .expect("reload canceled run")
+            .status,
+        TeamRunStatus::Canceled
+    );
+    assert_eq!(
+        manager
+            .get_task(&task.id)
+            .await
+            .expect("reload reopened task")
+            .status,
+        TeamTaskStatus::Open
+    );
+}
+
+#[tokio::test]
 async fn update_team_spec_if_unchanged_detects_conflict_and_updates_on_match() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -3121,7 +3422,12 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list all runs");
     assert_eq!(all_runs.len(), 2);
     assert_eq!(all_runs[0].id, second_run.id);
+    assert_eq!(all_runs[0].summary, None);
     assert_eq!(all_runs[1].id, first_run.id);
+    assert_eq!(
+        all_runs[1].summary.as_deref(),
+        Some("Run was canceled before completion.")
+    );
 
     let canceled_runs = manager
         .list_runs(&team.id, 100, Some("canceled"), None)
