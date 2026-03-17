@@ -22,6 +22,7 @@ const makeAcpPanelProps = (override?: Partial<AcpView>): AcpPanelProps => ({
   acpView: { ...baseAcpView, ...override },
   subtitle: null,
   acpTab: "conversation",
+  developerMode: true,
   onSelectTab: () => {},
   showConversationBadge: false,
   showConversationJump: false,
@@ -149,6 +150,26 @@ describe("OutputBody", () => {
     expect(html).toContain("output-body-acp");
     expect(html).toContain("Conversation");
     expect(html).not.toContain("No output yet");
+  });
+
+  it("does not surface terminal output in ACP conversation body", () => {
+    const html = renderBody({
+      isOutputLoading: false,
+      outputs: [
+        {
+          event_id: 1,
+          ts: 1,
+          seq: "1",
+          stream: "stderr",
+          message: "plain stderr line",
+          agent_id: "agent-1",
+          session_id: "session-1",
+        },
+      ],
+      acpOverride: { hasAcp: true },
+    });
+    expect(html).toContain("Conversation");
+    expect(html).not.toContain("plain stderr line");
   });
 
   it("renders terminal output when lines exist", () => {

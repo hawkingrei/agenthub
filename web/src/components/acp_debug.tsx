@@ -17,6 +17,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type DebugTab = "terminal" | "session" | "runtime" | "permissions" | "raw";
+type DebugTerminalFilter = "all" | "stderr" | "system";
 
 type AcpRuntimeMetrics = {
   totalConversationItems: number;
@@ -97,6 +98,7 @@ export function AcpDebug({
   initialTab,
 }: AcpDebugProps) {
   const [tab, setTab] = React.useState<DebugTab>(initialTab ?? "session");
+  const [terminalFilter, setTerminalFilter] = React.useState<DebugTerminalFilter>("all");
   const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
   const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
@@ -120,6 +122,25 @@ export function AcpDebug({
     "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
   const debugPrimaryButtonClassName =
     "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
+  const terminalCounts = React.useMemo(() => {
+    let stdout = 0;
+    let stderr = 0;
+    let system = 0;
+    for (const line of terminalOutputs) {
+      if (line.stream === "stderr") {
+        stderr += 1;
+      } else if (line.stream === "system") {
+        system += 1;
+      } else {
+        stdout += 1;
+      }
+    }
+    return { stdout, stderr, system, total: terminalOutputs.length };
+  }, [terminalOutputs]);
+  const filteredTerminalOutputs = React.useMemo(() => {
+    if (terminalFilter === "all") return terminalOutputs;
+    return terminalOutputs.filter((line) => line.stream === terminalFilter);
+  }, [terminalFilter, terminalOutputs]);
 
   React.useEffect(() => {
     if (tab !== "raw") return;
@@ -189,23 +210,59 @@ export function AcpDebug({
       {tab === "terminal" && (
         <div className={`acp-terminal-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
           <div className="flex items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Terminal</h4>
-            {showTerminalJump ? (
-              <button
-                className={debugSecondaryButtonClassName}
-                type="button"
-                onClick={onJumpToTerminalBottom}
-              >
-                Jump to latest
-              </button>
-            ) : null}
+            <div className="min-w-0">
+              <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Terminal</h4>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span>{terminalCounts.stdout} stdout</span>
+                <span>{terminalCounts.stderr} stderr</span>
+                <span>{terminalCounts.system} system</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <button
+                  className={debugTabClassName(terminalFilter === "all")}
+                  type="button"
+                  onClick={() => setTerminalFilter("all")}
+                >
+                  All
+                </button>
+                <button
+                  className={debugTabClassName(terminalFilter === "stderr")}
+                  type="button"
+                  onClick={() => setTerminalFilter("stderr")}
+                >
+                  Stderr
+                </button>
+                <button
+                  className={debugTabClassName(terminalFilter === "system")}
+                  type="button"
+                  onClick={() => setTerminalFilter("system")}
+                >
+                  System
+                </button>
+              </div>
+              {showTerminalJump ? (
+                <button
+                  className={debugSecondaryButtonClassName}
+                  type="button"
+                  onClick={onJumpToTerminalBottom}
+                >
+                  Jump to latest
+                </button>
+              ) : null}
+            </div>
           </div>
           {terminalOutputs.length === 0 ? (
             <div className={ACP_DEBUG_EMPTY_CLASS}>No terminal output yet.</div>
+          ) : filteredTerminalOutputs.length === 0 ? (
+            <div className={ACP_DEBUG_EMPTY_CLASS}>
+              No {terminalFilter} output in this session.
+            </div>
           ) : (
             <div className="h-[420px] min-h-[220px]">
               <TerminalOutput
-                outputs={terminalOutputs}
+                outputs={filteredTerminalOutputs}
                 ansi={ansi}
                 containerRef={terminalRef}
                 onScroll={onTerminalScroll}

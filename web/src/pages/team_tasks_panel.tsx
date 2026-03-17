@@ -3,12 +3,12 @@ import { SegmentedControl, TextInput } from "@mantine/core";
 import type {
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
+  TeamRunRecord,
   TeamTaskStatus,
 } from "../api";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
+import { selectRunsForTask } from "./team/run_helpers";
 import {
-  TEAM_LIST_ITEM_ACTIVE_CLASS,
-  TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
@@ -34,7 +34,10 @@ type TeamTasksPanelProps = {
   newTaskTitle: string;
   onNewTaskTitleChange: (value: string) => void;
   onCreateTask: () => Promise<void> | void;
+  onUpdateTaskStatus: (taskId: string, status: TeamTaskStatus) => Promise<void> | void;
   busy: string | null;
+  runs: TeamRunRecord[];
+  onOpenRun: (runId: string) => void;
   compilePreviewContextId: string;
   onCompilePreviewContextIdChange: (value: string) => void;
   onCompileTaskRunPreview: () => Promise<void> | void;
@@ -48,19 +51,40 @@ type TeamTasksPanelProps = {
 
 const TASKS_FILTER_BAR_CLASS =
   "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1";
-const TASKS_WORKSPACE_GRID_CLASS =
-  "mt-4 grid gap-4 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]";
-const TASKS_LIST_PANEL_CLASS =
-  "rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
-const TASKS_LIST_STACK_CLASS = "mt-3 flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1";
-const TASKS_LIST_EMPTY_CLASS =
+const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
+const TASKS_BOARD_SCROLL_CLASS = "overflow-x-auto pb-2";
+const TASKS_BOARD_LANES_CLASS =
+  "grid min-w-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-4";
+const TASKS_BOARD_COLUMN_CLASS =
+  "flex min-h-[320px] flex-col rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const TASKS_BOARD_COLUMN_HEADER_CLASS =
+  "flex items-start justify-between gap-3 border-b border-ui-border pb-3";
+const TASKS_BOARD_COLUMN_META_CLASS =
+  "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
+const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2";
+const TASKS_BOARD_EMPTY_CLASS =
   "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 text-sm text-ui-text-muted";
+const TASKS_BOARD_CARD_ACTIVE_CLASS =
+  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-xl border border-ui-border-strong bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm ring-1 ring-ui-border transition";
+const TASKS_BOARD_CARD_IDLE_CLASS =
+  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-xl border border-ui-border bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
+const TASKS_BOARD_CARD_META_ROW_CLASS =
+  "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
+const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
+  "flex w-full min-w-0 flex-col items-start gap-2 text-left";
+const TASKS_BOARD_CARD_ACTIONS_CLASS =
+  "flex w-full flex-wrap gap-1.5 border-t border-ui-border pt-2";
+const TASKS_BOARD_STATUS_ACTION_CLASS =
+  "inline-flex items-center gap-1 rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[11px] font-medium text-ui-text-secondary transition hover:border-ui-border-strong hover:bg-ui-surface disabled:cursor-not-allowed disabled:opacity-60";
 const TASKS_DETAIL_PANEL_CLASS =
   "rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
 const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
   "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+const TASKS_RUN_CARD_CLASS =
+  "rounded-xl border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+const TASKS_RUN_LIST_CLASS = "mt-4 space-y-2";
 
 const SEGMENTED_CONTROL_CLASSNAMES = {
   root: "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1",
@@ -78,6 +102,20 @@ const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: strin
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
 ];
+const TASK_BOARD_COLUMNS: ReadonlyArray<{
+  status: TeamTaskStatus;
+  label: string;
+  description: string;
+}> = [
+  { status: "open", label: "Open", description: "Queued and not started yet." },
+  {
+    status: "in_progress",
+    label: "In progress",
+    description: "Actively being worked on now.",
+  },
+  { status: "completed", label: "Completed", description: "Done and ready to review." },
+  { status: "canceled", label: "Canceled", description: "Stopped or intentionally dropped." },
+] as const;
 
 function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
   switch (status) {
@@ -93,6 +131,62 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
   }
 }
 
+function formatTaskEmptyLabel(status: TeamTaskStatus): string {
+  if (status === "in_progress") {
+    return "No tasks in progress.";
+  }
+  if (status === "completed") {
+    return "No completed tasks yet.";
+  }
+  if (status === "canceled") {
+    return "No canceled tasks.";
+  }
+  return "No open tasks.";
+}
+
+function resolveRunStatusTone(status: TeamRunRecord["status"]): StatusTone {
+  switch (status) {
+    case "working":
+    case "completed":
+      return "active";
+    case "canceled":
+      return "inactive";
+    case "failed":
+      return "danger";
+    case "input_required":
+      return "warning";
+    case "submitted":
+    default:
+      return "inactive";
+  }
+}
+
+function listTaskStatusActions(status: TeamTaskStatus): Array<{
+  nextStatus: TeamTaskStatus;
+  label: string;
+  icon: string;
+}> {
+  switch (status) {
+    case "open":
+      return [
+        { nextStatus: "in_progress", label: "Start", icon: "bi bi-play-fill" },
+        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
+      ];
+    case "in_progress":
+      return [
+        { nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" },
+        { nextStatus: "completed", label: "Complete", icon: "bi bi-check2" },
+        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
+      ];
+    case "completed":
+      return [{ nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" }];
+    case "canceled":
+      return [{ nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" }];
+    default:
+      return [];
+  }
+}
+
 export function TeamTasksPanel(props: TeamTasksPanelProps) {
   const {
     developerMode,
@@ -104,7 +198,10 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     newTaskTitle,
     onNewTaskTitleChange,
     onCreateTask,
+    onUpdateTaskStatus,
     busy,
+    runs,
+    onOpenRun,
     compilePreviewContextId,
     onCompilePreviewContextIdChange,
     onCompileTaskRunPreview,
@@ -123,6 +220,21 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     }
     return tasks.filter((task) => task.status === statusFilter);
   }, [statusFilter, tasks]);
+  const visibleColumns = React.useMemo(() => {
+    if (statusFilter === "all") {
+      return TASK_BOARD_COLUMNS;
+    }
+    return TASK_BOARD_COLUMNS.filter((column) => column.status === statusFilter);
+  }, [statusFilter]);
+  const visibleTasksByStatus = React.useMemo(() => {
+    const grouped = new Map<TeamTaskStatus, TeamTaskRecord[]>(
+      TASK_BOARD_COLUMNS.map((column) => [column.status, []])
+    );
+    for (const task of visibleTasks) {
+      grouped.get(task.status)?.push(task);
+    }
+    return grouped;
+  }, [visibleTasks]);
 
   const selectedTask = React.useMemo(
     () =>
@@ -133,11 +245,21 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   const canCreateTask = newTaskTitle.trim().length > 0 && busy !== "create-task";
+  const taskStatusUpdateBusy = busy === "update-task-status";
+  const selectedTaskStatusActions = React.useMemo(
+    () => (selectedTask ? listTaskStatusActions(selectedTask.status) : []),
+    [selectedTask]
+  );
+  const relatedRuns = React.useMemo(
+    () => (selectedTask ? selectRunsForTask(runs, selectedTask.id) : []),
+    [runs, selectedTask]
+  );
+  const latestRun = relatedRuns[0] ?? null;
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Tasks</h3>
+        <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             type="button"
@@ -196,49 +318,122 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
         />
       </div>
 
-      <div className={TASKS_WORKSPACE_GRID_CLASS}>
-        <div className={TASKS_LIST_PANEL_CLASS}>
-          <p className="text-sm font-semibold text-ui-text-primary">Task list</p>
-          <div className={TASKS_LIST_STACK_CLASS}>
-            {tasksLoading && <div className={TASKS_LIST_EMPTY_CLASS}>Loading tasks...</div>}
-            {!tasksLoading && visibleTasks.length === 0 && tasks.length === 0 && (
-              <div className={TASKS_LIST_EMPTY_CLASS}>No tasks yet. Create one to plan work.</div>
-            )}
-            {!tasksLoading && visibleTasks.length === 0 && tasks.length > 0 && (
-              <div className={TASKS_LIST_EMPTY_CLASS}>No tasks match the selected filter.</div>
-            )}
-            {visibleTasks.map((task) => (
-              <button
-                key={task.id}
-                type="button"
-                className={
-                  task.id === selectedTask?.id
-                    ? TEAM_LIST_ITEM_ACTIVE_CLASS
-                    : TEAM_LIST_ITEM_IDLE_CLASS
-                }
-                onClick={() => onSelectedTaskIdChange(task.id)}
-              >
-                <span className="flex w-full items-start justify-between gap-2">
-                  <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{task.title}</span>
-                  <StatusBadge
-                    label={task.status}
-                    tone={resolveTaskStatusTone(task.status)}
-                    className="team-status"
-                    title={`task status: ${task.status}`}
-                  />
-                </span>
-                <span className={TEAM_LIST_ITEM_META_CLASS}>
-                  {`updated=${formatTs(task.updated_at)} created=${formatTs(task.created_at)}`}
-                </span>
-              </button>
-            ))}
+      <div className={TASKS_WORKSPACE_STACK_CLASS}>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ui-text-primary">Board lanes</p>
+              <p className="mt-1 text-sm text-ui-text-muted">
+                Tasks stay grouped by status so planning work reads like a real kanban board.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
+              <span>{`${visibleColumns.length} lanes`}</span>
+              <span aria-hidden="true">·</span>
+              <span>{`${visibleTasks.length} tasks`}</span>
+            </div>
+          </div>
+
+          <div className={TASKS_BOARD_SCROLL_CLASS}>
+            <div className={TASKS_BOARD_LANES_CLASS}>
+              {visibleColumns.map((column) => {
+                const laneTasks = visibleTasksByStatus.get(column.status) ?? [];
+                return (
+                  <section key={column.status} className={TASKS_BOARD_COLUMN_CLASS}>
+                    <div className={TASKS_BOARD_COLUMN_HEADER_CLASS}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-ui-text-primary">
+                            {column.label}
+                          </h4>
+                          <span className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                            {laneTasks.length}
+                          </span>
+                        </div>
+                        <p className={`mt-1 ${TASKS_BOARD_COLUMN_META_CLASS}`}>
+                          {column.description}
+                        </p>
+                      </div>
+                      <StatusBadge
+                        label={column.status}
+                        tone={resolveTaskStatusTone(column.status)}
+                        className="team-status"
+                        title={`lane status: ${column.status}`}
+                      />
+                    </div>
+
+                    <div className={TASKS_BOARD_STACK_CLASS}>
+                      {tasksLoading && (
+                        <div className={TASKS_BOARD_EMPTY_CLASS}>Loading tasks...</div>
+                      )}
+                      {!tasksLoading && tasks.length === 0 && (
+                        <div className={TASKS_BOARD_EMPTY_CLASS}>
+                          No tasks yet. Create one to plan work.
+                        </div>
+                      )}
+                      {!tasksLoading && tasks.length > 0 && laneTasks.length === 0 && (
+                        <div className={TASKS_BOARD_EMPTY_CLASS}>
+                          {statusFilter === "all"
+                            ? formatTaskEmptyLabel(column.status)
+                            : "No tasks match the selected filter."}
+                        </div>
+                      )}
+                      {!tasksLoading &&
+                        laneTasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className={
+                              task.id === selectedTask?.id
+                                ? TASKS_BOARD_CARD_ACTIVE_CLASS
+                                : TASKS_BOARD_CARD_IDLE_CLASS
+                            }
+                          >
+                            <button
+                              type="button"
+                              className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}
+                              onClick={() => onSelectedTaskIdChange(task.id)}
+                            >
+                              <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{task.title}</span>
+                              <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
+                                <span>{`updated ${formatTs(task.updated_at)}`}</span>
+                                <span>{`created ${formatTs(task.created_at)}`}</span>
+                              </span>
+                              {developerMode && (
+                                <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
+                              )}
+                            </button>
+                            <div className={TASKS_BOARD_CARD_ACTIONS_CLASS}>
+                              {listTaskStatusActions(task.status).map((action) => (
+                                <button
+                                  key={`${task.id}-${action.nextStatus}`}
+                                  type="button"
+                                  className={TASKS_BOARD_STATUS_ACTION_CLASS}
+                                  onClick={() => {
+                                    void onUpdateTaskStatus(task.id, action.nextStatus);
+                                  }}
+                                  disabled={taskStatusUpdateBusy}
+                                  title={`Move task to ${action.nextStatus}`}
+                                  aria-label={`${action.label} ${task.title}`}
+                                >
+                                  <i className={action.icon} aria-hidden="true" />
+                                  <span>{action.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         <div className={TASKS_DETAIL_PANEL_CLASS}>
           {!selectedTask && (
             <p className={TEAM_MUTED_TEXT_CLASS}>
-              Select a task to inspect compile preview and run payload details.
+              Select a task to inspect linked runs and the latest execution summary.
             </p>
           )}
 
@@ -248,8 +443,8 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 <div className="min-w-0 flex-1">
                   <h4 className="text-base font-semibold text-ui-text-primary">{selectedTask.title}</h4>
                   <p className="mt-1 text-sm text-ui-text-muted">
-                    Compile this task into a deterministic run payload preview, then reuse the
-                    payload when creating a new run.
+                    Agents pick this task up automatically. Runs capture the execution timeline and
+                    final summary for each attempt.
                   </p>
                 </div>
                 <StatusBadge
@@ -276,74 +471,212 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-                  onClick={() => {
-                    void onCompileTaskRunPreview();
-                  }}
-                  disabled={!canCompileTask}
-                >
-                  Compile Preview
-                </button>
-                <TextInput
-                  className="min-w-[220px] flex-1"
-                  placeholder="context_id override (optional)"
-                  aria-label="context_id override"
-                  value={compilePreviewContextId}
-                  onChange={(event) => onCompilePreviewContextIdChange(event.currentTarget.value)}
-                  size="sm"
-                  radius="md"
-                />
+                {selectedTaskStatusActions.map((action) => (
+                  <button
+                    key={`${selectedTask.id}-${action.nextStatus}`}
+                    type="button"
+                    className={TASKS_BOARD_STATUS_ACTION_CLASS}
+                    onClick={() => {
+                      void onUpdateTaskStatus(selectedTask.id, action.nextStatus);
+                    }}
+                    disabled={taskStatusUpdateBusy}
+                    title={`Move task to ${action.nextStatus}`}
+                    aria-label={`${action.label} selected task`}
+                  >
+                    <i className={action.icon} aria-hidden="true" />
+                    <span>{action.label}</span>
+                  </button>
+                ))}
               </div>
 
-              {compiledRunPreview ? (
+              <div className={TASKS_RUN_LIST_CLASS}>
+                <div className={TASKS_RUN_CARD_CLASS}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-ui-text-primary">Latest run</p>
+                      <p className="mt-1 text-sm text-ui-text-muted">
+                        {latestRun
+                          ? latestRun.summary?.trim() ||
+                            (latestRun.status === "completed"
+                              ? "Completed without a structured summary."
+                              : "Execution summary will appear here when the run finishes.")
+                          : "No run recorded yet. The task will execute automatically once the team is ready."}
+                      </p>
+                    </div>
+                    {latestRun && (
+                      <StatusBadge
+                        label={latestRun.status}
+                        tone={resolveRunStatusTone(latestRun.status)}
+                        className="team-status"
+                        title={`run status: ${latestRun.status}`}
+                      />
+                    )}
+                  </div>
+                  {latestRun && (
+                    <>
+                      <div className="mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-4">
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Run</strong>
+                          <div className="mono mt-1 text-xs text-ui-text-muted">{latestRun.id}</div>
+                        </div>
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Context</strong>
+                          <div className="mono mt-1 text-xs text-ui-text-muted">
+                            {latestRun.context_id}
+                          </div>
+                        </div>
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Started</strong>
+                          <div className="mt-1 text-xs text-ui-text-muted">
+                            {formatTs(latestRun.started_at ?? latestRun.created_at)}
+                          </div>
+                        </div>
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Ended</strong>
+                          <div className="mt-1 text-xs text-ui-text-muted">
+                            {latestRun.ended_at ? formatTs(latestRun.ended_at) : "running"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                          onClick={() => onOpenRun(latestRun.id)}
+                        >
+                          Open Run
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {relatedRuns.length > 1 && (
+                  <div className={TASKS_RUN_CARD_CLASS}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-ui-text-primary">Previous runs</p>
+                        <p className="mt-1 text-sm text-ui-text-muted">
+                          Earlier execution attempts linked to this task.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                        {relatedRuns.length - 1}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {relatedRuns.slice(1, 4).map((run) => (
+                        <button
+                          key={run.id}
+                          type="button"
+                          className="flex w-full flex-col items-start gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-left transition hover:border-ui-border-strong hover:bg-ui-surface-soft"
+                          onClick={() => onOpenRun(run.id)}
+                        >
+                          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+                            <span className="mono text-xs text-ui-text-muted">{run.id}</span>
+                            <StatusBadge
+                              label={run.status}
+                              tone={resolveRunStatusTone(run.status)}
+                              className="team-status"
+                              title={`run status: ${run.status}`}
+                            />
+                          </div>
+                          <span className="text-sm text-ui-text-primary">
+                            {run.summary?.trim() || "No structured summary recorded."}
+                          </span>
+                          <span className="text-xs text-ui-text-muted">
+                            {`created ${formatTs(run.created_at)}`}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {developerMode && (
                 <div className="mt-4 space-y-3 rounded-xl border border-ui-border bg-ui-surface p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-ui-text-primary">
+                        Developer debug
+                      </p>
+                      <p className="mt-1 text-sm text-ui-text-muted">
+                        Manual compile preview remains available here for inspection and debugging.
+                      </p>
+                    </div>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                      onClick={onUseCompiledRunPayload}
-                    >
-                      Use Payload in Create Run
-                    </button>
                     <button
                       type="button"
                       className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                       onClick={() => {
-                        void onCreateRunFromCompiledPreview();
+                        void onCompileTaskRunPreview();
                       }}
-                      disabled={busy === "create-run"}
+                      disabled={!canCompileTask}
                     >
-                      Create Run from Preview
+                      Compile Preview
                     </button>
+                    <TextInput
+                      className="min-w-[220px] flex-1"
+                      placeholder="context_id override (optional)"
+                      aria-label="context_id override"
+                      value={compilePreviewContextId}
+                      onChange={(event) =>
+                        onCompilePreviewContextIdChange(event.currentTarget.value)
+                      }
+                      size="sm"
+                      radius="md"
+                    />
                   </div>
-                  <div className="grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2">
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Conversation</strong>
-                      <div className="mono mt-1 text-xs text-ui-text-muted">
-                        {compiledRunPreview.conversation_id}
+
+                  {compiledRunPreview ? (
+                    <div className="space-y-3 rounded-xl border border-ui-border bg-ui-surface-soft p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                          onClick={onUseCompiledRunPayload}
+                        >
+                          Use Payload in Create Run
+                        </button>
+                        <button
+                          type="button"
+                          className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                          onClick={() => {
+                            void onCreateRunFromCompiledPreview();
+                          }}
+                          disabled={busy === "create-run"}
+                        >
+                          Create Run from Preview
+                        </button>
                       </div>
-                    </div>
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Context</strong>
-                      <div className="mono mt-1 text-xs text-ui-text-muted">
-                        {compiledRunPreview.run_payload.context_id}
+                      <div className="grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2">
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Conversation</strong>
+                          <div className="mono mt-1 text-xs text-ui-text-muted">
+                            {compiledRunPreview.conversation_id}
+                          </div>
+                        </div>
+                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                          <strong>Context</strong>
+                          <div className="mono mt-1 text-xs text-ui-text-muted">
+                            {compiledRunPreview.run_payload.context_id}
+                          </div>
+                        </div>
                       </div>
+                      <pre className={TEAM_PANEL_PRE_CLASS}>
+                        {toPrettyJson({
+                          conversation_id: compiledRunPreview.conversation_id,
+                          run_payload: compiledRunPreview.run_payload,
+                          plan: compiledRunPreview.plan,
+                        })}
+                      </pre>
                     </div>
-                  </div>
-                  <pre className={TEAM_PANEL_PRE_CLASS}>
-                    {toPrettyJson({
-                      conversation_id: compiledRunPreview.conversation_id,
-                      run_payload: compiledRunPreview.run_payload,
-                      plan: compiledRunPreview.plan,
-                    })}
-                  </pre>
+                  ) : (
+                    <p className={TEAM_MUTED_TEXT_CLASS}>Compile preview not generated yet.</p>
+                  )}
                 </div>
-              ) : (
-                <p className={`${TEAM_MUTED_TEXT_CLASS} mt-4`}>
-                  Compile preview not generated yet.
-                </p>
               )}
 
               {developerMode &&

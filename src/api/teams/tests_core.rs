@@ -3847,6 +3847,14 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     );
     assert_eq!(created.conversation.mode, "group_chat");
     assert_eq!(created.conversation.task_id, created.task.id);
+    assert_eq!(created.task.status, crate::team::TeamTaskStatus::InProgress);
+    let created_run = created.latest_run.expect("expected auto-created run");
+    assert_eq!(created_run.team_id, team.id);
+    assert_eq!(created_run.input["task_id"], Value::from(created.task.id.clone()));
+    assert_eq!(
+        created_run.input["conversation_id"],
+        Value::from(created.conversation.id.clone())
+    );
 
     let Json(listed) = list_team_tasks(
         State(state.clone()),
@@ -3868,6 +3876,114 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     .expect("get task");
     assert_eq!(found.task.id, created.task.id);
     assert_eq!(found.conversation.id, created.conversation.id);
+    assert_eq!(
+        found.latest_run.expect("expected latest run").id,
+        created_run.id
+    );
+}
+
+#[tokio::test]
+async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-team".to_string(),
+            description: Some("shared thread task coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create shared thread task");
+
+    assert_eq!(created.task.status, crate::team::TeamTaskStatus::Open);
+    assert!(created.latest_run.is_none());
+}
+
+#[tokio::test]
+async fn teams_api_updates_task_status_and_rejects_invalid_values() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-status-api-team".to_string(),
+            description: Some("status update".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Promote kanban card".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({"source":"ui"})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("status".to_string()),
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(updated) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: "in_progress".to_string(),
+        }),
+    )
+    .await
+    .expect("update task status");
+    assert_eq!(updated.id, created.task.id);
+    assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+
+    let err = update_team_task(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(UpdateTeamTaskRequest {
+            status: "paused".to_string(),
+        }),
+    )
+    .await
+    .expect_err("invalid status should fail");
+    let body = decode_json_body(err.into_response()).await;
+    assert_eq!(
+        body["error"],
+        Value::from("status must be one of: open, in_progress, completed, canceled")
+    );
 }
 
 #[tokio::test]

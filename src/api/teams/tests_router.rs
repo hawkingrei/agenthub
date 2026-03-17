@@ -217,6 +217,37 @@ async fn teams_router_http_contract() {
         .expect("get task via router");
     assert_eq!(get_task_resp.status(), StatusCode::OK);
 
+    let update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("update task via router");
+    assert_eq!(update_task_resp.status(), StatusCode::OK);
+    let updated_task = decode_json_body(update_task_resp).await;
+    assert_eq!(updated_task["id"], task_id);
+    assert_eq!(updated_task["status"], Value::from("in_progress"));
+
+    let invalid_update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&token),
+            Some(json!({
+                "status": "paused"
+            })),
+        ))
+        .await
+        .expect("invalid task status via router");
+    assert_eq!(invalid_update_task_resp.status(), StatusCode::BAD_REQUEST);
+
     let send_human_task_message_resp = app
         .clone()
         .oneshot(build_json_request(

@@ -3,10 +3,28 @@ import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { authStatusMock, loginStartMock } = vi.hoisted(() => ({
+  authStatusMock: vi.fn(),
+  loginStartMock: vi.fn(),
+}));
+
 vi.mock("./api", () => ({
   api: {
-    authStatus: vi.fn().mockResolvedValue({ root_initialized: true }),
+    authStatus: authStatusMock,
+    loginStart: loginStartMock,
   },
+  parseApiErrorMessage: vi.fn(() => null),
+}));
+
+vi.mock("./push", () => ({
+  ensurePushSubscription: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./webauthn", () => ({
+  loginCredentialToJson: vi.fn(() => ({})),
+  publicKeyCredentialCreationOptionsFromJson: vi.fn((options) => options),
+  publicKeyCredentialRequestOptionsFromJson: vi.fn((options) => options),
+  registerCredentialToJson: vi.fn(() => ({})),
 }));
 
 import { App } from "./app";
@@ -31,8 +49,13 @@ describe("App runtime viewport effects", () => {
   let container: HTMLDivElement;
   let root: Root;
   let mockViewport: MockVisualViewport;
+  let credentialsGetMock: ReturnType<typeof vi.fn>;
+  let credentialsCreateMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    authStatusMock.mockReset();
+    authStatusMock.mockResolvedValue({ root_initialized: true });
+    loginStartMock.mockReset();
     if (
       typeof globalThis.localStorage !== "undefined" &&
       typeof globalThis.localStorage.clear === "function"
@@ -62,6 +85,15 @@ describe("App runtime viewport effects", () => {
     Object.defineProperty(window, "cancelAnimationFrame", {
       configurable: true,
       value: undefined,
+    });
+    credentialsGetMock = vi.fn();
+    credentialsCreateMock = vi.fn();
+    Object.defineProperty(globalThis.navigator, "credentials", {
+      configurable: true,
+      value: {
+        get: credentialsGetMock,
+        create: credentialsCreateMock,
+      },
     });
   });
 
@@ -216,5 +248,74 @@ describe("App runtime viewport effects", () => {
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-keyboard-inset")
     ).toBe("26px");
+  });
+
+  it("serializes login attempts while a WebAuthn request is pending", async () => {
+    loginStartMock.mockResolvedValue({
+      challenge_id: "challenge-1",
+      options: {},
+    });
+    let resolveCredential: ((value: null) => void) | null = null;
+    credentialsGetMock.mockImplementation(
+      () =>
+        new Promise<null>((resolve) => {
+          resolveCredential = resolve;
+        })
+    );
+
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+    });
+
+    const usernameInput = container.querySelector(
+      'input[placeholder="Username"]'
+    ) as HTMLInputElement | null;
+    const passwordInput = container.querySelector(
+      'input[placeholder="Password"]'
+    ) as HTMLInputElement | null;
+    const loginButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Login")
+    ) as HTMLButtonElement | undefined;
+
+    expect(usernameInput).toBeTruthy();
+    expect(passwordInput).toBeTruthy();
+    expect(loginButton).toBeTruthy();
+
+    await act(async () => {
+      usernameInput!.value = "root";
+      usernameInput!.dispatchEvent(new Event("input", { bubbles: true }));
+      passwordInput!.value = "secret";
+      passwordInput!.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      loginButton!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(loginStartMock).toHaveBeenCalledTimes(1);
+    expect(credentialsGetMock).toHaveBeenCalledTimes(1);
+    expect(loginButton!.disabled).toBe(true);
+    expect(loginButton!.textContent).toContain("Logging in...");
+
+    await act(async () => {
+      loginButton!.click();
+      await Promise.resolve();
+    });
+
+    expect(loginStartMock).toHaveBeenCalledTimes(1);
+    expect(credentialsGetMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveCredential?.(null);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(loginButton!.disabled).toBe(false);
+    expect(loginButton!.textContent).toContain("Login");
   });
 });

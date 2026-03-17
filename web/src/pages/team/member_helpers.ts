@@ -1,4 +1,4 @@
-import { AgentRecord, TeamRunSnapshotRecord } from "../../api";
+import { AgentRecord, TeamRunSnapshotRecord, TeamRuntimeMemberRecord } from "../../api";
 import { isAgentActiveStatus } from "../../agent_ws";
 
 export const DEFAULT_TEAM_LEADER_PROMPT = [
@@ -294,9 +294,13 @@ export function parseTeamSpecMembers(spec: unknown): TeamSpecMember[] {
 export function resolveTeamMemberAgentStatuses(
   spec: unknown,
   agents: AgentRecord[],
-  fallbackAgentsById?: Record<string, AgentRecord | null>
+  fallbackAgentsById?: Record<string, AgentRecord | null>,
+  runtimeMembers?: TeamRuntimeMemberRecord[] | null
 ): TeamMemberAgentStatus[] {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  const runtimeById = new Map(
+    (runtimeMembers ?? []).map((member) => [member.member_id, member])
+  );
   if (fallbackAgentsById) {
     for (const [memberId, agent] of Object.entries(fallbackAgentsById)) {
       if (agent && !byId.has(memberId)) {
@@ -306,7 +310,10 @@ export function resolveTeamMemberAgentStatuses(
   }
   return parseTeamSpecMembers(spec).map((member) => {
     const agent = byId.get(member.member_id);
-    if (!agent) {
+    const runtimeMember = runtimeById.get(member.member_id);
+    const runtimeStatus =
+      runtimeMember?.session_status?.trim() || runtimeMember?.agent_status?.trim() || "";
+    if (!agent && !runtimeMember) {
       return {
         member_id: member.member_id,
         role: member.role,
@@ -317,8 +324,8 @@ export function resolveTeamMemberAgentStatuses(
     return {
       member_id: member.member_id,
       role: member.role,
-      agent_name: agent.name,
-      status: normalizeLifecycleStatus(agent.status),
+      agent_name: agent?.name ?? runtimeMember?.display_name,
+      status: normalizeLifecycleStatus(runtimeStatus || agent?.status || "missing"),
       missing_agent: false,
     };
   });

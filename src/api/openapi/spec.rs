@@ -57,6 +57,7 @@ pub(super) fn openapi_spec() -> Value {
                 "enum": TEAM_RUN_STATUS_VALUES
               },
               "input": { "type": "object", "additionalProperties": true },
+              "summary": { "type": ["string", "null"] },
               "created_at": { "type": "integer", "format": "int64" },
               "started_at": { "type": ["integer", "null"], "format": "int64" },
               "ended_at": { "type": ["integer", "null"], "format": "int64" }

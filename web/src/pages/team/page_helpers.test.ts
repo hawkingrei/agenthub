@@ -10,6 +10,8 @@ import type {
   TeamTaskRecord,
 } from "../../api";
 import {
+  resolveAgentWorkspaceStatusView,
+  resolveSelectedAgentWorkspaceLabel,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
@@ -27,7 +29,7 @@ import {
   upsertEventList,
   upsertRun,
 } from "./page_helpers";
-import type { TeamMemberAgentStatusSummary } from "./member_helpers";
+import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
 
 function buildRun(
   id: string,
@@ -185,6 +187,23 @@ function buildRuntime(
         },
       },
     ],
+    ...overrides,
+  };
+}
+
+function buildMemberLiveState(
+  overrides: Partial<TeamMemberLiveState> = {}
+): TeamMemberLiveState {
+  return {
+    member_id: "leader-agent",
+    role: "leader",
+    agent_name: "Leader Agent",
+    lifecycle_status: "running",
+    lifecycle_tone: "active",
+    run_status: "working",
+    step_status: "working",
+    pending_inbox_count: 2,
+    current_work: "reviewing worker output",
     ...overrides,
   };
 }
@@ -398,5 +417,48 @@ describe("team page helpers", () => {
     const circular: { self?: unknown } = {};
     circular.self = circular;
     expect(toPrettyJson(circular)).toBe("[object Object]");
+  });
+
+  it("prefers agent display names when resolving focused agent labels", () => {
+    expect(
+      resolveSelectedAgentWorkspaceLabel(
+        "leader-agent",
+        buildMemberLiveState({ agent_name: "Leader Agent" }),
+        "Fallback Agent"
+      )
+    ).toBe("Leader Agent");
+    expect(
+      resolveSelectedAgentWorkspaceLabel("leader-agent", null, "Fallback Agent")
+    ).toBe("Fallback Agent");
+    expect(resolveSelectedAgentWorkspaceLabel("leader-agent", null, null)).toBe("leader-agent");
+    expect(resolveSelectedAgentWorkspaceLabel("   ", null, null)).toBe("Agent");
+  });
+
+  it("summarizes focused agent lifecycle, work, inbox, and current work", () => {
+    expect(resolveAgentWorkspaceStatusView(buildMemberLiveState())).toEqual({
+      role: "leader",
+      lifecycle: "working",
+      work: "working",
+      inbox: "2",
+      currentWork: "reviewing worker output",
+    });
+    expect(
+      resolveAgentWorkspaceStatusView(
+        buildMemberLiveState({
+          role: "worker",
+          lifecycle_status: "stopped",
+          run_status: "-",
+          step_status: "-",
+          pending_inbox_count: null,
+          current_work: "   ",
+        })
+      )
+    ).toEqual({
+      role: "worker",
+      lifecycle: "stopped",
+      work: "no run",
+      inbox: "-",
+      currentWork: "No direct activity reported yet.",
+    });
   });
 });

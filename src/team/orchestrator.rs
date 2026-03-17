@@ -400,11 +400,19 @@ impl TeamOrchestratorWorker {
         run: &TeamRunRecord,
         step: &TeamStepRecord,
     ) -> String {
-        let base_prompt = format!(
-            "Team step '{step_key}' for run '{run_id}' is ready. Use actor_inbox with {{\"run_id\":\"{run_id}\",\"limit\":20}} to inspect pending mailbox work for this run, process your assigned task, ack delivered messages, and report progress or completion back through actor_send.",
-            step_key = step.step_key,
-            run_id = run.id
-        );
+        let task_brief = build_task_brief_from_run_input(&run.input);
+        let base_prompt = match task_brief {
+            Some(task_brief) => format!(
+                "Team step '{step_key}' for run '{run_id}' is ready.\n\nAssigned task brief:\n{task_brief}\n\nUse actor_inbox with {{\"run_id\":\"{run_id}\",\"limit\":20}} to inspect pending mailbox work for this run, process your assigned task, ack delivered messages, and report progress or completion back through actor_send.",
+                step_key = step.step_key,
+                run_id = run.id
+            ),
+            None => format!(
+                "Team step '{step_key}' for run '{run_id}' is ready. Use actor_inbox with {{\"run_id\":\"{run_id}\",\"limit\":20}} to inspect pending mailbox work for this run, process your assigned task, ack delivered messages, and report progress or completion back through actor_send.",
+                step_key = step.step_key,
+                run_id = run.id
+            ),
+        };
         let continuity_mode = parse_run_continuity_mode(&run.input);
         if continuity_mode == "reset" {
             self.emit_continuity_event(
@@ -540,6 +548,67 @@ fn parse_run_continuity_max_chars(run_input: &Value) -> usize {
         return 1200;
     };
     raw.clamp(256, 20000) as usize
+}
+
+fn build_task_brief_from_run_input(run_input: &Value) -> Option<String> {
+    let run_obj = run_input.as_object()?;
+    let task_title = run_obj
+        .get("task_title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let task_list = run_obj
+        .get("task_list")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .take(5)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let acceptance = run_obj
+        .get("acceptance_criteria")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .take(5)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let deadline = run_obj
+        .get("deadline")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if task_title.is_none() && task_list.is_empty() && acceptance.is_empty() && deadline.is_none() {
+        return None;
+    }
+
+    let mut lines = Vec::new();
+    if let Some(task_title) = task_title {
+        lines.push(format!("Title: {task_title}"));
+    }
+    if !task_list.is_empty() {
+        lines.push(format!("Scope: {}", task_list.join("; ")));
+    }
+    if !acceptance.is_empty() {
+        lines.push(format!("Acceptance: {}", acceptance.join("; ")));
+    }
+    if let Some(deadline) = deadline {
+        lines.push(format!("Deadline: {deadline}"));
+    }
+    Some(lines.join("\n"))
 }
 
 fn parse_step_specs(spec: &Value) -> anyhow::Result<Vec<OrchestratorStepSpec>> {
@@ -1342,7 +1411,16 @@ mod tests {
             .await
             .expect("create team");
         let run = teams
-            .create_run(&team.id, Some("ctx-orchestrator"), json!({"prompt":"go"}))
+            .create_run(
+                &team.id,
+                Some("ctx-orchestrator"),
+                json!({
+                    "task_title":"Investigate missing MCP output",
+                    "task_list":["inspect live session mapping", "ship a fix"],
+                    "acceptance_criteria":["verify on production domain"],
+                    "deadline":"asap"
+                }),
+            )
             .await
             .expect("create run");
         let step = teams
@@ -1372,6 +1450,9 @@ mod tests {
         assert_eq!(calls[0].member_id, "planner");
         assert_eq!(calls[0].expected_session_id, "session-planner");
         assert!(calls[0].prompt.contains(&run.id));
+        assert!(calls[0].prompt.contains("Assigned task brief"));
+        assert!(calls[0].prompt.contains("Investigate missing MCP output"));
+        assert!(calls[0].prompt.contains("verify on production domain"));
         assert!(calls[0].prompt.contains("actor_inbox"));
         assert!(
             !calls[0]

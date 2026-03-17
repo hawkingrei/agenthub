@@ -271,10 +271,10 @@ export const TEAM_SIDEBAR_META_GRID_CLASS =
   "teams-create-launch-meta mono mt-3 grid gap-1 text-ui-xs text-ui-text-muted";
 
 export const AGENTS_PANEL_EXPANDED_CLASS =
-  "workspace-left rounded-[28px] border-[3px] border-black bg-[#23292f] p-3 text-white shadow-[0_4px_0_rgba(0,0,0,0.18)] backdrop-blur";
+  "workspace-left rounded-[28px] border-[3px] border-black bg-[#f3efe4] p-3 text-[#1f252c] shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur";
 
 export const AGENTS_PANEL_COLLAPSED_CLASS =
-  "workspace-left collapsed rounded-[24px] border-[3px] border-black bg-[#23292f] p-3 text-white shadow-[0_4px_0_rgba(0,0,0,0.18)] backdrop-blur";
+  "workspace-left collapsed rounded-[24px] border-[3px] border-black bg-[#f3efe4] p-3 text-[#1f252c] shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur";
 
 export const AGENTS_TOOLBAR_CLASS = "mb-3 flex items-center justify-between gap-2";
 export const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-2";
@@ -283,10 +283,10 @@ export const AGENTS_CREATE_BUTTON_CLASS =
   "rounded-[14px] border-[3px] border-black bg-[#203b2d] px-4 py-2 text-sm font-semibold text-white shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px]";
 
 export const AGENTS_ROW_CLASS =
-  "agent-row rounded-[18px] border-[2px] border-white/12 bg-[#2b3239] px-ctrl-x py-3 text-white transition hover:-translate-y-[1px] hover:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "agents-workbench-row rounded-[18px] border-[2px] border-black/15 bg-[#fcfbf7] px-ctrl-x py-3 text-[#1f252c] shadow-[0_1px_0_rgba(0,0,0,0.08)] transition hover:-translate-y-[1px] hover:bg-[#f6f1e7] hover:shadow-[0_2px_0_rgba(0,0,0,0.12)]";
 
 export const AGENTS_ROW_ACTIVE_CLASS =
-  "agent-row active rounded-[18px] border-[2px] border-black bg-[#203b2d] px-ctrl-x py-3 text-white shadow-[0_2px_0_rgba(0,0,0,0.16)]";
+  "agents-workbench-row active rounded-[18px] border-[2px] border-[#203b2d]/35 bg-[#e7efe8] px-ctrl-x py-3 text-[#13261d] shadow-[0_2px_0_rgba(0,0,0,0.12)]";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
   "output-header grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center justify-between gap-x-3 gap-y-2 rounded-[18px] border-[2px] border-black bg-[#f3f1eb] px-3 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:rounded-[24px] sm:border-[3px] sm:px-4 sm:py-3 sm:shadow-[0_3px_0_rgba(0,0,0,0.16)] max-[720px]:grid-cols-[minmax(0,1fr)_auto] max-[720px]:grid-rows-[auto] max-[720px]:gap-x-2 max-[720px]:gap-y-1 max-[720px]:rounded-b-none max-[720px]:border-b-0 max-[720px]:px-2.5 max-[720px]:py-1.5 max-[720px]:shadow-none";

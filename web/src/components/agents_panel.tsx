@@ -17,19 +17,24 @@ const AGENTS_WORKBENCH_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fcfbf7] text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
 const AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
-const AGENTS_WORKBENCH_ICON_BUTTON_DANGER_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fff4f1] text-[#8d2d20] shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+const AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS =
+  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fcfbf7] text-[13px] text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
+  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#203b2d] text-[13px] text-white shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
+  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fff4f1] text-[13px] text-[#8d2d20] shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
 const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4";
 const AGENTS_WORKBENCH_METRIC_CLASS =
-  "relative grid gap-1 justify-items-center rounded-[14px] border-[2px] border-white/12 bg-[#2b3239] px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/62";
+  "relative grid gap-1 justify-items-center rounded-[14px] border-[2px] border-black/10 bg-[#e9e1d2] px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/60 shadow-[0_1px_0_rgba(0,0,0,0.08)]";
 const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-3 overflow-auto pr-1";
 const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
-  "text-lg font-semibold tracking-tight text-white";
+  "text-lg font-semibold tracking-tight text-[#1f252c]";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
   agentsCollapsed: boolean;
+  compactRows: boolean;
   hasPendingPermissions: boolean;
   pendingPermissionCounts: Record<string, number>;
   startingAgentIds: Record<string, boolean>;
@@ -47,6 +52,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   agents,
   activeAgent,
   agentsCollapsed,
+  compactRows,
   hasPendingPermissions,
   pendingPermissionCounts,
   startingAgentIds,
@@ -67,7 +73,13 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         <div className="agents-backdrop" onClick={onCollapse} />
       )}
       <div
-        className={agentsCollapsed ? AGENTS_PANEL_COLLAPSED_CLASS : AGENTS_PANEL_EXPANDED_CLASS}
+        className={
+          agentsCollapsed
+            ? AGENTS_PANEL_COLLAPSED_CLASS
+            : compactRows
+              ? `${AGENTS_PANEL_EXPANDED_CLASS} agents-panel-compact-rows`
+              : AGENTS_PANEL_EXPANDED_CLASS
+        }
       >
         {agentsCollapsed ? (
           <div className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
@@ -154,27 +166,29 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                       }}
                       title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
                     >
-                      <div className="agent-row-head">
-                        <div className="agent-row-title">
-                          <span className="agent-name">{agent.name}</span>
+                      <div className="agents-workbench-row-head">
+                        <div className="agents-workbench-row-title">
+                          <span className="agents-workbench-name">{agent.name}</span>
                           {pendingPermissionCount > 0 ? (
                             <span
-                              className="agent-permission-dot"
+                              className="agents-workbench-permission-dot"
                               role="img"
                               aria-label={pendingPermissionLabel}
                               title={pendingPermissionLabel}
                             />
                           ) : null}
                           {modelLabel ? (
-                            <span className="agent-tag hidden sm:inline-flex">{modelLabel}</span>
+                            <span className="agents-workbench-tag hidden sm:inline-flex">
+                              {modelLabel}
+                            </span>
                           ) : null}
                         </div>
-                        <div className="agent-row-actions">
+                        <div className="agents-workbench-row-actions">
                           <button
                             className={
                               agent.code_mode
-                                ? AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS
-                                : AGENTS_WORKBENCH_ICON_BUTTON_CLASS
+                                ? AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS
+                                : AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS
                             }
                             onClick={(e) => {
                               e.stopPropagation();
@@ -197,11 +211,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           <StatusBadge
                             label={agent.status}
                             tone={resolveAgentStatusTone(agent.status)}
-                            className={`agent-status status-${agent.status} hidden sm:inline-flex`}
+                            className={`agents-workbench-status status-${agent.status} hidden sm:inline-flex px-2 py-0.5 text-[10px]`}
                             title={`status: ${agent.status}`}
                           />
                           <button
-                            className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
+                            className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                             disabled={isAgentActiveStatus(agent.status) || isStarting}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -225,7 +239,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           </button>
                           {isAgentActiveStatus(agent.status) && (
                             <button
-                              className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
+                              className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onStopAgent(agent.id);
@@ -237,7 +251,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             </button>
                           )}
                           <button
-                            className={AGENTS_WORKBENCH_ICON_BUTTON_DANGER_CLASS}
+                            className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS}
                             onClick={(e) => {
                               e.stopPropagation();
                               onDeleteAgent(agent.id);
@@ -249,9 +263,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           </button>
                         </div>
                       </div>
-                      <div className="agent-row-meta hidden sm:flex">
-                        <span className="agent-workdir">{agent.workdir}</span>
-                        <span className="agent-code-mode">
+                      <div className="agents-workbench-row-meta hidden sm:flex">
+                        <span className="agents-workbench-workdir">{agent.workdir}</span>
+                        <span className="agents-workbench-code-mode">
                           Code mode: {agent.code_mode ? "on" : "off"}
                         </span>
                       </div>

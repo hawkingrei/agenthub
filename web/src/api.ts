@@ -218,6 +218,7 @@ export type TeamConversationMessageRecord = {
 export type TeamTaskDetailResponse = {
   task: TeamTaskRecord;
   conversation: TeamConversationRecord;
+  latest_run?: TeamRunRecord | null;
 };
 
 export type TeamRunRecord = {
@@ -226,6 +227,7 @@ export type TeamRunRecord = {
   context_id: string;
   status: TeamRunStatus;
   input: unknown;
+  summary?: string | null;
   created_at: number;
   started_at?: number | null;
   ended_at?: number | null;
@@ -588,6 +590,20 @@ export const api = {
     apiFetch<TeamTaskDetailResponse>(
       `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
       token
+    ),
+  updateTeamTask: (
+    token: string,
+    teamId: string,
+    taskId: string,
+    payload: { status: TeamTaskStatus }
+  ) =>
+    apiFetch<TeamTaskRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
     ),
   sendTeamTaskMessage: (
     token: string,
