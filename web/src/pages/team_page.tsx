@@ -1571,6 +1571,7 @@ export function TeamPage(props: TeamPageProps) {
     const role = resolveInitialTeamMemberRole(selectedTeamHasLeader);
     const defaults = resolveTeamForgeDefaults({
       teamName: selectedTeam.name,
+      teamSpec: selectedTeam.spec,
       role,
       workerCount: selectedTeamWorkerCount,
       defaultWorktreeRoot: forgeDefaultWorktreeRoot,
@@ -1622,6 +1623,7 @@ export function TeamPage(props: TeamPageProps) {
       }
       const defaults = resolveTeamForgeDefaults({
         teamName: selectedTeam.name,
+        teamSpec: selectedTeam.spec,
         role,
         workerCount: selectedTeamWorkerCount,
         defaultWorktreeRoot: forgeDefaultWorktreeRoot,

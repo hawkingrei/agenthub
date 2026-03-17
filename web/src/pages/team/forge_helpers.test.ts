@@ -86,6 +86,7 @@ describe("team forge helpers", () => {
   it("resolves leader and worker forge defaults", () => {
     const leaderDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
+      teamSpec: { members: [] },
       role: "leader",
       workerCount: 0,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
@@ -101,14 +102,28 @@ describe("team forge helpers", () => {
 
     const workerDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
+      teamSpec: {
+        members: [
+          {
+            member_id: "alpha-desk-leader",
+            role: "leader",
+            runtime: {
+              workdir: "/Users/weizhenwang/devel/opensource/agent/tidb",
+              worktree_mode: "use_existing",
+              worktree_repo: null,
+            },
+          },
+        ],
+      },
       role: "worker",
       workerCount: 2,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
       agentPresetId: "kimi",
     });
     expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
-    expect(workerDefaults.agentWorkdir).toBe("");
-    expect(workerDefaults.worktreeMode).toBe("use_existing");
+    expect(workerDefaults.agentWorkdir).toBe("~/.agenthub/worktrees");
+    expect(workerDefaults.worktreeMode).toBe("create_worktree");
+    expect(workerDefaults.worktreeRepo).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
     expect(workerDefaults.draft.role).toBe("worker");
     expect(workerDefaults.draft.model).toBe("kimi");
   });

@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify deployed Team worker forge defaults on `agenthub.hawkingrei.com`: `Teams -> Add Agent` for a worker should open in `create_worktree` mode instead of the invalid empty `use_existing` state, should prefill `Worktree repo path` from existing Team member runtime hints when available (for example leader `workdir`), and should no longer block with `Agent workdir is required` before any create-agent request is sent. Record Chrome DevTools MCP notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-17-team-worker-forge-default-worktree-mode.md`).
+
 - [ ] Re-run PR `#126` CI after the latest CI/comment fixes land: `Cargo Clippy`, `Rust (Cargo)`, `Bazel Build and Test`, and `Web E2E` should all turn green, and the follow-up replies for the Team ACP send guard, Team run-summary hydration, batched run-summary loading, SPA workbench menu routing, and `navigator.credentials` test cleanup comments should be posted with the final run IDs. Record the rerun URLs and any remaining flakes in `docs/journal/2026-03-17-pr126-review-fix-pack.md`.
 
 - [ ] Verify deployed PR 126 review-fix pack on `agenthub.hawkingrei.com`: workbench connection badges should render tone-specific surfaces again, Team `Delete Team` should read as destructive instead of a neutral white button, standalone `Agents -> Create Agent` should keep the non-Team modal surface, and ACP plan bubbles should keep the aligned warm background. Record Chrome DevTools MCP notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-17-pr126-review-fix-pack.md`).

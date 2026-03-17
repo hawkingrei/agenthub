@@ -36,18 +36,56 @@ export type TeamForgeDefaults = {
   draft: TeamMemberProfileDraft;
   agentName: string;
   agentWorkdir: string;
-  worktreeMode: "use_existing";
+  worktreeMode: "use_existing" | "create_worktree";
   worktreeRepo: string;
   worktreeRef: string;
 };
 
 type ResolveTeamForgeDefaultsArgs = {
   teamName: string;
+  teamSpec?: unknown;
   role: TeamMemberRole;
   workerCount: number;
   defaultWorktreeRoot: string;
   agentPresetId?: AgentPresetId;
 };
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readRuntimePath(value: unknown, key: "worktree_repo" | "workdir"): string {
+  const record = asObjectRecord(value);
+  const raw = record?.[key];
+  return typeof raw === "string" ? normalizeWorkdirInput(raw) : "";
+}
+
+function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
+  const specRecord = asObjectRecord(teamSpec);
+  const members = Array.isArray(specRecord?.members) ? specRecord.members : [];
+  let leaderWorkdir = "";
+
+  for (const entry of members) {
+    const member = asObjectRecord(entry);
+    if (!member) {
+      continue;
+    }
+    const runtime = member.runtime;
+    const role = typeof member.role === "string" ? member.role.trim().toLowerCase() : "";
+    const runtimeRepo = readRuntimePath(runtime, "worktree_repo");
+    if (runtimeRepo) {
+      return runtimeRepo;
+    }
+    if (!leaderWorkdir && role === "leader") {
+      leaderWorkdir = readRuntimePath(runtime, "workdir");
+    }
+  }
+
+  return leaderWorkdir;
+}
 
 export function buildTeamMemberProfileDraft(
   role: TeamMemberRole,
@@ -126,6 +164,7 @@ export function resolveTeamMemberRoleProfile(role: TeamMemberRole): TeamMemberRo
 
 export function resolveTeamForgeDefaults({
   teamName,
+  teamSpec,
   role,
   workerCount,
   defaultWorktreeRoot,
@@ -147,12 +186,12 @@ export function resolveTeamForgeDefaults({
         ? buildLeaderForgeDefaultWorkdir(normalizedRoot, agentName)
         : resolveWorkdirForModalOpen(
             "",
-            "use_existing",
+            "create_worktree",
             defaultWorktreeRoot,
             DEFAULT_WORKTREE_ROOT
           ),
-    worktreeMode: "use_existing",
-    worktreeRepo: "",
+    worktreeMode: role === "leader" ? "use_existing" : "create_worktree",
+    worktreeRepo: role === "leader" ? "" : resolveTeamForgeWorktreeRepo(teamSpec),
     worktreeRef: "",
   };
 }
