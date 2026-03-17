@@ -29,6 +29,11 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - corrected the desktop metadata-overlap E2E to leave the agent-focused workspace first (`sidebar all`), then open the Team-level `Mailbox` tab; the failure was caused by looking for Team mailbox controls while still inside agent workspace, not by the mailbox label itself
 - made the task-mailbox forwarding core test assert against the task auto-created run instead of racing a same-second manually created run in `src/api/teams/tests_core.rs`
 - changed the orchestrator start-step error test to break `team_run_events` rather than dropping `team_steps`, so `dispatch_step()` can still hydrate the run before exercising the intended `start_step` failure path
+- replaced per-run summary hydration in `TeamManager::list_active_runs` / `list_runs` with a batched `team_steps` lookup, so the new `summary` field stays populated without introducing a sequential N+1 query pattern on Team run-list endpoints
+- switched startup active-run cancellation to prefetch linked `task_id` values from `team_runs` instead of calling full `get_run()` for every active run, which avoids paying the new summary-hydration path during process boot cleanup
+- rewired `WorkbenchHeaderMenu` to use the SPA route transition path (`history.pushState` + `PopStateEvent`) for `Agents` / `Teams` / `Settings`, instead of plain anchor reloads that could drop in-memory workbench state
+- restored `navigator.credentials` after each `web/src/app.runtime_effects.test.tsx` case so the runtime-effect suite does not leak browser API overrides into later Vitest files
+- added a focused interaction test for `WorkbenchHeaderMenu` so menu item clicks assert through the injected in-app navigation callback instead of silently falling back to full-page navigation
 
 ## Deferred Follow-Up
 
@@ -44,6 +49,10 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - `cargo test team_task_messages_api_forwards_human_chat_to_active_run_mailbox`
 - `cargo test dispatch_step_returns_error_when_start_step_returns_error`
 - `cargo test list_runs_supports_status_filter_and_cursor`
+- `cargo test list_active_runs_returns_non_terminal_runs_only`
+- `cargo test startup_cancellation_reopens_linked_task`
+- `cargo clippy --workspace --all-targets -- -D warnings`
 - `cd web && npx vitest run src/pages/team_panels.test.tsx`
+- `cd web && npx vitest run src/workbench_header_menu.test.tsx src/workbench_header_menu.interaction.test.tsx src/app.runtime_effects.test.tsx`
 - targeted Playwright re-run still depends on the local dev server bootstrap path; if sandboxed execution times out, rerun outside the sandbox and record the result in the PR thread
 - Chrome DevTools MCP baseline: inspected the deployed `https://agenthub.hawkingrei.com/` surfaces to confirm the current badge/button/modal baseline before the local fixes; deployed regression remains pending until this change ships

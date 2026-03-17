@@ -725,6 +725,16 @@ export function App() {
     pathname: location.pathname,
     search: location.search,
   }));
+  const navigateWorkbenchRoute = useCallback(
+    (pathname: string) => {
+      if (routeLocation.pathname === pathname) {
+        return;
+      }
+      window.history.pushState({}, "", pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    },
+    [routeLocation.pathname]
+  );
   const [auth, setAuth] = useState<AuthState | null>(() => {
     const raw = getLocalStorageItemSafe("agenthub_auth");
     if (!raw) return null;
@@ -2977,6 +2987,7 @@ export function App() {
               username={auth.username}
               isRoot={auth.role === "root"}
               onLogout={onLogout}
+              onNavigate={navigateWorkbenchRoute}
               buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
             />
           </div>

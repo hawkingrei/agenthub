@@ -13,6 +13,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof WorkbenchHeaderMe
         username="root"
         isRoot={true}
         onLogout={() => {}}
+        onNavigate={() => {}}
         buttonClassName="menu-button"
         defaultOpened={true}
         {...props}

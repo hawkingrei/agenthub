@@ -1059,9 +1059,9 @@ impl TeamManager {
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {
-            runs.push(self.hydrate_run_summary(parse_team_run_row(&row)?).await?);
+            runs.push(parse_team_run_row(&row)?);
         }
-        Ok(runs)
+        self.hydrate_run_summaries(runs).await
     }
 
     // Cancel all non-terminal runs left from a previous process lifetime.
@@ -1077,12 +1077,11 @@ impl TeamManager {
         )
         .fetch_all(&self.db)
         .await?;
+        let linked_task_ids = load_linked_task_ids_for_runs(&self.db, &active_run_ids).await?;
 
         let mut canceled_count = 0usize;
         for run_id in active_run_ids {
-            let linked_task_id = self.get_run(&run_id).await.ok().and_then(|run| {
-                extract_linked_task_id_from_run_input(&run.input).map(str::to_string)
-            });
+            let linked_task_id = linked_task_ids.get(&run_id).map(String::as_str);
             let canceled = self.cancel_run(&run_id).await?;
             if canceled.status == TeamRunStatus::Canceled {
                 canceled_count += 1;
@@ -1105,7 +1104,7 @@ impl TeamManager {
                         "failed to append startup cancellation event"
                     );
                 }
-                if let Some(task_id) = linked_task_id.as_deref() {
+                if let Some(task_id) = linked_task_id {
                     match self.get_task(task_id).await {
                         Ok(task)
                             if matches!(
@@ -1170,9 +1169,9 @@ impl TeamManager {
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {
-            runs.push(self.hydrate_run_summary(parse_team_run_row(&row)?).await?);
+            runs.push(parse_team_run_row(&row)?);
         }
-        Ok(runs)
+        self.hydrate_run_summaries(runs).await
     }
 
     pub async fn get_agent_session_status(
@@ -2131,6 +2130,20 @@ impl TeamManager {
         Ok(run)
     }
 
+    async fn hydrate_run_summaries(
+        &self,
+        mut runs: Vec<TeamRunRecord>,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let summaries = load_run_summaries(&self.db, &runs).await?;
+        for run in &mut runs {
+            run.summary = summaries
+                .get(&run.id)
+                .cloned()
+                .unwrap_or_else(|| fallback_run_summary(&run.status));
+        }
+        Ok(runs)
+    }
+
     pub async fn update_team_spec_if_unchanged(
         &self,
         team_id: &str,
@@ -2999,30 +3012,129 @@ async fn load_run_summary(
 
     if let Some(row) = row {
         let output_json = row.try_get::<Option<String>, _>("output_json")?;
-        if let Some(output_json) = output_json
-            && let Ok(output) = serde_json::from_str::<Value>(&output_json)
-        {
-            let summary = build_continuity_snapshot(Some(&output)).summary_text;
-            if !summary.trim().is_empty() {
-                return Ok(Some(summary));
-            }
-        }
         let error_text = row.try_get::<Option<String>, _>("error_text")?;
-        if let Some(error_text) = error_text {
-            let trimmed = error_text.trim();
-            if !trimmed.is_empty() {
-                return Ok(Some(truncate_chars(trimmed, CONTINUITY_MAX_SUMMARY_CHARS)));
-            }
+        if let Some(summary) =
+            summarize_run_summary_fields(output_json.as_deref(), error_text.as_deref())
+        {
+            return Ok(Some(summary));
         }
     }
 
+    Ok(fallback_run_summary(status))
+}
+
+async fn load_run_summaries(
+    db: &SqlitePool,
+    runs: &[TeamRunRecord],
+) -> anyhow::Result<HashMap<String, Option<String>>> {
+    let mut summaries = HashMap::with_capacity(runs.len());
+    if runs.is_empty() {
+        return Ok(summaries);
+    }
+
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT run_id, output_json, error_text
+        FROM team_steps
+        WHERE run_id IN (
+        "#,
+    );
+    {
+        let mut separated = builder.separated(", ");
+        for run in runs {
+            separated.push_bind(&run.id);
+        }
+    }
+    builder.push(
+        r#")
+          AND (output_json IS NOT NULL OR error_text IS NOT NULL)
+        ORDER BY run_id ASC, COALESCE(ended_at, started_at, 0) DESC, attempt DESC, id DESC
+        "#,
+    );
+
+    let rows = builder.build().fetch_all(db).await?;
+    for row in rows {
+        let run_id = row.try_get::<String, _>("run_id")?;
+        let output_json = row.try_get::<Option<String>, _>("output_json")?;
+        let error_text = row.try_get::<Option<String>, _>("error_text")?;
+        summaries.entry(run_id).or_insert_with(|| {
+            summarize_run_summary_fields(output_json.as_deref(), error_text.as_deref())
+        });
+    }
+
+    for run in runs {
+        summaries
+            .entry(run.id.clone())
+            .or_insert_with(|| fallback_run_summary(&run.status));
+    }
+    Ok(summaries)
+}
+
+fn summarize_run_summary_fields(
+    output_json: Option<&str>,
+    error_text: Option<&str>,
+) -> Option<String> {
+    if let Some(output_json) = output_json
+        && let Ok(output) = serde_json::from_str::<Value>(output_json)
+    {
+        let summary = build_continuity_snapshot(Some(&output)).summary_text;
+        if !summary.trim().is_empty() {
+            return Some(summary);
+        }
+    }
+    if let Some(error_text) = error_text {
+        let trimmed = error_text.trim();
+        if !trimmed.is_empty() {
+            return Some(truncate_chars(trimmed, CONTINUITY_MAX_SUMMARY_CHARS));
+        }
+    }
+    None
+}
+
+fn fallback_run_summary(status: &TeamRunStatus) -> Option<String> {
     let fallback = match status {
         TeamRunStatus::Completed => Some("Completed without a structured summary."),
         TeamRunStatus::Failed => Some("Run failed before a structured summary was recorded."),
         TeamRunStatus::Canceled => Some("Run was canceled before completion."),
         TeamRunStatus::Submitted | TeamRunStatus::Working | TeamRunStatus::InputRequired => None,
     };
-    Ok(fallback.map(str::to_string))
+    fallback.map(str::to_string)
+}
+
+async fn load_linked_task_ids_for_runs(
+    db: &SqlitePool,
+    run_ids: &[String],
+) -> anyhow::Result<HashMap<String, String>> {
+    let mut linked_task_ids = HashMap::new();
+    if run_ids.is_empty() {
+        return Ok(linked_task_ids);
+    }
+
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT id, trim(COALESCE(json_extract(input_json, '$.task_id'), '')) AS task_id
+        FROM team_runs
+        WHERE id IN (
+        "#,
+    );
+    {
+        let mut separated = builder.separated(", ");
+        for run_id in run_ids {
+            separated.push_bind(run_id);
+        }
+    }
+    builder.push(")");
+
+    let rows = builder.build().fetch_all(db).await?;
+    for row in rows {
+        let run_id = row.try_get::<String, _>("id")?;
+        let task_id = row.try_get::<String, _>("task_id")?;
+        let task_id = task_id.trim();
+        if !task_id.is_empty() {
+            linked_task_ids.insert(run_id, task_id.to_string());
+        }
+    }
+    Ok(linked_task_ids)
 }
 
 fn extract_linked_task_id_from_run_input(input: &Value) -> Option<&str> {

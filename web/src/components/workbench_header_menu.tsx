@@ -6,6 +6,7 @@ type WorkbenchHeaderMenuProps = {
   username: string;
   isRoot: boolean;
   onLogout: () => void;
+  onNavigate: (pathname: string) => void;
   buttonClassName: string;
   defaultOpened?: boolean;
 };
@@ -15,6 +16,7 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
   username,
   isRoot,
   onLogout,
+  onNavigate,
   buttonClassName,
   defaultOpened = false,
 }: WorkbenchHeaderMenuProps) {
@@ -33,15 +35,15 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>{username}</Menu.Label>
-        <Menu.Item component="a" href="/" disabled={active === "agents"}>
+        <Menu.Item onClick={() => onNavigate("/")} disabled={active === "agents"}>
           Agents
         </Menu.Item>
-        <Menu.Item component="a" href="/teams" disabled={active === "teams"}>
+        <Menu.Item onClick={() => onNavigate("/teams")} disabled={active === "teams"}>
           Teams
         </Menu.Item>
         <Menu.Divider />
         {isRoot && (
-          <Menu.Item component="a" href="/admin">
+          <Menu.Item onClick={() => onNavigate("/admin")}>
             Settings
           </Menu.Item>
         )}

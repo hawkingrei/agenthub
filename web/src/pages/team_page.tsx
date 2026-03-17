@@ -3029,6 +3029,7 @@ export function TeamPage(props: TeamPageProps) {
             username={props.auth.username}
             isRoot={props.auth.role === "root"}
             onLogout={props.onLogout}
+            onNavigate={navigateTeamRoute}
             buttonClassName={`${teamWorkbenchHeaderIconButtonClassName} h-auto w-auto gap-1.5 px-2 sm:px-3`}
           />
         </div>

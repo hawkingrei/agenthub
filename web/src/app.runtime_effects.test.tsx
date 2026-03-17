@@ -51,6 +51,7 @@ describe("App runtime viewport effects", () => {
   let mockViewport: MockVisualViewport;
   let credentialsGetMock: ReturnType<typeof vi.fn>;
   let credentialsCreateMock: ReturnType<typeof vi.fn>;
+  let originalCredentialsDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     authStatusMock.mockReset();
@@ -86,6 +87,10 @@ describe("App runtime viewport effects", () => {
       configurable: true,
       value: undefined,
     });
+    originalCredentialsDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis.navigator,
+      "credentials"
+    );
     credentialsGetMock = vi.fn();
     credentialsCreateMock = vi.fn();
     Object.defineProperty(globalThis.navigator, "credentials", {
@@ -109,6 +114,15 @@ describe("App runtime viewport effects", () => {
     document.documentElement.style.removeProperty("--agenthub-vh");
     document.documentElement.style.removeProperty("--agenthub-vw");
     document.documentElement.style.removeProperty("--agenthub-keyboard-inset");
+    if (originalCredentialsDescriptor) {
+      Object.defineProperty(
+        globalThis.navigator,
+        "credentials",
+        originalCredentialsDescriptor
+      );
+    } else {
+      delete (globalThis.navigator as Navigator & { credentials?: unknown }).credentials;
+    }
     vi.restoreAllMocks();
   });
 
