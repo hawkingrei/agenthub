@@ -1517,7 +1517,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await openMainTeamAction(page, "all");
+  await openMainTeamAction(page, "Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];

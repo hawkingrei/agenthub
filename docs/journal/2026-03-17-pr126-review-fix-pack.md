@@ -26,6 +26,7 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - hydrated `TeamRunRecord.summary` in `TeamManager::list_runs`, so `GET /api/teams/:id/runs` now matches the active-run endpoints and surfaces fallback summaries consistently
 - switched the Team ACP input dock send guard in `web/src/pages/team_member_acp_panel.tsx` from async state-only gating to a synchronous ref mutex, and disabled the send action while a prompt is in flight to avoid duplicate rapid sends
 - updated the stale Team E2E navigation labels from `Mailbox` / `Tasks` to the current `all` / `Kanban` workbench IA in `web/tests/e2e/team_page.e2e.ts`
+- corrected the desktop metadata-overlap E2E to keep its mailbox-specific assertion on `Mailbox` after the broader `Tasks -> Kanban` refresh, matching the still-supported Team mailbox panel in that scenario
 - made the task-mailbox forwarding core test assert against the task auto-created run instead of racing a same-second manually created run in `src/api/teams/tests_core.rs`
 - changed the orchestrator start-step error test to break `team_run_events` rather than dropping `team_steps`, so `dispatch_step()` can still hydrate the run before exercising the intended `start_step` failure path
 
