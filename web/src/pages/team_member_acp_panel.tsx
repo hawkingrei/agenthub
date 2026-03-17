@@ -84,6 +84,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const [inputHistory, setInputHistory] = React.useState<string[]>([]);
   const [inputHistoryCursor, setInputHistoryCursor] = React.useState(-1);
   const [sendingInput, setSendingInput] = React.useState(false);
+  const sendingInputRef = React.useRef(false);
 
   React.useEffect(() => {
     setThreadOptionsOpen(false);
@@ -141,9 +142,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
   const handleSendInput = React.useCallback(async () => {
     const text = input.trim();
-    if (!text || !selectedSessionId || !onSendInput || sendingInput) {
+    if (!text || !selectedSessionId || !onSendInput || sendingInputRef.current) {
       return;
     }
+    sendingInputRef.current = true;
     setSendingInput(true);
     try {
       await onSendInput(text, selectedSessionId);
@@ -152,9 +154,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       inputHistoryDraftRef.current = "";
       setInput("");
     } finally {
+      sendingInputRef.current = false;
       setSendingInput(false);
     }
-  }, [input, onSendInput, selectedSessionId, sendingInput]);
+  }, [input, onSendInput, selectedSessionId]);
   const handleInputChange = React.useCallback(
     (value: string) => {
       setInput(value);
@@ -322,6 +325,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
             historyCommands={inputHistory}
             showInterrupt={false}
             canInterrupt={false}
+            sendDisabled={!canSendInput || sendingInput}
             onInputChange={handleInputChange}
             onSendInput={() => {
               void handleSendInput();

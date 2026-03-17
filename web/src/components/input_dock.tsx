@@ -13,6 +13,7 @@ type InputDockProps = {
   historyCommands: string[];
   showInterrupt: boolean;
   canInterrupt: boolean;
+  sendDisabled?: boolean;
   onInputChange: (value: string) => void;
   onSendInput: () => void;
   onInterrupt: () => void;
@@ -230,6 +231,7 @@ export function InputDock({
   historyCommands,
   showInterrupt,
   canInterrupt,
+  sendDisabled = false,
   onInputChange,
   onSendInput,
   onInterrupt,
@@ -427,6 +429,9 @@ export function InputDock({
               return;
             }
             if (action.type === "send") {
+              if (sendDisabled) {
+                return;
+              }
               e.preventDefault();
               onSendInput();
               setShowHistory(false);
@@ -443,6 +448,7 @@ export function InputDock({
         <button
           className="input-send-button"
           onClick={onSendInput}
+          disabled={sendDisabled}
           aria-label="Send input"
         >
           Send

@@ -1170,7 +1170,7 @@ impl TeamManager {
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {
-            runs.push(parse_team_run_row(&row)?);
+            runs.push(self.hydrate_run_summary(parse_team_run_row(&row)?).await?);
         }
         Ok(runs)
     }
@@ -2999,12 +2999,12 @@ async fn load_run_summary(
 
     if let Some(row) = row {
         let output_json = row.try_get::<Option<String>, _>("output_json")?;
-        if let Some(output_json) = output_json {
-            if let Ok(output) = serde_json::from_str::<Value>(&output_json) {
-                let summary = build_continuity_snapshot(Some(&output)).summary_text;
-                if !summary.trim().is_empty() {
-                    return Ok(Some(summary));
-                }
+        if let Some(output_json) = output_json
+            && let Ok(output) = serde_json::from_str::<Value>(&output_json)
+        {
+            let summary = build_continuity_snapshot(Some(&output)).summary_text;
+            if !summary.trim().is_empty() {
+                return Ok(Some(summary));
             }
         }
         let error_text = row.try_get::<Option<String>, _>("error_text")?;

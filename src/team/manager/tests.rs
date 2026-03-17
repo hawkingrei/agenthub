@@ -3422,7 +3422,12 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list all runs");
     assert_eq!(all_runs.len(), 2);
     assert_eq!(all_runs[0].id, second_run.id);
+    assert_eq!(all_runs[0].summary, None);
     assert_eq!(all_runs[1].id, first_run.id);
+    assert_eq!(
+        all_runs[1].summary.as_deref(),
+        Some("Run was canceled before completion.")
+    );
 
     let canceled_runs = manager
         .list_runs(&team.id, 100, Some("canceled"), None)

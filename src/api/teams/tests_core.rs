@@ -4299,17 +4299,10 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .await
     .expect("create task");
 
-    let Json(run) = create_team_run(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamRunRequest {
-            context_id: Some("ctx-task-mailbox-forward".to_string()),
-            input: Some(json!({"prompt":"forward task message to mailbox"})),
-        }),
-    )
-    .await
-    .expect("create run");
+    let run = task_created
+        .latest_run
+        .clone()
+        .expect("task create should auto-create a linked run");
 
     let Json(directed_message) = send_team_task_message(
         State(state.clone()),

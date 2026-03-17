@@ -1517,7 +1517,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await openMainTeamAction(page, "Mailbox");
+  await openMainTeamAction(page, "all");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -1973,7 +1973,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Compile Team");
-  await openMainTeamAction(page, "Tasks");
+  await openMainTeamAction(page, "Kanban");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -2392,7 +2392,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Chat First Team");
-  await openMainTeamAction(page, "Tasks");
+  await openMainTeamAction(page, "Kanban");
   await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -2620,7 +2620,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
     "Please build a tiny JSON CLI with parse and pretty-print commands."
   );
 
-  await openMainTeamAction(page, "Tasks");
+  await openMainTeamAction(page, "Kanban");
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
   await expect(page.locator(".teams-step-body")).toContainText(

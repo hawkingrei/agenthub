@@ -1886,10 +1886,10 @@ mod tests {
             )
             .await
             .expect("submit step");
-        sqlx::query("DROP TABLE team_steps")
+        sqlx::query("DROP TABLE team_run_events")
             .execute(&db)
             .await
-            .expect("drop team_steps to force start_step error");
+            .expect("drop team_run_events to force start_step error");
 
         let starter = Arc::new(FakeAgentStarter::with_running_members([(
             "planner",

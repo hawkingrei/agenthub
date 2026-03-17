@@ -23,6 +23,11 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - made `src/api/teams/tests_router.rs` order-independent when asserting listed Team ids
 - aligned `ACP_BUBBLE_PLAN_CLASS` with the shipped compatibility background in `web/src/ui/tailwind_classes.ts`
 - replaced the new input-dock `!important` overrides in `web/src/styles.css` with more specific `.input.docked ...` selectors so the compact interrupt/history/history-item sizing still wins without adding new `!important` debt
+- hydrated `TeamRunRecord.summary` in `TeamManager::list_runs`, so `GET /api/teams/:id/runs` now matches the active-run endpoints and surfaces fallback summaries consistently
+- switched the Team ACP input dock send guard in `web/src/pages/team_member_acp_panel.tsx` from async state-only gating to a synchronous ref mutex, and disabled the send action while a prompt is in flight to avoid duplicate rapid sends
+- updated the stale Team E2E navigation labels from `Mailbox` / `Tasks` to the current `all` / `Kanban` workbench IA in `web/tests/e2e/team_page.e2e.ts`
+- made the task-mailbox forwarding core test assert against the task auto-created run instead of racing a same-second manually created run in `src/api/teams/tests_core.rs`
+- changed the orchestrator start-step error test to break `team_run_events` rather than dropping `team_steps`, so `dispatch_step()` can still hydrate the run before exercising the intended `start_step` failure path
 
 ## Deferred Follow-Up
 
@@ -35,4 +40,9 @@ PR `#126` still had several focused review comments worth fixing inside the same
 - `cargo test teams_router_http_contract`
 - `cd web && npm run lint -- src/components/workbench_connection_badge.tsx src/workbench_connection_badge.test.tsx src/components/acp_panel.tsx src/pages/team_run_panel.tsx src/components/create_agent_modal.tsx src/pages/team_page.tsx src/ui/tailwind_classes.ts tests/e2e/team_page.e2e.ts`
 - `cd web && npm run build`
+- `cargo test team_task_messages_api_forwards_human_chat_to_active_run_mailbox`
+- `cargo test dispatch_step_returns_error_when_start_step_returns_error`
+- `cargo test list_runs_supports_status_filter_and_cursor`
+- `cd web && npx vitest run src/pages/team_panels.test.tsx`
+- targeted Playwright re-run still depends on the local dev server bootstrap path; if sandboxed execution times out, rerun outside the sandbox and record the result in the PR thread
 - Chrome DevTools MCP baseline: inspected the deployed `https://agenthub.hawkingrei.com/` surfaces to confirm the current badge/button/modal baseline before the local fixes; deployed regression remains pending until this change ships

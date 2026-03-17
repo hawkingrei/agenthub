@@ -2033,6 +2033,57 @@ describe("team panels interactions", () => {
     expect(onSendInput).toHaveBeenCalledWith("hello from team acp", "runtime-session-1");
   });
 
+  it("TeamMemberAcpPanel ignores duplicate send triggers while a prompt is in flight", async () => {
+    let resolveSend: (() => void) | null = null;
+    const onSendInput = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        })
+    );
+
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={null}
+          selectedMemberRole="worker"
+          selectedSessionId="runtime-session-1"
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onSendInput={onSendInput}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    const input = required(
+      container.querySelector("textarea") as HTMLTextAreaElement | null,
+      "ACP input textarea missing"
+    );
+    changeInputValue(input, "hello from team acp");
+    const sendButton = findButtonByText(container, "Send");
+    await act(async () => {
+      sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(onSendInput).toHaveBeenCalledTimes(1);
+    expect(sendButton.disabled).toBe(true);
+
+    await act(async () => {
+      resolveSend?.();
+      await Promise.resolve();
+    });
+    expect(sendButton.disabled).toBe(false);
+  });
+
   it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {
     const onSelectMember = vi.fn();
     const onConversationScroll = vi.fn();
