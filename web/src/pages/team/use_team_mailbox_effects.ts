@@ -51,6 +51,9 @@ export function useTeamMailboxEffects({
   setChatStickToBottom,
 }: UseTeamMailboxEffectsParams) {
   useEffect(() => {
+    if (tab !== "mailbox") {
+      return;
+    }
     if (!snapshot) {
       setSelectedMemberId("");
       setMemberEvents([]);
@@ -66,7 +69,7 @@ export function useTeamMailboxEffects({
       return;
     }
     setSelectedMemberId(selectableActorIds[0] ?? "");
-  }, [mailboxActorIds, selectedMemberId, setMemberEvents, setSelectedMemberId, snapshot]);
+  }, [mailboxActorIds, selectedMemberId, setMemberEvents, setSelectedMemberId, snapshot, tab]);
 
   useEffect(() => {
     const actorId = chatInboxActorId.trim();

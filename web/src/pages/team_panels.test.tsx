@@ -341,6 +341,7 @@ describe("team panels interactions", () => {
     const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
     const onSelectConversation = vi.fn();
+    const onSelectKanban = vi.fn();
     const onSelectAgentTab = vi.fn();
     const onSelectUtilityTab = vi.fn();
     const teamOne = buildTeam();
@@ -390,10 +391,11 @@ describe("team panels interactions", () => {
                 current_work: "collecting evidence",
               }),
             ]}
-            selectedMemberId="worker-agent"
+            focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
             onSelectConversation={onSelectConversation}
+            onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
           />
@@ -420,6 +422,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Team Two"));
     expect(container.querySelector("input[aria-label='Filter teams']")).not.toBeNull();
     expect(container.textContent).toContain("Team One");
+    clickElement(findButtonByText(container, "Kanban"));
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
     expect(container.textContent).not.toContain("Worker Agent");
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
@@ -431,11 +434,13 @@ describe("team panels interactions", () => {
     expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
     expect(container.textContent).toContain("Teams 2");
-    expect(container.textContent).toContain("Channels 1");
+    expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).not.toContain("Operations 1");
+    expect(container.textContent).toContain("Runs");
+    expect(container.textContent).toContain("Advanced");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");
@@ -486,10 +491,11 @@ describe("team panels interactions", () => {
                 current_work: "collecting evidence",
               }),
             ]}
-            selectedMemberId="worker-agent"
+            focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
             onSelectConversation={onSelectConversation}
+            onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
           />
@@ -503,12 +509,13 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("worker · working");
     expect(container.textContent).not.toContain("team-1");
 
-    clickElement(findInteractiveByText(container, "Operations", "button, label"));
+    clickElement(findButtonByText(container, "Runs"));
     expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
+    clickElement(findButtonByText(container, "Advanced"));
+    expect(onSelectUtilityTab).toHaveBeenCalledWith("overview");
     expect(container.textContent).toContain("Teams 2");
-    expect(container.textContent).toContain("Operations 1");
-    expect(container.textContent).not.toContain("Channels 1");
-    expect(container.textContent).not.toContain("Debug");
+    expect(container.textContent).toContain("Advanced");
+    expect(container.textContent).toContain("Shared team thread");
 
     act(() => {
       root.render(
@@ -554,10 +561,11 @@ describe("team panels interactions", () => {
                 current_work: "collecting evidence",
               }),
             ]}
-            selectedMemberId="worker-agent"
+            focusedAgentMemberId=""
             tab="runs"
             onSelectTeam={onSelectTeam}
             onSelectConversation={onSelectConversation}
+            onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
           />
@@ -565,8 +573,8 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findInteractiveByText(container, "Channels & Agents", "button, label"));
-    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
+    clickElement(findButtonByText(container, "Shared team thread"));
+    expect(onSelectConversation).toHaveBeenCalledTimes(2);
 
     act(() => {
       root.render(
@@ -584,10 +592,11 @@ describe("team panels interactions", () => {
             selectedTeamId={null}
             teamMemberSummaryByTeamId={new Map()}
             memberLiveStates={[]}
-            selectedMemberId=""
+            focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
             onSelectConversation={() => {}}
+            onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
           />
@@ -619,10 +628,11 @@ describe("team panels interactions", () => {
             selectedTeamId={null}
             teamMemberSummaryByTeamId={new Map()}
             memberLiveStates={[]}
-            selectedMemberId=""
+            focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
             onSelectConversation={() => {}}
+            onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
           />
@@ -766,10 +776,11 @@ describe("team panels interactions", () => {
               ],
             ])}
             memberLiveStates={[buildMemberLiveState()]}
-            selectedMemberId=""
+            focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
             onSelectConversation={() => {}}
+            onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
           />
@@ -1690,15 +1701,17 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("route");
   });
 
-  it("TeamTasksPanel supports task filters, creation, and compile preview actions", () => {
+  it("TeamTasksPanel supports task filters, creation, linked runs, and debug compile actions", () => {
     const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
     const onNewTaskTitleChange = vi.fn();
     const onCreateTask = vi.fn();
+    const onUpdateTaskStatus = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
     const onCompileTaskRunPreview = vi.fn();
     const onUseCompiledRunPayload = vi.fn();
     const onCreateRunFromCompiledPreview = vi.fn();
+    const onOpenRun = vi.fn();
 
     act(() => {
       root.render(
@@ -1727,7 +1740,20 @@ describe("team panels interactions", () => {
             newTaskTitle="New task draft"
             onNewTaskTitleChange={onNewTaskTitleChange}
             onCreateTask={onCreateTask}
+            onUpdateTaskStatus={onUpdateTaskStatus}
             busy={null}
+            runs={[
+              buildRun({
+                id: "run-2",
+                status: "completed",
+                summary: "Shipped the rollout summary.",
+                input: { task_id: "task-2" },
+                created_at: 230,
+                started_at: 231,
+                ended_at: 240,
+              }),
+            ]}
+            onOpenRun={onOpenRun}
             compilePreviewContextId="ctx-preview"
             onCompilePreviewContextIdChange={onCompilePreviewContextIdChange}
             onCompileTaskRunPreview={onCompileTaskRunPreview}
@@ -1751,6 +1777,7 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
+    clickElement(findButtonByAriaLabel(container, "Start Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
@@ -1772,17 +1799,24 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Compile Preview"));
     clickElement(findButtonByText(container, "Use Payload in Create Run"));
     clickElement(findButtonByText(container, "Create Run from Preview"));
+    clickElement(findButtonByText(container, "Open Run"));
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
     expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
     expect(onCreateTask).toHaveBeenCalledTimes(1);
+    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-1", "in_progress");
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
     expect(onCreateRunFromCompiledPreview).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("Tasks");
+    expect(onOpenRun).toHaveBeenCalledWith("run-2");
+    expect(container.textContent).toContain("Kanban");
+    expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).toContain("Completed");
     expect(container.textContent).toContain("Prepare rollout");
+    expect(container.textContent).toContain("Latest run");
+    expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
   });
 
@@ -1806,7 +1840,10 @@ describe("team panels interactions", () => {
             newTaskTitle=""
             onNewTaskTitleChange={vi.fn()}
             onCreateTask={vi.fn()}
+            onUpdateTaskStatus={vi.fn()}
             busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
             compilePreviewContextId=""
             onCompilePreviewContextIdChange={vi.fn()}
             onCompileTaskRunPreview={vi.fn()}
@@ -1823,7 +1860,7 @@ describe("team panels interactions", () => {
 
     clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
-    expect(container.textContent).not.toContain("Prepare rolloutCompile this task");
+    expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
@@ -1920,6 +1957,80 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
     expect(container.textContent).not.toContain("session=task-77");
+  });
+
+  it("TeamMemberAcpPanel renders ACP conversation from runtime session fallback", () => {
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={null}
+          selectedMemberRole="worker"
+          selectedSessionId="runtime-session-1"
+          memberEvents={[
+            {
+              event_id: 31,
+              agent_id: "worker-agent",
+              session_id: "runtime-session-1",
+              seq: "31",
+              ts: 1_700_000_301,
+              stream: "acp",
+              message: JSON.stringify({
+                type: "agent_message",
+                text: "Runtime session fallback works.",
+              }),
+            },
+          ]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("Runtime session fallback works.");
+  });
+
+  it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {
+    const onSendInput = vi.fn().mockResolvedValue(undefined);
+
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={null}
+          selectedMemberRole="worker"
+          selectedSessionId="runtime-session-1"
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onSendInput={onSendInput}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    const input = required(
+      container.querySelector("textarea") as HTMLTextAreaElement | null,
+      "ACP input textarea missing"
+    );
+    changeInputValue(input, "hello from team acp");
+    await act(async () => {
+      findButtonByText(container, "Send").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+      await Promise.resolve();
+    });
+
+    expect(onSendInput).toHaveBeenCalledWith("hello from team acp", "runtime-session-1");
   });
 
   it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {

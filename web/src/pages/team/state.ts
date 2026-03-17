@@ -33,6 +33,7 @@ const TEAM_TABS_WITHOUT_ACTIVE_RUN = new Set<TeamTab>([
   "runs",
   "conversation",
   "tasks",
+  "agent_acp",
   "mailbox",
   "debug",
 ]);

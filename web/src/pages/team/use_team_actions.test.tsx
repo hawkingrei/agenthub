@@ -9,6 +9,7 @@ import type {
   TeamRunRecord,
   TeamStepRecord,
 } from "../../api";
+import { api } from "../../api";
 import { useTeamActions } from "./use_team_actions";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -49,6 +50,8 @@ function createBaseOptions(overrides: Partial<TeamActionsInput> = {}): TeamActio
     inboxLimit: "100",
     inboxAfterId: "",
     inboxIncludeDelivered: false,
+    selectedMemberId: "",
+    selectedMemberSessionId: null,
     selectedMemberSnapshot: null,
     activeRunIdRef: { current: null },
     eventsRef: { current: [] as TeamRunEventRecord[] },
@@ -263,6 +266,56 @@ describe("useTeamActions", () => {
       expect(rerendered.refreshSnapshot).not.toBe(initial.refreshSnapshot);
       expect(rerendered.onCreateRun).not.toBe(initial.onCreateRun);
     } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("loads member events from runtime session fallback without a run snapshot", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 7,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "7",
+        ts: 123,
+        stream: "acp",
+        message: "event",
+      },
+    ]);
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const setMemberEventsLoading = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      setMemberEvents,
+      setMemberEventsHasMore,
+      setMemberEventsLoading,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        300,
+        "runtime-session-1",
+        undefined
+      );
+      expect(setMemberEventsLoading).toHaveBeenCalledWith(true);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(false);
+      expect(setMemberEvents).toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
       cleanupHarness(root, container);
     }
   });

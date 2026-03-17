@@ -111,8 +111,8 @@ describe("useTeamMailboxEffects", () => {
     vi.restoreAllMocks();
   });
 
-  it("resets member selection state when snapshot is missing", async () => {
-    const params = createParams({ snapshot: null });
+  it("resets member selection state when mailbox snapshot is missing", async () => {
+    const params = createParams({ snapshot: null, tab: "mailbox" });
 
     act(() => {
       root.render(<HookHarness params={params} />);
@@ -125,10 +125,29 @@ describe("useTeamMailboxEffects", () => {
     expect(params.setMemberEvents).toHaveBeenCalledWith([]);
   });
 
+  it("preserves member selection outside mailbox when snapshot is missing", async () => {
+    const params = createParams({
+      snapshot: null,
+      tab: "agent_acp",
+      selectedMemberId: "leader-agent",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(params.setSelectedMemberId).not.toHaveBeenCalled();
+    expect(params.setMemberEvents).not.toHaveBeenCalledWith([]);
+  });
+
   it("uses snapshot member fallback when selected member is invalid", async () => {
     const params = createParams({
       snapshot: makeSnapshot(["leader-1", "worker-1"]),
       selectedMemberId: "missing-member",
+      tab: "mailbox",
     });
 
     act(() => {

@@ -58,6 +58,9 @@ export function useTeamMailboxLifecycleEffects(
   } = options;
 
   useEffect(() => {
+    if (tab !== "mailbox") {
+      return;
+    }
     if (!snapshot) {
       setSelectedMemberId("");
       setMemberEvents([]);
@@ -73,7 +76,7 @@ export function useTeamMailboxLifecycleEffects(
       return;
     }
     setSelectedMemberId(selectableActorIds[0] ?? "");
-  }, [mailboxActorIds, selectedMemberId, setSelectedMemberId, setMemberEvents, snapshot]);
+  }, [mailboxActorIds, selectedMemberId, setSelectedMemberId, setMemberEvents, snapshot, tab]);
 
   useEffect(() => {
     const actorId = chatInboxActorId.trim();
