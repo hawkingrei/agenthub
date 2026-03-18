@@ -533,6 +533,8 @@ pub fn normalize_existing_path(
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddr;
+    use std::path::Path;
     use std::path::PathBuf;
     use std::sync::Once;
     use std::time::Duration;
@@ -542,7 +544,7 @@ mod tests {
         ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMailboxService,
         ActorMessageStatus, ActorMessageTransport,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tonic::transport::{Certificate, Identity, ServerTlsConfig};
     use uuid::Uuid;
 
@@ -608,6 +610,87 @@ mod tests {
         INSTALL_RUSTLS_PROVIDER.call_once(|| {
             let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         });
+    }
+
+    struct StartedInternalGrpcServer {
+        addr: SocketAddr,
+        handle: tokio::task::JoinHandle<()>,
+    }
+
+    async fn spawn_mtls_internal_grpc_server(
+        state: crate::state::AppState,
+        authz: InternalAuthz,
+        cert_dir: PathBuf,
+    ) -> StartedInternalGrpcServer {
+        let server = TeamInternalControlServer::new(TeamInternalControlService::new(
+            state,
+            authz,
+            InternalGrpcSecurityMode::Mtls,
+            cert_dir.clone(),
+            "bootstrap-token".to_string(),
+        ));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        drop(listener);
+
+        let server_cert_pem =
+            std::fs::read(cert_dir.join("server-cert.pem")).expect("read server cert pem");
+        let server_key_pem =
+            std::fs::read(cert_dir.join("server-key.pem")).expect("read server key pem");
+        let ca_cert_pem = std::fs::read(cert_dir.join("ca-cert.pem")).expect("read ca cert pem");
+        let handle = tokio::spawn(async move {
+            let tls = ServerTlsConfig::new()
+                .identity(Identity::from_pem(server_cert_pem, server_key_pem))
+                .client_ca_root(Certificate::from_pem(ca_cert_pem))
+                .client_auth_optional(true);
+            tonic::transport::Server::builder()
+                .tls_config(tls)
+                .expect("tls config")
+                .add_service(server)
+                .serve(addr)
+                .await
+                .expect("serve internal grpc");
+        });
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        StartedInternalGrpcServer { addr, handle }
+    }
+
+    fn mtls_client_config(
+        addr: SocketAddr,
+        access_token: String,
+        cert_dir: &Path,
+    ) -> InternalGrpcMailboxClientConfig {
+        InternalGrpcMailboxClientConfig {
+            target: format!("https://{}", addr),
+            access_token,
+            ca_cert_path: Some(cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
+            tls_server_name: Some("localhost".to_string()),
+            client_cert_path: Some(
+                cert_dir
+                    .join("client-cert.pem")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            client_key_path: Some(
+                cert_dir
+                    .join("client-key.pem")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+        }
+    }
+
+    fn grpc_relay_route(addr: SocketAddr, cert_dir: &Path, access_token: &str) -> Value {
+        json!({
+            "kind": "grpc",
+            "grpc_target": format!("https://{}", addr),
+            "access_token": access_token,
+            "tls_server_name": "localhost",
+            "ca_cert_path": cert_dir.join("ca-cert.pem").to_string_lossy().to_string(),
+            "client_cert_path": cert_dir.join("client-cert.pem").to_string_lossy().to_string(),
+            "client_key_path": cert_dir.join("client-key.pem").to_string_lossy().to_string(),
+        })
     }
 
     async fn seed_team_run(
@@ -699,50 +782,17 @@ mod tests {
         seed_team_run(&remote_state, &team_id, &team_name, &run_id).await;
 
         let cert_dir = test_cert_dir("relay-pipeline");
-        let tls_material = ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
             .expect("generate tls material")
             .expect("tls material");
         let authz = build_authz();
         let access_token = issue_mailbox_token(&authz, &run_id);
 
-        let server = TeamInternalControlServer::new(TeamInternalControlService::new(
-            remote_state.clone(),
-            authz.clone(),
-            InternalGrpcSecurityMode::Mtls,
-            cert_dir.clone(),
-            "bootstrap-token".to_string(),
-        ));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
-        let addr = listener.local_addr().expect("listener addr");
-        drop(listener);
-        let server_handle = tokio::spawn(async move {
-            let tls = ServerTlsConfig::new()
-                .identity(Identity::from_pem(
-                    tls_material.server_cert_pem,
-                    tls_material.server_key_pem,
-                ))
-                .client_ca_root(Certificate::from_pem(tls_material.ca_cert_pem))
-                .client_auth_optional(true);
-            tonic::transport::Server::builder()
-                .tls_config(tls)
-                .expect("tls config")
-                .add_service(server)
-                .serve(addr)
-                .await
-                .expect("serve internal grpc");
-        });
+        let server =
+            spawn_mtls_internal_grpc_server(remote_state.clone(), authz.clone(), cert_dir.clone())
+                .await;
 
-        tokio::time::sleep(Duration::from_millis(150)).await;
-
-        let route = json!({
-            "kind": "grpc",
-            "grpc_target": format!("https://{}", addr),
-            "access_token": access_token,
-            "tls_server_name": "localhost",
-            "ca_cert_path": cert_dir.join("ca-cert.pem").to_string_lossy().to_string(),
-            "client_cert_path": cert_dir.join("client-cert.pem").to_string_lossy().to_string(),
-            "client_key_path": cert_dir.join("client-key.pem").to_string_lossy().to_string(),
-        });
+        let route = grpc_relay_route(server.addr, &cert_dir, &access_token);
 
         let sent = source_state
             .teams
@@ -773,22 +823,7 @@ mod tests {
         assert_eq!(relay_result.dead_lettered, 0);
 
         let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
-            target: format!("https://{}", addr),
-            access_token: issue_mailbox_token(&authz, &run_id),
-            ca_cert_path: Some(cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
-            tls_server_name: Some("localhost".to_string()),
-            client_cert_path: Some(
-                cert_dir
-                    .join("client-cert.pem")
-                    .to_string_lossy()
-                    .to_string(),
-            ),
-            client_key_path: Some(
-                cert_dir
-                    .join("client-key.pem")
-                    .to_string_lossy()
-                    .to_string(),
-            ),
+            ..mtls_client_config(server.addr, issue_mailbox_token(&authz, &run_id), &cert_dir)
         })
         .await
         .expect("connect grpc mailbox client");
@@ -841,7 +876,244 @@ mod tests {
             ActorMessageStatus::Delivered
         );
 
-        server_handle.abort();
+        server.handle.abort();
+    }
+
+    #[tokio::test]
+    async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_nodes() {
+        install_rustls_crypto_provider();
+        let node_a_state = build_test_state().await;
+        let node_b_state = build_test_state().await;
+        let team_id = format!("team-{}", Uuid::new_v4());
+        let team_name = format!("grpc-p2p-team-{}", Uuid::new_v4());
+        let run_id = format!("run-{}", Uuid::new_v4());
+        seed_team_run(&node_a_state, &team_id, &team_name, &run_id).await;
+        seed_team_run(&node_b_state, &team_id, &team_name, &run_id).await;
+
+        let cert_dir = test_cert_dir("bidirectional-relay-pipeline");
+        ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+            .expect("generate tls material")
+            .expect("tls material");
+        let authz = build_authz();
+        let access_token = issue_mailbox_token(&authz, &run_id);
+
+        let node_a_server =
+            spawn_mtls_internal_grpc_server(node_a_state.clone(), authz.clone(), cert_dir.clone())
+                .await;
+        let node_b_server =
+            spawn_mtls_internal_grpc_server(node_b_state.clone(), authz.clone(), cert_dir.clone())
+                .await;
+
+        let route_to_a = grpc_relay_route(node_a_server.addr, &cert_dir, &access_token);
+        let route_to_b = grpc_relay_route(node_b_server.addr, &cert_dir, &access_token);
+
+        node_a_state
+            .teams
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run_id,
+                from_actor_id: "planner-a",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "reviewer-b",
+                to_peer_id: ACTOR_NODE_PEER_ID,
+                channel: "coordination",
+                transport: TeamActorMessageTransport::Remote,
+                route: Some(route_to_b.clone()),
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"node-a-1",
+                    "sequence":1,
+                    "correlation_id":"corr-a-1"
+                }),
+                idempotency_key: Some("p2p-a-1"),
+            })
+            .await
+            .expect("send first seeded node-a message");
+        node_a_state
+            .teams
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run_id,
+                from_actor_id: "planner-a",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "reviewer-b",
+                to_peer_id: ACTOR_NODE_PEER_ID,
+                channel: "coordination",
+                transport: TeamActorMessageTransport::Remote,
+                route: Some(route_to_b),
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"node-a-2",
+                    "sequence":2,
+                    "correlation_id":"corr-a-2"
+                }),
+                idempotency_key: Some("p2p-a-2"),
+            })
+            .await
+            .expect("send second seeded node-a message");
+        node_b_state
+            .teams
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run_id,
+                from_actor_id: "reviewer-b",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "planner-a",
+                to_peer_id: ACTOR_NODE_PEER_ID,
+                channel: "coordination",
+                transport: TeamActorMessageTransport::Remote,
+                route: Some(route_to_a),
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"node-b-1",
+                    "sequence":1,
+                    "correlation_id":"corr-b-1"
+                }),
+                idempotency_key: Some("p2p-b-1"),
+            })
+            .await
+            .expect("send seeded node-b reply");
+
+        let relay_from_a = node_a_state
+            .teams
+            .relay_remote_messages_once(100, 3, 30)
+            .await
+            .expect("relay seeded node-a messages");
+        assert_eq!(relay_from_a.scanned, 2);
+        assert_eq!(relay_from_a.delivered, 2);
+        assert_eq!(relay_from_a.retried, 0);
+        assert_eq!(relay_from_a.dead_lettered, 0);
+
+        let relay_from_b = node_b_state
+            .teams
+            .relay_remote_messages_once(100, 3, 30)
+            .await
+            .expect("relay seeded node-b reply");
+        assert_eq!(relay_from_b.scanned, 1);
+        assert_eq!(relay_from_b.delivered, 1);
+        assert_eq!(relay_from_b.retried, 0);
+        assert_eq!(relay_from_b.dead_lettered, 0);
+
+        let node_a_client = InternalGrpcMailboxClient::connect(mtls_client_config(
+            node_a_server.addr,
+            issue_mailbox_token(&authz, &run_id),
+            &cert_dir,
+        ))
+        .await
+        .expect("connect node-a grpc mailbox client");
+        let node_b_client = InternalGrpcMailboxClient::connect(mtls_client_config(
+            node_b_server.addr,
+            issue_mailbox_token(&authz, &run_id),
+            &cert_dir,
+        ))
+        .await
+        .expect("connect node-b grpc mailbox client");
+
+        let node_b_inbox = node_b_client
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: "reviewer-b".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("list node-b seeded inbox");
+        assert_eq!(node_b_inbox.messages.len(), 2);
+        assert_eq!(node_b_inbox.messages[0].payload["text"], "node-a-1");
+        assert_eq!(node_b_inbox.messages[1].payload["text"], "node-a-2");
+        assert_eq!(
+            node_b_inbox
+                .messages
+                .iter()
+                .map(|message| message.payload["sequence"].as_i64().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert!(node_b_inbox.messages.iter().all(|message| {
+            message.transport == ActorMessageTransport::Local
+                && message.route.is_none()
+                && message.status == ActorMessageStatus::Pending
+        }));
+
+        let node_a_inbox = node_a_client
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: "planner-a".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("list node-a seeded inbox");
+        assert_eq!(node_a_inbox.messages.len(), 1);
+        assert_eq!(node_a_inbox.messages[0].payload["text"], "node-b-1");
+        assert_eq!(
+            node_a_inbox.messages[0].transport,
+            ActorMessageTransport::Local
+        );
+        assert!(node_a_inbox.messages[0].route.is_none());
+        assert_eq!(node_a_inbox.messages[0].status, ActorMessageStatus::Pending);
+
+        for message in &node_b_inbox.messages {
+            let ack = node_b_client
+                .actor_ack(agenthub_team_actor::ActorAckRequest {
+                    run_id: run_id.clone(),
+                    actor_id: "reviewer-b".to_string(),
+                    message_id: message.message_id,
+                    ack_token: None,
+                    result: None,
+                })
+                .await
+                .expect("ack node-b seeded inbox message");
+            assert_eq!(ack.state, ActorMessageStatus::Delivered);
+        }
+
+        let node_a_ack = node_a_client
+            .actor_ack(agenthub_team_actor::ActorAckRequest {
+                run_id: run_id.clone(),
+                actor_id: "planner-a".to_string(),
+                message_id: node_a_inbox.messages[0].message_id,
+                ack_token: None,
+                result: None,
+            })
+            .await
+            .expect("ack node-a seeded inbox message");
+        assert_eq!(node_a_ack.state, ActorMessageStatus::Delivered);
+
+        let node_b_delivered = node_b_client
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: "reviewer-b".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Delivered]),
+            })
+            .await
+            .expect("list delivered node-b inbox");
+        assert_eq!(node_b_delivered.messages.len(), 2);
+        assert!(
+            node_b_delivered
+                .messages
+                .iter()
+                .all(|message| message.status == ActorMessageStatus::Delivered)
+        );
+
+        let node_a_delivered = node_a_client
+            .actor_inbox(ActorInboxRequest {
+                run_id,
+                actor_id: "planner-a".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Delivered]),
+            })
+            .await
+            .expect("list delivered node-a inbox");
+        assert_eq!(node_a_delivered.messages.len(), 1);
+        assert_eq!(
+            node_a_delivered.messages[0].status,
+            ActorMessageStatus::Delivered
+        );
+
+        node_a_server.handle.abort();
+        node_b_server.handle.abort();
     }
 
     #[tokio::test]
@@ -855,58 +1127,20 @@ mod tests {
         seed_safe_path(&remote_state, &workdir_root).await;
 
         let cert_dir = test_cert_dir("remote-agent-control");
-        let tls_material = ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
             .expect("generate tls material")
             .expect("tls material");
         let authz = build_authz();
 
-        let server = TeamInternalControlServer::new(TeamInternalControlService::new(
-            remote_state.clone(),
-            authz.clone(),
-            InternalGrpcSecurityMode::Mtls,
-            cert_dir.clone(),
-            "bootstrap-token".to_string(),
-        ));
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
-        let addr = listener.local_addr().expect("listener addr");
-        drop(listener);
-        let server_handle = tokio::spawn(async move {
-            let tls = ServerTlsConfig::new()
-                .identity(Identity::from_pem(
-                    tls_material.server_cert_pem,
-                    tls_material.server_key_pem,
-                ))
-                .client_ca_root(Certificate::from_pem(tls_material.ca_cert_pem))
-                .client_auth_optional(true);
-            tonic::transport::Server::builder()
-                .tls_config(tls)
-                .expect("tls config")
-                .add_service(server)
-                .serve(addr)
-                .await
-                .expect("serve internal grpc");
-        });
+        let server =
+            spawn_mtls_internal_grpc_server(remote_state.clone(), authz.clone(), cert_dir.clone())
+                .await;
 
-        tokio::time::sleep(Duration::from_millis(150)).await;
-
-        let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
-            target: format!("https://{}", addr),
-            access_token: issue_agent_manage_token(&authz),
-            ca_cert_path: Some(cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
-            tls_server_name: Some("localhost".to_string()),
-            client_cert_path: Some(
-                cert_dir
-                    .join("client-cert.pem")
-                    .to_string_lossy()
-                    .to_string(),
-            ),
-            client_key_path: Some(
-                cert_dir
-                    .join("client-key.pem")
-                    .to_string_lossy()
-                    .to_string(),
-            ),
-        })
+        let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+            server.addr,
+            issue_agent_manage_token(&authz),
+            &cert_dir,
+        ))
         .await
         .expect("connect grpc control client");
 
@@ -1005,6 +1239,6 @@ mod tests {
             .expect("load stopped remote agent");
         assert_eq!(stopped_agent.status, crate::agent::AgentStatus::Stopped);
 
-        server_handle.abort();
+        server.handle.abort();
     }
 }
