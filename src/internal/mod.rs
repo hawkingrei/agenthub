@@ -16,6 +16,7 @@ use self::auth::{InternalAuthz, InternalAuthzConfig};
 use self::service::TeamInternalControlService;
 use self::tls::{
     InternalGrpcSecurityMode, ensure_bootstrap_token, ensure_shared_secret, ensure_tls_material,
+    install_rustls_crypto_provider,
 };
 
 pub mod proto {
@@ -40,6 +41,7 @@ pub async fn maybe_spawn_internal_grpc(
         return Ok(None);
     }
 
+    install_rustls_crypto_provider();
     let mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
     let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
     let shared_secret = ensure_shared_secret(&cert_dir, config.internal_grpc_auth_shared_secret())?;

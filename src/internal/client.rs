@@ -536,7 +536,6 @@ mod tests {
     use std::net::SocketAddr;
     use std::path::Path;
     use std::path::PathBuf;
-    use std::sync::Once;
     use std::time::Duration;
 
     use crate::agent::{AgentConfig, WorktreeMode};
@@ -553,7 +552,9 @@ mod tests {
     use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use crate::internal::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer;
     use crate::internal::service::TeamInternalControlService;
-    use crate::internal::tls::{InternalGrpcSecurityMode, ensure_tls_material};
+    use crate::internal::tls::{
+        InternalGrpcSecurityMode, ensure_tls_material, install_rustls_crypto_provider,
+    };
     use crate::team::{SendActorMessageInput, TeamActorMessageTransport};
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-client-test-secret";
@@ -603,13 +604,6 @@ mod tests {
             name,
             Uuid::new_v4()
         ))
-    }
-
-    fn install_rustls_crypto_provider() {
-        static INSTALL_RUSTLS_PROVIDER: Once = Once::new();
-        INSTALL_RUSTLS_PROVIDER.call_once(|| {
-            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-        });
     }
 
     struct StartedInternalGrpcServer {
@@ -879,8 +873,10 @@ mod tests {
         server.handle.abort();
     }
 
+    // This is an in-process transport regression test. The blackbox multi-process
+    // p2p pipeline lives in `tests/distributed_p2p_pipeline.rs`.
     #[tokio::test]
-    async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_nodes() {
+    async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states() {
         install_rustls_crypto_provider();
         let node_a_state = build_test_state().await;
         let node_b_state = build_test_state().await;

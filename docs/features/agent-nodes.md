@@ -11,7 +11,8 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
 - proxy remote-node agent lifecycle control over encrypted internal gRPC
 - add encrypted gRPC transport support for distributed actor relay
 - add a simulated gRPC pipeline test that covers relay delivery into a remote mailbox and ack
-- add a simulated bidirectional seeded gRPC p2p mailbox pipeline test that covers node-to-node relay ordering and ack
+- add a simulated in-process bidirectional gRPC relay regression test that covers node-to-node relay ordering and ack
+- add a dedicated blackbox distributed p2p pipeline that boots two real AgentHub nodes and validates relay worker delivery plus inbox ack over gRPC
 - add a simulated TLS/mTLS gRPC pipeline test that covers remote agent ensure/start/input/events/stop
 - keep node-local persistence limited to that node's local agent/runtime data
 
@@ -87,7 +88,8 @@ Recommended commands:
 ```bash
 cargo test remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls -- --nocapture
 cargo test remote_actor_grpc_pipeline_delivers_and_acks_over_tls -- --nocapture
-cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_nodes -- --nocapture
+cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture
+cargo test --test distributed_p2p_pipeline -- --nocapture
 cargo test internal_grpc_mailbox_send_list_ack_are_wire_compatible -- --nocapture
 pnpm vitest --run web/src/agents_panel.test.tsx
 pnpm vitest --run web/src/sse_targets.test.ts
@@ -97,8 +99,9 @@ GitHub Actions:
 
 - `Rust (Cargo)` runs the distributed gRPC integration step explicitly before workspace coverage:
   - `remote_actor_grpc_pipeline_delivers_and_acks_over_tls`
-  - `bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_nodes`
+  - `bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states`
   - `remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls`
+- `Distributed P2P Pipeline` is the standalone blackbox workflow that boots two real AgentHub nodes and validates bidirectional mailbox relay plus ack over background workers.
 
 Manual checks:
 

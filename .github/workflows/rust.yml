@@ -34,7 +34,7 @@ jobs:
       - name: Distributed agent node gRPC integration tests
         run: |
           cargo test --locked remote_actor_grpc_pipeline_delivers_and_acks_over_tls -- --nocapture
-          cargo test --locked bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_nodes -- --nocapture
+          cargo test --locked bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture
           cargo test --locked remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls -- --nocapture
       - name: Cargo test coverage (workspace)
         run: |
