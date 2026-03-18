@@ -130,6 +130,7 @@ describe("team create helpers", () => {
     );
     expect(spec.members[0]?.runtime).toEqual({
       name: "leader-main-name",
+      target_node_id: null,
       workdir: "/tmp/leader-main",
       worktree_mode: "use_existing",
       worktree_repo: null,
@@ -141,6 +142,7 @@ describe("team create helpers", () => {
     });
     expect(spec.members[1]?.runtime).toEqual({
       name: "worker-alpha",
+      target_node_id: null,
       workdir: "/tmp/team-workers/worker-alpha",
       worktree_mode: "create_worktree",
       worktree_repo: "/tmp/repos/shiro",
@@ -199,6 +201,7 @@ describe("team create helpers", () => {
     expect(spec.members[0]?.prompt).toContain("Finalization by mode");
     expect(spec.members[0]?.runtime).toEqual({
       name: "leader-only-name",
+      target_node_id: null,
       workdir: "/tmp/leader-only",
       worktree_mode: "use_existing",
       worktree_repo: null,

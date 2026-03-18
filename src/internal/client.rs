@@ -271,7 +271,7 @@ impl InternalGrpcMailboxClient {
             .await
             .map_err(map_grpc_status_anyhow)?
             .into_inner();
-        Ok(parse_agent_events(response)?)
+        parse_agent_events(response)
     }
 }
 
@@ -534,6 +534,7 @@ pub fn normalize_existing_path(
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Once;
     use std::time::Duration;
 
     use crate::agent::{AgentConfig, WorktreeMode};
@@ -600,6 +601,13 @@ mod tests {
             name,
             Uuid::new_v4()
         ))
+    }
+
+    fn install_rustls_crypto_provider() {
+        static INSTALL_RUSTLS_PROVIDER: Once = Once::new();
+        INSTALL_RUSTLS_PROVIDER.call_once(|| {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        });
     }
 
     async fn seed_team_run(
@@ -681,6 +689,7 @@ mod tests {
 
     #[tokio::test]
     async fn remote_actor_grpc_pipeline_delivers_and_acks_over_tls() {
+        install_rustls_crypto_provider();
         let source_state = build_test_state().await;
         let remote_state = build_test_state().await;
         let team_id = format!("team-{}", Uuid::new_v4());
@@ -837,6 +846,7 @@ mod tests {
 
     #[tokio::test]
     async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
+        install_rustls_crypto_provider();
         let remote_state = build_test_state().await;
         let workdir_root =
             std::env::temp_dir().join(format!("agenthub-remote-agent-{}", Uuid::new_v4()));
