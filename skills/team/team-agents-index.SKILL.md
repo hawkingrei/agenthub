@@ -15,8 +15,10 @@ Primary references:
 
 - Load canonical Team terms and boundaries before role-specific procedures.
 - Enforce human/task boundary:
-  - humans provide goals and constraints via conversation
-  - leader compiles internal Team tasks
+  - humans may speak in free-form conversation, not only goal/constraint form
+  - leader interprets conversation input and compiles internal Team tasks
+  - leader owns canonical Team task creation/management
+  - Kanban is the canonical Team task surface; channels remain communication/review lanes
 - Align on six Team workflow phases before mailbox execution.
 - Route execution details to role-specific skills instead of duplicating procedure text.
 - Keep runtime AGENTS context small by loading only role-required skills.

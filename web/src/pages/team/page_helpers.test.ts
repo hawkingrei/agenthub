@@ -19,6 +19,7 @@ import {
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
   resolveTeamRuntimeControlTone,
+  resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   resolveTaskConversationMemberIds,
@@ -499,6 +500,25 @@ describe("team page helpers", () => {
       statusColor: "gray",
       countColor: "gray",
     });
+  });
+
+  it("classifies runtime summaries separately from actual warnings", () => {
+    expect(resolveTeamPageNotice("Team runtime updated (started=3)")).toEqual({
+      kind: "runtime",
+      title: "Team runtime",
+      message: "Team runtime updated (started=3)",
+    });
+    expect(resolveTeamPageNotice("Team runtime stopped (stopped=3)")).toEqual({
+      kind: "runtime",
+      title: "Team runtime",
+      message: "Team runtime stopped (stopped=3)",
+    });
+    expect(resolveTeamPageNotice("Unable to initialize shared team thread.")).toEqual({
+      kind: "warning",
+      title: "Team runtime update",
+      message: "Unable to initialize shared team thread.",
+    });
+    expect(resolveTeamPageNotice("   ")).toBeNull();
   });
 
   it("clears cached runtime session ids when stop-team optimistic update applies", () => {

@@ -435,7 +435,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
-    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "mailbox");
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams 2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents");
@@ -1460,7 +1460,7 @@ describe("team panels interactions", () => {
     );
     expect(onSelectedMemberIdChange).toHaveBeenCalledWith("worker-agent");
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+    expect(onLoadOlder).toHaveBeenCalled();
   });
 
   it("TeamTaskPanel supports create/select/send workflow", () => {
@@ -1904,7 +1904,7 @@ describe("team panels interactions", () => {
             latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
           })}
           memberEvents={acpEvents}
-          memberEventsHasMore={true}
+          memberEventsHasMore={false}
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={20}
@@ -1927,7 +1927,67 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("role=worker");
     expect(container.textContent).toContain("session=task-77");
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+    expect(onLoadOlder).toHaveBeenCalledTimes(0);
+  });
+
+  it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
+    const onLoadOlder = vi.fn();
+
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={buildMemberSnapshot({
+            member_id: "worker-agent",
+            role: "worker",
+            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+          })}
+          memberEvents={[
+            {
+              event_id: 23,
+              agent_id: "worker-agent",
+              session_id: "task-77",
+              seq: "23",
+              ts: 1_700_000_203,
+              stream: "acp",
+              message: JSON.stringify({
+                type: "agent_thought",
+                text: "Inspecting the previous failure before replying.",
+              }),
+            },
+            {
+              event_id: 24,
+              agent_id: "worker-agent",
+              session_id: "task-77",
+              seq: "24",
+              ts: 1_700_000_204,
+              stream: "acp",
+              message: JSON.stringify({
+                type: "agent_message",
+                text: "I found the relevant stack trace.",
+              }),
+            },
+          ]}
+          memberEventsHasMore={true}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={22}
+          onRefresh={vi.fn()}
+          onLoadOlder={onLoadOlder}
+        />
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onLoadOlder).toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      "Inspecting the previous failure before replying."
+    );
+    expect(container.textContent).toContain("I found the relevant stack trace.");
   });
 
   it("TeamMemberAcpPanel hides technical metadata when developer mode is off", () => {

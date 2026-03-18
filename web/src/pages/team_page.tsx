@@ -110,6 +110,7 @@ import {
   listTeamWorkspaceTasks,
   refreshTeamConversationMailboxAfterSend,
   resolveAgentWorkspaceStatusView,
+  resolveTeamPageNotice,
   resolveSelectedAgentWorkspaceLabel,
   isSharedThreadTask,
   resolveSelectedTeamTask,
@@ -129,6 +130,7 @@ import {
 } from "./team/run_helpers";
 import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
+import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
@@ -262,7 +264,6 @@ const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
 const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
   "mailbox",
-  "agent_acp",
   "member_console",
   "debug",
 ]);
@@ -357,6 +358,11 @@ const workspaceNoticeTextClassName =
   "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-ui-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
+const teamRuntimeNoticeClassName =
+  "mb-4 flex items-start justify-between gap-3 rounded-[18px] border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-emerald-950 shadow-sm";
+const teamRuntimeNoticeTitleClassName =
+  "text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800";
+const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-5 text-emerald-900";
 const workspaceMetaDropdownClassName =
   "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-2 rounded-[14px] border border-ui-border bg-ui-surface p-2.5 shadow-lg";
 const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
@@ -1960,17 +1966,15 @@ export function TeamPage(props: TeamPageProps) {
     void refreshTasks(selectedTeamId);
   }, [refreshTasks, selectedTeamId]);
 
-  useEffect(() => {
-    if (!selectedTeamId) {
-      return;
-    }
-    if (!selectedConversation) {
-      setTaskMessages([]);
-      setConversationMailboxMessages([]);
-      return;
-    }
-    void refreshTaskMessages(selectedConversation.id);
-  }, [refreshTaskMessages, selectedConversation, selectedTeamId]);
+  useTeamConversationEffects({
+    selectedTeamId,
+    selectedConversationId: selectedConversation?.id ?? null,
+    tab,
+    eventsAutoRefresh,
+    refreshTaskMessages,
+    setTaskMessages,
+    setConversationMailboxMessages,
+  });
 
   const resolveConversationForMessage = useCallback(() => {
     if (!selectedTeamId || !selectedConversation) {
@@ -2216,7 +2220,7 @@ export function TeamPage(props: TeamPageProps) {
     setTab("tasks");
   }, [setTab]);
   const onSelectAgentWorkspace = useCallback(
-    (memberId: string, nextTab: TeamTab = "mailbox") => {
+    (memberId: string, nextTab: TeamTab = "agent_acp") => {
       setSelectedMemberId(memberId);
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
@@ -3022,6 +3026,7 @@ export function TeamPage(props: TeamPageProps) {
       </div>
     </div>
   );
+  const warningNotice = resolveTeamPageNotice(warning);
 
   return (
     <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-5 overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)] px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
@@ -3081,18 +3086,34 @@ export function TeamPage(props: TeamPageProps) {
       </header>
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-      {warning && (
+      {warningNotice?.kind === "runtime" && (
+        <div className={teamRuntimeNoticeClassName} role="status">
+          <div className="min-w-0 flex-1">
+            <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
+            <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/80 text-emerald-700 transition hover:bg-white"
+            aria-label="Dismiss runtime notice"
+            onClick={() => setWarning(null)}
+          >
+            <i className="bi bi-x-lg" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {warningNotice?.kind === "warning" && (
         <Alert
           color="yellow"
           variant="light"
           radius="xl"
           role="status"
-          title="Team runtime update"
+          title={warningNotice.title}
           icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
           withCloseButton
           onClose={() => setWarning(null)}
         >
-          <span className="text-sm text-amber-900">{warning}</span>
+          <span className="text-sm text-amber-900">{warningNotice.message}</span>
         </Alert>
       )}
 

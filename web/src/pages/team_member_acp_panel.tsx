@@ -3,9 +3,8 @@ import { buildAcpView } from "../acp";
 import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
 import { AcpConversation } from "../components/acp_conversation";
 import { InputDock } from "../components/input_dock";
-import { buildConversationMessages } from "../conversation";
+import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
-import { isNearBottom } from "../scroll";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   TEAM_MUTED_TEXT_CLASS,
@@ -64,21 +63,40 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [memberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
-  const conversationItems = React.useMemo(
-    () =>
-      buildConversationMessages(
-        acpView.messages,
-        acpView.toolCalls,
-        acpView.plan,
-        selectedSessionId
-      ),
-    [acpView.messages, acpView.plan, acpView.toolCalls, selectedSessionId]
-  );
-
-  const conversationRef = React.useRef<HTMLDivElement>(null);
+  const conversationEventMeta = React.useMemo(() => {
+    const memberId = selectedMemberId.trim();
+    if (!memberId || !selectedSessionId) {
+      return {};
+    }
+    return {
+      [`${memberId}:${selectedSessionId}`]: {
+        oldestId: oldestMemberEventId,
+        hasMore: memberEventsHasMore,
+        loading: memberEventsLoading,
+        loaded: !memberEventsLoading || memberEvents.length > 0,
+      },
+    };
+  }, [
+    memberEvents.length,
+    memberEventsHasMore,
+    memberEventsLoading,
+    oldestMemberEventId,
+    selectedMemberId,
+    selectedSessionId,
+  ]);
+  const acpConversation = useAcpConversation({
+    acpView,
+    activeAgent: selectedMemberId.trim() || null,
+    activeSessionId: selectedSessionId ?? null,
+    acpTab: "conversation",
+    eventMeta: conversationEventMeta,
+    isAgentActive: Boolean(selectedSessionId),
+    onLoadOlder: () => {
+      void onLoadOlder();
+    },
+  });
   const isComposingRef = React.useRef(false);
   const inputHistoryDraftRef = React.useRef("");
-  const [stickToBottom, setStickToBottom] = React.useState(true);
   const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [inputHistory, setInputHistory] = React.useState<string[]>([]);
@@ -96,40 +114,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     inputHistoryDraftRef.current = "";
   }, [selectedMemberId, selectedSessionId]);
 
-  React.useEffect(() => {
-    if (!stickToBottom) {
-      return;
-    }
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollTop = container.scrollHeight;
-  }, [conversationItems.length, stickToBottom]);
-
-  const onConversationScroll = React.useCallback(() => {
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    setStickToBottom(
-      isNearBottom(
-        container.scrollHeight,
-        container.scrollTop,
-        container.clientHeight
-      )
-    );
-  }, []);
-
-  const onJumpToBottom = React.useCallback(() => {
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollTop = container.scrollHeight;
-    setStickToBottom(true);
-  }, []);
-
   const canLoadOlder =
     Boolean(selectedMemberId.trim() && selectedSessionId) &&
     !memberEventsLoading &&
@@ -137,8 +121,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     oldestMemberEventId != null;
   const shouldRenderConversation =
     Boolean(selectedMemberId.trim() && selectedSessionId) &&
-    (memberEventsLoading || acpView.hasAcp || conversationItems.length > 0);
-  const showJumpButton = !stickToBottom && conversationItems.length > 0;
+    (memberEventsLoading ||
+      acpView.hasAcp ||
+      acpConversation.conversationTotalItems > 0);
+  const showJumpButton = acpConversation.showConversationJump;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
   const handleSendInput = React.useCallback(async () => {
     const text = input.trim();
@@ -288,27 +274,33 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       {shouldRenderConversation && (
         <div className="relative mt-3">
           <AcpConversation
-            items={conversationItems}
-            windowOffset={0}
-            isFrozenView={false}
-            shouldAutoCollapse={true}
-            collapseCutoff={0}
+            items={acpConversation.conversationRenderItems}
+            windowOffset={acpConversation.conversationWindowOffset}
+            isFrozenView={acpConversation.isFrozenView}
+            shouldAutoCollapse={acpConversation.shouldAutoCollapse}
+            collapseCutoff={acpConversation.collapseCutoff}
             runStatus={acpView.runStatus?.status ?? null}
-            virtualTopSpacer={0}
-            virtualBottomSpacer={0}
-            stickToBottom={stickToBottom}
-            pendingCount={0}
-            avgHeight={48}
-            topHint={memberEventsLoading ? "Loading ACP events..." : null}
-            focusedToolCallId={null}
-            onScroll={onConversationScroll}
-            containerRef={conversationRef}
+            virtualTopSpacer={acpConversation.conversationVirtualTopSpacer}
+            virtualBottomSpacer={acpConversation.conversationVirtualBottomSpacer}
+            stickToBottom={acpConversation.conversationStickToBottom}
+            pendingCount={acpConversation.conversationPendingCount}
+            avgHeight={acpConversation.conversationAvgHeight}
+            topHint={
+              memberEventsLoading
+                ? "Loading ACP events..."
+                : acpConversation.showConversationTopReachedHint
+                  ? "Already at top"
+                  : null
+            }
+            focusedToolCallId={acpConversation.focusedConversationToolCallId}
+            onScroll={acpConversation.handleConversationScroll}
+            containerRef={acpConversation.acpConversationRef}
             ansi={(input) => input}
           />
           {showJumpButton && (
             <button
               className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
-              onClick={onJumpToBottom}
+              onClick={acpConversation.jumpToConversationBottom}
               title="Jump to bottom"
               aria-label="Jump to bottom"
             >
@@ -333,7 +325,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
             onInterrupt={() => {}}
             onNavigateHistory={handleNavigateHistory}
             onSelectHistoryCommand={handleSelectHistoryCommand}
-            onJumpToBottom={onJumpToBottom}
+            onJumpToBottom={acpConversation.jumpToConversationBottom}
             showConversationJump={showJumpButton}
             isComposingRef={isComposingRef}
           />

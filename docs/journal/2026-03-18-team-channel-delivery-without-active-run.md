@@ -41,6 +41,9 @@ This change makes shared-thread channel delivery Team-scoped instead of active-r
   - follow-up fix: the shared-thread post-send refresh helper now tolerates `null` active-run ids
     from the Team workspace state, so `NO ACTIVE RUN` sends refresh the hidden mailbox path instead
     of throwing on `.trim()`.
+  - follow-up fix: `Teams -> all` now polls the selected shared thread while the `Conversation`
+    workspace stays active, so agent replies and delivered `Seen by` counts continue updating
+    without requiring a manual refresh or a self-send trigger.
   - the Team primary workspace no longer treats `Mailbox` as a first-class planning surface; the
     run-scoped mailbox view now lives under `Advanced` as `Execution Mailbox`, while the main Team
     workspace stays focused on `all`, `Kanban`, and `Runs`.
@@ -64,7 +67,9 @@ After this change:
 
 - shared-thread channel messages always get a Team-scoped mailbox delivery path;
 - agents can ack and reply from that path even when the Team has no active execution run;
-- the shared thread can surface mailbox delivery state again through `Seen by`.
+- the shared thread can surface mailbox delivery state again through `Seen by`;
+- the `all` channel keeps refreshing while open, so new agent replies do not stay hidden until a
+  manual reload.
 
 ## Validation
 
@@ -75,6 +80,7 @@ After this change:
 - `cd web && npx vitest run src/pages/team/page_helpers.test.ts`
 - `cd web && npx vitest run src/pages/team/forge_helpers.test.ts src/pages/team/page_helpers.test.ts`
 - `cd web && npx vitest run src/pages/team_panels.test.tsx`
+- `cd web && npx vitest run src/pages/team/use_team_conversation_effects.test.tsx`
 - `cd web && npm run lint -- src/pages/team_page.tsx src/pages/team/page_helpers.test.ts`
 - `cd web && npm run build`
 - `cargo fmt --all --check`

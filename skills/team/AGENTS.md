@@ -36,8 +36,10 @@ restating the same rules.
   - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for leader relay
   - leader remains owner of planning decisions and final integrated response
 - Human/task boundary:
-  - humans provide goals/constraints
-  - internal Team `task` objects are created by leader planning
+  - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
+  - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
+  - leader owns canonical task creation and task lifecycle management for the team
+  - channels are for communication/review; Kanban is the canonical task-tracking surface
 
 ## Team Phases
 

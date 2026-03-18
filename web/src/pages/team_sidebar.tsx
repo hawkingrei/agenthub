@@ -439,7 +439,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
                           : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
                       }
-                      onClick={() => onSelectAgentTab(member.member_id, "mailbox")}
+                      onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={
                         [primaryLabel, developerMode ? member.member_id : null, member.current_work]
                           .filter((value) => value && value.trim().length > 0)

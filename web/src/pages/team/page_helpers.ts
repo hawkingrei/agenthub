@@ -42,6 +42,10 @@ export type TeamRuntimeControlTone = {
   countColor: "teal" | "yellow" | "gray";
 };
 
+export type TeamPageNotice =
+  | { kind: "runtime"; title: string; message: string }
+  | { kind: "warning"; title: string; message: string };
+
 export type AgentWorkspaceStatusView = {
   role: string;
   lifecycle: string;
@@ -172,6 +176,28 @@ export function resolveTeamRuntimeControlTone(
   return {
     statusColor: "gray",
     countColor: "gray",
+  };
+}
+
+export function resolveTeamPageNotice(message: string | null | undefined): TeamPageNotice | null {
+  const normalized = message?.trim() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  if (
+    normalized.startsWith("Team runtime updated") ||
+    normalized.startsWith("Team runtime stopped")
+  ) {
+    return {
+      kind: "runtime",
+      title: "Team runtime",
+      message: normalized,
+    };
+  }
+  return {
+    kind: "warning",
+    title: "Team runtime update",
+    message: normalized,
   };
 }
 

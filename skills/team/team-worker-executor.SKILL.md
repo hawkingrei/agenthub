@@ -24,6 +24,8 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 ## Shared Contract Usage
 
 - Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
+- Leader owns canonical Team task creation and task lifecycle management; workers execute and
+  advance assigned tasks instead of inventing parallel task records.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
 - If description is stale or empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
@@ -103,6 +105,10 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --payload-json "$PAYLOAD_JSON"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
+6. Proactively advance the assigned task:
+   - do not wait for repeated nudges when the next executable step is already clear
+   - send prompt progress updates when evidence changes, scope shifts, or blockers appear
+   - escalate quickly when task acceptance or ownership needs leader intervention
 
 ## Mention Discipline
 
@@ -113,6 +119,9 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Task Status Discipline
 
+- Treat the leader-owned Team task as the canonical execution unit behind your assignment.
+- Keep the task moving with timely progress/blocker updates so the leader can maintain correct
+  Kanban state.
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
 - If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
 - Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.
