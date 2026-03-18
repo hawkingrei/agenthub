@@ -105,16 +105,19 @@ import {
 } from "./team/member_helpers";
 import {
   DEFAULT_TEAM_THREAD_TITLE,
+  DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   listTeamWorkspaceTasks,
+  refreshTeamConversationMailboxAfterSend,
   resolveAgentWorkspaceStatusView,
   resolveSelectedAgentWorkspaceLabel,
-  resolveTeamRuntimeControlTone,
-  resolveTeamRuntimeStatus,
   isSharedThreadTask,
   resolveSelectedTeamTask,
+  resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
+  resolveTeamRuntimeControlTone,
+  resolveTeamRuntimeStatus,
   sortTasksByActivity,
   toPrettyJson,
   updateCachedTeamRuntimeStatus,
@@ -1155,8 +1158,12 @@ export function TeamPage(props: TeamPageProps) {
     return memberIds;
   }, [snapshot]);
   const taskConversationMemberIds = useMemo(
-    () => snapshot?.members.map((member) => member.member_id) ?? [],
-    [snapshot?.members]
+    () =>
+      resolveTaskConversationMemberIds(
+        selectedTeamRuntime?.members,
+        snapshot?.members
+      ),
+    [selectedTeamRuntime?.members, snapshot?.members]
   );
   const chatActors = useMemo(
     () =>
@@ -1987,7 +1994,7 @@ export function TeamPage(props: TeamPageProps) {
       conversation_mode: "group_chat",
       topic: DEFAULT_TEAM_THREAD_TITLE,
       context: {
-        bootstrap_kind: "shared_thread",
+        bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
         bootstrap_source: "teams_all",
       },
     });
@@ -2087,12 +2094,13 @@ export function TeamPage(props: TeamPageProps) {
         setTaskMessages((prev) =>
           [...prev, message].sort((left, right) => left.message_id - right.message_id)
         );
-        if (activeRunIdForSelectedTeam) {
-          await Promise.all([
-            refreshSnapshot(activeRunIdForSelectedTeam),
-            refreshEvents(activeRunIdForSelectedTeam),
-          ]);
-        }
+        await refreshTeamConversationMailboxAfterSend({
+          activeRunId: activeRunIdForSelectedTeam,
+          taskId,
+          refreshSnapshot,
+          refreshEvents,
+          refreshTaskMessages,
+        });
         setTaskMessageDraft("");
         return;
       }
@@ -2107,6 +2115,7 @@ export function TeamPage(props: TeamPageProps) {
     ensureSharedConversation,
     props.token,
     refreshEvents,
+    refreshTaskMessages,
     refreshSnapshot,
     selectedTeamId,
     setWarning,

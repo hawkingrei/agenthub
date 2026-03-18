@@ -18,6 +18,16 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 }
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
+export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
+
+function collectMemberIds(
+  members?: Array<{ member_id?: string | null }> | null
+): string[] {
+  const ids = members
+    ?.map((member) => member.member_id?.trim() ?? "")
+    .filter(Boolean) ?? [];
+  return [...new Set(ids)];
+}
 
 export type TeamRuntimeStatusView = {
   status: "running" | "stopped" | "degraded";
@@ -266,7 +276,10 @@ export function isSharedThreadTask(task: TeamTaskRecord): boolean {
   if (!task.context || typeof task.context !== "object" || Array.isArray(task.context)) {
     return false;
   }
-  return (task.context as { bootstrap_kind?: unknown }).bootstrap_kind === "shared_thread";
+  return (
+    (task.context as { bootstrap_kind?: unknown }).bootstrap_kind ===
+    DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND
+  );
 }
 
 export function resolveTeamConversationTask(
@@ -369,6 +382,38 @@ export function resolveTaskMessageSeenByActors(
       [...actorIds].sort((left, right) => left.localeCompare(right)),
     ])
   );
+}
+
+export function resolveTaskConversationMemberIds(
+  runtimeMembers?: Array<Pick<TeamRuntimeRecord["members"][number], "member_id">> | null,
+  snapshotMembers?: Array<{ member_id?: string | null }> | null
+): string[] {
+  const runtimeIds = collectMemberIds(runtimeMembers);
+  if (runtimeIds.length > 0) {
+    return runtimeIds;
+  }
+  return collectMemberIds(snapshotMembers);
+}
+
+export async function refreshTeamConversationMailboxAfterSend(args: {
+  activeRunId: string;
+  taskId: string;
+  refreshSnapshot: (runId: string) => Promise<unknown>;
+  refreshEvents: (runId: string) => Promise<unknown>;
+  refreshTaskMessages: (taskIdOverride?: string) => Promise<unknown>;
+}): Promise<void> {
+  const activeRunId = args.activeRunId.trim();
+  if (activeRunId) {
+    await Promise.all([
+      args.refreshSnapshot(activeRunId),
+      args.refreshEvents(activeRunId),
+    ]);
+    return;
+  }
+  const taskId = args.taskId.trim();
+  if (taskId) {
+    await args.refreshTaskMessages(taskId);
+  }
 }
 
 export function formatTs(ts?: number | null): string {

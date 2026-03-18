@@ -2171,7 +2171,7 @@ impl TeamManager {
             return Ok(existing);
         }
 
-        let run_id = Uuid::new_v4().to_string();
+        let run_id = shared_thread_mailbox_run_id(team_id, task_id);
         let context_id = format!("shared-thread-mailbox:{task_id}");
         let now = Utc::now().timestamp();
         let input = serde_json::json!({
@@ -2184,9 +2184,9 @@ impl TeamManager {
         let input_json = serde_json::to_string(&input)?;
 
         let mut tx = self.db.begin().await?;
-        sqlx::query(
+        let insert_result = sqlx::query(
             r#"
-            INSERT INTO team_runs (
+            INSERT OR IGNORE INTO team_runs (
                 id,
                 team_id,
                 context_id,
@@ -2209,41 +2209,43 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
 
-        let submitted_payload = serde_json::json!({
-            "team_id": team_id,
-            "context_id": &context_id,
-            "status": "completed",
-            "bootstrap_kind": TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND,
-        });
-        sqlx::query(
-            r#"
-            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-            VALUES (?1, NULL, ?2, ?3, ?4)
-            "#,
-        )
-        .bind(&run_id)
-        .bind("run_submitted")
-        .bind(now)
-        .bind(submitted_payload.to_string())
-        .execute(&mut *tx)
-        .await?;
+        if insert_result.rows_affected() > 0 {
+            let submitted_payload = serde_json::json!({
+                "team_id": team_id,
+                "context_id": &context_id,
+                "status": "completed",
+                "bootstrap_kind": TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, NULL, ?2, ?3, ?4)
+                "#,
+            )
+            .bind(&run_id)
+            .bind("run_submitted")
+            .bind(now)
+            .bind(submitted_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
 
-        let completed_payload = serde_json::json!({
-            "status": "completed",
-            "bootstrap_kind": TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND,
-        });
-        sqlx::query(
-            r#"
-            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-            VALUES (?1, NULL, ?2, ?3, ?4)
-            "#,
-        )
-        .bind(&run_id)
-        .bind("run_completed")
-        .bind(now)
-        .bind(completed_payload.to_string())
-        .execute(&mut *tx)
-        .await?;
+            let completed_payload = serde_json::json!({
+                "status": "completed",
+                "bootstrap_kind": TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, NULL, ?2, ?3, ?4)
+                "#,
+            )
+            .bind(&run_id)
+            .bind("run_completed")
+            .bind(now)
+            .bind(completed_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
 
         self.get_run(&run_id).await
@@ -3733,6 +3735,10 @@ fn filter_visible_team_runs(runs: Vec<TeamRunRecord>) -> Vec<TeamRunRecord> {
     runs.into_iter()
         .filter(|run| !is_shared_thread_mailbox_run_input(&run.input))
         .collect()
+}
+
+fn shared_thread_mailbox_run_id(team_id: &str, task_id: &str) -> String {
+    format!("shared-thread-mailbox:{team_id}:{task_id}")
 }
 
 fn is_shared_thread_mailbox_run_input(input: &Value) -> bool {

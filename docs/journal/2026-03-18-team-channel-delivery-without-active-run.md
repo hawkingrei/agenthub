@@ -31,6 +31,10 @@ This change makes shared-thread channel delivery Team-scoped instead of active-r
     if needed, the mailbox snapshot from the shared-thread mailbox run;
   - `Seen by` now merges delivered mailbox messages from both the visible snapshot and the
     shared-thread mailbox source.
+  - follow-up: when there is no visible active run, `Seen by` now derives member IDs from the Team
+    runtime roster instead of the active-run snapshot, and the shared-thread composer refreshes the
+    hidden mailbox snapshot immediately after each send so delivered counts do not stay stale at
+    `0` until a manual reload.
 - Tests
   - added API coverage for shared-thread message forwarding without an active run, including inbox,
     ack, and agent reply persistence;
@@ -59,6 +63,7 @@ After this change:
 - `cargo test list_runs_supports_status_filter_and_cursor`
 - `cargo test teams_router_http_contract`
 - `cd web && npx vitest run src/pages/team/page_helpers.test.ts`
+- `cd web && npx vitest run src/pages/team/forge_helpers.test.ts src/pages/team/page_helpers.test.ts`
 - `cd web && npm run lint -- src/pages/team_page.tsx src/pages/team/page_helpers.test.ts`
 - `cd web && npm run build`
 - `cargo fmt --all --check`

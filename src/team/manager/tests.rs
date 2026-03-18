@@ -3466,6 +3466,56 @@ async fn list_runs_supports_status_filter_and_cursor() {
 }
 
 #[tokio::test]
+async fn ensure_shared_thread_mailbox_run_is_idempotent() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "shared-thread-mailbox-idempotent-team".to_string(),
+            description: Some("team to verify shared thread mailbox idempotency".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let first = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create first shared thread mailbox run");
+    let second = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("reuse shared thread mailbox run");
+
+    assert_eq!(first.id, second.id);
+
+    let run_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_runs
+        WHERE team_id = ?1
+          AND trim(COALESCE(json_extract(input_json, '$.bootstrap_kind'), '')) = 'shared_thread_mailbox'
+          AND trim(COALESCE(json_extract(input_json, '$.task_id'), '')) = 'shared-thread-task'
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread mailbox runs");
+    assert_eq!(run_count, 1);
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1",
+    )
+    .bind(&first.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread mailbox run events");
+    assert_eq!(event_count, 2);
+}
+
+#[tokio::test]
 async fn describe_run_members_returns_live_roster_and_session_state() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

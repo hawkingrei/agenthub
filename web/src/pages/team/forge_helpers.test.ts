@@ -127,4 +127,31 @@ describe("team forge helpers", () => {
     expect(workerDefaults.draft.role).toBe("worker");
     expect(workerDefaults.draft.model).toBe("kimi");
   });
+
+  it("does not use worktree_repo as the worker workdir default", () => {
+    const workerDefaults = resolveTeamForgeDefaults({
+      teamName: "Alpha Desk",
+      teamSpec: {
+        members: [
+          {
+            member_id: "worker-1",
+            role: "worker",
+            runtime: {
+              workdir: "/Users/weizhenwang/devel/opensource/agent/shiro",
+              worktree_mode: "create_worktree",
+              worktree_repo: "/Users/weizhenwang/devel/opensource/agent/tidb",
+            },
+          },
+        ],
+      },
+      role: "worker",
+      workerCount: 0,
+      defaultWorktreeRoot: "~/.agenthub/worktrees",
+    });
+
+    expect(workerDefaults.agentWorkdir).toBe(
+      "/Users/weizhenwang/devel/opensource/agent/shiro"
+    );
+    expect(workerDefaults.worktreeRepo).toBe("");
+  });
 });

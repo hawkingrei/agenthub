@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   AgentEvent,
   AgentRecord,
@@ -14,14 +14,17 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
+  DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   listTeamWorkspaceTasks,
   pickNextWorkerAgentId,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
+  resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
+  refreshTeamConversationMailboxAfterSend,
   sortTasksByActivity,
   toPrettyJson,
   updateCachedTeamRuntimeStatus,
@@ -271,7 +274,7 @@ describe("team page helpers", () => {
       buildTask("task-2", 110, 110),
       buildTask("task-3", 90, 120, {
         title: DEFAULT_TEAM_THREAD_TITLE,
-        context: { bootstrap_kind: "shared_thread" },
+        context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
       }),
     ];
     expect(sortTasksByActivity(tasks).map((task) => task.id)).toEqual([
@@ -293,6 +296,7 @@ describe("team page helpers", () => {
     );
     expect(resolveTeamConversationTask([], "team-1")).toBeNull();
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
+    expect(DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND).toBe("shared_thread");
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {
@@ -366,6 +370,57 @@ describe("team page helpers", () => {
     expect(seen).toEqual({
       42: ["worker-agent"],
     });
+  });
+
+  it("prefers team runtime members for shared-thread seen-by resolution", () => {
+    expect(
+      resolveTaskConversationMemberIds(
+        [
+          { member_id: "leader-agent" },
+          { member_id: "worker-agent" },
+        ],
+        [{ member_id: "stale-run-member" }]
+      )
+    ).toEqual(["leader-agent", "worker-agent"]);
+    expect(
+      resolveTaskConversationMemberIds(null, [{ member_id: "snapshot-only-member" }])
+    ).toEqual(["snapshot-only-member"]);
+  });
+
+  it("refreshes shared-thread mailbox after send when there is no active run", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: "",
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledWith("task-all");
+    expect(refreshSnapshot).not.toHaveBeenCalled();
+    expect(refreshEvents).not.toHaveBeenCalled();
+  });
+
+  it("refreshes active run snapshot after send when execution is live", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: "run-123",
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshSnapshot).toHaveBeenCalledWith("run-123");
+    expect(refreshEvents).toHaveBeenCalledWith("run-123");
+    expect(refreshTaskMessages).not.toHaveBeenCalled();
   });
 
   it("resolves team runtime status from member availability summary", () => {

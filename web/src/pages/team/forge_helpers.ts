@@ -66,29 +66,31 @@ function readRuntimePath(value: unknown, key: "worktree_repo" | "workdir"): stri
 function resolveTeamForgeWorkerWorkdir(teamSpec: unknown): string {
   const specRecord = asObjectRecord(teamSpec);
   const members = Array.isArray(specRecord?.members) ? specRecord.members : [];
-  let fallbackWorkdir = "";
 
   for (const entry of members) {
     const member = asObjectRecord(entry);
     if (!member) {
       continue;
     }
-    const runtime = member.runtime;
     const role = typeof member.role === "string" ? member.role.trim().toLowerCase() : "";
-    const runtimeRepo = readRuntimePath(runtime, "worktree_repo");
-    if (runtimeRepo) {
-      return runtimeRepo;
-    }
-    const runtimeWorkdir = readRuntimePath(runtime, "workdir");
-    if (!fallbackWorkdir && runtimeWorkdir) {
-      fallbackWorkdir = runtimeWorkdir;
-    }
+    const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
     if (role === "leader" && runtimeWorkdir) {
       return runtimeWorkdir;
     }
   }
 
-  return fallbackWorkdir;
+  for (const entry of members) {
+    const member = asObjectRecord(entry);
+    if (!member) {
+      continue;
+    }
+    const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
+    if (runtimeWorkdir) {
+      return runtimeWorkdir;
+    }
+  }
+
+  return "";
 }
 
 export function buildTeamMemberProfileDraft(
