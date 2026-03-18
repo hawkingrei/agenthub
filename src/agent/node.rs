@@ -89,7 +89,10 @@ pub(crate) fn validate_agent_node_config_input(
 
 #[cfg(test)]
 mod tests {
-    use super::{AGENT_NODE_MAIN_ID, normalize_target_node_id, validate_agent_node_config_input};
+    use super::{
+        AGENT_NODE_MAIN_ID, AGENT_NODE_MAIN_NAME, build_main_agent_node_record,
+        normalize_target_node_id, validate_agent_node_config_input,
+    };
     use crate::agent::AgentNodeConfig;
 
     #[test]
@@ -127,14 +130,12 @@ mod tests {
     }
 
     #[test]
-    fn build_remote_agent_node_route_emits_grpc_metadata() {
-        let route = serde_json::json!({
-            "kind": "grpc",
-            "grpc_target": "https://node.example.com:50051",
-            "tls_server_name": "node.example.com",
-        });
-        assert_eq!(route["kind"], "grpc");
-        assert_eq!(route["grpc_target"], "https://node.example.com:50051");
-        assert_eq!(route["tls_server_name"], "node.example.com");
+    fn build_main_agent_node_record_returns_reserved_main_metadata() {
+        let record = build_main_agent_node_record();
+        assert_eq!(record.id, AGENT_NODE_MAIN_ID);
+        assert_eq!(record.name, AGENT_NODE_MAIN_NAME);
+        assert!(record.grpc_target.is_none());
+        assert!(record.tls_server_name.is_none());
+        assert!(record.is_main);
     }
 }

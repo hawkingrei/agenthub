@@ -172,4 +172,47 @@ describe("AgentsPanel", () => {
     expect(html).toContain("Start on node node-east");
     expect(html).toContain('aria-label="Start agent on node node-east"');
   });
+
+  it("announces starting state before remote-start copy", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        agents={[
+          {
+            ...agents[1],
+            id: "agent-remote-starting",
+            name: "Remote Starting",
+            status: "created",
+            target_node_id: "node-east",
+          },
+        ]}
+        startingAgentIds={{ "agent-remote-starting": true }}
+        activeAgent="agent-remote-starting"
+      />
+    );
+    expect(html).toContain('title="Starting..."');
+    expect(html).toContain('aria-label="Starting"');
+  });
+
+  it("announces already-running state before remote-start copy", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        agents={[
+          {
+            ...agents[0],
+            id: "agent-remote-running",
+            name: "Remote Running",
+            status: "running",
+            target_node_id: "node-east",
+          },
+        ]}
+        activeAgent="agent-remote-running"
+      />
+    );
+    expect(html).toContain('title="Already running"');
+    expect(html).toContain('aria-label="Already running"');
+  });
 });

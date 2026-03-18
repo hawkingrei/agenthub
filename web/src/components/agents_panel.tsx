@@ -139,6 +139,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
                   const isRemoteTarget = Boolean(agent.target_node_id);
+                  const isActive = isAgentActiveStatus(agent.status);
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
@@ -146,6 +147,20 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                     agent.command,
                     agent.args
                   );
+                  const startButtonTitle = isStarting
+                    ? "Starting..."
+                    : isActive
+                      ? "Already running"
+                      : isRemoteTarget
+                        ? `Start on node ${agent.target_node_id}`
+                        : "Start";
+                  const startButtonAriaLabel = isStarting
+                    ? "Starting"
+                    : isActive
+                      ? "Already running"
+                      : isRemoteTarget
+                        ? `Start agent on node ${agent.target_node_id}`
+                        : "Start";
                   return (
                     <div
                       key={agent.id}
@@ -222,29 +237,15 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           />
                           <button
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
-                            disabled={isAgentActiveStatus(agent.status) || isStarting}
+                            disabled={isActive || isStarting}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isAgentActiveStatus(agent.status) && !isStarting) {
+                              if (!isActive && !isStarting) {
                                 onStartAgent(agent.id);
                               }
                             }}
-                            title={
-                              isAgentActiveStatus(agent.status)
-                                ? "Already running"
-                                : isStarting
-                                  ? "Starting..."
-                                  : isRemoteTarget
-                                    ? `Start on node ${agent.target_node_id}`
-                                    : "Start"
-                            }
-                            aria-label={
-                              isRemoteTarget
-                                ? `Start agent on node ${agent.target_node_id}`
-                                : isStarting
-                                  ? "Starting"
-                                  : "Start"
-                            }
+                            title={startButtonTitle}
+                            aria-label={startButtonAriaLabel}
                           >
                             <i
                               className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}

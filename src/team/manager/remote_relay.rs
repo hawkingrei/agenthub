@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use agenthub_team_actor::{
@@ -27,6 +27,7 @@ const RELAY_TIMEOUT_MAX_MS: u64 = 60_000;
 #[derive(Clone)]
 pub(super) struct TeamRemoteRelayAdapter {
     http_client: reqwest::Client,
+    grpc_client_cache: Arc<Mutex<HashMap<GrpcRelayClientCacheKey, InternalGrpcMailboxClient>>>,
 }
 
 pub(super) fn shared_remote_relay_adapter() -> &'static TeamRemoteRelayAdapter {
@@ -53,7 +54,10 @@ impl TeamRemoteRelayAdapter {
             );
             reqwest::Client::new()
         });
-        Self { http_client }
+        Self {
+            http_client,
+            grpc_client_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     async fn deliver_http(
@@ -178,18 +182,16 @@ impl TeamRemoteRelayAdapter {
             .filter(|value| !value.is_empty())
             .map(str::to_string);
 
-        let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
-            target: grpc_target.to_string(),
-            access_token: access_token.to_string(),
-            ca_cert_path,
-            tls_server_name,
-            client_cert_path,
-            client_key_path,
-        })
-        .await
-        .map_err(|err| {
-            ActorRelayError::retryable(TeamRemoteRelayError::GrpcConnect(err.to_string()))
-        })?;
+        let client = self
+            .grpc_client_for_route(InternalGrpcMailboxClientConfig {
+                target: grpc_target.to_string(),
+                access_token: access_token.to_string(),
+                ca_cert_path,
+                tls_server_name,
+                client_cert_path,
+                client_key_path,
+            })
+            .await?;
 
         client
             .actor_send(ActorSendRequest {
@@ -211,6 +213,50 @@ impl TeamRemoteRelayAdapter {
             .map_err(map_grpc_actor_error)?;
         Ok(())
     }
+
+    async fn grpc_client_for_route(
+        &self,
+        config: InternalGrpcMailboxClientConfig,
+    ) -> Result<InternalGrpcMailboxClient, ActorRelayError<TeamRemoteRelayError>> {
+        let cache_key = GrpcRelayClientCacheKey {
+            target: config.target.clone(),
+            access_token: config.access_token.clone(),
+            ca_cert_path: config.ca_cert_path.clone(),
+            tls_server_name: config.tls_server_name.clone(),
+            client_cert_path: config.client_cert_path.clone(),
+            client_key_path: config.client_key_path.clone(),
+        };
+        if let Some(client) = self
+            .grpc_client_cache
+            .lock()
+            .expect("lock grpc client cache")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(client);
+        }
+
+        let client = InternalGrpcMailboxClient::connect(config)
+            .await
+            .map_err(|err| {
+                ActorRelayError::retryable(TeamRemoteRelayError::GrpcConnect(err.to_string()))
+            })?;
+        self.grpc_client_cache
+            .lock()
+            .expect("lock grpc client cache")
+            .insert(cache_key, client.clone());
+        Ok(client)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct GrpcRelayClientCacheKey {
+    target: String,
+    access_token: String,
+    ca_cert_path: Option<String>,
+    tls_server_name: Option<String>,
+    client_cert_path: Option<String>,
+    client_key_path: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]

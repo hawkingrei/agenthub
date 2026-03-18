@@ -14,7 +14,7 @@ use crate::acp::{
 };
 use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
-    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode,
+    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode, normalize_target_node_id,
 };
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
@@ -202,6 +202,7 @@ async fn create_agent(
     let workdir = resolve_create_agent_workdir(
         &payload.workdir,
         &payload.name,
+        payload.target_node_id.as_deref(),
         &worktree_mode,
         &state.default_worktree_root,
     )?;
@@ -653,12 +654,18 @@ fn parse_agent_source(value: Option<&str>) -> Result<&'static str, ApiError> {
 fn resolve_create_agent_workdir(
     requested_workdir: &str,
     agent_name: &str,
+    target_node_id: Option<&str>,
     worktree_mode: &WorktreeMode,
     default_worktree_root: &str,
 ) -> Result<String, ApiError> {
     let trimmed = requested_workdir.trim();
     if !trimmed.is_empty() {
         return Ok(trimmed.to_string());
+    }
+    if normalize_target_node_id(target_node_id).is_some() {
+        return Err(ApiError::bad_request(
+            "workdir is required for remote-target agents",
+        ));
     }
     if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
         return Err(ApiError::bad_request("workdir is required"));
@@ -1035,6 +1042,7 @@ mod tests {
         let resolved = resolve_create_agent_workdir(
             " /tmp/work ",
             "planner",
+            None,
             &WorktreeMode::CreateWorktree,
             "~/.agenthub/worktrees",
         )
@@ -1047,6 +1055,7 @@ mod tests {
         let resolved = resolve_create_agent_workdir(
             "",
             "Team Planner",
+            None,
             &WorktreeMode::CreateWorktree,
             "~/.agenthub/worktrees",
         )
@@ -1059,11 +1068,25 @@ mod tests {
         let err = resolve_create_agent_workdir(
             "",
             "planner",
+            None,
             &WorktreeMode::ReuseWorktree,
             "~/.agenthub/worktrees",
         )
         .expect_err("blank workdir should be rejected");
         let _ = err;
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_rejects_blank_remote_target_defaults() {
+        let err = resolve_create_agent_workdir(
+            "",
+            "planner",
+            Some("node-east"),
+            &WorktreeMode::CreateWorktree,
+            "~/.agenthub/worktrees",
+        )
+        .expect_err("blank remote-target workdir should be rejected");
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]
