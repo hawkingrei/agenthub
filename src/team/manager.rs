@@ -1,5 +1,6 @@
 mod codec;
 mod mailbox;
+mod remote_relay;
 
 #[cfg(test)]
 mod tests;

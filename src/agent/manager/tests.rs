@@ -139,6 +139,7 @@ fn build_agent_record_for_policy(
         workdir: workdir.to_string(),
         command: "env".to_string(),
         args: vec![],
+        target_node_id: None,
         worktree_mode,
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,

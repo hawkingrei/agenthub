@@ -349,6 +349,21 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS agent_sessions (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
@@ -637,6 +652,18 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_nodes_name
+        ON agent_nodes(name);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!("db init: failed to create idx_agent_nodes_name: {}", err);
+    }
+
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
@@ -1035,6 +1062,12 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE agents ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
         "agents.source",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN target_node_id TEXT",
+        "agents.target_node_id",
     )
     .await;
     add_column_if_missing(

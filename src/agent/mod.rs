@@ -1,6 +1,7 @@
 pub(crate) mod event_message_codec;
 mod manager;
 mod triggers;
+mod node;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +10,10 @@ pub use triggers::{
     AgentTimeTriggerCreateInput, AgentTimeTriggerManager, AgentTimeTriggerRecord,
     AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
 };
+pub(crate) use node::{
+    AGENT_NODE_MAIN_ID, build_main_agent_node_record, normalize_target_node_id,
+    validate_agent_node_config_input,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
@@ -16,6 +21,7 @@ pub struct AgentConfig {
     pub workdir: String,
     pub command: String,
     pub args: Vec<String>,
+    pub target_node_id: Option<String>,
     pub worktree_mode: WorktreeMode,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -32,6 +38,7 @@ pub struct AgentRecord {
     pub workdir: String,
     pub command: String,
     pub args: Vec<String>,
+    pub target_node_id: Option<String>,
     pub worktree_mode: WorktreeMode,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -91,4 +98,23 @@ pub enum WorktreeMode {
     UseExisting,
     CreateWorktree,
     ReuseWorktree,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentNodeConfig {
+    pub id: String,
+    pub name: String,
+    pub grpc_target: String,
+    pub tls_server_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentNodeRecord {
+    pub id: String,
+    pub name: String,
+    pub grpc_target: Option<String>,
+    pub tls_server_name: Option<String>,
+    pub is_main: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
 }

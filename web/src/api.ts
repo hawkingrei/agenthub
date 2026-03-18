@@ -11,6 +11,7 @@ export type AgentConfig = {
   workdir: string;
   command: string;
   args: string[];
+  target_node_id?: string | null;
   source?: typeof AGENT_SOURCE_MANUAL | typeof AGENT_SOURCE_TEAM_FORGE;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
@@ -27,6 +28,7 @@ export type AgentRecord = {
   workdir: string;
   command: string;
   args: string[];
+  target_node_id?: string | null;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;
@@ -50,9 +52,27 @@ export type AgentDiscoveryRuntimeRecord = {
   code_mode: boolean;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
+  target_node_id?: string | null;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;
+};
+
+export type AgentNodeConfig = {
+  id: string;
+  name: string;
+  grpc_target: string;
+  tls_server_name?: string | null;
+};
+
+export type AgentNodeRecord = {
+  id: string;
+  name: string;
+  grpc_target?: string | null;
+  tls_server_name?: string | null;
+  is_main: boolean;
+  created_at: number;
+  updated_at: number;
 };
 
 export type AgentDiscoveryCardRecord = {
@@ -873,6 +893,17 @@ export const api = {
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
+  listAgentNodes: (token: string) =>
+    apiFetch<AgentNodeRecord[]>("/api/agent_nodes", token),
+  createAgentNode: (token: string, payload: AgentNodeConfig) =>
+    apiFetch<AgentNodeRecord>("/api/agent_nodes", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteAgentNode: (token: string, id: string) =>
+    apiFetch<{ status: string }>(`/api/agent_nodes/${encodePathSegment(id)}`, token, {
+      method: "DELETE",
+    }),
   getAgent: (token: string, id: string) =>
     apiFetch<AgentRecord>(`/api/agents/${encodePathSegment(id)}`, token),
   getAgentDiscoveryCard: (token: string, id: string) =>

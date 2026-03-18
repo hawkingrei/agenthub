@@ -24,7 +24,9 @@ use self::codec::stream_to_str;
 use self::codec::{status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
-    AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
+    AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
+    AgentRecord, AgentStatus, OutputStream, WorktreeMode, build_main_agent_node_record,
+    normalize_target_node_id, validate_agent_node_config_input,
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
@@ -33,6 +35,7 @@ use crate::acp::{
 };
 use crate::auth::AuthService;
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
+use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -49,6 +52,7 @@ pub struct AgentManager {
     acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
     permission_review_dispatcher: Arc<StdRwLock<Option<Arc<dyn AcpPermissionReviewDispatcher>>>>,
+    internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
@@ -64,6 +68,7 @@ const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 const AGENT_STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
+const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
@@ -466,6 +471,7 @@ pub enum AgentInput {
 }
 
 impl AgentManager {
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: SqlitePool,
@@ -478,6 +484,33 @@ impl AgentManager {
         permissions: Arc<AcpPermissionService>,
         auth: Arc<AuthService>,
     ) -> Self {
+        Self::new_with_internal_grpc(
+            db,
+            event_dbs,
+            idle_gc,
+            push,
+            proxy_env,
+            codex_acp_binary,
+            acp_default_mode,
+            permissions,
+            auth,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_internal_grpc(
+        db: SqlitePool,
+        event_dbs: AgentEventDbRouter,
+        idle_gc: Option<AgentEventIdleGc>,
+        push: Arc<PushService>,
+        proxy_env: Vec<(String, String)>,
+        codex_acp_binary: String,
+        acp_default_mode: Option<String>,
+        permissions: Arc<AcpPermissionService>,
+        auth: Arc<AuthService>,
+        internal_peer_client: Option<InternalGrpcPeerClientConfig>,
+    ) -> Self {
         Self {
             db,
             event_dbs,
@@ -488,6 +521,7 @@ impl AgentManager {
             codex_acp_binary,
             acp_default_mode,
             permissions,
+            internal_peer_client,
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
@@ -501,6 +535,298 @@ impl AgentManager {
         if let Ok(mut guard) = self.permission_review_dispatcher.write() {
             *guard = dispatcher;
         }
+    }
+
+    async fn has_agent_nodes_table(&self) -> anyhow::Result<bool> {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'agent_nodes'
+            "#,
+        )
+        .fetch_one(&self.db)
+        .await?;
+        Ok(count > 0)
+    }
+
+    async fn has_agents_target_node_id_column(&self) -> anyhow::Result<bool> {
+        let rows = sqlx::query(
+            r#"
+            SELECT name
+            FROM pragma_table_info('agents')
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .any(|row| row.get::<String, _>("name") == "target_node_id"))
+    }
+
+    async fn has_agent_persistent_sessions_table(&self) -> anyhow::Result<bool> {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'agent_persistent_sessions'
+            "#,
+        )
+        .fetch_one(&self.db)
+        .await?;
+        Ok(count > 0)
+    }
+
+    async fn validate_target_node_id(&self, raw: Option<&str>) -> anyhow::Result<Option<String>> {
+        let normalized = normalize_target_node_id(raw);
+        let Some(node_id) = normalized.as_deref() else {
+            return Ok(None);
+        };
+        if !self.has_agent_nodes_table().await? {
+            anyhow::bail!("agent node '{}' not found", node_id);
+        }
+        let exists: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM agent_nodes
+            WHERE id = ?1
+            "#,
+        )
+        .bind(node_id)
+        .fetch_one(&self.db)
+        .await?;
+        if exists == 0 {
+            anyhow::bail!("agent node '{}' not found", node_id);
+        }
+        Ok(Some(node_id.to_string()))
+    }
+
+    async fn agent_source_for(&self, agent_id: &str) -> anyhow::Result<String> {
+        if !self.has_agents_source_column().await? {
+            return Ok(AGENT_SOURCE_MANUAL.to_string());
+        }
+        let source = sqlx::query_scalar::<_, Option<String>>(
+            r#"
+            SELECT source
+            FROM agents
+            WHERE id = ?1
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_optional(&self.db)
+        .await?
+        .flatten()
+        .unwrap_or_else(|| AGENT_SOURCE_MANUAL.to_string());
+        Ok(source)
+    }
+
+    async fn remote_control_client_for_target_node(
+        &self,
+        target_node_id: &str,
+    ) -> anyhow::Result<InternalGrpcMailboxClient> {
+        let peer_config = self.internal_peer_client.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "remote agent control is unavailable because internal gRPC peer config is missing"
+            )
+        })?;
+        let node = self.get_agent_node(target_node_id).await?;
+        let grpc_target = node
+            .grpc_target
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "agent node '{}' does not have a valid gRPC target",
+                    target_node_id
+                )
+            })?;
+        InternalGrpcMailboxClient::connect_peer(
+            peer_config,
+            grpc_target,
+            node.tls_server_name.as_deref(),
+            vec![INTERNAL_AGENT_MANAGE_PERMISSION.to_string()],
+        )
+        .await
+    }
+
+    fn build_remote_managed_agent_config(agent: &AgentRecord) -> AgentConfig {
+        AgentConfig {
+            name: agent.name.clone(),
+            workdir: agent.workdir.clone(),
+            command: agent.command.clone(),
+            args: agent.args.clone(),
+            target_node_id: None,
+            worktree_mode: agent.worktree_mode.clone(),
+            worktree_repo: agent.worktree_repo.clone(),
+            worktree_ref: agent.worktree_ref.clone(),
+            code_mode: agent.code_mode,
+            agent_loop_enabled: agent.agent_loop_enabled,
+            agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
+            agent_loop_prompt: agent.agent_loop_prompt.clone(),
+        }
+    }
+
+    async fn ensure_remote_agent_synced(
+        &self,
+        client: &InternalGrpcMailboxClient,
+        agent: &AgentRecord,
+    ) -> anyhow::Result<AgentRecord> {
+        let source = self.agent_source_for(&agent.id).await?;
+        client
+            .ensure_agent_record(
+                &agent.id,
+                &Self::build_remote_managed_agent_config(agent),
+                &source,
+            )
+            .await
+    }
+
+    async fn start_remote_agent(
+        &self,
+        agent: &AgentRecord,
+        target_node_id: &str,
+        actor_context: Option<&AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
+        let client = self
+            .remote_control_client_for_target_node(target_node_id)
+            .await?;
+        self.ensure_remote_agent_synced(&client, agent).await?;
+        let session_id = client.start_managed_agent(&agent.id, actor_context).await?;
+        self.update_agent_status(&agent.id, AgentStatus::Running)
+            .await?;
+        Ok(session_id)
+    }
+
+    pub async fn create_agent_node(
+        &self,
+        config: AgentNodeConfig,
+    ) -> anyhow::Result<AgentNodeRecord> {
+        let (id, name, grpc_target, tls_server_name) = validate_agent_node_config_input(&config)?;
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agent_nodes (
+                id,
+                name,
+                grpc_target,
+                tls_server_name,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&id)
+        .bind(&name)
+        .bind(&grpc_target)
+        .bind(&tls_server_name)
+        .bind(now)
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+        Ok(AgentNodeRecord {
+            id,
+            name,
+            grpc_target: Some(grpc_target),
+            tls_server_name,
+            is_main: false,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub async fn list_agent_nodes(&self) -> anyhow::Result<Vec<AgentNodeRecord>> {
+        let mut nodes = vec![build_main_agent_node_record()];
+        if !self.has_agent_nodes_table().await? {
+            return Ok(nodes);
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
+            FROM agent_nodes
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for row in rows {
+            nodes.push(AgentNodeRecord {
+                id: row.get("id"),
+                name: row.get("name"),
+                grpc_target: row.try_get("grpc_target").ok(),
+                tls_server_name: row.try_get("tls_server_name").ok(),
+                is_main: false,
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            });
+        }
+        Ok(nodes)
+    }
+
+    pub async fn get_agent_node(&self, node_id: &str) -> anyhow::Result<AgentNodeRecord> {
+        let normalized = node_id.trim();
+        if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
+            return Ok(build_main_agent_node_record());
+        }
+        let row = sqlx::query(
+            r#"
+            SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
+            FROM agent_nodes
+            WHERE id = ?1
+            "#,
+        )
+        .bind(normalized)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(AgentNodeRecord {
+            id: row.get("id"),
+            name: row.get("name"),
+            grpc_target: row.try_get("grpc_target").ok(),
+            tls_server_name: row.try_get("tls_server_name").ok(),
+            is_main: false,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        })
+    }
+
+    pub async fn delete_agent_node(&self, node_id: &str) -> anyhow::Result<()> {
+        let normalized = node_id.trim();
+        if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
+            anyhow::bail!(
+                "agent node '{}' is reserved and cannot be deleted",
+                AGENT_NODE_MAIN_ID
+            );
+        }
+        if self.has_agents_target_node_id_column().await? {
+            let bound_agents: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)
+                FROM agents
+                WHERE target_node_id = ?1
+                "#,
+            )
+            .bind(normalized)
+            .fetch_one(&self.db)
+            .await?;
+            if bound_agents > 0 {
+                anyhow::bail!(
+                    "agent node '{}' is still referenced by {} agent(s)",
+                    normalized,
+                    bound_agents
+                );
+            }
+        }
+        sqlx::query(
+            r#"
+            DELETE FROM agent_nodes
+            WHERE id = ?1
+            "#,
+        )
+        .bind(normalized)
+        .execute(&self.db)
+        .await?;
+        Ok(())
     }
 
     pub async fn create_agent(&self, config: AgentConfig) -> anyhow::Result<AgentRecord> {
@@ -525,15 +851,77 @@ impl AgentManager {
         if source != AGENT_SOURCE_MANUAL && source != AGENT_SOURCE_TEAM_FORGE {
             return Err(anyhow::anyhow!("invalid agent source: {source}"));
         }
-        let workdir = expand_tilde(&config.workdir);
-        let worktree_repo = config.worktree_repo.as_deref().map(expand_tilde);
-        self.ensure_safe_path(&workdir).await?;
+        let target_node_id = self
+            .validate_target_node_id(config.target_node_id.as_deref())
+            .await?;
+        let is_local_target = target_node_id.is_none();
+        let workdir = if is_local_target {
+            expand_tilde(&config.workdir)
+        } else {
+            config.workdir.trim().to_string()
+        };
+        let worktree_repo = config.worktree_repo.as_deref().map(|path| {
+            if is_local_target {
+                expand_tilde(path)
+            } else {
+                path.trim().to_string()
+            }
+        });
+        if is_local_target {
+            self.ensure_safe_path(&workdir).await?;
+        }
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         let args_json = serde_json::to_string(&config.args)?;
         let status = AgentStatus::Created;
+        let has_source_column = self.has_agents_source_column().await?;
+        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
 
-        if self.has_agents_source_column().await? {
+        if has_source_column && has_target_node_id_column {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id,
+                    name,
+                    workdir,
+                    command,
+                    args,
+                    target_node_id,
+                    worktree_mode,
+                    worktree_repo,
+                    worktree_ref,
+                    code_mode,
+                    agent_loop_enabled,
+                    agent_loop_idle_seconds,
+                    agent_loop_prompt,
+                    source,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                "#,
+            )
+            .bind(&id)
+            .bind(&config.name)
+            .bind(&workdir)
+            .bind(&config.command)
+            .bind(&args_json)
+            .bind(&target_node_id)
+            .bind(worktree_mode_to_str(&config.worktree_mode))
+            .bind(&worktree_repo)
+            .bind(&config.worktree_ref)
+            .bind(if config.code_mode { 1 } else { 0 })
+            .bind(if config.agent_loop_enabled { 1 } else { 0 })
+            .bind(config.agent_loop_idle_seconds)
+            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
+            .bind(source)
+            .bind(status_to_str(&status))
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        } else if has_source_column {
             sqlx::query(
                 r#"
                 INSERT INTO agents (
@@ -570,6 +958,48 @@ impl AgentManager {
             .bind(config.agent_loop_idle_seconds)
             .bind(config.agent_loop_prompt.as_deref().map(str::trim))
             .bind(source)
+            .bind(status_to_str(&status))
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        } else if has_target_node_id_column {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id,
+                    name,
+                    workdir,
+                    command,
+                    args,
+                    target_node_id,
+                    worktree_mode,
+                    worktree_repo,
+                    worktree_ref,
+                    code_mode,
+                    agent_loop_enabled,
+                    agent_loop_idle_seconds,
+                    agent_loop_prompt,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                "#,
+            )
+            .bind(&id)
+            .bind(&config.name)
+            .bind(&workdir)
+            .bind(&config.command)
+            .bind(&args_json)
+            .bind(&target_node_id)
+            .bind(worktree_mode_to_str(&config.worktree_mode))
+            .bind(&worktree_repo)
+            .bind(&config.worktree_ref)
+            .bind(if config.code_mode { 1 } else { 0 })
+            .bind(if config.agent_loop_enabled { 1 } else { 0 })
+            .bind(config.agent_loop_idle_seconds)
+            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
             .bind(status_to_str(&status))
             .bind(now)
             .bind(now)
@@ -623,6 +1053,7 @@ impl AgentManager {
             workdir,
             command: config.command,
             args: config.args,
+            target_node_id,
             worktree_mode: config.worktree_mode,
             worktree_repo,
             worktree_ref: config.worktree_ref,
@@ -643,10 +1074,317 @@ impl AgentManager {
         })
     }
 
+    pub async fn ensure_remote_managed_agent(
+        &self,
+        agent_id: &str,
+        config: AgentConfig,
+        source: &str,
+    ) -> anyhow::Result<AgentRecord> {
+        if source != AGENT_SOURCE_MANUAL && source != AGENT_SOURCE_TEAM_FORGE {
+            return Err(anyhow::anyhow!("invalid agent source: {source}"));
+        }
+        if normalize_target_node_id(config.target_node_id.as_deref()).is_some() {
+            anyhow::bail!("remote managed agent config cannot target another agent node");
+        }
+
+        let workdir = expand_tilde(&config.workdir);
+        let worktree_repo = config.worktree_repo.as_deref().map(expand_tilde);
+        self.ensure_safe_path(&workdir).await?;
+
+        let args_json = serde_json::to_string(&config.args)?;
+        let now = Utc::now().timestamp();
+        let existing = self.get_agent(agent_id).await.ok();
+        let has_source_column = self.has_agents_source_column().await?;
+        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
+
+        if existing.is_some() {
+            if has_source_column && has_target_node_id_column {
+                sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET name = ?1,
+                        workdir = ?2,
+                        command = ?3,
+                        args = ?4,
+                        target_node_id = NULL,
+                        worktree_mode = ?5,
+                        worktree_repo = ?6,
+                        worktree_ref = ?7,
+                        code_mode = ?8,
+                        source = ?9,
+                        updated_at = ?10
+                    WHERE id = ?11
+                    "#,
+                )
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(source)
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await?;
+            } else if has_source_column {
+                sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET name = ?1,
+                        workdir = ?2,
+                        command = ?3,
+                        args = ?4,
+                        worktree_mode = ?5,
+                        worktree_repo = ?6,
+                        worktree_ref = ?7,
+                        code_mode = ?8,
+                        source = ?9,
+                        updated_at = ?10
+                    WHERE id = ?11
+                    "#,
+                )
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(source)
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await?;
+            } else if has_target_node_id_column {
+                sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET name = ?1,
+                        workdir = ?2,
+                        command = ?3,
+                        args = ?4,
+                        target_node_id = NULL,
+                        worktree_mode = ?5,
+                        worktree_repo = ?6,
+                        worktree_ref = ?7,
+                        code_mode = ?8,
+                        updated_at = ?9
+                    WHERE id = ?10
+                    "#,
+                )
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await?;
+            } else {
+                sqlx::query(
+                    r#"
+                    UPDATE agents
+                    SET name = ?1,
+                        workdir = ?2,
+                        command = ?3,
+                        args = ?4,
+                        worktree_mode = ?5,
+                        worktree_repo = ?6,
+                        worktree_ref = ?7,
+                        code_mode = ?8,
+                        updated_at = ?9
+                    WHERE id = ?10
+                    "#,
+                )
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(now)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await?;
+            }
+        } else {
+            let status = AgentStatus::Created;
+            if has_source_column && has_target_node_id_column {
+                sqlx::query(
+                    r#"
+                    INSERT INTO agents (
+                        id,
+                        name,
+                        workdir,
+                        command,
+                        args,
+                        target_node_id,
+                        worktree_mode,
+                        worktree_repo,
+                        worktree_ref,
+                        code_mode,
+                        source,
+                        status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(source)
+                .bind(status_to_str(&status))
+                .bind(now)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            } else if has_source_column {
+                sqlx::query(
+                    r#"
+                    INSERT INTO agents (
+                        id,
+                        name,
+                        workdir,
+                        command,
+                        args,
+                        worktree_mode,
+                        worktree_repo,
+                        worktree_ref,
+                        code_mode,
+                        source,
+                        status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(source)
+                .bind(status_to_str(&status))
+                .bind(now)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            } else if has_target_node_id_column {
+                sqlx::query(
+                    r#"
+                    INSERT INTO agents (
+                        id,
+                        name,
+                        workdir,
+                        command,
+                        args,
+                        target_node_id,
+                        worktree_mode,
+                        worktree_repo,
+                        worktree_ref,
+                        code_mode,
+                        status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(status_to_str(&status))
+                .bind(now)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            } else {
+                sqlx::query(
+                    r#"
+                    INSERT INTO agents (
+                        id,
+                        name,
+                        workdir,
+                        command,
+                        args,
+                        worktree_mode,
+                        worktree_repo,
+                        worktree_ref,
+                        code_mode,
+                        status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    "#,
+                )
+                .bind(agent_id)
+                .bind(&config.name)
+                .bind(&workdir)
+                .bind(&config.command)
+                .bind(&args_json)
+                .bind(worktree_mode_to_str(&config.worktree_mode))
+                .bind(&worktree_repo)
+                .bind(&config.worktree_ref)
+                .bind(if config.code_mode { 1 } else { 0 })
+                .bind(status_to_str(&status))
+                .bind(now)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            }
+        }
+
+        self.get_agent(agent_id).await
+    }
+
     pub async fn list_agents(&self) -> anyhow::Result<Vec<AgentRecord>> {
         self.reconcile_stale_running_agents().await?;
         let active_team_member_agents = self.list_active_team_member_agents().await?;
-        let rows = if self.has_agents_source_column().await? {
+        let has_source_column = self.has_agents_source_column().await?;
+        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
+        let rows = if has_source_column && has_target_node_id_column {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
+                FROM agents
+                WHERE COALESCE(source, 'manual') != ?1
+                ORDER BY created_at DESC
+                "#,
+            )
+            .bind(AGENT_SOURCE_TEAM_FORGE)
+            .fetch_all(&self.db)
+            .await?
+        } else if has_source_column {
             sqlx::query(
                 r#"
                 SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
@@ -656,6 +1394,16 @@ impl AgentManager {
                 "#,
             )
             .bind(AGENT_SOURCE_TEAM_FORGE)
+            .fetch_all(&self.db)
+            .await?
+        } else if has_target_node_id_column {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
+                FROM agents
+                ORDER BY created_at DESC
+                "#,
+            )
             .fetch_all(&self.db)
             .await?
         } else {
@@ -686,6 +1434,7 @@ impl AgentManager {
                 workdir: row.get("workdir"),
                 command: row.get("command"),
                 args,
+                target_node_id: row.try_get("target_node_id").ok(),
                 worktree_mode,
                 worktree_repo: row.try_get("worktree_repo").ok(),
                 worktree_ref: row.try_get("worktree_ref").ok(),
@@ -855,16 +1604,29 @@ impl AgentManager {
 
     pub async fn get_agent(&self, agent_id: &str) -> anyhow::Result<AgentRecord> {
         self.reconcile_stale_running_agents().await?;
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-            FROM agents
-            WHERE id = ?1
-            "#,
-        )
-        .bind(agent_id)
-        .fetch_one(&self.db)
-        .await?;
+        let row = if self.has_agents_target_node_id_column().await? {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
+                FROM agents
+                WHERE id = ?1
+                "#,
+            )
+            .bind(agent_id)
+            .fetch_one(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
+                FROM agents
+                WHERE id = ?1
+                "#,
+            )
+            .bind(agent_id)
+            .fetch_one(&self.db)
+            .await?
+        };
 
         let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
         let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
@@ -876,6 +1638,7 @@ impl AgentManager {
             workdir: row.get("workdir"),
             command: row.get("command"),
             args,
+            target_node_id: row.try_get("target_node_id").ok(),
             worktree_mode,
             worktree_repo: row.try_get("worktree_repo").ok(),
             worktree_ref: row.try_get("worktree_ref").ok(),
@@ -899,6 +1662,15 @@ impl AgentManager {
         limit: i64,
         before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            return client
+                .list_agent_events(agent_id, limit, None, before_id)
+                .await;
+        }
         let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
         let rows = if let Some(before_id) = before_id {
             sqlx::query(
@@ -967,6 +1739,15 @@ impl AgentManager {
         limit: i64,
         before_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            return client
+                .list_agent_events(agent_id, limit, Some(session_id), before_id)
+                .await;
+        }
         let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
         let rows = if let Some(before_id) = before_id {
             sqlx::query(
@@ -1181,6 +1962,15 @@ impl AgentManager {
         agent_id: &str,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            self.reserve_agent_start(agent_id).await?;
+            let result = self
+                .start_remote_agent(&agent, target_node_id, actor_context.as_ref())
+                .await;
+            self.release_agent_start(agent_id).await;
+            return result;
+        }
         if let Some(session_id) = self.get_running_session_id(agent_id).await {
             if actor_context.is_some() {
                 return Err(anyhow::anyhow!(
@@ -1753,6 +2543,16 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            client.stop_managed_agent(agent_id).await?;
+            self.update_agent_status(agent_id, AgentStatus::Stopped)
+                .await?;
+            return Ok(());
+        }
         let handle = {
             let mut guard = self.inner.write().await;
             guard.remove(agent_id)
@@ -1907,6 +2707,15 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            return client
+                .send_agent_input(agent_id, input, message_id, expected_session_id)
+                .await;
+        }
         let handle_snapshot = {
             let guard = self.inner.read().await;
             guard.get(agent_id).map(|handle| match &handle.input {

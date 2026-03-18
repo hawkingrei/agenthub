@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AgentsPanel } from "./components/agents_panel";
@@ -11,6 +10,7 @@ const agents: AgentRecord[] = [
     workdir: "/tmp/alpha",
     command: "agenthub",
     args: [],
+    target_node_id: null,
     worktree_mode: "use_existing",
     worktree_repo: null,
     worktree_ref: null,
@@ -25,6 +25,7 @@ const agents: AgentRecord[] = [
     workdir: "/tmp/beta",
     command: "agenthub",
     args: [],
+    target_node_id: null,
     worktree_mode: "use_existing",
     worktree_repo: null,
     worktree_ref: null,
@@ -148,5 +149,27 @@ describe("AgentsPanel", () => {
       <AgentsPanel {...baseProps} agentsCollapsed={false} compactRows={true} />
     );
     expect(html).toContain("agents-panel-compact-rows");
+  });
+
+  it("shows remote node badge and renders remote-start affordance copy", () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        agents={[
+          {
+            ...agents[0],
+            id: "agent-remote",
+            name: "Remote",
+            status: "created",
+            target_node_id: "node-east",
+          },
+        ]}
+        activeAgent="agent-remote"
+      />
+    );
+    expect(html).toContain("node:node-east");
+    expect(html).toContain("Start on node node-east");
+    expect(html).toContain('aria-label="Start agent on node node-east"');
   });
 });

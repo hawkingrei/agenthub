@@ -9,13 +9,19 @@ use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
 use crate::team::{TeamStepRecord, TeamStepStatus};
+use crate::{acp::AcpActorSkillContext, agent::AgentConfig};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::proto::agenthub::internal::v1::{
-    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, IssueNodeCredentialRequest,
-    IssueNodeCredentialResponse, ListActorInboxRequest, ListActorInboxResponse,
-    SendActorMessageRequest, SendActorMessageResponse, TransitionStepRequest,
+    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
+    DeleteManagedAgentRequest, DeleteManagedAgentResponse, EnsureAgentRecordRequest,
+    EnsureAgentRecordResponse, GetAgentRecordRequest, GetAgentRecordResponse,
+    IssueNodeCredentialRequest, IssueNodeCredentialResponse, ListActorInboxRequest,
+    ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
+    SendActorMessageRequest, SendActorMessageResponse, SendAgentInputRequest,
+    SendAgentInputResponse, StartManagedAgentRequest, StartManagedAgentResponse,
+    StopManagedAgentRequest, StopManagedAgentResponse, TransitionStepRequest,
     TransitionStepResponse,
 };
 use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
@@ -419,6 +425,165 @@ impl TeamInternalControl for TeamInternalControlService {
             security_mode: security_mode_to_str(self.security_mode).to_string(),
         }))
     }
+
+    async fn ensure_agent_record(
+        &self,
+        request: Request<EnsureAgentRecordRequest>,
+    ) -> Result<Response<EnsureAgentRecordResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let config = parse_json_as::<AgentConfig>(&payload.config_json, "config_json")?;
+        let source = optional_trimmed(&payload.source).unwrap_or("manual");
+        let agent = self
+            .state
+            .agents
+            .ensure_remote_managed_agent(agent_id, config, source)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(EnsureAgentRecordResponse {
+            agent_json: serde_json::to_string(&agent)
+                .map_err(|err| Status::internal(err.to_string()))?,
+        }))
+    }
+
+    async fn get_agent_record(
+        &self,
+        request: Request<GetAgentRecordRequest>,
+    ) -> Result<Response<GetAgentRecordResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let agent = self
+            .state
+            .agents
+            .get_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(GetAgentRecordResponse {
+            agent_json: serde_json::to_string(&agent)
+                .map_err(|err| Status::internal(err.to_string()))?,
+        }))
+    }
+
+    async fn start_managed_agent(
+        &self,
+        request: Request<StartManagedAgentRequest>,
+    ) -> Result<Response<StartManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let actor_context = optional_trimmed(&payload.actor_context_json)
+            .map(|raw| parse_json_str_as::<AcpActorSkillContext>(raw, "actor_context_json"))
+            .transpose()?;
+        let session_id = self
+            .state
+            .agents
+            .start_agent_with_actor_context(agent_id, actor_context)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(StartManagedAgentResponse { session_id }))
+    }
+
+    async fn stop_managed_agent(
+        &self,
+        request: Request<StopManagedAgentRequest>,
+    ) -> Result<Response<StopManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        self.state
+            .agents
+            .stop_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(StopManagedAgentResponse {}))
+    }
+
+    async fn delete_managed_agent(
+        &self,
+        request: Request<DeleteManagedAgentRequest>,
+    ) -> Result<Response<DeleteManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let _ = self.state.agents.stop_agent(agent_id).await;
+        self.state
+            .agents
+            .delete_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(DeleteManagedAgentResponse {}))
+    }
+
+    async fn send_agent_input(
+        &self,
+        request: Request<SendAgentInputRequest>,
+    ) -> Result<Response<SendAgentInputResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let input = required_field(&payload.input, "input")?;
+        self.state
+            .agents
+            .send_input(
+                agent_id,
+                input,
+                optional_trimmed(&payload.message_id),
+                optional_trimmed(&payload.session_id),
+            )
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(SendAgentInputResponse {}))
+    }
+
+    async fn list_agent_events(
+        &self,
+        request: Request<ListAgentEventsRequest>,
+    ) -> Result<Response<ListAgentEventsResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let limit = payload.limit.clamp(1, 1000);
+        let before_event_id = (payload.before_event_id > 0).then_some(payload.before_event_id);
+        let session_id = optional_trimmed(&payload.session_id);
+        let events = if let Some(session_id) = session_id {
+            self.state
+                .agents
+                .list_events_for_session(agent_id, session_id, limit, before_event_id)
+                .await
+        } else {
+            self.state
+                .agents
+                .list_events(agent_id, limit, before_event_id)
+                .await
+        }
+        .map_err(map_manager_error)?;
+        Ok(Response::new(ListAgentEventsResponse {
+            events: events.into_iter().map(agent_event_record).collect(),
+        }))
+    }
 }
 
 fn step_to_transition_response(step: TeamStepRecord) -> TransitionStepResponse {
@@ -463,6 +628,22 @@ fn parse_json_required(raw: &str, field: &str) -> Result<Value, Status> {
         .map_err(|err| Status::invalid_argument(format!("{field} must be valid JSON: {err}")))
 }
 
+fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let raw = required_field(raw, field)?;
+    parse_json_str_as(raw, field)
+}
+
+fn parse_json_str_as<T>(raw: &str, field: &str) -> Result<T, Status>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_str(raw)
+        .map_err(|err| Status::invalid_argument(format!("{field} must be valid JSON: {err}")))
+}
+
 fn optional_json_object(raw: Option<&str>, field: &str) -> Result<Option<Value>, Status> {
     let Some(raw) = raw else {
         return Ok(None);
@@ -485,6 +666,27 @@ fn map_manager_error(err: anyhow::Error) -> Status {
         return Status::not_found("target record not found");
     }
     Status::internal(err.to_string())
+}
+
+fn agent_event_record(event: crate::agent::AgentEvent) -> AgentEventRecord {
+    AgentEventRecord {
+        event_id: event.event_id,
+        agent_id: event.agent_id,
+        session_id: event.session_id,
+        seq: event.seq,
+        ts: event.ts,
+        stream: agent_output_stream_to_str(&event.stream).to_string(),
+        message: event.message,
+    }
+}
+
+fn agent_output_stream_to_str(stream: &crate::agent::OutputStream) -> &'static str {
+    match stream {
+        crate::agent::OutputStream::Stdout => "stdout",
+        crate::agent::OutputStream::Stderr => "stderr",
+        crate::agent::OutputStream::System => "system",
+        crate::agent::OutputStream::Acp => "acp",
+    }
 }
 
 fn map_actor_service_status(err: ActorServiceError) -> Status {

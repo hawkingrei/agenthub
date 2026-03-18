@@ -1,6 +1,7 @@
 mod auth;
+pub(crate) mod client;
 mod service;
-mod tls;
+pub(crate) mod tls;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

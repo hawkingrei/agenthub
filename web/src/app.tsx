@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   api,
   AgentRecord,
+  AgentNodeRecord,
   AgentEvent,
   AuditRecord,
   AcpPermissionRecord,
@@ -63,6 +64,7 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "./agent_presets";
+import { AgentNodeSection } from "./components/agent_node_section";
 import { AgentsPanel } from "./components/agents_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
 import { InputDock } from "./components/input_dock";
@@ -720,6 +722,7 @@ export function App() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
   const [safePaths, setSafePaths] = useState<SafePath[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [audits, setAudits] = useState<AuditRecord[]>([]);
@@ -777,6 +780,15 @@ export function App() {
   const loadSeq = useRef(0);
   const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
+  const [targetNodeId, setTargetNodeId] = useState("main");
+  const [nodeIdInput, setNodeIdInput] = useState("");
+  const [nodeNameInput, setNodeNameInput] = useState("");
+  const [nodeGrpcTargetInput, setNodeGrpcTargetInput] = useState("");
+  const [nodeTlsServerNameInput, setNodeTlsServerNameInput] = useState("");
+  const [createAgentNodeBusy, setCreateAgentNodeBusy] = useState(false);
+  const [deletingAgentNodeIds, setDeletingAgentNodeIds] = useState<
+    Record<string, boolean>
+  >({});
   const [acpPermissions, setAcpPermissions] = useState<AcpPermissionRecord[]>(
     []
   );
@@ -1217,10 +1229,49 @@ export function App() {
     [token]
   );
 
+  const refreshAgentNodes = useCallback(
+    async (opts?: { silent?: boolean }): Promise<AgentNodeRecord[] | null> => {
+      if (!token) {
+        setAgentNodes([]);
+        return null;
+      }
+      const silent = opts?.silent === true;
+      try {
+        const items = await api.listAgentNodes(token);
+        setAgentNodes(items);
+        return items;
+      } catch (err) {
+        if (!silent) {
+          setError(parseApiErrorMessage(err) ?? String(err));
+        }
+        return null;
+      }
+    },
+    [token]
+  );
+
   useEffect(() => {
     if (!token) return;
     void refreshAgents();
   }, [token, refreshAgents]);
+
+  useEffect(() => {
+    if (!token) {
+      setAgentNodes([]);
+      return;
+    }
+    void refreshAgentNodes();
+  }, [token, refreshAgentNodes]);
+
+  useEffect(() => {
+    if (targetNodeId === "main") {
+      return;
+    }
+    if (agentNodes.some((node) => node.id === targetNodeId)) {
+      return;
+    }
+    setTargetNodeId("main");
+  }, [agentNodes, targetNodeId]);
 
   useEffect(() => {
     if (!token) return;
@@ -1587,8 +1638,10 @@ export function App() {
         DEFAULT_WORKTREE_ROOT
       )
     );
+    setTargetNodeId("main");
     setShowCreateAgent(true);
-  }, [defaultWorktreeRoot, worktreeMode]);
+    void refreshAgentNodes({ silent: true });
+  }, [defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
 
   useEffect(() => {
     if (!token || auth?.role !== "root") return;
@@ -2081,6 +2134,7 @@ export function App() {
     removeLocalStorageItemSafe("agenthub_auth");
     setAuth(null);
     setAgents([]);
+    setAgentNodes([]);
     setActiveAgent(null);
     setOutputs([]);
     setAcpOutputs([]);
@@ -2092,7 +2146,73 @@ export function App() {
     setWorktreeError(null);
     setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
     setAgentWorkdir("");
+    setTargetNodeId("main");
+    setNodeIdInput("");
+    setNodeNameInput("");
+    setNodeGrpcTargetInput("");
+    setNodeTlsServerNameInput("");
+    setCreateAgentNodeBusy(false);
+    setDeletingAgentNodeIds({});
   };
+
+  const onCreateAgentNode = useCallback(async () => {
+    if (!token || createAgentNodeBusy) return;
+    setError(null);
+    setCreateAgentNodeBusy(true);
+    try {
+      const node = await api.createAgentNode(token, {
+        id: nodeIdInput.trim(),
+        name: nodeNameInput.trim(),
+        grpc_target: nodeGrpcTargetInput.trim(),
+        tls_server_name: nodeTlsServerNameInput.trim() || null,
+      });
+      setAgentNodes((prev) => {
+        const withoutDuplicate = prev.filter((item) => item.id !== node.id);
+        return [...withoutDuplicate, node];
+      });
+      setTargetNodeId(node.id);
+      setNodeIdInput("");
+      setNodeNameInput("");
+      setNodeGrpcTargetInput("");
+      setNodeTlsServerNameInput("");
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    } finally {
+      setCreateAgentNodeBusy(false);
+    }
+  }, [
+    createAgentNodeBusy,
+    nodeGrpcTargetInput,
+    nodeIdInput,
+    nodeNameInput,
+    nodeTlsServerNameInput,
+    token,
+  ]);
+
+  const onDeleteAgentNode = useCallback(
+    async (nodeId: string) => {
+      if (!token || nodeId === "main") return;
+      setError(null);
+      setDeletingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
+      try {
+        await api.deleteAgentNode(token, nodeId);
+        setAgentNodes((prev) => prev.filter((node) => node.id !== nodeId));
+        if (targetNodeId === nodeId) {
+          setTargetNodeId("main");
+        }
+      } catch (err) {
+        setError(parseApiErrorMessage(err) ?? String(err));
+      } finally {
+        setDeletingAgentNodeIds((prev) => {
+          if (!prev[nodeId]) return prev;
+          const next = { ...prev };
+          delete next[nodeId];
+          return next;
+        });
+      }
+    },
+    [targetNodeId, token]
+  );
 
   const onCreateAgent = async () => {
     if (!token) return;
@@ -2102,6 +2222,10 @@ export function App() {
     setError(null);
     setWorktreeError(null);
     try {
+      const normalizedTargetNodeId =
+        targetNodeId.trim() && targetNodeId.trim() !== "main"
+          ? targetNodeId.trim()
+          : null;
       const name = agentName.trim() || "agent";
       const workdir = normalizeWorkdirInput(agentWorkdir);
       const normalizedRoot = normalizeWorkdirInput(defaultWorktreeRoot);
@@ -2127,17 +2251,18 @@ export function App() {
         workdir: workdirPayload,
         command,
         args,
+        target_node_id: normalizedTargetNodeId,
         worktree_mode: worktreeMode,
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
         code_mode: codeMode,
       });
       setAgents((prev) => [agent, ...prev]);
+      setActiveAgent(agent.id);
       try {
         const res = await api.startAgent(token, agent.id);
         setActiveSessionId(res.session_id);
         setAgentSessions((prev) => ({ ...prev, [agent.id]: res.session_id }));
-        setActiveAgent(agent.id);
         await refreshAgents();
       } catch (err) {
         const msg = parseApiErrorMessage(err) ?? String(err);
@@ -2150,6 +2275,7 @@ export function App() {
       setWorktreeRepo("");
       setWorktreeRef("");
       setCodeMode(true);
+      setTargetNodeId("main");
       setShowCreateAgent(false);
     } catch (err) {
       const hint = formatWorktreeError(err);
@@ -3117,7 +3243,25 @@ export function App() {
           workdirPlaceholder={defaultWorktreeRoot}
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
-        />
+        >
+          <AgentNodeSection
+            nodes={agentNodes}
+            targetNodeId={targetNodeId}
+            onTargetNodeIdChange={setTargetNodeId}
+            nodeIdInput={nodeIdInput}
+            onNodeIdInputChange={setNodeIdInput}
+            nodeNameInput={nodeNameInput}
+            onNodeNameInputChange={setNodeNameInput}
+            grpcTargetInput={nodeGrpcTargetInput}
+            onGrpcTargetInputChange={setNodeGrpcTargetInput}
+            tlsServerNameInput={nodeTlsServerNameInput}
+            onTlsServerNameInputChange={setNodeTlsServerNameInput}
+            createBusy={createAgentNodeBusy}
+            deletingNodeIds={deletingAgentNodeIds}
+            onCreateNode={onCreateAgentNode}
+            onDeleteNode={onDeleteAgentNode}
+          />
+        </CreateAgentModal>
       )}
 
       {auth && activeAgent && scopedAcpPermissions.length > 0 && (

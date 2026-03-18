@@ -934,6 +934,15 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        if let Ok(agent) = self.get_agent(agent_id).await
+            && let Some(target_node_id) = agent.target_node_id.as_deref()
+        {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            let _ = client.stop_managed_agent(agent_id).await;
+            client.delete_managed_agent(agent_id).await?;
+        }
         let mut guard = self.inner.write().await;
         guard.remove(agent_id);
         drop(guard);
@@ -946,10 +955,12 @@ impl AgentManager {
             .bind(agent_id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
+        if self.has_agent_persistent_sessions_table().await? {
+            sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
+                .bind(agent_id)
+                .execute(&mut *tx)
+                .await?;
+        }
         sqlx::query("DELETE FROM agents WHERE id = ?1")
             .bind(agent_id)
             .execute(&mut *tx)

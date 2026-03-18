@@ -72,6 +72,7 @@ pub enum InternalAction {
     MessageAck,
     StepTransition,
     NodeIssue,
+    AgentManage,
 }
 
 impl InternalAction {
@@ -82,6 +83,7 @@ impl InternalAction {
             Self::MessageAck => "team:message:ack",
             Self::StepTransition => "team:step:transition",
             Self::NodeIssue => "team:node:issue",
+            Self::AgentManage => "agent:manage",
         }
     }
 }

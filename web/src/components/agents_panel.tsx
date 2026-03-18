@@ -138,6 +138,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               <div className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
+                  const isRemoteTarget = Boolean(agent.target_node_id);
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
@@ -164,7 +165,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           onSelectAgent(agent.id);
                         }
                       }}
-                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
+                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
                       <div className="agents-workbench-row-head">
                         <div className="agents-workbench-row-title">
@@ -180,6 +181,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           {modelLabel ? (
                             <span className="agents-workbench-tag hidden sm:inline-flex">
                               {modelLabel}
+                            </span>
+                          ) : null}
+                          {isRemoteTarget ? (
+                            <span className="agents-workbench-tag hidden sm:inline-flex">
+                              node:{agent.target_node_id}
                             </span>
                           ) : null}
                         </div>
@@ -228,9 +234,17 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                                 ? "Already running"
                                 : isStarting
                                   ? "Starting..."
+                                  : isRemoteTarget
+                                    ? `Start on node ${agent.target_node_id}`
+                                    : "Start"
+                            }
+                            aria-label={
+                              isRemoteTarget
+                                ? `Start agent on node ${agent.target_node_id}`
+                                : isStarting
+                                  ? "Starting"
                                   : "Start"
                             }
-                            aria-label={isStarting ? "Starting" : "Start"}
                           >
                             <i
                               className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}

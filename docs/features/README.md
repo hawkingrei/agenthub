@@ -45,6 +45,7 @@ When multiple journal notes describe the same area:
 ## Current Canonical Specs
 
 - `docs/features/frontend-design.md`
+- `docs/features/agent-nodes.md`
 - `docs/features/agents-teams.md`
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`

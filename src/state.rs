@@ -9,6 +9,8 @@ use crate::agent::{
     AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
 };
 use crate::auth::AuthService;
+use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::push::PushService;
 use crate::team::{
     TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
@@ -91,6 +93,22 @@ impl AppState {
         Arc<AuthService>,
         Arc<AcpPermissionService>,
     )> {
+        let internal_grpc_cert_dir = std::path::PathBuf::from(config.internal_grpc_cert_dir());
+        let internal_grpc_security_mode =
+            InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
+        let internal_shared_secret = ensure_shared_secret(
+            &internal_grpc_cert_dir,
+            config.internal_grpc_auth_shared_secret(),
+        )?;
+        let _ = ensure_tls_material(&internal_grpc_cert_dir, internal_grpc_security_mode)?;
+        let internal_peer_client = Some(InternalGrpcPeerClientConfig {
+            shared_secret: internal_shared_secret,
+            expected_issuer: config.internal_grpc_auth_issuer(),
+            expected_audience: config.internal_grpc_auth_audience(),
+            cert_dir: internal_grpc_cert_dir.to_string_lossy().to_string(),
+            security_mode: internal_grpc_security_mode,
+        });
+
         let idle_gc = config.history_event_retention_days().map(|retention_days| {
             let vacuum_on_cleanup = config.history_vacuum_on_cleanup();
             let delete_batch_size = config.history_delete_batch_size();
@@ -113,7 +131,7 @@ impl AppState {
         let push = Arc::new(PushService::new(db.clone(), config)?);
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), config).await?);
-        let agents = Arc::new(AgentManager::new(
+        let agents = Arc::new(AgentManager::new_with_internal_grpc(
             db.clone(),
             event_dbs.clone(),
             idle_gc,
@@ -123,6 +141,7 @@ impl AppState {
             config.codex_acp_default_mode(),
             acp_permissions.clone(),
             auth.clone(),
+            internal_peer_client,
         ));
 
         let teams = Arc::new(TeamManager::new_with_event_dbs(

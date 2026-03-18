@@ -387,6 +387,7 @@ function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, 
   }
   return {
     name: agent.name,
+    target_node_id: agent.target_node_id ?? null,
     workdir: agent.workdir,
     worktree_mode: agent.worktree_mode,
     worktree_repo: agent.worktree_repo ?? null,

@@ -46,6 +46,7 @@ struct TeamRuntimeMemberSpec {
 struct TeamRuntimeMemberRuntimeHint {
     #[allow(dead_code)]
     name: Option<String>,
+    target_node_id: Option<String>,
     workdir: Option<String>,
     worktree_repo: Option<String>,
     worktree_ref: Option<String>,
@@ -356,6 +357,19 @@ async fn reconcile_team_member_runtime(
                 member.member_id
             ))
         })?;
+    if let Some(runtime) = member.runtime.as_ref()
+        && let Some(expected_target_node_id) = trimmed_opt(runtime.target_node_id.as_deref())
+        && agent.target_node_id.as_deref() != Some(expected_target_node_id.as_str())
+    {
+        return Err(TeamRuntimeStartError::InvalidConfig(format!(
+            "team member '{}' expects target_node_id '{}' but agent '{}' is bound to '{}'",
+            member.member_id,
+            expected_target_node_id,
+            agent.id,
+            agent.target_node_id.as_deref().unwrap_or("main")
+        ))
+        .into());
+    }
     if member.role != "worker" || worker_runtime_is_valid(&agent) {
         return Ok(());
     }
