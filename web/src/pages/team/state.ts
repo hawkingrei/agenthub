@@ -24,7 +24,7 @@ export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = 
   { value: "overview", label: "Overview" },
   { value: "events", label: "Events" },
   { value: "steps", label: "Steps" },
-  { value: "mailbox", label: "Mailbox" },
+  { value: "mailbox", label: "Execution Mailbox" },
   { value: "member_console", label: "Member Console" },
   { value: "debug", label: "Debug" },
 ];

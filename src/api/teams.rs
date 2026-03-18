@@ -1385,29 +1385,31 @@ async fn maybe_notify_actor_new_mailbox_message_type(
         return Ok(());
     };
 
-    let has_pending_same_type = state
-        .teams
-        .has_pending_actor_message_payload_type(
-            run_id,
-            &message.to_actor_id,
-            payload_type.as_str(),
-            Some(message.message_id),
-        )
-        .await?;
-    if has_pending_same_type {
-        append_actor_mailbox_type_hint_event(
-            state,
-            run_id,
-            serde_json::json!({
-                "status": "suppressed",
-                "reason": "pending_same_type_exists",
-                "message_id": message.message_id,
-                "to_actor_id": message.to_actor_id,
-                "payload_type": payload_type,
-            }),
-        )
-        .await;
-        return Ok(());
+    if should_suppress_mailbox_type_hint_for_pending_same_type(payload_type.as_str()) {
+        let has_pending_same_type = state
+            .teams
+            .has_pending_actor_message_payload_type(
+                run_id,
+                &message.to_actor_id,
+                payload_type.as_str(),
+                Some(message.message_id),
+            )
+            .await?;
+        if has_pending_same_type {
+            append_actor_mailbox_type_hint_event(
+                state,
+                run_id,
+                serde_json::json!({
+                    "status": "suppressed",
+                    "reason": "pending_same_type_exists",
+                    "message_id": message.message_id,
+                    "to_actor_id": message.to_actor_id,
+                    "payload_type": payload_type,
+                }),
+            )
+            .await;
+            return Ok(());
+        }
     }
 
     let hint = build_actor_mailbox_type_hint_prompt(run_id, payload_type.as_str());
@@ -1471,6 +1473,10 @@ fn build_actor_mailbox_type_hint_prompt(run_id: &str, payload_type: &str) -> Str
     format!(
         "New mailbox message type '{payload_type}' is pending in run '{run_id}'. Use actor_inbox to inspect pending messages and batch-handle this type before ack."
     )
+}
+
+fn should_suppress_mailbox_type_hint_for_pending_same_type(payload_type: &str) -> bool {
+    !payload_type.trim().eq_ignore_ascii_case("chat_message")
 }
 
 async fn list_team_run_inbox(

@@ -1531,7 +1531,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await selectPrimaryTeamEntryFromSidebar(page, "all");
   await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
-  await openMainTeamAction(page, "Mailbox");
+  await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -2937,7 +2937,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await enableDeveloperMode(page);
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Mailbox");
-  await openMainTeamAction(page, "Mailbox");
+  await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
 
   const unreadWorker2Before = await unreadFor("Worker Agent Two");

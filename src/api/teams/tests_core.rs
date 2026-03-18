@@ -3111,7 +3111,7 @@ async fn team_run_messages_api_supports_idempotency_key() {
 }
 
 #[tokio::test]
-async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pending() {
+async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_suppress() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -3222,6 +3222,25 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
     .await
     .expect("send worker status message");
 
+    let Json(worker_status_repeat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"worker_status","status":"done-again"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send repeated worker status message");
+
     let Json(events) = list_team_run_events(
         State(state.clone()),
         headers.clone(),
@@ -3238,7 +3257,7 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
         .iter()
         .filter(|event| event.event_type == "actor_mailbox_type_hint")
         .collect::<Vec<_>>();
-    assert_eq!(hint_events.len(), 3);
+    assert_eq!(hint_events.len(), 4);
 
     let first_hint = hint_events
         .iter()
@@ -3252,11 +3271,8 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
         .iter()
         .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
         .expect("second chat hint event");
-    assert_eq!(second_hint.payload["status"], json!("suppressed"));
-    assert_eq!(
-        second_hint.payload["reason"],
-        json!("pending_same_type_exists")
-    );
+    let second_status = second_hint.payload["status"].as_str().expect("second status");
+    assert_ne!(second_status, "suppressed");
     assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
 
     let worker_status_hint = hint_events
@@ -3269,6 +3285,20 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
     assert_ne!(worker_status_state, "suppressed");
     assert_eq!(
         worker_status_hint.payload["payload_type"],
+        json!("worker_status")
+    );
+
+    let repeated_worker_status_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(worker_status_repeat.message_id))
+        .expect("repeated worker status hint event");
+    assert_eq!(repeated_worker_status_hint.payload["status"], json!("suppressed"));
+    assert_eq!(
+        repeated_worker_status_hint.payload["reason"],
+        json!("pending_same_type_exists")
+    );
+    assert_eq!(
+        repeated_worker_status_hint.payload["payload_type"],
         json!("worker_status")
     );
 

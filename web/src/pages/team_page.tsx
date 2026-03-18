@@ -258,10 +258,10 @@ function navigateTeamRoute(pathname: string): void {
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>([
   "conversation",
   "tasks",
-  "mailbox",
 ]);
 const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
+  "mailbox",
   "agent_acp",
   "member_console",
   "debug",
@@ -269,7 +269,13 @@ const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
 const TEAM_AGENT_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
   TEAM_AGENT_ADVANCED_TABS.has(item.value)
 );
-const TEAM_UTILITY_ADVANCED_TABS = new Set<TeamTab>(["overview", "events", "steps", "debug"]);
+const TEAM_UTILITY_ADVANCED_TABS = new Set<TeamTab>([
+  "overview",
+  "events",
+  "steps",
+  "mailbox",
+  "debug",
+]);
 const TEAM_UTILITY_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
   TEAM_UTILITY_ADVANCED_TABS.has(item.value)
 );
@@ -360,7 +366,6 @@ const TEAM_PRIMARY_WORKSPACE_ITEMS: ReadonlyArray<{
 }> = [
   { value: "conversation", label: "all", icon: "bi bi-chat-square-text" },
   { value: "tasks", label: "Kanban", icon: "bi bi-list-check" },
-  { value: "mailbox", label: "Mailbox", icon: "bi bi-inboxes" },
 ];
 
 const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
@@ -2335,7 +2340,7 @@ export function TeamPage(props: TeamPageProps) {
     : tab === "mailbox"
       ? selectedMemberLiveState
         ? selectedAgentLabel
-        : "Mailbox"
+        : "Execution Mailbox"
     : selectedMemberLiveState && isAgentWorkspace
       ? selectedAgentLabel
       : tab === "runs"
@@ -2352,7 +2357,7 @@ export function TeamPage(props: TeamPageProps) {
       : tab === "mailbox"
         ? selectedMemberLiveState
           ? "Direct mailbox thread for the selected agent."
-          : "Inspect mailbox delivery and direct member conversations."
+          : "Run-scoped mailbox delivery and direct member conversations."
       : tab === "runs"
         ? "Browse runs and choose the active execution context."
         : isAgentWorkspace
@@ -3750,12 +3755,12 @@ export function TeamPage(props: TeamPageProps) {
                   {tab === "mailbox" && !activeRunForSelectedTeam && (
                     <div className={teamSectionCardClassName}>
                       <h3 className={teamSectionTitleClassName}>
-                        {isAgentWorkspace ? selectedAgentLabel : "Mailbox"}
+                        {isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox"}
                       </h3>
                       <p className={teamSectionBodyTextClassName}>
                         {isAgentWorkspace
                           ? "This agent is selected, but there is no active run context for its direct thread yet. Use Runs to inspect execution history or wait for the next task."
-                          : "Start or select a run to inspect mailbox delivery and direct member conversations."}
+                          : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."}
                       </p>
                       <div className="mt-3">
                         <button

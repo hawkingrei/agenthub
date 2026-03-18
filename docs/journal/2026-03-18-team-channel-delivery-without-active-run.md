@@ -21,6 +21,9 @@ This change makes shared-thread channel delivery Team-scoped instead of active-r
     - current active Team run, when one exists;
     - otherwise, for the shared `all` thread only, an internal shared-thread mailbox run created on
       demand.
+  - mailbox type-hint wakeups no longer suppress repeated `chat_message` deliveries just because an
+    earlier chat message for the same actor is still pending; only non-chat payload types continue to
+    use same-type suppression.
 - `src/team/manager.rs`
   - added `ensure_shared_thread_mailbox_run()` to create or reuse an internal mailbox-only run for
     the Team shared thread;
@@ -38,6 +41,9 @@ This change makes shared-thread channel delivery Team-scoped instead of active-r
   - follow-up fix: the shared-thread post-send refresh helper now tolerates `null` active-run ids
     from the Team workspace state, so `NO ACTIVE RUN` sends refresh the hidden mailbox path instead
     of throwing on `.trim()`.
+  - the Team primary workspace no longer treats `Mailbox` as a first-class planning surface; the
+    run-scoped mailbox view now lives under `Advanced` as `Execution Mailbox`, while the main Team
+    workspace stays focused on `all`, `Kanban`, and `Runs`.
 - Tests
   - added API coverage for shared-thread message forwarding without an active run, including inbox,
     ack, and agent reply persistence;
@@ -63,10 +69,12 @@ After this change:
 ## Validation
 
 - `cargo test team_task_messages_api_forwards_shared_thread_human_chat_without_active_run`
+- `cargo test team_run_messages_emit_mailbox_type_hints_once_per_pending_payload_type`
 - `cargo test list_runs_supports_status_filter_and_cursor`
 - `cargo test teams_router_http_contract`
 - `cd web && npx vitest run src/pages/team/page_helpers.test.ts`
 - `cd web && npx vitest run src/pages/team/forge_helpers.test.ts src/pages/team/page_helpers.test.ts`
+- `cd web && npx vitest run src/pages/team_panels.test.tsx`
 - `cd web && npm run lint -- src/pages/team_page.tsx src/pages/team/page_helpers.test.ts`
 - `cd web && npm run build`
 - `cargo fmt --all --check`
