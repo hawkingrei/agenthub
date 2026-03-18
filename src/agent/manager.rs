@@ -213,40 +213,43 @@ fn build_runtime_start_policy(
                 );
             }
         }
-        TEAM_MEMBER_ROLE_WORKER => {
-            if !matches!(policy.worktree_mode, WorktreeMode::CreateWorktree) {
+        TEAM_MEMBER_ROLE_WORKER => match policy.worktree_mode {
+            WorktreeMode::UseExisting => {}
+            WorktreeMode::CreateWorktree => {
+                let repo = expanded_worktree_repo.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "team worker policy requires worktree_repo when worktree_mode=create_worktree (agent_id={})",
+                        agent.id
+                    )
+                })?;
+                let context = actor_context
+                    .ok_or_else(|| anyhow::anyhow!("worker role policy requires actor context"))?;
+                let actor_token = compact_token(&context.actor_id, "worker", 24);
+                let scope_token = context
+                    .current_run_id
+                    .as_deref()
+                    .or(context.team_id.as_deref())
+                    .map(|value| compact_token(value, "scope", 24))
+                    .unwrap_or_else(|| "scope".to_string());
+                let root = derive_worker_runtime_root(expanded_workdir);
+                let workdir = Path::new(&root)
+                    .join(format!("{actor_token}-{scope_token}"))
+                    .to_string_lossy()
+                    .to_string();
+                let branch = format!("worker-{actor_token}-{}", short_random_token());
+                policy.workdir = workdir;
+                policy.worktree_repo = Some(repo.to_string());
+                policy.worktree_mode = WorktreeMode::CreateWorktree;
+                policy.worktree_ref = Some("HEAD".to_string());
+                policy.worker_branch = Some(branch);
+            }
+            WorktreeMode::ReuseWorktree => {
                 anyhow::bail!(
-                    "team worker policy requires worktree_mode=create_worktree (agent_id={})",
+                    "team worker policy requires worktree_mode=use_existing or create_worktree (agent_id={})",
                     agent.id
                 );
             }
-            let repo = expanded_worktree_repo.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "team worker policy requires worktree_repo when worktree_mode=create_worktree (agent_id={})",
-                    agent.id
-                )
-            })?;
-            let context = actor_context
-                .ok_or_else(|| anyhow::anyhow!("worker role policy requires actor context"))?;
-            let actor_token = compact_token(&context.actor_id, "worker", 24);
-            let scope_token = context
-                .current_run_id
-                .as_deref()
-                .or(context.team_id.as_deref())
-                .map(|value| compact_token(value, "scope", 24))
-                .unwrap_or_else(|| "scope".to_string());
-            let root = derive_worker_runtime_root(expanded_workdir);
-            let workdir = Path::new(&root)
-                .join(format!("{actor_token}-{scope_token}"))
-                .to_string_lossy()
-                .to_string();
-            let branch = format!("worker-{actor_token}-{}", short_random_token());
-            policy.workdir = workdir;
-            policy.worktree_repo = Some(repo.to_string());
-            policy.worktree_mode = WorktreeMode::CreateWorktree;
-            policy.worktree_ref = Some("HEAD".to_string());
-            policy.worker_branch = Some(branch);
-        }
+        },
         _ => {}
     }
 

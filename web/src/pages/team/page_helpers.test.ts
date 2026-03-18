@@ -29,6 +29,7 @@ import {
   upsertEventList,
   upsertRun,
 } from "./page_helpers";
+import { mergeMailboxMessages } from "./mailbox_helpers";
 import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
 
 function buildRun(
@@ -327,6 +328,43 @@ describe("team page helpers", () => {
 
     expect(seen).toEqual({
       7: ["worker-agent", "worker-agent-2"],
+    });
+  });
+
+  it("resolves seen-by coverage from merged visible and shared-thread mailbox sources", () => {
+    const seen = resolveTaskMessageSeenByActors(
+      mergeMailboxMessages(
+        [
+          buildMailboxMessage(10, {
+            status: "pending",
+            to_actor_id: "worker-agent",
+            payload: {
+              type: "chat_message",
+              text: "visible snapshot copy",
+              task_conversation_id: "conv-1",
+              task_message_id: 42,
+            },
+          }),
+        ],
+        [
+          buildMailboxMessage(11, {
+            status: "delivered",
+            to_actor_id: "worker-agent",
+            payload: {
+              type: "chat_message",
+              text: "shared-thread mailbox copy",
+              task_conversation_id: "conv-1",
+              task_message_id: 42,
+            },
+          }),
+        ]
+      ),
+      "conv-1",
+      ["worker-agent"]
+    );
+
+    expect(seen).toEqual({
+      42: ["worker-agent"],
     });
   });
 

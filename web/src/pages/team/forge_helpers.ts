@@ -63,10 +63,10 @@ function readRuntimePath(value: unknown, key: "worktree_repo" | "workdir"): stri
   return typeof raw === "string" ? normalizeWorkdirInput(raw) : "";
 }
 
-function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
+function resolveTeamForgeWorkerWorkdir(teamSpec: unknown): string {
   const specRecord = asObjectRecord(teamSpec);
   const members = Array.isArray(specRecord?.members) ? specRecord.members : [];
-  let leaderWorkdir = "";
+  let fallbackWorkdir = "";
 
   for (const entry of members) {
     const member = asObjectRecord(entry);
@@ -79,12 +79,16 @@ function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
     if (runtimeRepo) {
       return runtimeRepo;
     }
-    if (!leaderWorkdir && role === "leader") {
-      leaderWorkdir = readRuntimePath(runtime, "workdir");
+    const runtimeWorkdir = readRuntimePath(runtime, "workdir");
+    if (!fallbackWorkdir && runtimeWorkdir) {
+      fallbackWorkdir = runtimeWorkdir;
+    }
+    if (role === "leader" && runtimeWorkdir) {
+      return runtimeWorkdir;
     }
   }
 
-  return leaderWorkdir;
+  return fallbackWorkdir;
 }
 
 export function buildTeamMemberProfileDraft(
@@ -185,13 +189,13 @@ export function resolveTeamForgeDefaults({
       role === "leader"
         ? buildLeaderForgeDefaultWorkdir(normalizedRoot, agentName)
         : resolveWorkdirForModalOpen(
-            "",
-            "create_worktree",
+            resolveTeamForgeWorkerWorkdir(teamSpec),
+            "use_existing",
             defaultWorktreeRoot,
             DEFAULT_WORKTREE_ROOT
           ),
-    worktreeMode: role === "leader" ? "use_existing" : "create_worktree",
-    worktreeRepo: role === "leader" ? "" : resolveTeamForgeWorktreeRepo(teamSpec),
+    worktreeMode: "use_existing",
+    worktreeRepo: "",
     worktreeRef: "",
   };
 }

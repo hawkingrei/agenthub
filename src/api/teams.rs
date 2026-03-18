@@ -795,7 +795,8 @@ async fn send_team_task_message(
         .map_err(map_team_internal_error)?;
     if from_actor_id == actor_scope.user_actor_id
         && let Err(err) =
-            maybe_forward_task_message_to_mailbox(&state, &team, &actor_scope, &message).await
+            maybe_forward_task_message_to_mailbox(&state, &team, &task, &actor_scope, &message)
+                .await
     {
         tracing::warn!(
             team_id = %team.id,
@@ -2288,12 +2289,10 @@ fn resolve_task_message_target(
 async fn maybe_forward_task_message_to_mailbox(
     state: &AppState,
     team: &TeamDefinitionRecord,
+    task: &TeamTaskRecord,
     actor_scope: &TaskActorScope,
     message: &TeamConversationMessageRecord,
 ) -> Result<(), ApiError> {
-    let Some(run) = load_latest_active_run_for_team(state, &team.id).await? else {
-        return Ok(());
-    };
     let Some(mailbox_sender) = resolve_task_mailbox_sender(actor_scope) else {
         return Ok(());
     };
@@ -2304,6 +2303,9 @@ async fn maybe_forward_task_message_to_mailbox(
     if recipient_ids.is_empty() {
         return Ok(());
     }
+    let Some(run) = resolve_task_message_mailbox_run(state, team, task).await? else {
+        return Ok(());
+    };
     for to_actor_id in recipient_ids {
         let forwarded_payload = build_task_mailbox_forward_payload(
             &message.payload,
@@ -2358,6 +2360,42 @@ async fn load_latest_active_run_for_team(
     Ok(runs
         .into_iter()
         .find(|run| is_team_run_status_active(&run.status)))
+}
+
+async fn resolve_task_message_mailbox_run(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+    task: &TeamTaskRecord,
+) -> Result<Option<TeamRunRecord>, ApiError> {
+    if let Some(run) = load_latest_active_run_for_team(state, &team.id).await? {
+        return Ok(Some(run));
+    }
+    if !is_shared_thread_task(task) {
+        return Ok(None);
+    }
+    let conversation = state
+        .teams
+        .get_task_conversation(&task.id)
+        .await
+        .map_err(map_team_internal_error)?;
+    let run = state
+        .teams
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Some(run))
+}
+
+fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
+    if task.title.trim().eq_ignore_ascii_case("all") {
+        return true;
+    }
+    task.context
+        .as_object()
+        .and_then(|obj| obj.get("bootstrap_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
 }
 
 fn is_team_run_status_active(status: &TeamRunStatus) -> bool {

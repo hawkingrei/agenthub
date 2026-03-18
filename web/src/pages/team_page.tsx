@@ -111,6 +111,7 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
+  isSharedThreadTask,
   resolveSelectedTeamTask,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
@@ -711,6 +712,9 @@ export function TeamPage(props: TeamPageProps) {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
+  const [conversationMailboxMessages, setConversationMailboxMessages] = useState<
+    TeamActorMessageRecord[]
+  >([]);
   const [taskMessagesLoading, setTaskMessagesLoading] = useState(false);
   const [taskMessageDraft, setTaskMessageDraft] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -1859,11 +1863,14 @@ export function TeamPage(props: TeamPageProps) {
   const conversationSeenByMessageId = useMemo(
     () =>
       resolveTaskMessageSeenByActors(
-        snapshot?.mailbox.recent_messages ?? [],
+        mergeMailboxMessages(
+          snapshot?.mailbox.recent_messages ?? [],
+          conversationMailboxMessages
+        ),
         taskMessages[0]?.conversation_id ?? "",
         taskConversationMemberIds
       ),
-    [snapshot?.mailbox.recent_messages, taskConversationMemberIds, taskMessages]
+    [conversationMailboxMessages, snapshot?.mailbox.recent_messages, taskConversationMemberIds, taskMessages]
   );
 
   const refreshTasks = useCallback(
@@ -1896,21 +1903,42 @@ export function TeamPage(props: TeamPageProps) {
       const taskId = (taskIdOverride ?? selectedConversation?.id ?? "").trim();
       if (!teamId || !taskId) {
         setTaskMessages([]);
+        setConversationMailboxMessages([]);
         return;
       }
       setTaskMessagesLoading(true);
       try {
-        const messages = await api.listTeamTaskMessages(props.token, teamId, taskId, {
-          limit: 200,
-        });
+        const taskRecord =
+          (selectedConversation?.id ?? "").trim() === taskId
+            ? selectedConversation
+            : taskList.find((task) => task.id === taskId) ?? null;
+        const [messages, taskDetail] = await Promise.all([
+          api.listTeamTaskMessages(props.token, teamId, taskId, {
+            limit: 200,
+          }),
+          taskRecord && isSharedThreadTask(taskRecord)
+            ? api.getTeamTask(props.token, teamId, taskId)
+            : Promise.resolve(null),
+        ]);
         setTaskMessages(messages);
+        const conversationRunId = taskDetail?.latest_run?.id?.trim() ?? "";
+        if (conversationRunId) {
+          const conversationSnapshot = await api.getTeamRunSnapshot(props.token, conversationRunId, {
+            event_limit: 1,
+            message_limit: 200,
+          });
+          setConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
+        } else {
+          setConversationMailboxMessages([]);
+        }
       } catch (err) {
         setError(parseErrorMessage(err));
+        setConversationMailboxMessages([]);
       } finally {
         setTaskMessagesLoading(false);
       }
     },
-    [props.token, selectedConversation?.id, selectedTeamId]
+    [props.token, selectedConversation, selectedTeamId, setError, taskList]
   );
 
   useEffect(() => {
@@ -1926,6 +1954,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     if (!selectedConversation) {
       setTaskMessages([]);
+      setConversationMailboxMessages([]);
       return;
     }
     void refreshTaskMessages(selectedConversation.id);

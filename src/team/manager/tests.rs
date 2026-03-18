@@ -3402,6 +3402,10 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .cancel_run(&first_run.id)
         .await
         .expect("cancel first run");
+    let shared_thread_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create hidden shared thread mailbox run");
 
     sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
         .bind(100_i64)
@@ -3415,6 +3419,12 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .execute(&db)
         .await
         .expect("set second run created_at");
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(300_i64)
+        .bind(&shared_thread_run.id)
+        .execute(&db)
+        .await
+        .expect("set shared thread run created_at");
 
     let all_runs = manager
         .list_runs(&team.id, 100, None, None)
@@ -3442,6 +3452,17 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list runs with cursor");
     assert_eq!(cursor_runs.len(), 1);
     assert_eq!(cursor_runs[0].id, first_run.id);
+
+    let hidden_run = manager
+        .get_latest_run_for_task(&team.id, "shared-thread-task")
+        .await
+        .expect("load hidden shared thread run")
+        .expect("hidden shared thread run should exist");
+    assert_eq!(hidden_run.id, shared_thread_run.id);
+    assert_eq!(
+        hidden_run.input["bootstrap_kind"],
+        Value::from("shared_thread_mailbox")
+    );
 }
 
 #[tokio::test]

@@ -162,8 +162,9 @@ fn trimmed_opt(value: Option<&str>) -> Option<String> {
 }
 
 fn worker_runtime_is_valid(agent: &AgentRecord) -> bool {
-    matches!(agent.worktree_mode, WorktreeMode::CreateWorktree)
-        && trimmed_opt(agent.worktree_repo.as_deref()).is_some()
+    matches!(agent.worktree_mode, WorktreeMode::UseExisting)
+        || (matches!(agent.worktree_mode, WorktreeMode::CreateWorktree)
+            && trimmed_opt(agent.worktree_repo.as_deref()).is_some())
 }
 
 fn build_worker_runtime_hint_config(

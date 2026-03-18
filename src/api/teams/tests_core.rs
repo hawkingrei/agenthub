@@ -3922,6 +3922,184 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
 }
 
 #[tokio::test]
+async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active_run() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-mailbox-forward-team".to_string(),
+            description: Some("shared thread mailbox forwarding coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(task_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create shared thread task");
+    assert!(task_created.latest_run.is_none());
+
+    let Json(directed_message) = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"<at>worker-1</at> please inspect the channel delivery path"
+            }),
+        }),
+    )
+    .await
+    .expect("send shared thread message");
+
+    let mailbox_run = state
+        .teams
+        .get_latest_run_for_task(&team.id, &task_created.task.id)
+        .await
+        .expect("load shared thread mailbox run")
+        .expect("shared thread mailbox run should exist");
+    assert_eq!(mailbox_run.status, crate::team::TeamRunStatus::Completed);
+    assert_eq!(
+        mailbox_run.input["bootstrap_kind"],
+        Value::from("shared_thread_mailbox")
+    );
+    assert_eq!(mailbox_run.input["channel"], Value::from("all"));
+    assert_eq!(
+        mailbox_run.input["task_id"],
+        Value::from(task_created.task.id.clone())
+    );
+
+    let rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&mailbox_run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load mailbox rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get::<String, _>("from_actor_id"), "planner");
+    assert_eq!(rows[0].get::<String, _>("to_actor_id"), "worker-1");
+    let forwarded_payload: Value =
+        serde_json::from_str(rows[0].get::<String, _>("payload_json").as_str())
+            .expect("parse forwarded payload");
+    assert_eq!(forwarded_payload["delivery_scope"], Value::from("mention"));
+    assert_eq!(
+        forwarded_payload["task_message_id"],
+        Value::from(directed_message.message_id)
+    );
+    assert_eq!(
+        forwarded_payload["task_conversation_id"],
+        Value::from(directed_message.conversation_id.clone())
+    );
+
+    let service = state.teams.actor_mailbox_service();
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: mailbox_run.id.clone(),
+            actor_id: "worker-1".to_string(),
+            cursor: None,
+            limit: Some(50),
+            states: None,
+        })
+        .await
+        .expect("load worker inbox");
+    assert_eq!(inbox.messages.len(), 1);
+    assert_eq!(inbox.messages[0].message_id, directed_message.message_id);
+
+    let acked = service
+        .actor_ack(ActorAckRequest {
+            run_id: mailbox_run.id.clone(),
+            actor_id: "worker-1".to_string(),
+            message_id: inbox.messages[0].message_id,
+            ack_token: None,
+            result: None,
+        })
+        .await
+        .expect("ack mailbox message");
+    assert_eq!(acked.state, crate::team::TeamActorMessageStatus::Delivered);
+
+    let _reply = service
+        .actor_send(ActorSendRequest {
+            run_id: mailbox_run.id.clone(),
+            from_actor_id: "worker-1".to_string(),
+            from_peer_id: None,
+            to_actor_id: "user".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"@planner delivery path looks healthy",
+                "correlation_id":"corr-shared-thread-forward"
+            }),
+            idempotency_key: Some("shared-thread-forward-reply".to_string()),
+        })
+        .await
+        .expect("send shared thread reply");
+
+    let Json(messages) = list_team_task_messages(
+        State(state),
+        headers,
+        Path((team.id, task_created.task.id)),
+        Query(ListTeamTaskMessagesQuery {
+            limit: Some(50),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list shared thread messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].from_actor_id, directed_message.from_actor_id);
+    assert_eq!(messages[1].from_actor_id, "worker-1");
+    assert_eq!(messages[1].route, "group_chat");
+    assert_eq!(messages[1].to_actor_id, None);
+    assert_eq!(messages[1].payload["type"], Value::from("chat_message"));
+    assert_eq!(
+        messages[1].payload["text"],
+        Value::from("@planner delivery path looks healthy")
+    );
+    assert_eq!(
+        messages[1].payload["correlation_id"],
+        Value::from("corr-shared-thread-forward")
+    );
+}
+
+#[tokio::test]
 async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

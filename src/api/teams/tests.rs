@@ -26,8 +26,11 @@ use crate::agent::WorktreeMode;
 use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::state::AppState;
-use crate::team::{TeamDefinitionConfig, TeamManager};
+use crate::team::{TeamActorMessageTransport, TeamDefinitionConfig, TeamManager};
 use agenthub_config::{AppConfig, PushConfig, WebConfig};
+use agenthub_team_actor::{
+    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
+};
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,

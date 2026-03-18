@@ -121,9 +121,9 @@ describe("team forge helpers", () => {
       agentPresetId: "kimi",
     });
     expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
-    expect(workerDefaults.agentWorkdir).toBe("~/.agenthub/worktrees");
-    expect(workerDefaults.worktreeMode).toBe("create_worktree");
-    expect(workerDefaults.worktreeRepo).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
+    expect(workerDefaults.agentWorkdir).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
+    expect(workerDefaults.worktreeMode).toBe("use_existing");
+    expect(workerDefaults.worktreeRepo).toBe("");
     expect(workerDefaults.draft.role).toBe("worker");
     expect(workerDefaults.draft.model).toBe("kimi");
   });

@@ -1,4 +1,4 @@
-# Team worker forge defaults follow create-worktree policy
+# Team worker forge defaults support direct workdir validation
 
 ## Summary
 
@@ -10,33 +10,36 @@ The Team `Add Agent` modal could open in an invalid worker configuration:
 
 Submitting from that state failed locally with `Agent workdir is required`, so the UI appeared to do nothing and never reached the backend create-agent request.
 
-This also conflicted with the backend Team worker runtime policy, which requires `worktree_mode=create_worktree`.
+For immediate validation against an existing repo such as `/Users/weizhenwang/devel/opensource/agent/tidb`, the Team worker path now allows direct `use_existing` workdir startup instead of forcing `create_worktree`.
 
 ## Changes
 
 - Updated `resolveTeamForgeDefaults()` so worker agents default to:
-  - `worktreeMode = "create_worktree"`
-  - `agentWorkdir = default_worktree_root`
-  - `worktreeRepo = preferred repo inferred from the current Team spec`
-- Repo inference now prefers:
+  - `worktreeMode = "use_existing"`
+  - `agentWorkdir = preferred repo/workdir inferred from the current Team spec`
+  - `worktreeRepo = ""`
+- Worker workdir inference now prefers:
   - an existing worker runtime `worktree_repo`
   - otherwise the leader runtime `workdir`
+  - otherwise any existing runtime `workdir`
 - Updated the Team page call sites to pass `selectedTeam.spec` into the forge-default resolver.
-- Added a focused regression test covering a Team whose leader runtime points at `/Users/weizhenwang/devel/opensource/agent/tidb`.
+- Relaxed Team worker runtime start policy so `use_existing` workdir is accepted for validation, while `create_worktree` remains supported.
+- Added focused frontend/backend regression tests covering a Team whose leader runtime points at `/Users/weizhenwang/devel/opensource/agent/tidb`.
 
 ## Why this fixes the issue
 
-Worker creation now opens in a state that matches the Team runtime policy:
+Worker creation now opens in a state that is directly usable for repo validation:
 
-- the modal uses `create_worktree` immediately
-- the workdir falls back to the runtime default worktree root
-- the repo path can be prefilled from existing Team member runtime hints
+- the modal keeps `use_existing`
+- the workdir can be prefilled from existing Team member runtime hints
+- Team runtime startup no longer rejects worker `use_existing` workdirs during validation
 
-That removes the invalid empty `use_existing + empty workdir` combination that blocked submission before any request was sent.
+That removes the invalid empty `use_existing + empty workdir` combination that blocked submission before any request was sent, and lets a worker point directly at an existing repo checkout for early validation.
 
 ## Validation
 
 - Focused helper regression: `src/pages/team/forge_helpers.test.ts`
+- Focused Rust regression: `src/agent/manager/tests.rs`
 - Frontend lint: `src/pages/team/forge_helpers.ts`, `src/pages/team/forge_helpers.test.ts`, `src/pages/team_page.tsx`
 - Frontend production build
 
