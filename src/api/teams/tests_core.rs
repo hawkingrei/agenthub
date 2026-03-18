@@ -730,13 +730,13 @@ async fn teams_api_start_and_stop_team_runtime() {
 }
 
 #[tokio::test]
-async fn teams_api_start_team_repairs_legacy_worker_runtime_from_prompt_hint() {
+async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_validation_is_allowed() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     let now = Utc::now().timestamp();
     let repo = create_named_worker_test_repo("shiro");
     let worker_id = "shiro-reviewer";
-    insert_legacy_team_member_agent(&state, worker_id).await;
+    let legacy_workdir = insert_legacy_team_member_agent(&state, worker_id).await;
     sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
         .bind(&repo)
         .bind(now)
@@ -779,10 +779,23 @@ async fn teams_api_start_team_repairs_legacy_worker_runtime_from_prompt_hint() {
         .expect("load repaired reviewer agent");
     assert!(matches!(
         reviewer.worktree_mode,
-        crate::agent::WorktreeMode::CreateWorktree
+        crate::agent::WorktreeMode::UseExisting
     ));
-    assert_eq!(reviewer.worktree_repo.as_deref(), Some(repo.as_str()));
-    assert_eq!(reviewer.worktree_ref.as_deref(), Some("HEAD"));
+    assert_eq!(reviewer.workdir, legacy_workdir);
+    assert!(
+        reviewer
+            .worktree_repo
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    );
+    assert!(
+        reviewer
+            .worktree_ref
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    );
 }
 
 #[tokio::test]
