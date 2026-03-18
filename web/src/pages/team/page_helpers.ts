@@ -396,13 +396,13 @@ export function resolveTaskConversationMemberIds(
 }
 
 export async function refreshTeamConversationMailboxAfterSend(args: {
-  activeRunId: string;
-  taskId: string;
+  activeRunId?: string | null;
+  taskId?: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   refreshEvents: (runId: string) => Promise<unknown>;
   refreshTaskMessages: (taskIdOverride?: string) => Promise<unknown>;
 }): Promise<void> {
-  const activeRunId = args.activeRunId.trim();
+  const activeRunId = args.activeRunId?.trim() ?? "";
   if (activeRunId) {
     await Promise.all([
       args.refreshSnapshot(activeRunId),
@@ -410,7 +410,7 @@ export async function refreshTeamConversationMailboxAfterSend(args: {
     ]);
     return;
   }
-  const taskId = args.taskId.trim();
+  const taskId = args.taskId?.trim() ?? "";
   if (taskId) {
     await args.refreshTaskMessages(taskId);
   }

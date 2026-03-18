@@ -35,6 +35,9 @@ This change makes shared-thread channel delivery Team-scoped instead of active-r
     runtime roster instead of the active-run snapshot, and the shared-thread composer refreshes the
     hidden mailbox snapshot immediately after each send so delivered counts do not stay stale at
     `0` until a manual reload.
+  - follow-up fix: the shared-thread post-send refresh helper now tolerates `null` active-run ids
+    from the Team workspace state, so `NO ACTIVE RUN` sends refresh the hidden mailbox path instead
+    of throwing on `.trim()`.
 - Tests
   - added API coverage for shared-thread message forwarding without an active run, including inbox,
     ack, and agent reply persistence;

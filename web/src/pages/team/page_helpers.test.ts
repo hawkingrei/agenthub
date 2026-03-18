@@ -405,6 +405,24 @@ describe("team page helpers", () => {
     expect(refreshEvents).not.toHaveBeenCalled();
   });
 
+  it("treats null active run ids as no-active-run during shared-thread refresh", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: null,
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledWith("task-all");
+    expect(refreshSnapshot).not.toHaveBeenCalled();
+    expect(refreshEvents).not.toHaveBeenCalled();
+  });
+
   it("refreshes active run snapshot after send when execution is live", async () => {
     const refreshSnapshot = vi.fn(async () => undefined);
     const refreshEvents = vi.fn(async () => undefined);
