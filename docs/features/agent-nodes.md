@@ -116,6 +116,7 @@ Manual checks:
 - gRPC relay route material currently carries scoped credentials directly so the relay pipeline can be exercised before node bootstrap is fully surfaced in the UI.
 - Remote agent control currently depends on cluster peers sharing internal gRPC auth/TLS configuration (shared secret / CA trust chain); the node registry itself does not store bootstrap secrets.
 - Remote node shadow records remain in the main AgentHub DB, while the execution node persists only its local runtime record with `target_node_id = NULL`.
+- The phased scale-out architecture, including gossip boundaries and the shared-key to zero-trust migration path, is documented in `docs/features/distributed-node-architecture.md`.
 
 ## Open Risks
 
