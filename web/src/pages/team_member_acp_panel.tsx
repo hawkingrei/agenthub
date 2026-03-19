@@ -68,6 +68,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [memberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
+  const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
+  const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -93,7 +95,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     acpView,
     activeAgent: selectedMemberId.trim() || null,
     activeSessionId: selectedSessionId ?? null,
-    acpTab: "conversation",
+    acpTab: effectiveAcpTab,
     eventMeta: conversationEventMeta,
     isAgentActive: Boolean(selectedSessionId),
     onLoadOlder: () => {
@@ -107,7 +109,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const [input, setInput] = React.useState("");
   const [inputHistory, setInputHistory] = React.useState<string[]>([]);
   const [inputHistoryCursor, setInputHistoryCursor] = React.useState(-1);
-  const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const [sendingInput, setSendingInput] = React.useState(false);
   const [terminalShowJump, setTerminalShowJump] = React.useState(false);
   const [acpModeId, setAcpModeId] = React.useState("");
@@ -307,7 +308,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpView,
       subtitle: selectedSessionId ? `session ${selectedSessionId}` : null,
       mobileTitle: null,
-      acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
+      acpTab: effectiveAcpTab,
       developerMode,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -355,10 +356,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpModeId,
       acpModelId,
       acpRuntimeMetrics,
-      acpTab,
       acpView,
       ansi,
       developerMode,
+      effectiveAcpTab,
       handleTerminalScroll,
       jumpToTerminalBottom,
       selectedSessionId,
@@ -366,7 +367,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       terminalShowJump,
     ]
   );
-  const showInputDock = !(developerMode && acpTab === "debug" && acpView.hasAcp);
+  const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const inputDockJumpMode = React.useMemo(
     () =>
       resolveInputDockJumpMode({

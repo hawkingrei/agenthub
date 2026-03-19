@@ -50,43 +50,43 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface-soft/70 p-1";
-const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
-const TASKS_BOARD_SCROLL_CLASS = "overflow-x-auto pb-2";
+  "rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-0.5";
+const TASKS_WORKSPACE_STACK_CLASS = "mt-3.5 flex flex-col gap-3.5";
+const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-1";
 const TASKS_BOARD_LANES_CLASS =
-  "grid min-w-full auto-cols-[minmax(250px,1fr)] grid-flow-col gap-4";
+  "grid min-w-full auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3";
 const TASKS_BOARD_COLUMN_CLASS =
-  "flex min-h-[320px] flex-col rounded-[20px] border border-ui-border bg-ui-surface-soft/55 p-3";
+  "flex min-h-[300px] flex-col rounded-[16px] border border-ui-border bg-ui-surface-soft/55 p-2.5";
 const TASKS_BOARD_COLUMN_HEADER_CLASS =
-  "flex items-start justify-between gap-3 border-b border-ui-border/80 pb-2.5";
+  "flex items-start justify-between gap-2.5 border-b border-ui-border/80 pb-2";
 const TASKS_BOARD_COLUMN_META_CLASS =
-  "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
-const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2.5";
+  "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
+const TASKS_BOARD_STACK_CLASS = "mt-2.5 flex min-h-0 flex-1 flex-col gap-2";
 const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-[16px] border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 text-sm text-ui-text-muted";
+  "rounded-[14px] border border-dashed border-ui-border-strong bg-ui-surface px-2.5 py-2.5 text-sm text-ui-text-muted";
 const TASKS_BOARD_CARD_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-[18px] border border-ui-border-strong bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-ui-border-strong bg-ui-surface px-2.5 py-2.5 text-left text-ui-text-primary shadow-sm transition";
 const TASKS_BOARD_CARD_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-[18px] border border-ui-border bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-ui-border bg-ui-surface px-2.5 py-2.5 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-2 text-left";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 text-left";
 const TASKS_BOARD_CARD_ACTIONS_CLASS =
-  "flex w-full flex-wrap gap-1.5 border-t border-ui-border pt-2";
+  "flex w-full flex-wrap gap-1.5 border-t border-ui-border pt-1.5";
 const TASKS_BOARD_STATUS_ACTION_CLASS =
   "inline-flex items-center gap-1 rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[11px] font-medium text-ui-text-secondary transition hover:border-ui-border-strong hover:bg-ui-surface disabled:cursor-not-allowed disabled:opacity-60";
 const TASKS_DETAIL_PANEL_CLASS =
-  "rounded-[20px] border border-ui-border bg-ui-surface p-4 shadow-sm";
+  "rounded-[18px] border border-ui-border bg-ui-surface p-3.5 shadow-sm";
 const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface-soft/65 px-3 py-2";
+  "rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-2.5 py-2";
 const TASKS_RUN_CARD_CLASS =
-  "rounded-[18px] border border-ui-border bg-ui-surface-soft/60 px-3 py-3";
-const TASKS_RUN_LIST_CLASS = "mt-4 space-y-2";
+  "rounded-[16px] border border-ui-border bg-ui-surface-soft/60 px-2.5 py-2.5";
+const TASKS_RUN_LIST_CLASS = "mt-3.5 space-y-2";
 const TASKS_DEBUG_DISCLOSURE_CLASS =
-  "mt-4 rounded-[18px] border border-dashed border-ui-border bg-ui-surface-soft/55 px-3 py-3";
+  "mt-3.5 rounded-[16px] border border-dashed border-ui-border bg-ui-surface-soft/55 px-2.5 py-2.5";
 const TASKS_DEBUG_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-center justify-between gap-3 text-left";
 const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-sm text-ui-text-muted";
@@ -105,6 +105,7 @@ const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: strin
   { value: "all", label: "All" },
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In progress" },
+  { value: "in_review", label: "In review" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
 ];
@@ -119,7 +120,12 @@ const TASK_BOARD_COLUMNS: ReadonlyArray<{
     label: "In progress",
     description: "Actively being worked on now.",
   },
-  { status: "completed", label: "Completed", description: "Done and ready to review." },
+  {
+    status: "in_review",
+    label: "In review",
+    description: "Implementation finished and waiting for review.",
+  },
+  { status: "completed", label: "Completed", description: "Reviewed and accepted." },
   { status: "canceled", label: "Canceled", description: "Stopped or intentionally dropped." },
 ] as const;
 
@@ -127,6 +133,8 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
   switch (status) {
     case "in_progress":
       return "active";
+    case "in_review":
+      return "warning";
     case "completed":
       return "active";
     case "canceled":
@@ -140,6 +148,9 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
 function formatTaskEmptyLabel(status: TeamTaskStatus): string {
   if (status === "in_progress") {
     return "No tasks in progress.";
+  }
+  if (status === "in_review") {
+    return "No tasks waiting for review.";
   }
   if (status === "completed") {
     return "No completed tasks yet.";
@@ -181,7 +192,13 @@ function listTaskStatusActions(status: TeamTaskStatus): Array<{
     case "in_progress":
       return [
         { nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" },
-        { nextStatus: "completed", label: "Complete", icon: "bi bi-check2" },
+        { nextStatus: "in_review", label: "Send to review", icon: "bi bi-eye" },
+        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
+      ];
+    case "in_review":
+      return [
+        { nextStatus: "in_progress", label: "Needs changes", icon: "bi bi-arrow-counterclockwise" },
+        { nextStatus: "completed", label: "Approve", icon: "bi bi-check2" },
         { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
       ];
     case "completed":
@@ -326,12 +343,12 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className={TASKS_WORKSPACE_STACK_CLASS}>
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-ui-text-primary">Board lanes</p>
-              <p className="mt-1 text-sm text-ui-text-muted">
-                Tasks stay grouped by status so planning work reads like a real kanban board.
+              <p className="mt-0.5 text-xs text-ui-text-muted">
+                Grouped by task state.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
@@ -448,10 +465,12 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-base font-semibold text-ui-text-primary">{selectedTask.title}</h4>
+                  <h4 className="text-[15px] font-semibold text-ui-text-primary sm:text-base">
+                    {selectedTask.title}
+                  </h4>
                   <p className="mt-1 text-sm text-ui-text-muted">
-                    Agents pick this task up automatically. Runs capture the execution timeline and
-                    final summary for each attempt.
+                    Agents pick this task up automatically. Runs capture the execution timeline,
+                    and successful attempts move the task into review before final completion.
                   </p>
                 </div>
                 <StatusBadge

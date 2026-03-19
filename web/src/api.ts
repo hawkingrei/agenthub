@@ -159,7 +159,7 @@ export type TeamRunStatus =
   | "failed"
   | "canceled";
 
-export type TeamTaskStatus = "open" | "in_progress" | "completed" | "canceled";
+export type TeamTaskStatus = "open" | "in_progress" | "in_review" | "completed" | "canceled";
 
 export type TeamStepStatus =
   | "submitted"

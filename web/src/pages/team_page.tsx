@@ -320,9 +320,9 @@ function validateRunInputJson(raw: string): RunInputValidation {
 const panelSecondaryButtonClassName =
   "inline-flex items-center justify-center rounded-[12px] border border-ui-border bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3 shadow-sm";
+  "min-h-0 min-w-0 rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-2 shadow-sm sm:p-2.5";
 const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-3.5 shadow-sm";
+  "min-h-0 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-2.5 shadow-sm sm:p-3";
 const teamSectionHeadingClassName =
   "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
@@ -341,9 +341,9 @@ const teamCreateModalHeaderClassName =
 const teamRunMetaItemClassName =
   "rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[11px] text-ui-text-primary shadow-sm";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-2";
+  "flex flex-wrap items-center gap-1";
 const workspacePrimaryTabsListClassName =
-  "flex flex-wrap items-center gap-3 border-b border-ui-border pb-1";
+  "flex flex-wrap items-center gap-2.5 border-b border-ui-border pb-1";
 const workspaceToolbarButtonBaseClassName =
   "inline-flex items-center gap-1 rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
 const workspaceToolbarButtonActiveClassName =
@@ -353,13 +353,13 @@ const workspaceToolbarButtonIdleClassName =
 const workspacePrimaryTabClassName =
   "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ui-text-muted transition hover:border-ui-border hover:text-ui-text-primary data-[active=true]:border-brand-primary data-[active=true]:bg-transparent data-[active=true]:text-ui-text-primary";
 const workspaceNoticeClassName =
-  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-ui-border bg-ui-surface px-3 py-2.5 shadow-sm";
+  "mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm";
 const workspaceNoticeTextClassName =
   "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-ui-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
 const teamRuntimeNoticeClassName =
-  "mb-4 flex items-start justify-between gap-3 rounded-[18px] border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-emerald-950 shadow-sm";
+  "mb-4 flex items-start justify-between gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-emerald-950 shadow-sm";
 const teamRuntimeNoticeTitleClassName =
   "text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800";
 const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-5 text-emerald-900";
@@ -416,23 +416,23 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
 });
 
 const teamWorkbenchPanelClassName =
-  "rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.96)_0%,rgba(244,241,233,0.96)_100%)] p-3.5 shadow-sm";
+  "rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.96)_0%,rgba(244,241,233,0.96)_100%)] p-2.5 shadow-sm";
 const teamWorkbenchAccentButtonClassName =
   "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
 const teamWorkbenchMutedButtonClassName =
   "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
-const teamWorkbenchHeaderActionsClassName = "flex flex-wrap items-center gap-2";
+const teamWorkbenchHeaderActionsClassName = "hidden md:flex flex-wrap items-center gap-1.5";
 const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3 shadow-sm";
+  "flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3 py-2.5 shadow-sm";
 const teamWorkbenchHeaderIconButtonClassName =
   "inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
   "inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted shadow-sm";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3.5 py-3.5 shadow-sm";
+  "rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-2.5 py-2.5 shadow-sm";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
 const teamWorkbenchInfoStripGridClassName =
@@ -1878,6 +1878,23 @@ export function TeamPage(props: TeamPageProps) {
     }
     return resolveSelectedTeamTask(taskList, selectedTaskId, selectedTeamId);
   }, [selectedTaskId, selectedTeamId, taskList]);
+  const taskMessageRequestSeqRef = useRef(0);
+  const taskMessageScopeRef = useRef<{ teamId: string; taskId: string }>({
+    teamId: "",
+    taskId: "",
+  });
+
+  useEffect(() => {
+    taskMessageRequestSeqRef.current += 1;
+    taskMessageScopeRef.current = {
+      teamId: selectedTeamId?.trim() ?? "",
+      taskId: (selectedConversation?.id ?? "").trim(),
+    };
+    if (!selectedTeamId || !selectedConversation?.id) {
+      setTaskMessagesLoading(false);
+    }
+  }, [selectedConversation?.id, selectedTeamId]);
+
   const conversationSeenByMessageId = useMemo(
     () =>
       resolveTaskMessageSeenByActors(
@@ -1917,8 +1934,14 @@ export function TeamPage(props: TeamPageProps) {
 
   const refreshTaskMessages = useCallback(
     async (taskIdOverride?: string) => {
-      const teamId = selectedTeamId;
+      const teamId = selectedTeamId?.trim() ?? "";
       const taskId = (taskIdOverride ?? selectedConversation?.id ?? "").trim();
+      const requestSeq = ++taskMessageRequestSeqRef.current;
+      taskMessageScopeRef.current = { teamId, taskId };
+      const isCurrentRequest = () =>
+        requestSeq === taskMessageRequestSeqRef.current &&
+        taskMessageScopeRef.current.teamId === teamId &&
+        taskMessageScopeRef.current.taskId === taskId;
       if (!teamId || !taskId) {
         setTaskMessages([]);
         setConversationMailboxMessages([]);
@@ -1938,6 +1961,9 @@ export function TeamPage(props: TeamPageProps) {
             ? api.getTeamTask(props.token, teamId, taskId)
             : Promise.resolve(null),
         ]);
+        if (!isCurrentRequest()) {
+          return;
+        }
         setTaskMessages(messages);
         const conversationRunId = taskDetail?.latest_run?.id?.trim() ?? "";
         if (conversationRunId) {
@@ -1945,15 +1971,23 @@ export function TeamPage(props: TeamPageProps) {
             event_limit: 1,
             message_limit: 200,
           });
+          if (!isCurrentRequest()) {
+            return;
+          }
           setConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
         } else {
           setConversationMailboxMessages([]);
         }
       } catch (err) {
+        if (!isCurrentRequest()) {
+          return;
+        }
         setError(parseErrorMessage(err));
         setConversationMailboxMessages([]);
       } finally {
-        setTaskMessagesLoading(false);
+        if (isCurrentRequest()) {
+          setTaskMessagesLoading(false);
+        }
       }
     },
     [props.token, selectedConversation, selectedTeamId, setError, taskList]
@@ -3347,7 +3381,7 @@ export function TeamPage(props: TeamPageProps) {
                       <Group
                         gap={8}
                         wrap="nowrap"
-                        className="rounded-[14px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
+                        className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
                       >
                         <Badge
                           variant="light"
@@ -3408,6 +3442,48 @@ export function TeamPage(props: TeamPageProps) {
                       >
                         Stop Team
                       </Button>
+                    </div>
+                    <div className="md:hidden">
+                      <Menu withinPortal={false} position="bottom-end" shadow="md">
+                        <Menu.Target>
+                          <button
+                            type="button"
+                            className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-semibold`}
+                            aria-label="Open team actions"
+                          >
+                            <i className="bi bi-three-dots" aria-hidden="true" />
+                            <span>Actions</span>
+                          </button>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item
+                            leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                            onClick={openTeamMemberForgeModal}
+                          >
+                            {teamMemberForgeLabel}
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                            onClick={onStartTeamRuntime}
+                            disabled={
+                              busy === "stop-team" ||
+                              selectedTeamRuntimeStatus.status === "running" ||
+                              !selectedTeamHasConfiguredMembers
+                            }
+                          >
+                            Start Team
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                            onClick={onStopTeamRuntime}
+                            disabled={
+                              busy === "start-team" || selectedTeamRuntimeStatus.status === "stopped"
+                            }
+                          >
+                            Stop Team
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
                     </div>
                   </div>
                   )}

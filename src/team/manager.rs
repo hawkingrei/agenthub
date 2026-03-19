@@ -1188,6 +1188,8 @@ impl TeamManager {
             WHERE team_id = "#,
         );
         builder.push_bind(team_id);
+        builder.push(" AND trim(COALESCE(json_extract(input_json, '$.bootstrap_kind'), '')) != ");
+        builder.push_bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND);
         if let Some(status) = status {
             builder.push(" AND status = ");
             builder.push_bind(status);
@@ -1206,7 +1208,7 @@ impl TeamManager {
             runs.push(parse_team_run_row(&row)?);
         }
         let runs = self.hydrate_run_summaries(runs).await?;
-        Ok(filter_visible_team_runs(runs))
+        Ok(runs)
     }
 
     pub async fn get_agent_session_status(
@@ -2002,7 +2004,7 @@ impl TeamManager {
                         &mut tx,
                         &team_id,
                         &run_input,
-                        TeamTaskStatus::Completed,
+                        TeamTaskStatus::InReview,
                         now,
                     )
                     .await?;

@@ -19,7 +19,8 @@ pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
     "canceled",
 ];
 
-pub const TEAM_TASK_STATUS_VALUES: [&str; 4] = ["open", "in_progress", "completed", "canceled"];
+pub const TEAM_TASK_STATUS_VALUES: [&str; 5] =
+    ["open", "in_progress", "in_review", "completed", "canceled"];
 pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +82,7 @@ pub struct TeamMemberContinuityStateRecord {
 pub enum TeamTaskStatus {
     Open,
     InProgress,
+    InReview,
     Completed,
     Canceled,
 }
@@ -208,7 +210,7 @@ mod tests {
     fn status_values_keep_expected_length() {
         assert_eq!(TEAM_RUN_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_STEP_STATUS_VALUES.len(), 6);
-        assert_eq!(TEAM_TASK_STATUS_VALUES.len(), 4);
+        assert_eq!(TEAM_TASK_STATUS_VALUES.len(), 5);
         assert_eq!(TEAM_RUN_CONTINUITY_MODE_VALUES.len(), 2);
     }
 

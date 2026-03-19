@@ -294,11 +294,31 @@ async function selectAgentFromSidebar(
     .first();
   await expect(agentItem).toBeVisible();
   await agentItem.click();
-  const agentAcpReady = page
-    .locator(".teams-main")
+  const teamsMain = page.locator(".teams-main");
+  const agentAcpReady = teamsMain
     .getByRole("tab", { name: "Conversation", exact: true })
     .first();
-  await expect(agentAcpReady).toBeVisible();
+  if ((await agentAcpReady.count()) > 0) {
+    await expect(agentAcpReady).toBeVisible();
+    return;
+  }
+  await expect(
+    teamsMain.getByText("Selected agent has no thread session yet.", { exact: true })
+  ).toBeVisible();
+}
+
+async function openKanbanDeveloperTools(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
+  if ((await compilePreviewButton.count()) === 0) {
+    const developerToolsSummary = page.locator("summary").filter({
+      has: page.getByText("Developer tools", { exact: true }),
+    });
+    await expect(developerToolsSummary).toBeVisible();
+    await developerToolsSummary.click();
+  }
+  await expect(compilePreviewButton).toBeVisible();
 }
 
 async function selectPrimaryTeamEntryFromSidebar(
@@ -1990,7 +2010,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
   await gotoTeams(page);
   await openTeamFromSelector(page, "Compile Team");
   await openMainTeamAction(page, "Kanban");
-  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
+  await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
@@ -2409,7 +2429,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await gotoTeams(page);
   await openTeamFromSelector(page, "Chat First Team");
   await openMainTeamAction(page, "Kanban");
-  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
+  await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation-chat-1", { exact: true })).toBeVisible();
@@ -2637,6 +2657,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   );
 
   await openMainTeamAction(page, "Kanban");
+  await openKanbanDeveloperTools(page);
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
   await expect(page.locator(".teams-step-body")).toContainText(

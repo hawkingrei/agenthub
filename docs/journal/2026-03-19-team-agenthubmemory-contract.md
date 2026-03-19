@@ -12,7 +12,8 @@ This change adds a Team-level contract:
   `.agenthubmemory/note/`;
 - leader normally runs in an empty coordination workspace and can skip `.agenthubmemory/`;
 - `.cache/context/` remains runtime continuity state rather than the primary long-lived notebook;
-- AgentHub startup should ensure `$HOME/.gitignore_global` contains `.agenthubmemory`.
+- AgentHub startup should ensure both `$HOME/.gitignore_global` and Git's default user ignore file
+  (`$XDG_CONFIG_HOME/git/ignore` or `~/.config/git/ignore`) contain `.agenthubmemory`.
 
 ## What Changed
 
@@ -34,7 +35,9 @@ This change adds a Team-level contract:
 - `web/src/pages/team/member_helpers.ts`
   - aligned the Team UI prompt previews with the same `.agenthubmemory` contract.
 - `src/state.rs`
-  - added startup logic that ensures `$HOME/.gitignore_global` contains `.agenthubmemory`.
+  - added startup logic that ensures `$HOME/.gitignore_global` and Git's default user ignore path
+    both contain `.agenthubmemory`, so the protection still works even when `core.excludesfile`
+    is not pointed at `.gitignore_global`.
 - `docs/features/agents-teams.md`
   - updated the stable Team feature spec with the `.agenthubmemory/` ownership rule.
 - `docs/todo.md`
@@ -45,6 +48,7 @@ This change adds a Team-level contract:
 - `cargo test -p agenthub-team-prompts`
 - `cargo test ensure_global_gitignore_contains_agenthubmemory_entry`
 - `cargo test ensure_global_gitignore_keeps_agenthubmemory_entry_idempotent`
+- `cargo test ensure_global_gitignore_prefers_xdg_config_home_when_present`
 
 ## Follow-up
 

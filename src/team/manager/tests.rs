@@ -663,7 +663,7 @@ async fn create_run_marks_linked_task_in_progress() {
 }
 
 #[tokio::test]
-async fn linked_run_completion_marks_task_completed() {
+async fn linked_run_completion_marks_task_in_review() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
 
@@ -716,7 +716,7 @@ async fn linked_run_completion_marks_task_completed() {
         .expect("complete step");
 
     let reloaded = manager.get_task(&task.id).await.expect("reload task");
-    assert_eq!(reloaded.status, TeamTaskStatus::Completed);
+    assert_eq!(reloaded.status, TeamTaskStatus::InReview);
 }
 
 #[tokio::test]
@@ -3510,6 +3510,20 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list runs with cursor");
     assert_eq!(cursor_runs.len(), 1);
     assert_eq!(cursor_runs[0].id, first_run.id);
+
+    let limited_runs = manager
+        .list_runs(&team.id, 1, None, None)
+        .await
+        .expect("list limited visible runs");
+    assert_eq!(limited_runs.len(), 1);
+    assert_eq!(limited_runs[0].id, second_run.id);
+
+    let limited_cursor_runs = manager
+        .list_runs(&team.id, 1, None, Some(200))
+        .await
+        .expect("list limited cursor visible runs");
+    assert_eq!(limited_cursor_runs.len(), 1);
+    assert_eq!(limited_cursor_runs[0].id, first_run.id);
 
     let hidden_run = manager
         .get_latest_run_for_task(&team.id, "shared-thread-task")

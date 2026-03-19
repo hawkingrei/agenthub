@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
@@ -29,6 +29,7 @@ pub struct AppState {
 const IDLE_GC_TIMEOUT_SECONDS: u64 = 5 * 60;
 const GLOBAL_GITIGNORE_ENTRY: &str = ".agenthubmemory";
 const GLOBAL_GITIGNORE_FILENAME: &str = ".gitignore_global";
+const DEFAULT_GIT_IGNORE_SUBPATH: &str = "git/ignore";
 
 impl AppState {
     pub async fn init(config: agenthub_config::AppConfig) -> anyhow::Result<Self> {
@@ -203,34 +204,57 @@ impl AppState {
 
         let home_path = PathBuf::from(home);
         std::fs::create_dir_all(&home_path)?;
-        let gitignore_path = home_path.join(GLOBAL_GITIGNORE_FILENAME);
-        let existing = match std::fs::read_to_string(&gitignore_path) {
-            Ok(content) => content,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(error) => return Err(error.into()),
-        };
-
-        if existing
-            .lines()
-            .any(|line| line.trim() == GLOBAL_GITIGNORE_ENTRY)
-        {
-            return Ok(());
+        for gitignore_path in resolve_global_gitignore_paths(&home_path) {
+            append_gitignore_entry(&gitignore_path, GLOBAL_GITIGNORE_ENTRY)?;
         }
-
-        let mut updated = existing;
-        if !updated.is_empty() && !updated.ends_with('\n') {
-            updated.push('\n');
-        }
-        updated.push_str(GLOBAL_GITIGNORE_ENTRY);
-        updated.push('\n');
-        std::fs::write(gitignore_path, updated)?;
         Ok(())
     }
 }
 
+fn resolve_global_gitignore_paths(home_path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![home_path.join(GLOBAL_GITIGNORE_FILENAME)];
+    let xdg_root = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_path.join(".config"));
+    let default_ignore_path = xdg_root.join(DEFAULT_GIT_IGNORE_SUBPATH);
+    if !paths.iter().any(|path| path == &default_ignore_path) {
+        paths.push(default_ignore_path);
+    }
+    paths
+}
+
+fn append_gitignore_entry(path: &Path, entry: &str) -> anyhow::Result<()> {
+    let existing = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
+
+    if existing.lines().any(|line| line.trim() == entry) {
+        return Ok(());
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated.push_str(entry);
+    updated.push('\n');
+    std::fs::write(path, updated)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::AppState;
+    use super::{
+        AppState, DEFAULT_GIT_IGNORE_SUBPATH, GLOBAL_GITIGNORE_ENTRY, GLOBAL_GITIGNORE_FILENAME,
+        append_gitignore_entry, resolve_global_gitignore_paths,
+    };
     use agenthub_config::AppConfig;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -240,20 +264,45 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    struct HomeGuard(Option<OsString>);
+    struct EnvGuard {
+        key: &'static str,
+        value: Option<OsString>,
+    }
 
-    impl Drop for HomeGuard {
+    impl Drop for EnvGuard {
         fn drop(&mut self) {
-            if let Some(value) = self.0.take() {
+            if let Some(value) = self.value.take() {
                 unsafe {
-                    std::env::set_var("HOME", value);
+                    std::env::set_var(self.key, value);
                 }
             } else {
                 unsafe {
-                    std::env::remove_var("HOME");
+                    std::env::remove_var(self.key);
                 }
             }
         }
+    }
+
+    fn set_env_var(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> EnvGuard {
+        let guard = EnvGuard {
+            key,
+            value: std::env::var_os(key),
+        };
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        guard
+    }
+
+    fn clear_env_var(key: &'static str) -> EnvGuard {
+        let guard = EnvGuard {
+            key,
+            value: std::env::var_os(key),
+        };
+        unsafe {
+            std::env::remove_var(key);
+        }
+        guard
     }
 
     async fn test_db() -> sqlx::SqlitePool {
@@ -376,16 +425,19 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("env lock");
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
-        let _home_guard = HomeGuard(std::env::var_os("HOME"));
-        unsafe {
-            std::env::set_var("HOME", &temp_home);
-        }
+        let _home_guard = set_env_var("HOME", &temp_home);
+        let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
 
         AppState::ensure_global_gitignore_agenthubmemory().expect("ensure global gitignore");
 
-        let gitignore_path = temp_home.join(".gitignore_global");
+        let gitignore_path = temp_home.join(GLOBAL_GITIGNORE_FILENAME);
         let content = std::fs::read_to_string(&gitignore_path).expect("read global gitignore");
         assert_eq!(content, ".agenthubmemory\n");
+
+        let default_ignore_path = temp_home.join(".config").join(DEFAULT_GIT_IGNORE_SUBPATH);
+        let default_content =
+            std::fs::read_to_string(&default_ignore_path).expect("read default git ignore");
+        assert_eq!(default_content, ".agenthubmemory\n");
 
         let _ = std::fs::remove_dir_all(&temp_home);
     }
@@ -395,18 +447,48 @@ mod tests {
         let _guard = ENV_LOCK.lock().expect("env lock");
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
-        let gitignore_path = temp_home.join(".gitignore_global");
+        let gitignore_path = temp_home.join(GLOBAL_GITIGNORE_FILENAME);
+        let default_ignore_path = temp_home.join(".config").join(DEFAULT_GIT_IGNORE_SUBPATH);
         std::fs::write(&gitignore_path, "*.log\n.agenthubmemory\n").expect("seed global gitignore");
-        let _home_guard = HomeGuard(std::env::var_os("HOME"));
-        unsafe {
-            std::env::set_var("HOME", &temp_home);
-        }
+        append_gitignore_entry(&default_ignore_path, GLOBAL_GITIGNORE_ENTRY)
+            .expect("seed default gitignore");
+        let _home_guard = set_env_var("HOME", &temp_home);
+        let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
 
         AppState::ensure_global_gitignore_agenthubmemory().expect("ensure global gitignore");
 
         let content = std::fs::read_to_string(&gitignore_path).expect("read global gitignore");
         assert_eq!(content, "*.log\n.agenthubmemory\n");
 
+        let default_content =
+            std::fs::read_to_string(&default_ignore_path).expect("read default gitignore");
+        assert_eq!(default_content, ".agenthubmemory\n");
+
         let _ = std::fs::remove_dir_all(&temp_home);
+    }
+
+    #[test]
+    fn ensure_global_gitignore_prefers_xdg_config_home_when_present() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        let temp_xdg = std::env::temp_dir().join(format!("agenthub-xdg-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        std::fs::create_dir_all(&temp_xdg).expect("create temp xdg");
+        let _home_guard = set_env_var("HOME", &temp_home);
+        let _xdg_guard = set_env_var("XDG_CONFIG_HOME", &temp_xdg);
+
+        let paths = resolve_global_gitignore_paths(&temp_home);
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths[0], temp_home.join(GLOBAL_GITIGNORE_FILENAME));
+        assert_eq!(paths[1], temp_xdg.join(DEFAULT_GIT_IGNORE_SUBPATH));
+
+        AppState::ensure_global_gitignore_agenthubmemory().expect("ensure global gitignore");
+
+        let xdg_content = std::fs::read_to_string(temp_xdg.join(DEFAULT_GIT_IGNORE_SUBPATH))
+            .expect("read xdg git ignore");
+        assert_eq!(xdg_content, ".agenthubmemory\n");
+
+        let _ = std::fs::remove_dir_all(&temp_home);
+        let _ = std::fs::remove_dir_all(&temp_xdg);
     }
 }

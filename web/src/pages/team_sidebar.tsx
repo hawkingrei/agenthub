@@ -97,25 +97,25 @@ function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[20px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.96)_100%)] p-3 shadow-sm";
+  "rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.96)_100%)] p-2.5 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface/80 p-1.5 shadow-sm";
+  "rounded-[14px] border border-ui-border bg-ui-surface/80 p-1 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface/85 px-3 py-2.5 shadow-sm";
+  "rounded-[14px] border border-ui-border bg-ui-surface/85 px-2.5 py-2 shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
   "inline-flex items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm";
+  "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-1.5 text-left text-ui-text-primary shadow-sm";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-transparent bg-transparent px-2.5 py-2 text-left text-ui-text-primary transition hover:border-ui-border/70 hover:bg-ui-surface";
+  "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-transparent bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:border-ui-border/70 hover:bg-ui-surface";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
   "flex w-full items-center justify-between border-b border-ui-border px-0 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-2 text-left text-ui-text-primary shadow-sm transition";
+  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-left text-ui-text-primary shadow-sm transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[12px] border border-transparent bg-transparent px-2.5 py-2 text-left text-ui-text-primary transition hover:bg-ui-surface";
+  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-transparent bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-ui-surface";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
 
@@ -161,7 +161,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
     });
   }, [normalizedTeamFilter, teams]);
   const hasTeamFilter = normalizedTeamFilter.length > 0;
-  const compactRail = !showTeamSelector;
 
   const toggleSection = React.useCallback((section: TeamSidebarSection) => {
     setSectionOpen((current) => ({
@@ -201,7 +200,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 aria-label="Refresh teams"
               >
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                <span>Refresh</span>
+                <span className="hidden sm:inline">Refresh</span>
               </button>
               <div className="relative">
                 <button
@@ -379,9 +378,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectConversation}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">all</span>
-              {!compactRail && (
-                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Shared team thread</span>
-              )}
             </button>
             <button
               type="button"
@@ -393,9 +389,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectKanban}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Kanban</span>
-              {!compactRail && (
-                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Task board</span>
-              )}
             </button>
           </div>
 
@@ -490,9 +483,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={() => onSelectUtilityTab("runs")}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Runs</span>
-              {!compactRail && (
-                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Browse runs</span>
-              )}
             </button>
             <button
               type="button"
@@ -504,11 +494,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={() => onSelectUtilityTab("overview")}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Advanced</span>
-              {!compactRail && (
-                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>
-                  Overview, events, steps, debug
-                </span>
-              )}
             </button>
           </div>
         </>

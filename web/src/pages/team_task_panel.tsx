@@ -42,22 +42,22 @@ type TeamTaskPanelProps = {
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-4 flex flex-col gap-3 rounded-[20px] border border-ui-border bg-ui-surface p-3.5 shadow-sm";
+  "mt-3 flex flex-col gap-2.5 rounded-[16px] border border-ui-border bg-ui-surface px-3 py-2.5 shadow-sm";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-1 py-3 text-ui-sm text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-3 min-h-[240px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
+  "mt-2.5 min-h-[220px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
-  "mt-3 min-h-[120px] overflow-y-auto pr-1";
+  "mt-2.5 min-h-[120px] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[22px] border border-ui-border bg-ui-surface-soft/65 px-3 py-3";
+  "rounded-[16px] border border-ui-border bg-ui-surface-soft/55 px-2.5 py-2.5";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
-  "relative flex w-full flex-col gap-3 pl-6 before:absolute before:bottom-3 before:left-[8px] before:top-3 before:w-px before:bg-ui-border/60";
+  "relative flex w-full flex-col gap-2.5 pl-5 before:absolute before:bottom-2 before:left-[6px] before:top-2 before:w-px before:bg-ui-border/55";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble relative rounded-[18px] border px-3.5 py-3 before:absolute before:-left-[22px] before:top-5 before:h-2.5 before:w-2.5 before:rounded-full before:border before:bg-ui-surface";
+  "acp-bubble relative rounded-[14px] border px-3 py-2.5 before:absolute before:-left-[18px] before:top-4 before:h-2 before:w-2 before:rounded-full before:border before:bg-ui-surface";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(31,122,61,0.18)] bg-[rgba(31,122,61,0.05)] text-ui-text-primary before:border-[rgba(31,122,61,0.24)] before:bg-[rgba(31,122,61,0.14)]`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
@@ -89,7 +89,7 @@ const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
   "text-[11px] font-medium text-ui-text-muted/80";
 const TEAM_TASK_OPTIONS_ROW_CLASS = "flex items-center justify-end";
 const TEAM_TASK_OPTIONS_PANEL_CLASS =
-  "mt-3 flex flex-wrap items-center gap-2 rounded-[16px] border border-ui-border bg-ui-surface-soft/75 p-2";
+  "mt-2.5 flex flex-wrap items-center gap-2 rounded-[14px] border border-ui-border bg-ui-surface-soft/75 p-2";
 const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
 
 function resolveMessageText(

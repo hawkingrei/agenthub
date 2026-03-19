@@ -8,6 +8,11 @@ Aligned remaining `fix/team-runtime-bugfixes` CI regressions after the Team ACP 
 - Updated the actor MCP tool-list test to include the new `agent_time_trigger_*` tools.
 - Removed Clippy-reported needless borrows in actor MCP tests and Team mailbox reply persistence.
 - Updated Team Playwright E2E flows to open the main `Runs` action through the scoped helper so the test no longer collides with duplicated `Runs` buttons.
+- Updated Team Playwright E2E helpers to follow the new shared ACP/Kanban contracts:
+  - agent-sidebar selection now accepts either the shared `Conversation` tab or the explicit
+    `Selected agent has no thread session yet.` empty state;
+  - Kanban compile-preview flows now expand the collapsed `Developer tools` section before
+    asserting `Compile Preview`.
 
 ## Validation
 
@@ -15,5 +20,6 @@ Aligned remaining `fix/team-runtime-bugfixes` CI regressions after the Team ACP 
 - `cargo test actor_mcp::tests::jsonrpc_team_members_returns_live_roster_view`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cd web && npm run lint -- tests/e2e/team_page.e2e.ts`
+- `cd web && npx playwright test tests/e2e/team_page.e2e.ts -g "team debug run ops compiles task preview and applies payload to create-run form"` (local environment still times out in `config.webServer`, so GitHub CI remains the source of truth for final E2E pass/fail)
 - `cargo fmt --all --check`
 - `git -c core.fsmonitor=false diff --check`

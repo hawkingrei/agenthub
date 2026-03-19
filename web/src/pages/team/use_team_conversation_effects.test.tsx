@@ -218,4 +218,49 @@ describe("useTeamConversationEffects", () => {
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
+
+  it("queues a follow-up refresh when selection changes mid-flight", async () => {
+    let resolveRefresh: (() => void) | null = null;
+    const refreshTaskMessages = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        })
+    );
+    const params = createParams({
+      refreshTaskMessages,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledTimes(1);
+    expect(refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
+
+    const nextParams = createParams({
+      refreshTaskMessages,
+      selectedConversationId: "task-next",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={nextParams} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRefresh?.();
+      await Promise.resolve();
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledTimes(2);
+    expect(refreshTaskMessages).toHaveBeenLastCalledWith("task-next");
+  });
 });

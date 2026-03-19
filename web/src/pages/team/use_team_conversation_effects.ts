@@ -24,20 +24,52 @@ export function useTeamConversationEffects({
   setConversationMailboxMessages,
 }: UseTeamConversationEffectsOptions) {
   const refreshInFlightRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
+  const latestSelectionRef = useRef({ teamId: "", conversationId: "" });
+  const refreshTaskMessagesRef = useRef(refreshTaskMessages);
   const sseConnectedRef = useRef(false);
 
+  useEffect(() => {
+    latestSelectionRef.current = {
+      teamId: selectedTeamId?.trim() ?? "",
+      conversationId: selectedConversationId?.trim() ?? "",
+    };
+  }, [selectedConversationId, selectedTeamId]);
+
+  useEffect(() => {
+    refreshTaskMessagesRef.current = refreshTaskMessages;
+  }, [refreshTaskMessages]);
+
   const refreshSelectedConversation = useCallback(async () => {
-    const conversationId = selectedConversationId?.trim() ?? "";
-    if (!selectedTeamId || !conversationId || refreshInFlightRef.current) {
+    const { teamId, conversationId } = latestSelectionRef.current;
+    if (!teamId || !conversationId) {
+      return;
+    }
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
       return;
     }
     refreshInFlightRef.current = true;
     try {
-      await refreshTaskMessages(conversationId);
+      for (;;) {
+        refreshQueuedRef.current = false;
+        const current = latestSelectionRef.current;
+        if (!current.teamId || !current.conversationId) {
+          return;
+        }
+        await refreshTaskMessagesRef.current(current.conversationId);
+        if (!refreshQueuedRef.current) {
+          return;
+        }
+      }
     } finally {
       refreshInFlightRef.current = false;
+      if (refreshQueuedRef.current) {
+        refreshQueuedRef.current = false;
+        void refreshSelectedConversation().catch(() => undefined);
+      }
     }
-  }, [refreshTaskMessages, selectedConversationId, selectedTeamId]);
+  }, []);
 
   useEffect(() => {
     const conversationId = selectedConversationId?.trim() ?? "";

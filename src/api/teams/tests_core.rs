@@ -4236,6 +4236,18 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     assert_eq!(updated.id, created.task.id);
     assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
 
+    let Json(reviewing) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: "in_review".to_string(),
+        }),
+    )
+    .await
+    .expect("move task into review");
+    assert_eq!(reviewing.status, crate::team::TeamTaskStatus::InReview);
+
     let err = update_team_task(
         State(state),
         headers,
@@ -4249,7 +4261,7 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     let body = decode_json_body(err.into_response()).await;
     assert_eq!(
         body["error"],
-        Value::from("status must be one of: open, in_progress, completed, canceled")
+        Value::from("status must be one of: open, in_progress, in_review, completed, canceled")
     );
 }
 

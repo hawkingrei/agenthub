@@ -2156,6 +2156,7 @@ fn normalize_task_status(value: Option<&str>) -> Result<TeamTaskStatus, ApiError
     {
         Some("open") => Ok(TeamTaskStatus::Open),
         Some("in_progress") => Ok(TeamTaskStatus::InProgress),
+        Some("in_review") => Ok(TeamTaskStatus::InReview),
         Some("completed") => Ok(TeamTaskStatus::Completed),
         Some("canceled") => Ok(TeamTaskStatus::Canceled),
         _ => Err(ApiError::bad_request(&format!(
@@ -2365,7 +2366,9 @@ async fn maybe_forward_task_message_to_mailbox(
     if recipient_ids.is_empty() {
         return Ok(());
     }
-    let Some(run) = resolve_task_message_mailbox_run(state, team, task).await? else {
+    let Some(run) =
+        resolve_task_message_mailbox_run(state, team, task, &message.conversation_id).await?
+    else {
         return Ok(());
     };
     for to_actor_id in recipient_ids {
@@ -2428,6 +2431,7 @@ async fn resolve_task_message_mailbox_run(
     state: &AppState,
     team: &TeamDefinitionRecord,
     task: &TeamTaskRecord,
+    conversation_id: &str,
 ) -> Result<Option<TeamRunRecord>, ApiError> {
     if let Some(run) = load_latest_active_run_for_team(state, &team.id).await? {
         return Ok(Some(run));
@@ -2435,14 +2439,9 @@ async fn resolve_task_message_mailbox_run(
     if !is_shared_thread_task(task) {
         return Ok(None);
     }
-    let conversation = state
-        .teams
-        .get_task_conversation(&task.id)
-        .await
-        .map_err(map_team_internal_error)?;
     let run = state
         .teams
-        .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, conversation_id)
         .await
         .map_err(map_team_internal_error)?;
     Ok(Some(run))

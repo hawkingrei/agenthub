@@ -93,6 +93,47 @@ function resolveTeamForgeWorkerWorkdir(teamSpec: unknown): string {
   return "";
 }
 
+function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
+  const specRecord = asObjectRecord(teamSpec);
+  const members = Array.isArray(specRecord?.members) ? specRecord.members : [];
+
+  for (const entry of members) {
+    const member = asObjectRecord(entry);
+    if (!member) {
+      continue;
+    }
+    const runtimeRepo = readRuntimePath(member.runtime, "worktree_repo");
+    if (runtimeRepo) {
+      return runtimeRepo;
+    }
+  }
+
+  for (const entry of members) {
+    const member = asObjectRecord(entry);
+    if (!member) {
+      continue;
+    }
+    const role = typeof member.role === "string" ? member.role.trim().toLowerCase() : "";
+    const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
+    if (role === "leader" && runtimeWorkdir) {
+      return runtimeWorkdir;
+    }
+  }
+
+  for (const entry of members) {
+    const member = asObjectRecord(entry);
+    if (!member) {
+      continue;
+    }
+    const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
+    if (runtimeWorkdir) {
+      return runtimeWorkdir;
+    }
+  }
+
+  return "";
+}
+
 export function buildTeamMemberProfileDraft(
   role: TeamMemberRole,
   model: string = DEFAULT_AGENT_PRESET_ID
@@ -197,7 +238,7 @@ export function resolveTeamForgeDefaults({
             DEFAULT_WORKTREE_ROOT
           ),
     worktreeMode: "use_existing",
-    worktreeRepo: "",
+    worktreeRepo: resolveTeamForgeWorktreeRepo(teamSpec),
     worktreeRef: "",
   };
 }

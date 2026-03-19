@@ -239,7 +239,7 @@ function buildPanelTask(
   id: string,
   overrides: Partial<{
     title: string;
-    status: "open" | "in_progress" | "completed" | "canceled";
+    status: "open" | "in_progress" | "in_review" | "completed" | "canceled";
     context: Record<string, unknown>;
     created_at: number;
     updated_at: number;
@@ -435,7 +435,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Worker Agent");
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
     expect(container.textContent).toContain("Worker Agent");
-    clickElement(findButtonByText(container, "Shared team thread"));
+    clickElement(findButtonByText(container, "all"));
     clickElement(findButtonByText(container, "Worker Agent"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
@@ -523,7 +523,7 @@ describe("team panels interactions", () => {
     expect(onSelectUtilityTab).toHaveBeenCalledWith("overview");
     expect(container.textContent).toContain("Teams 2");
     expect(container.textContent).toContain("Advanced");
-    expect(container.textContent).toContain("Shared team thread");
+    expect(container.textContent).toContain("all");
 
     act(() => {
       root.render(
@@ -581,7 +581,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Shared team thread"));
+    clickElement(findButtonByText(container, "all"));
     expect(onSelectConversation).toHaveBeenCalledTimes(2);
 
     act(() => {
@@ -1870,6 +1870,12 @@ describe("team panels interactions", () => {
                 created_at: 90,
                 updated_at: 220,
               }),
+              buildPanelTask("task-3", {
+                title: "Review release notes",
+                status: "in_review",
+                created_at: 80,
+                updated_at: 225,
+              }),
             ]}
             tasksLoading={false}
             selectedTaskId="task-2"
@@ -1916,6 +1922,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findButtonByAriaLabel(container, "Start Investigate bug"));
+    clickElement(findButtonByAriaLabel(container, "Approve Review release notes"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
@@ -1945,6 +1952,7 @@ describe("team panels interactions", () => {
     expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
     expect(onCreateTask).toHaveBeenCalledTimes(1);
     expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-1", "in_progress");
+    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-3", "completed");
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -1952,6 +1960,7 @@ describe("team panels interactions", () => {
     expect(onOpenRun).toHaveBeenCalledWith("run-2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).toContain("In review");
     expect(container.textContent).toContain("Completed");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("Latest run");
