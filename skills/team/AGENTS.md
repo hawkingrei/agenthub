@@ -47,6 +47,11 @@ restating the same rules.
 - Deferred follow-up:
   - use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for one-shot timed reminders that should arrive later as ACP messages
   - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
+- Agent loop:
+  - `agent_loop` is a human/operator-controlled idle watchdog, disabled by default
+  - enable or retune it only when a human/operator explicitly asks
+  - when enabled, silence may cause a configured ACP reminder prompt to be injected later
+  - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
 
 ## Team Phases
 

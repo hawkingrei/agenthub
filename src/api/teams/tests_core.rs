@@ -607,6 +607,7 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 actor_cli_path: actor_cli_path.clone(),
                 member_role: Some("leader".to_string()),
                 member_skills: Vec::new(),
+                contract_version: None,
                 continuity: None,
             }),
         )
@@ -625,6 +626,7 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 actor_cli_path,
                 member_role: Some("worker".to_string()),
                 member_skills: Vec::new(),
+                contract_version: None,
                 continuity: None,
             }),
         )
@@ -863,6 +865,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         actor_cli_path: default_actor_cli_path().expect("actor cli path"),
         member_role: Some("leader".to_string()),
         member_skills: vec!["team-leader-orchestrator".to_string()],
+        contract_version: None,
         continuity: None,
     };
 

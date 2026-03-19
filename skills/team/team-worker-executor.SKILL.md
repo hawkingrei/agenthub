@@ -36,6 +36,10 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Do not overwrite another member's identity description from worker context.
 - Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed
   rechecks, reminders, or future follow-up work that should come back as ACP prompts later.
+- `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
+  configured ACP reminder. Treat that reminder as a follow-up nudge for the same assignment and
+  not as a new human request.
+- Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
 
 ## Team TODO Lifecycle (Worker)
 

@@ -149,6 +149,9 @@ export function buildTeamMemberProfileDraft(
         ? [...DEFAULT_TEAM_LEADER_SKILLS]
         : [...DEFAULT_TEAM_WORKER_SKILLS],
     custom_skills: "",
+    agent_loop_enabled: false,
+    agent_loop_idle_seconds: "",
+    agent_loop_prompt: "",
   };
 }
 

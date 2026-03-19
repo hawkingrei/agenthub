@@ -42,12 +42,19 @@ struct TeamRuntimeMemberSpec {
     runtime: Option<TeamRuntimeMemberRuntimeHint>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct TeamRuntimeMemberRuntimeHint {
     name: Option<String>,
     workdir: Option<String>,
     worktree_repo: Option<String>,
     worktree_ref: Option<String>,
+    #[serde(default)]
+    agent_loop_enabled: Option<bool>,
+    #[serde(default)]
+    agent_loop_idle_seconds: Option<i64>,
+    #[serde(default)]
+    agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +142,7 @@ fn build_team_member_actor_context(
         actor_cli_path: actor_cli_path.to_string(),
         member_role: Some(member.role.clone()),
         member_skills: member.skills.clone(),
+        contract_version: None,
         continuity: None,
     })
 }

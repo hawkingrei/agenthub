@@ -630,6 +630,9 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+                agent_loop_idle_seconds INTEGER,
+                agent_loop_prompt TEXT,
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL

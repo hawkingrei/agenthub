@@ -20,6 +20,9 @@ pub struct AgentConfig {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +36,9 @@ pub struct AgentRecord {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
     pub status: AgentStatus,
     pub created_at: i64,
     pub updated_at: i64,

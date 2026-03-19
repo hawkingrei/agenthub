@@ -98,6 +98,12 @@ terminology and operating expectations drift.
 - Agents may schedule one-shot deferred follow-ups via `agent_time_trigger_set`, inspect them via
   `agent_time_trigger_list`, and cancel them via `agent_time_trigger_cancel`; fired triggers arrive
   later as ACP prompts back to the same agent.
+- Agents may also run an operator-controlled `agent_loop` idle watchdog:
+  - it is disabled by default
+  - a human/operator enables it externally per agent
+  - it injects a configured ACP follow-up prompt only after a silence timeout
+  - injected loop prompts are follow-up nudges for the current task, not new human intent
+  - enabling/disabling or updating loop settings must not block normal Team profile/task flows
 
 MCP enforcement baseline:
 

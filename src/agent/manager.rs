@@ -14,7 +14,7 @@ use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use uuid::Uuid;
 
 #[cfg(test)]
@@ -67,6 +67,7 @@ const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
+const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
 
 fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
     match provider {
@@ -79,6 +80,35 @@ fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
     SessionMismatch { expected: String, running: String },
+}
+
+#[derive(Debug, Clone)]
+struct AgentLoopConfig {
+    idle_seconds: i64,
+    prompt: String,
+}
+
+#[derive(Debug)]
+enum AgentLoopCommand {
+    Reconfigure(AgentLoopConfig),
+    Stop,
+}
+
+#[derive(Debug, Clone)]
+struct AgentLoopController {
+    tx: mpsc::UnboundedSender<AgentLoopCommand>,
+}
+
+impl AgentLoopController {
+    fn reconfigure(&self, config: AgentLoopConfig) -> anyhow::Result<()> {
+        self.tx
+            .send(AgentLoopCommand::Reconfigure(config))
+            .map_err(|_| anyhow::anyhow!("agent loop controller is no longer running"))
+    }
+
+    fn stop(&self) {
+        let _ = self.tx.send(AgentLoopCommand::Stop);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -277,12 +307,158 @@ fn ensure_team_leader_workdir_exists(
     Ok(())
 }
 
+fn normalize_agent_loop_config(
+    enabled: bool,
+    idle_seconds: Option<i64>,
+    prompt: Option<&str>,
+) -> Option<AgentLoopConfig> {
+    if !enabled {
+        return None;
+    }
+    let idle_seconds = idle_seconds.filter(|value| (10..=86_400).contains(value))?;
+    let prompt = prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)?;
+    Some(AgentLoopConfig {
+        idle_seconds,
+        prompt,
+    })
+}
+
+fn is_agent_loop_user_message(message: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(message) else {
+        return false;
+    };
+    value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| value == "user_message")
+        && value
+            .get("message_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value.starts_with(AGENT_LOOP_MESSAGE_ID_PREFIX))
+}
+
+async fn emit_agent_loop_prompt(
+    event_dbs: &AgentEventDbRouter,
+    idle_gc: Option<&AgentEventIdleGc>,
+    output_tx: &broadcast::Sender<AgentOutput>,
+    acp: &AcpHandle,
+    agent_id: &str,
+    session_id: &str,
+    prompt: &str,
+) -> anyhow::Result<()> {
+    let seq = Uuid::now_v7().to_string();
+    let message_id = format!("{AGENT_LOOP_MESSAGE_ID_PREFIX}{seq}");
+    let message = serde_json::json!({
+        "type": "user_message",
+        "text": prompt,
+        "chunk": false,
+        "message_id": message_id
+    })
+    .to_string();
+    let ts = Utc::now().timestamp();
+    let event_id = persist_agent_event(
+        event_dbs,
+        idle_gc,
+        agent_id,
+        session_id,
+        &seq,
+        ts,
+        &OutputStream::Acp,
+        &message,
+    )
+    .await?;
+    let _ = output_tx.send(AgentOutput {
+        event_id,
+        agent_id: agent_id.to_string(),
+        session_id: session_id.to_string(),
+        seq,
+        ts,
+        stream: OutputStream::Acp,
+        message,
+    });
+    acp.prompt(prompt.to_string()).await?;
+    Ok(())
+}
+
+fn spawn_agent_loop_controller(
+    event_dbs: AgentEventDbRouter,
+    idle_gc: Option<AgentEventIdleGc>,
+    output_tx: broadcast::Sender<AgentOutput>,
+    acp: AcpHandle,
+    agent_id: String,
+    session_id: String,
+    initial: AgentLoopConfig,
+) -> AgentLoopController {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut config = initial;
+        let mut output_rx = output_tx.subscribe();
+        let mut deadline =
+            tokio::time::Instant::now() + Duration::from_secs(config.idle_seconds as u64);
+        let mut injected_for_current_idle = false;
+
+        loop {
+            tokio::select! {
+                command = rx.recv() => match command {
+                    Some(AgentLoopCommand::Reconfigure(next)) => {
+                        config = next;
+                        deadline = tokio::time::Instant::now() + Duration::from_secs(config.idle_seconds as u64);
+                        injected_for_current_idle = false;
+                    }
+                    Some(AgentLoopCommand::Stop) | None => break,
+                },
+                event = output_rx.recv() => match event {
+                    Ok(output) => {
+                        if output.session_id != session_id {
+                            continue;
+                        }
+                        if is_agent_loop_user_message(&output.message) {
+                            continue;
+                        }
+                        deadline = tokio::time::Instant::now() + Duration::from_secs(config.idle_seconds as u64);
+                        injected_for_current_idle = false;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        deadline = tokio::time::Instant::now() + Duration::from_secs(config.idle_seconds as u64);
+                        injected_for_current_idle = false;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                },
+                _ = tokio::time::sleep_until(deadline), if !injected_for_current_idle => {
+                    if let Err(err) = emit_agent_loop_prompt(
+                        &event_dbs,
+                        idle_gc.as_ref(),
+                        &output_tx,
+                        &acp,
+                        &agent_id,
+                        &session_id,
+                        &config.prompt,
+                    ).await {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            session_id = %session_id,
+                            error = %err,
+                            "agent loop prompt injection failed"
+                        );
+                    }
+                    injected_for_current_idle = true;
+                }
+            }
+        }
+    });
+    AgentLoopController { tx }
+}
+
 pub struct AgentHandle {
     child: Arc<Mutex<Option<Child>>>,
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
     actor_context: Option<AcpActorSkillContext>,
+    loop_controller: Option<AgentLoopController>,
 }
 
 pub enum AgentInput {
@@ -361,12 +537,15 @@ impl AgentManager {
                     worktree_repo,
                     worktree_ref,
                     code_mode,
+                    agent_loop_enabled,
+                    agent_loop_idle_seconds,
+                    agent_loop_prompt,
                     source,
                     status,
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                 "#,
             )
             .bind(&id)
@@ -378,6 +557,9 @@ impl AgentManager {
             .bind(&worktree_repo)
             .bind(&config.worktree_ref)
             .bind(if config.code_mode { 1 } else { 0 })
+            .bind(if config.agent_loop_enabled { 1 } else { 0 })
+            .bind(config.agent_loop_idle_seconds)
+            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
             .bind(source)
             .bind(status_to_str(&status))
             .bind(now)
@@ -397,11 +579,14 @@ impl AgentManager {
                     worktree_repo,
                     worktree_ref,
                     code_mode,
+                    agent_loop_enabled,
+                    agent_loop_idle_seconds,
+                    agent_loop_prompt,
                     status,
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                 "#,
             )
             .bind(&id)
@@ -413,6 +598,9 @@ impl AgentManager {
             .bind(&worktree_repo)
             .bind(&config.worktree_ref)
             .bind(if config.code_mode { 1 } else { 0 })
+            .bind(if config.agent_loop_enabled { 1 } else { 0 })
+            .bind(config.agent_loop_idle_seconds)
+            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
             .bind(status_to_str(&status))
             .bind(now)
             .bind(now)
@@ -430,6 +618,16 @@ impl AgentManager {
             worktree_repo,
             worktree_ref: config.worktree_ref,
             code_mode: config.code_mode,
+            agent_loop_enabled: config.agent_loop_enabled,
+            agent_loop_idle_seconds: config.agent_loop_idle_seconds,
+            agent_loop_prompt: config.agent_loop_prompt.and_then(|value| {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }),
             status,
             created_at: now,
             updated_at: now,
@@ -442,7 +640,7 @@ impl AgentManager {
         let rows = if self.has_agents_source_column().await? {
             sqlx::query(
                 r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
                 FROM agents
                 WHERE COALESCE(source, 'manual') != ?1
                 ORDER BY created_at DESC
@@ -454,7 +652,7 @@ impl AgentManager {
         } else {
             sqlx::query(
                 r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
                 FROM agents
                 ORDER BY created_at DESC
                 "#,
@@ -472,6 +670,7 @@ impl AgentManager {
             let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
             let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
             let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
+            let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
             agents.push(AgentRecord {
                 id: agent_id,
                 name: row.get("name"),
@@ -482,6 +681,9 @@ impl AgentManager {
                 worktree_repo: row.try_get("worktree_repo").ok(),
                 worktree_ref: row.try_get("worktree_ref").ok(),
                 code_mode: code_mode != 0,
+                agent_loop_enabled: agent_loop_enabled != 0,
+                agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
+                agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
                 status: status_from_str(row.get::<String, _>("status").as_str()),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
@@ -646,7 +848,7 @@ impl AgentManager {
         self.reconcile_stale_running_agents().await?;
         let row = sqlx::query(
             r#"
-            SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
             FROM agents
             WHERE id = ?1
             "#,
@@ -658,6 +860,7 @@ impl AgentManager {
         let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
         let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
         let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
+        let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
         Ok(AgentRecord {
             id: row.get("id"),
             name: row.get("name"),
@@ -668,6 +871,9 @@ impl AgentManager {
             worktree_repo: row.try_get("worktree_repo").ok(),
             worktree_ref: row.try_get("worktree_ref").ok(),
             code_mode: code_mode != 0,
+            agent_loop_enabled: agent_loop_enabled != 0,
+            agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
+            agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
             status: status_from_str(row.get::<String, _>("status").as_str()),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
@@ -1262,6 +1468,7 @@ impl AgentManager {
         self.update_agent_status(&agent.id, AgentStatus::Running)
             .await?;
 
+        let mut loop_controller = None;
         let input = if let Some(provider) = acp_provider {
             let resume_session_id = self.get_persistent_session(&agent.id, provider).await?;
             let stdout = match stdout.take() {
@@ -1402,6 +1609,21 @@ impl AgentManager {
                     agent.id
                 );
             }
+            if let Some(config) = normalize_agent_loop_config(
+                agent.agent_loop_enabled,
+                agent.agent_loop_idle_seconds,
+                agent.agent_loop_prompt.as_deref(),
+            ) {
+                loop_controller = Some(spawn_agent_loop_controller(
+                    self.event_dbs.clone(),
+                    self.idle_gc.clone(),
+                    output_tx.clone(),
+                    handle.clone(),
+                    agent.id.clone(),
+                    session_id.clone(),
+                    config,
+                ));
+            }
             AgentInput::Acp(handle.clone())
         } else {
             AgentInput::Stdin(stdin.clone())
@@ -1413,6 +1635,7 @@ impl AgentManager {
             input,
             session_id: session_id.clone(),
             actor_context,
+            loop_controller,
         };
 
         {

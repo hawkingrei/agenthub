@@ -232,6 +232,9 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             worktree_repo TEXT,
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
+            agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+            agent_loop_idle_seconds INTEGER,
+            agent_loop_prompt TEXT,
             source TEXT NOT NULL DEFAULT 'manual',
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
@@ -998,6 +1001,24 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE agents ADD COLUMN code_mode INTEGER",
         "agents.code_mode",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_enabled INTEGER NOT NULL DEFAULT 0",
+        "agents.agent_loop_enabled",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_idle_seconds INTEGER",
+        "agents.agent_loop_idle_seconds",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_prompt TEXT",
+        "agents.agent_loop_prompt",
     )
     .await;
     add_column_if_missing(

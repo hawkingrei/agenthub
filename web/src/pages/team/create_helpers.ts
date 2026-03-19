@@ -27,6 +27,9 @@ export type TeamMemberProfileDraft = {
   prompt: string;
   skills: string[];
   custom_skills: string;
+  agent_loop_enabled: boolean;
+  agent_loop_idle_seconds: string;
+  agent_loop_prompt: string;
 };
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -235,9 +238,31 @@ function readSkillsField(record: Record<string, unknown>): string[] {
     .filter((item): item is string => item.length > 0);
 }
 
+function readRuntimeRecord(member: Record<string, unknown>): Record<string, unknown> | null {
+  return asObjectRecord(member.runtime);
+}
+
+function readRuntimeLoopEnabled(member: Record<string, unknown>): boolean {
+  return readRuntimeRecord(member)?.agent_loop_enabled === true;
+}
+
+function readRuntimeLoopIdleSeconds(member: Record<string, unknown>): string {
+  const value = readRuntimeRecord(member)?.agent_loop_idle_seconds;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return String(Math.trunc(value));
+  }
+  return "";
+}
+
+function readRuntimeLoopPrompt(member: Record<string, unknown>): string {
+  const value = readRuntimeRecord(member)?.agent_loop_prompt;
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function buildTeamMemberDraftFromSpec(
   spec: unknown,
-  memberId: string
+  memberId: string,
+  agent?: AgentRecord | null
 ): TeamMemberProfileDraft | null {
   const normalizedMemberId = memberId.trim();
   if (!normalizedMemberId) {
@@ -268,6 +293,12 @@ export function buildTeamMemberDraftFromSpec(
       (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT),
     skills: readSkillsField(member),
     custom_skills: "",
+    agent_loop_enabled: agent?.agent_loop_enabled ?? readRuntimeLoopEnabled(member),
+    agent_loop_idle_seconds:
+      agent?.agent_loop_idle_seconds != null
+        ? String(agent.agent_loop_idle_seconds)
+        : readRuntimeLoopIdleSeconds(member),
+    agent_loop_prompt: agent?.agent_loop_prompt?.trim() || readRuntimeLoopPrompt(member),
   };
 }
 
@@ -308,6 +339,7 @@ export function updateTeamMemberProfileInSpec(
   const prompt =
     draft.prompt.trim() ||
     (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
+  const parsedLoopIdleSeconds = Number.parseInt(draft.agent_loop_idle_seconds.trim(), 10);
   existingMembers[memberIndex] = {
     ...existing,
     member_id: memberId,
@@ -316,6 +348,15 @@ export function updateTeamMemberProfileInSpec(
     model: draft.model.trim() || undefined,
     prompt,
     skills: normalizedSkills,
+    runtime: {
+      ...asObjectRecord(existing.runtime),
+      agent_loop_enabled: draft.agent_loop_enabled || undefined,
+      agent_loop_idle_seconds:
+        draft.agent_loop_idle_seconds.trim() !== "" && Number.isFinite(parsedLoopIdleSeconds)
+          ? parsedLoopIdleSeconds
+          : undefined,
+      agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
+    },
   };
   nextSpec.members = existingMembers;
   return nextSpec;
@@ -332,6 +373,9 @@ function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, 
     worktree_repo: agent.worktree_repo ?? null,
     worktree_ref: agent.worktree_ref ?? null,
     code_mode: agent.code_mode,
+    agent_loop_enabled: agent.agent_loop_enabled ?? false,
+    agent_loop_idle_seconds: agent.agent_loop_idle_seconds ?? null,
+    agent_loop_prompt: agent.agent_loop_prompt ?? null,
   };
 }
 

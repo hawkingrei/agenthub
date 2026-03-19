@@ -112,6 +112,10 @@ Self-maintenance and deferred follow-up:
 - members may create one-shot timed self-reminders with `agent_time_trigger_set` and later inspect
   or cancel them with `agent_time_trigger_list` / `agent_time_trigger_cancel`
 - timed triggers are for deferred follow-up/review pings, not a replacement for Team task tracking
+- members may receive operator-configured `agent_loop` idle-follow-up prompts, but they must treat
+  them as continuation nudges for existing work rather than new human requests
+- `agent_loop` stays disabled by default and is enabled externally per member; agents should not
+  self-enable or retune it unless a human/operator explicitly asks
 
 AGENTS injection matrix:
 

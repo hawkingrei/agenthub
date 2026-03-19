@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify deployed ACP `agent_loop` rollout for Team members: `Teams -> Agents -> selected agent -> Edit profile` should allow a human/operator to enable loop, set an idle timeout and follow-up prompt, save profile changes without blocking even if loop update fails, and a running ACP member should later receive the configured idle follow-up prompt only after silence resumes; record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-19-team-agent-loop-idle-followup.md`).
+
 - [ ] Verify deployed Team channel rendering optimizations on `agenthub.hawkingrei.com`: `Teams -> all` should still open on the latest messages, only expand older history after upward navigation, avoid re-rendering hidden backlog markdown during normal tail-window viewing, and keep shared-thread refresh smooth under SSE/poll updates; record visible-browser validation notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-19-team-channel-rendering-performance.md`).
 
 - [ ] Verify deployed Team agent profile menu + slim header on `agenthub.hawkingrei.com`: `Teams -> Agents -> selected agent` should keep a much thinner header, expose an `Agent` menu for role/lifecycle/inbox/current-work/identity metadata, and allow editing description/model/prompt/skills through the Team-owned profile modal; record visible-browser validation notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-19-team-task-lifecycle-skill-and-agent-profile-menu.md`).

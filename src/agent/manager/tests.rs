@@ -158,6 +158,9 @@ fn build_agent_record_for_policy(
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,
         code_mode: true,
+        agent_loop_enabled: false,
+        agent_loop_idle_seconds: None,
+        agent_loop_prompt: None,
         status: AgentStatus::Created,
         created_at: 0,
         updated_at: 0,
@@ -179,6 +182,7 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
     let session_id = "session-leader-1";
@@ -215,6 +219,7 @@ fn runtime_start_policy_allows_worker_use_existing_workdir_for_validation() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -245,6 +250,7 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -281,6 +287,7 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -304,6 +311,7 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -325,6 +333,7 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -353,6 +362,7 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 

@@ -1569,6 +1569,9 @@ async fn teams_router_orchestrator_marks_input_required_when_team_runtime_is_sto
             worktree_repo: None,
             worktree_ref: None,
             code_mode: false,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
         })
         .await
         .expect("create member agent");

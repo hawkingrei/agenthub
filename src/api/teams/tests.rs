@@ -64,6 +64,7 @@ fn build_team_member_actor_context(
         actor_cli_path: default_actor_cli_path()?,
         member_role: Some(member.role.clone()),
         member_skills: member.skills.clone(),
+        contract_version: None,
         continuity: None,
     })
 }
@@ -282,6 +283,9 @@ async fn init_test_schema(db: &SqlitePool) {
             worktree_repo TEXT,
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
+            agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+            agent_loop_idle_seconds INTEGER,
+            agent_loop_prompt TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
@@ -918,6 +922,9 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
         })
         .await
         .expect("create agent");
@@ -931,6 +938,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         actor_cli_path: actor_cli_path.clone(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 

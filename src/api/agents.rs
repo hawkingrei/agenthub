@@ -34,6 +34,9 @@ pub struct CreateAgentRequest {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: Option<bool>,
+    pub agent_loop_enabled: Option<bool>,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -62,6 +65,8 @@ pub struct AgentDiscoveryIdentity {
 pub struct AgentDiscoveryRuntime {
     pub acp_provider: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
     pub worktree_mode: WorktreeMode,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -92,6 +97,13 @@ pub struct ListEventsQuery {
 #[derive(Debug, serde::Deserialize)]
 pub struct SetCodeModeRequest {
     pub code_mode: bool,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetAgentLoopRequest {
+    pub enabled: bool,
+    pub idle_seconds: Option<i64>,
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -163,6 +175,7 @@ pub fn router(state: AppState) -> Router {
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
+        .route("/:id/agent_loop", post(set_agent_loop))
         .route("/:id/acp/session/clear", post(clear_acp_session))
         .route("/:id/acp/mode", post(set_acp_mode))
         .route("/:id/acp/model", post(set_acp_model))
@@ -199,6 +212,9 @@ async fn create_agent(
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
         code_mode: payload.code_mode.unwrap_or(true),
+        agent_loop_enabled: payload.agent_loop_enabled.unwrap_or(false),
+        agent_loop_idle_seconds: payload.agent_loop_idle_seconds,
+        agent_loop_prompt: payload.agent_loop_prompt,
     };
     let agent = if source == AGENT_SOURCE_MANUAL {
         state.agents.create_agent(config).await?
@@ -407,6 +423,45 @@ async fn set_code_mode(
     state
         .agents
         .set_code_mode(&agent_id, payload.code_mode)
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn set_agent_loop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetAgentLoopRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let prompt = payload
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if payload.enabled && prompt.is_none() {
+        return Err(ApiError::bad_request(
+            "agent_loop.prompt is required when enabling agent loop",
+        ));
+    }
+    if payload.enabled
+        && !payload
+            .idle_seconds
+            .is_some_and(|value| (10..=86_400).contains(&value))
+    {
+        return Err(ApiError::bad_request(
+            "agent_loop.idle_seconds must be between 10 and 86400 when enabling agent loop",
+        ));
+    }
+    state
+        .agents
+        .set_agent_loop_config(
+            &agent_id,
+            payload.enabled,
+            payload.idle_seconds,
+            prompt.as_deref(),
+        )
         .await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
@@ -644,6 +699,9 @@ fn build_agent_discovery_card(
     if agent.code_mode {
         capability_tags.push("code_mode".to_string());
     }
+    if agent.agent_loop_enabled {
+        capability_tags.push("agent_loop".to_string());
+    }
     if matches!(
         agent.worktree_mode,
         WorktreeMode::CreateWorktree | WorktreeMode::ReuseWorktree
@@ -678,6 +736,8 @@ fn build_agent_discovery_card(
         runtime: AgentDiscoveryRuntime {
             acp_provider: acp_provider.map(str::to_string),
             code_mode: agent.code_mode,
+            agent_loop_enabled: agent.agent_loop_enabled,
+            agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             worktree_mode: agent.worktree_mode.clone(),
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
@@ -787,6 +847,7 @@ fn parse_start_actor_runtime_context(
             .member_role
             .map(|value| value.trim().to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     }))
 }
@@ -803,6 +864,7 @@ mod tests {
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
     use serde_json::{Value, json};
+    use sqlx::Row;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use tower::ServiceExt;
@@ -870,6 +932,9 @@ mod tests {
             worktree_repo: Some("/tmp/repo".to_string()),
             worktree_ref: Some("main".to_string()),
             code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
             status: crate::agent::AgentStatus::Running,
             created_at: 1,
             updated_at: 2,
@@ -914,6 +979,9 @@ mod tests {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: false,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
             status: crate::agent::AgentStatus::Created,
             created_at: 1,
             updated_at: 2,
@@ -1164,6 +1232,9 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+                agent_loop_idle_seconds INTEGER,
+                agent_loop_prompt TEXT,
                 source TEXT NOT NULL DEFAULT 'manual',
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
@@ -2275,6 +2346,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create hidden member");
@@ -2290,6 +2364,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create visible agent");
@@ -2447,6 +2524,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create manual agent");
@@ -2463,6 +2543,9 @@ mod tests {
                     worktree_repo: None,
                     worktree_ref: None,
                     code_mode: false,
+                    agent_loop_enabled: false,
+                    agent_loop_idle_seconds: None,
+                    agent_loop_prompt: None,
                 },
                 "team_forge",
             )
@@ -2565,5 +2648,111 @@ mod tests {
         assert_eq!(cancel_resp.status(), StatusCode::OK);
         let canceled = decode_json_body(cancel_resp).await;
         assert_eq!(canceled["status"], Value::from("ok"));
+    }
+
+    #[tokio::test]
+    async fn set_agent_loop_route_updates_agent_config_without_blocking() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("loop-agent")
+        .bind("loop-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert loop agent");
+
+        let enable_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": true,
+                    "idle_seconds": 900,
+                    "prompt": "Resume by checking the current ACP thread and taking the next step."
+                })),
+            ))
+            .await
+            .expect("enable agent loop");
+        assert_eq!(enable_resp.status(), StatusCode::OK);
+        let enabled_body = decode_json_body(enable_resp).await;
+        assert_eq!(enabled_body["status"], Value::from("ok"));
+
+        let enabled_row = sqlx::query(
+            "SELECT agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt FROM agents WHERE id = ?1",
+        )
+        .bind("loop-agent")
+        .fetch_one(&state.db)
+        .await
+        .expect("load enabled loop agent row");
+        assert_eq!(enabled_row.get::<i64, _>("agent_loop_enabled"), 1);
+        assert_eq!(enabled_row.get::<i64, _>("agent_loop_idle_seconds"), 900);
+        assert_eq!(
+            enabled_row.get::<String, _>("agent_loop_prompt"),
+            "Resume by checking the current ACP thread and taking the next step."
+        );
+
+        let invalid_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": true,
+                    "idle_seconds": 900
+                })),
+            ))
+            .await
+            .expect("reject loop config without prompt");
+        assert_eq!(invalid_resp.status(), StatusCode::BAD_REQUEST);
+        let invalid_text = decode_text_body(invalid_resp).await;
+        assert!(
+            invalid_text.contains("agent_loop.prompt is required"),
+            "unexpected error: {invalid_text}"
+        );
+
+        let disable_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": false
+                })),
+            ))
+            .await
+            .expect("disable agent loop");
+        assert_eq!(disable_resp.status(), StatusCode::OK);
+
+        let disabled_row = sqlx::query(
+            "SELECT agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt FROM agents WHERE id = ?1",
+        )
+        .bind("loop-agent")
+        .fetch_one(&state.db)
+        .await
+        .expect("load disabled loop agent row");
+        assert_eq!(disabled_row.get::<i64, _>("agent_loop_enabled"), 0);
+        assert_eq!(disabled_row.get::<i64, _>("agent_loop_idle_seconds"), 900);
+        assert_eq!(
+            disabled_row.get::<String, _>("agent_loop_prompt"),
+            "Resume by checking the current ACP thread and taking the next step."
+        );
     }
 }

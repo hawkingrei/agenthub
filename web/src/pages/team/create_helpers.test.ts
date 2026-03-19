@@ -135,6 +135,9 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: false,
+      agent_loop_enabled: false,
+      agent_loop_idle_seconds: null,
+      agent_loop_prompt: null,
     });
     expect(spec.members[1]?.runtime).toEqual({
       name: "worker-alpha",
@@ -143,6 +146,9 @@ describe("team create helpers", () => {
       worktree_repo: "/tmp/repos/shiro",
       worktree_ref: "HEAD",
       code_mode: true,
+      agent_loop_enabled: false,
+      agent_loop_idle_seconds: null,
+      agent_loop_prompt: null,
     });
     expect(spec.steps).toEqual([
       {
@@ -198,6 +204,9 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: false,
+      agent_loop_enabled: false,
+      agent_loop_idle_seconds: null,
+      agent_loop_prompt: null,
     });
   });
 
@@ -393,6 +402,9 @@ describe("team create helpers", () => {
       prompt: "Coordinate review and final synthesis.",
       skills: ["team-deliberation-rules"],
       custom_skills: "custom-skill",
+      agent_loop_enabled: true,
+      agent_loop_idle_seconds: "900",
+      agent_loop_prompt: "Resume review synthesis after silence.",
     }) as { members: Array<Record<string, unknown>> };
     expect(updated.members).toHaveLength(1);
     expect(updated.members[0]).toMatchObject({
@@ -417,6 +429,9 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: true,
+      agent_loop_enabled: true,
+      agent_loop_idle_seconds: 900,
+      agent_loop_prompt: "Resume review synthesis after silence.",
     });
   });
 

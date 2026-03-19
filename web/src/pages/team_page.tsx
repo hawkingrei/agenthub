@@ -6,6 +6,7 @@ import {
   Group,
   Menu,
   SegmentedControl,
+  Switch,
   Tabs,
   TextInput,
   Textarea,
@@ -1694,7 +1695,11 @@ export function TeamPage(props: TeamPageProps) {
       setError("Select an agent first");
       return;
     }
-    const draft = buildTeamMemberDraftFromSpec(selectedTeam.spec, selectedAgentWorkspaceMemberId);
+    const draft = buildTeamMemberDraftFromSpec(
+      selectedTeam.spec,
+      selectedAgentWorkspaceMemberId,
+      teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null
+    );
     if (!draft) {
       setError("Unable to load the selected agent profile");
       return;
@@ -1703,7 +1708,13 @@ export function TeamPage(props: TeamPageProps) {
     setWarning(null);
     setTeamMemberEditDraft(draft);
     setShowTeamMemberEditModal(true);
-  }, [selectedAgentWorkspaceMemberId, selectedTeam, setError, setWarning]);
+  }, [
+    selectedAgentWorkspaceMemberId,
+    selectedTeam,
+    setError,
+    setWarning,
+    teamMemberAgentsById,
+  ]);
 
   const closeTeamMemberEditModal = useCallback(() => {
     if (busy === "save-team-member-profile") {
@@ -1828,6 +1839,51 @@ export function TeamPage(props: TeamPageProps) {
         spec: nextSpec,
         expected_updated_at: selectedTeam.updated_at,
       });
+      const idleSeconds = teamMemberEditDraft.agent_loop_idle_seconds.trim();
+      const parsedIdleSeconds = Number.parseInt(idleSeconds, 10);
+      const loopPayload = {
+        enabled: teamMemberEditDraft.agent_loop_enabled,
+        idle_seconds:
+          teamMemberEditDraft.agent_loop_enabled &&
+          idleSeconds !== "" &&
+          Number.isFinite(parsedIdleSeconds)
+            ? parsedIdleSeconds
+            : null,
+        prompt:
+          teamMemberEditDraft.agent_loop_enabled && teamMemberEditDraft.agent_loop_prompt.trim()
+            ? teamMemberEditDraft.agent_loop_prompt.trim()
+            : null,
+      };
+      try {
+        await api.setAgentLoop(props.token, teamMemberEditDraft.member_id, loopPayload);
+        setAgents((prev) =>
+          prev.map((agent) =>
+            agent.id === teamMemberEditDraft.member_id
+              ? {
+                  ...agent,
+                  agent_loop_enabled: loopPayload.enabled,
+                  agent_loop_idle_seconds: loopPayload.idle_seconds,
+                  agent_loop_prompt: loopPayload.prompt,
+                }
+              : agent
+          )
+        );
+        setTeamMemberAgentsById((prev) => ({
+          ...prev,
+          [teamMemberEditDraft.member_id]: prev[teamMemberEditDraft.member_id]
+            ? {
+                ...prev[teamMemberEditDraft.member_id],
+                agent_loop_enabled: loopPayload.enabled,
+                agent_loop_idle_seconds: loopPayload.idle_seconds,
+                agent_loop_prompt: loopPayload.prompt,
+              }
+            : prev[teamMemberEditDraft.member_id],
+        }));
+      } catch (loopErr) {
+        setWarning(
+          `Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`
+        );
+      }
       setTeams((prev) =>
         [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
           left.name.localeCompare(right.name)
@@ -2282,8 +2338,14 @@ export function TeamPage(props: TeamPageProps) {
     if (!selectedTeam) {
       return null;
     }
-    return buildTeamMemberDraftFromSpec(selectedTeam.spec, selectedAgentWorkspaceMemberId);
-  }, [selectedAgentWorkspaceMemberId, selectedTeam]);
+    return buildTeamMemberDraftFromSpec(
+      selectedTeam.spec,
+      selectedAgentWorkspaceMemberId,
+      selectedAgentWorkspaceMemberId
+        ? teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null
+        : null
+    );
+  }, [selectedAgentWorkspaceMemberId, selectedTeam, teamMemberAgentsById]);
   const selectedAgentStatusView = useMemo(
     () => resolveAgentWorkspaceStatusView(selectedAgentLiveState),
     [selectedAgentLiveState]
@@ -3286,6 +3348,14 @@ export function TeamPage(props: TeamPageProps) {
                             },
                             { label: "Work", value: selectedAgentStatusView.work },
                             { label: "Inbox", value: selectedAgentStatusView.inbox },
+                            {
+                              label: "Loop",
+                              value: selectedAgentSpecDraft?.agent_loop_enabled
+                                ? `${
+                                    selectedAgentSpecDraft.agent_loop_idle_seconds.trim() || "?"
+                                  }s idle`
+                                : "disabled",
+                            },
                           ].map((item) => (
                             <Menu.Item key={item.label} disabled>
                               <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
@@ -4370,6 +4440,54 @@ export function TeamPage(props: TeamPageProps) {
                     patchTeamMemberEditDraft({ model: event.currentTarget.value })
                   }
                 />
+                <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className={teamWorkbenchInfoStripLabelClassName}>Agent loop</p>
+                        <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                          When enabled, AgentHub will inject the configured ACP prompt after this
+                          agent stays silent for the selected idle window.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={teamMemberEditDraft.agent_loop_enabled}
+                        onChange={(event) =>
+                          patchTeamMemberEditDraft({
+                            agent_loop_enabled: event.currentTarget.checked,
+                          })
+                        }
+                        label={teamMemberEditDraft.agent_loop_enabled ? "Enabled" : "Disabled"}
+                      />
+                    </div>
+                    <TextInput
+                      radius="md"
+                      label="Idle timeout (seconds)"
+                      placeholder="900"
+                      value={teamMemberEditDraft.agent_loop_idle_seconds}
+                      disabled={!teamMemberEditDraft.agent_loop_enabled}
+                      onChange={(event) =>
+                        patchTeamMemberEditDraft({
+                          agent_loop_idle_seconds: event.currentTarget.value,
+                        })
+                      }
+                    />
+                    <Textarea
+                      radius="md"
+                      minRows={3}
+                      autosize
+                      label="Loop prompt"
+                      placeholder="You have been idle. Resume by checking your inbox, summarizing current state, and taking the next scoped action."
+                      value={teamMemberEditDraft.agent_loop_prompt}
+                      disabled={!teamMemberEditDraft.agent_loop_enabled}
+                      onChange={(event) =>
+                        patchTeamMemberEditDraft({
+                          agent_loop_prompt: event.currentTarget.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
                 <div className="team-skill-tags mt-4 flex flex-wrap gap-2">
                   {TEAM_SKILL_OPTIONS.map((skill) => {
                     const selected = teamMemberEditDraft.skills.includes(skill);

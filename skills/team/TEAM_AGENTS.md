@@ -42,6 +42,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - Canonical Team task creation/state rules live in `team-task-lifecycle`.
 - Self-profile updates use `profile_patch_proposal`.
 - Timed self-reminders use `agent_time_trigger_set/list/cancel`.
+- Operator-controlled idle reminders use `agent_loop`; treat them as follow-up nudges, not new human intent.
 - Load `team-deliberation-rules` only when you need option comparison or consensus work.
 
 ## TODO And Context Pointers

@@ -33,6 +33,8 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.\n",
     "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
     "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
+    "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
+    "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
     "Team workflow phases:\n",
     "1. Team formation\n",
@@ -72,6 +74,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
     "- If your own description/prompt/skill profile is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.\n",
     "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
+    "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
+    "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Use the runtime `team_members` tool to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
     "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
     "- Load `team-task-lifecycle` whenever you need canonical Team task state guidance.\n",
@@ -149,11 +153,13 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_members"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_time_trigger_set"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_members"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_time_trigger_set"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
