@@ -1,10 +1,13 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::acp::AcpPermissionService;
-use crate::agent::AgentManager;
+use crate::agent::{
+    AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+};
 use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::team::{
@@ -24,9 +27,17 @@ pub struct AppState {
 }
 
 const IDLE_GC_TIMEOUT_SECONDS: u64 = 5 * 60;
+const GLOBAL_GITIGNORE_ENTRY: &str = ".agenthubmemory";
+const GLOBAL_GITIGNORE_FILENAME: &str = ".gitignore_global";
 
 impl AppState {
     pub async fn init(config: agenthub_config::AppConfig) -> anyhow::Result<Self> {
+        if let Err(error) = Self::ensure_global_gitignore_agenthubmemory() {
+            tracing::warn!(
+                ?error,
+                "failed to ensure global gitignore entry for .agenthubmemory"
+            );
+        }
         let db = Self::setup_database(&config).await?;
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
@@ -37,6 +48,16 @@ impl AppState {
 
         let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
             .spawn(TeamOrchestratorWorkerSettings::default());
+        let trigger_manager = Arc::new(AgentTimeTriggerManager::new(db.clone()));
+        let recovered_dispatching = trigger_manager.reset_inflight_on_startup().await?;
+        if recovered_dispatching > 0 {
+            tracing::info!(
+                recovered_dispatching,
+                "agent time triggers reset to scheduled on startup"
+            );
+        }
+        let _agent_trigger_handle = AgentTimeTriggerWorker::new(trigger_manager, agents.clone())
+            .spawn(AgentTimeTriggerWorkerSettings::default());
 
         let default_worktree_root = config.default_worktree_root();
         Ok(Self {
@@ -174,6 +195,37 @@ impl AppState {
         }
         Ok(())
     }
+
+    fn ensure_global_gitignore_agenthubmemory() -> anyhow::Result<()> {
+        let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
+            return Ok(());
+        };
+
+        let home_path = PathBuf::from(home);
+        std::fs::create_dir_all(&home_path)?;
+        let gitignore_path = home_path.join(GLOBAL_GITIGNORE_FILENAME);
+        let existing = match std::fs::read_to_string(&gitignore_path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error.into()),
+        };
+
+        if existing
+            .lines()
+            .any(|line| line.trim() == GLOBAL_GITIGNORE_ENTRY)
+        {
+            return Ok(());
+        }
+
+        let mut updated = existing;
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(GLOBAL_GITIGNORE_ENTRY);
+        updated.push('\n');
+        std::fs::write(gitignore_path, updated)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -182,6 +234,27 @@ mod tests {
     use agenthub_config::AppConfig;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::ffi::OsString;
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct HomeGuard(Option<OsString>);
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.0.take() {
+                unsafe {
+                    std::env::set_var("HOME", value);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var("HOME");
+                }
+            }
+        }
+    }
 
     async fn test_db() -> sqlx::SqlitePool {
         let options = SqliteConnectOptions::new()
@@ -296,5 +369,44 @@ mod tests {
                 .to_string_lossy()
                 .to_string();
         assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn ensure_global_gitignore_contains_agenthubmemory_entry() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let _home_guard = HomeGuard(std::env::var_os("HOME"));
+        unsafe {
+            std::env::set_var("HOME", &temp_home);
+        }
+
+        AppState::ensure_global_gitignore_agenthubmemory().expect("ensure global gitignore");
+
+        let gitignore_path = temp_home.join(".gitignore_global");
+        let content = std::fs::read_to_string(&gitignore_path).expect("read global gitignore");
+        assert_eq!(content, ".agenthubmemory\n");
+
+        let _ = std::fs::remove_dir_all(&temp_home);
+    }
+
+    #[test]
+    fn ensure_global_gitignore_keeps_agenthubmemory_entry_idempotent() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let gitignore_path = temp_home.join(".gitignore_global");
+        std::fs::write(&gitignore_path, "*.log\n.agenthubmemory\n").expect("seed global gitignore");
+        let _home_guard = HomeGuard(std::env::var_os("HOME"));
+        unsafe {
+            std::env::set_var("HOME", &temp_home);
+        }
+
+        AppState::ensure_global_gitignore_agenthubmemory().expect("ensure global gitignore");
+
+        let content = std::fs::read_to_string(&gitignore_path).expect("read global gitignore");
+        assert_eq!(content, "*.log\n.agenthubmemory\n");
+
+        let _ = std::fs::remove_dir_all(&temp_home);
     }
 }

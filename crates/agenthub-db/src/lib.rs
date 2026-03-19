@@ -611,6 +611,27 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_time_triggers (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            fire_at INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            fired_at INTEGER,
+            last_error TEXT,
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
     if let Err(err) = sqlx::query(
@@ -752,6 +773,36 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_conversations_team_task: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_time_triggers_agent_created
+        ON agent_time_triggers(agent_id, created_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_time_triggers_agent_created: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_time_triggers_status_fire_at
+        ON agent_time_triggers(status, fire_at);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_time_triggers_status_fire_at: {}",
             err
         );
     }

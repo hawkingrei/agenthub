@@ -85,7 +85,7 @@ fn team_owner_matches_user(team: &TeamDefinitionRecord, user: &UserRecord) -> bo
     }
 }
 
-async fn load_team_for_user(
+pub(crate) async fn load_team_for_user(
     state: &AppState,
     team_id: &str,
     user: &UserRecord,
@@ -1017,7 +1017,7 @@ async fn get_team_run_snapshot(
     let run_member_overrides = extract_run_member_profile_overrides(&run.input);
 
     let mut members = Vec::with_capacity(member_specs.len());
-    for member in member_specs {
+    for mut member in member_specs {
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
@@ -1041,6 +1041,9 @@ async fn get_team_run_snapshot(
         if let Some(override_item) = run_member_overrides.get(member.member_id.as_str()) {
             if let Some(prompt_append) = override_item.prompt_append.as_deref() {
                 prompt = Some(merge_prompt_append(prompt.as_deref(), Some(prompt_append)));
+            }
+            if let Some(description) = override_item.description.as_deref() {
+                member.description = Some(description.to_string());
             }
             let _added = merge_skills_unique(&mut skills, &override_item.skills_add);
         }
@@ -1582,14 +1585,19 @@ fn parse_profile_patch_proposal(
         .map(parse_optional_prompt_append)
         .transpose()?
         .flatten();
+    let description = payload_obj
+        .get("description")
+        .map(parse_optional_profile_patch_description)
+        .transpose()?
+        .flatten();
     let skills_add = payload_obj
         .get("skills_add")
         .map(parse_profile_patch_skills_add)
         .transpose()?
         .unwrap_or_default();
-    if prompt_append.is_none() && skills_add.is_empty() {
+    if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
         return Err(ApiError::bad_request(
-            "profile_patch_proposal requires prompt_append and/or skills_add",
+            "profile_patch_proposal requires prompt_append and/or description and/or skills_add",
         ));
     }
 
@@ -1597,6 +1605,7 @@ fn parse_profile_patch_proposal(
         target,
         member_id,
         prompt_append,
+        description,
         skills_add,
     }))
 }
@@ -1657,6 +1666,22 @@ fn parse_profile_patch_skills_add(value: &Value) -> Result<Vec<String>, ApiError
     Ok(out)
 }
 
+fn parse_optional_profile_patch_description(value: &Value) -> Result<Option<String>, ApiError> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let raw = value.as_str().ok_or_else(|| {
+        ApiError::bad_request("profile_patch_proposal.description must be a non-empty string")
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal.description must be a non-empty string",
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 async fn apply_profile_patch_proposal(
     state: &AppState,
     run: &TeamRunRecord,
@@ -1704,13 +1729,16 @@ async fn apply_profile_patch_proposal(
                         "applied_by": from_actor_id,
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
+                        "description": proposal.description,
                         "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
+                            "description": before.description,
                             "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
+                            "description": after.description,
                             "skills": after.skills_add,
                         },
                     }),
@@ -1745,13 +1773,16 @@ async fn apply_profile_patch_proposal(
                         "applied_by": from_actor_id,
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
+                        "description": proposal.description,
                         "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
+                            "description": before.description,
                             "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
+                            "description": after.description,
                             "skills": after.skills_add,
                         },
                     }),
@@ -1794,6 +1825,12 @@ fn apply_profile_patch_to_team_spec(
             Some(prompt_append),
         );
         member_obj.insert("prompt".to_string(), Value::String(merged));
+    }
+    if let Some(description) = proposal.description.as_deref() {
+        member_obj.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
     }
     if !proposal.skills_add.is_empty() {
         let mut current = parse_skills_array(member_obj.get("skills"))?;
@@ -1840,6 +1877,12 @@ fn apply_profile_patch_to_run_input(
             Some(prompt_append),
         );
         member_obj.insert("prompt_append".to_string(), Value::String(merged));
+    }
+    if let Some(description) = proposal.description.as_deref() {
+        member_obj.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
     }
 
     if !proposal.skills_add.is_empty() {
@@ -1932,6 +1975,12 @@ fn extract_member_profile_override_from_spec(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
+        description: member_obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
         skills_add: parse_skills_array(member_obj.get("skills"))?,
     })
 }
@@ -1964,6 +2013,12 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
+        let description = member_obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         let skills_add = member_obj
             .get("skills_add")
             .and_then(Value::as_array)
@@ -1981,13 +2036,14 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
                 out
             })
             .unwrap_or_default();
-        if prompt_append.is_none() && skills_add.is_empty() {
+        if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
             continue;
         }
         out.insert(
             member_id.clone(),
             MemberProfileOverride {
                 prompt_append,
+                description,
                 skills_add,
             },
         );
@@ -3237,12 +3293,14 @@ struct ProfilePatchProposal {
     target: ProfilePatchTarget,
     member_id: String,
     prompt_append: Option<String>,
+    description: Option<String>,
     skills_add: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct MemberProfileOverride {
     prompt_append: Option<String>,
+    description: Option<String>,
     skills_add: Vec<String>,
 }
 

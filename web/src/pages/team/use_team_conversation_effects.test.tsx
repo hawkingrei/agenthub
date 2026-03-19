@@ -9,8 +9,45 @@ import { useTeamConversationEffects } from "./use_team_conversation_effects";
 
 type HookParams = Parameters<typeof useTeamConversationEffects>[0];
 
+class MockEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: MockEventSource[] = [];
+
+  readonly url: string;
+  readyState = MockEventSource.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    MockEventSource.instances.push(this);
+  }
+
+  emitOpen() {
+    this.readyState = MockEventSource.OPEN;
+    this.onopen?.(new Event("open"));
+  }
+
+  emitMessage(data: string) {
+    this.onmessage?.(new MessageEvent("message", { data }));
+  }
+
+  emitError() {
+    this.readyState = MockEventSource.CLOSED;
+    this.onerror?.(new Event("error"));
+  }
+
+  close() {
+    this.readyState = MockEventSource.CLOSED;
+  }
+}
+
 function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
+    token: "token-1",
     selectedTeamId: "team-1",
     selectedConversationId: "task-all",
     tab: "conversation",
@@ -35,6 +72,8 @@ describe("useTeamConversationEffects", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    MockEventSource.instances = [];
+    vi.stubGlobal("EventSource", MockEventSource);
   });
 
   afterEach(() => {
@@ -98,6 +137,62 @@ describe("useTeamConversationEffects", () => {
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
+  });
+
+  it("refreshes the shared thread when a matching sse message arrives", async () => {
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+    const source = MockEventSource.instances[0];
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      source.emitOpen();
+      source.emitMessage(
+        JSON.stringify({
+          type: "team_conversation",
+          payload: { task_id: "task-all", source: "conversation_message" },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+    expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
+  });
+
+  it("skips polling while the sse connection is open", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      source.emitOpen();
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
   it("does not poll when the workspace is not on the conversation tab", async () => {

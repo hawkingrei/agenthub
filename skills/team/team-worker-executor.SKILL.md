@@ -28,8 +28,13 @@ You execute tasks assigned by the team leader and report verifiable outputs.
   advance assigned tasks instead of inventing parallel task records.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
-- If description is stale or empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
+- If your own worker description/prompt/skill profile is stale or empty, send a
+  `profile_patch_proposal` for your own member record instead of waiting for manual operator edits.
+- Use `target="team"` for durable identity-card changes and `target="run"` for temporary
+  run-scoped overrides.
 - Do not overwrite another member's identity description from worker context.
+- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed
+  rechecks, reminders, or future follow-up work that should come back as ACP prompts later.
 
 ## Team TODO Lifecycle (Worker)
 
@@ -37,7 +42,18 @@ Use worker-local TODO files as the execution ledger for non-trivial assignments.
 
 Primary files:
 - `TODO.md`
-- `.cache/context/todo.md`
+- `.agenthubmemory/TODO.md`
+- `.agenthubmemory/journal/`
+- `.agenthubmemory/note/`
+
+Project-memory rules:
+- In a concrete project repository, prefer `.agenthubmemory/` as the durable worker memory root.
+- Keep `TODO.md` there as the main task ledger when the repo already uses `.agenthubmemory`.
+- Append chronological work logs under `.agenthubmemory/journal/`.
+- Record reusable findings, debugging heuristics, and bug-mining lessons under `.agenthubmemory/note/`.
+- Runtime continuity/state may still live under `.cache/context/`, but durable worker TODOs and
+  notes should not be written under `.cache/context/`.
+- If `.agenthubmemory/` is missing, create it in the project workspace before long-running work.
 
 Create or refresh TODO entries when:
 - assignment requires 3 or more meaningful steps
@@ -83,16 +99,17 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 1. Check workspace TODO sources for unfinished local work (`- [ ]`):
    - `TODO.md`
-   - `.cache/context/todo.md`
+   - `.agenthubmemory/TODO.md`
    Example:
-   `rg -n "^- \\[ \\]" TODO.md .cache/context/todo.md 2>/dev/null || true`
+   `rg -n "^- \\[ \\]" TODO.md .agenthubmemory/TODO.md 2>/dev/null || true`
 2. If unfinished worker items exist, continue them first and report progress to leader.
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
 4. If no unfinished worker items exist, proceed to mailbox assignment loop.
 5. If no assignment exists, send an `idle` status summary and request next task from leader.
-6. Persist local continuity notes in `.cache/context/todo.md` when work is paused mid-task.
+6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
+   `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
 
 ## Worker Loop
 

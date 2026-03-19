@@ -50,24 +50,24 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1";
+  "rounded-[16px] border border-ui-border bg-ui-surface-soft/70 p-1";
 const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
 const TASKS_BOARD_SCROLL_CLASS = "overflow-x-auto pb-2";
 const TASKS_BOARD_LANES_CLASS =
-  "grid min-w-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-4";
+  "grid min-w-full auto-cols-[minmax(250px,1fr)] grid-flow-col gap-4";
 const TASKS_BOARD_COLUMN_CLASS =
-  "flex min-h-[320px] flex-col rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+  "flex min-h-[320px] flex-col rounded-[20px] border border-ui-border bg-ui-surface-soft/55 p-3";
 const TASKS_BOARD_COLUMN_HEADER_CLASS =
-  "flex items-start justify-between gap-3 border-b border-ui-border pb-3";
+  "flex items-start justify-between gap-3 border-b border-ui-border/80 pb-2.5";
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
-const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2";
+const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2.5";
 const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-lg border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 text-sm text-ui-text-muted";
+  "rounded-[16px] border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 text-sm text-ui-text-muted";
 const TASKS_BOARD_CARD_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-xl border border-ui-border-strong bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm ring-1 ring-ui-border transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-[18px] border border-ui-border-strong bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition";
 const TASKS_BOARD_CARD_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-xl border border-ui-border bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
+  "team-item flex w-full min-w-0 flex-col items-start gap-2 rounded-[18px] border border-ui-border bg-ui-surface px-3 py-3 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
@@ -77,14 +77,20 @@ const TASKS_BOARD_CARD_ACTIONS_CLASS =
 const TASKS_BOARD_STATUS_ACTION_CLASS =
   "inline-flex items-center gap-1 rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[11px] font-medium text-ui-text-secondary transition hover:border-ui-border-strong hover:bg-ui-surface disabled:cursor-not-allowed disabled:opacity-60";
 const TASKS_DETAIL_PANEL_CLASS =
-  "rounded-xl border border-ui-border bg-ui-surface-soft/70 p-4";
+  "rounded-[20px] border border-ui-border bg-ui-surface p-4 shadow-sm";
 const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
-  "rounded-lg border border-ui-border bg-ui-surface px-3 py-2";
+  "rounded-[16px] border border-ui-border bg-ui-surface-soft/65 px-3 py-2";
 const TASKS_RUN_CARD_CLASS =
-  "rounded-xl border border-ui-border bg-ui-surface px-3 py-3 shadow-sm";
+  "rounded-[18px] border border-ui-border bg-ui-surface-soft/60 px-3 py-3";
 const TASKS_RUN_LIST_CLASS = "mt-4 space-y-2";
+const TASKS_DEBUG_DISCLOSURE_CLASS =
+  "mt-4 rounded-[18px] border border-dashed border-ui-border bg-ui-surface-soft/55 px-3 py-3";
+const TASKS_DEBUG_SUMMARY_CLASS =
+  "flex cursor-pointer list-none items-center justify-between gap-3 text-left";
+const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-sm text-ui-text-muted";
+const TASKS_DEBUG_BODY_CLASS = "mt-3 space-y-3 border-t border-ui-border pt-3";
 
 const SEGMENTED_CONTROL_CLASSNAMES = {
   root: "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1",
@@ -213,6 +219,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     toPrettyJson,
   } = props;
   const [statusFilter, setStatusFilter] = React.useState<TaskStatusFilter>("all");
+  const [debugToolsOpen, setDebugToolsOpen] = React.useState(false);
 
   const visibleTasks = React.useMemo(() => {
     if (statusFilter === "all") {
@@ -595,103 +602,112 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
               </div>
 
               {developerMode && (
-                <div className="mt-4 space-y-3 rounded-xl border border-ui-border bg-ui-surface p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                <details
+                  className={TASKS_DEBUG_DISCLOSURE_CLASS}
+                  open={debugToolsOpen}
+                  onToggle={(event) => {
+                    setDebugToolsOpen((event.currentTarget as HTMLDetailsElement).open);
+                  }}
+                >
+                  <summary className={TASKS_DEBUG_SUMMARY_CLASS}>
                     <div>
-                      <p className="text-sm font-semibold text-ui-text-primary">
-                        Developer debug
-                      </p>
-                      <p className="mt-1 text-sm text-ui-text-muted">
-                        Manual compile preview remains available here for inspection and debugging.
+                      <p className="text-sm font-semibold text-ui-text-primary">Developer tools</p>
+                      <p className={TASKS_DEBUG_SUMMARY_META_CLASS}>
+                        Manual compile preview and raw task context stay available here without
+                        taking over the task detail surface.
                       </p>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-                      onClick={() => {
-                        void onCompileTaskRunPreview();
-                      }}
-                      disabled={!canCompileTask}
-                    >
-                      Compile Preview
-                    </button>
-                    <TextInput
-                      className="min-w-[220px] flex-1"
-                      placeholder="context_id override (optional)"
-                      aria-label="context_id override"
-                      value={compilePreviewContextId}
-                      onChange={(event) =>
-                        onCompilePreviewContextIdChange(event.currentTarget.value)
-                      }
-                      size="sm"
-                      radius="md"
-                    />
-                  </div>
+                    <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-ui-text-muted">
+                      {debugToolsOpen ? "Hide" : "Show"}
+                    </span>
+                  </summary>
+                  <div className={TASKS_DEBUG_BODY_CLASS}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                        onClick={() => {
+                          void onCompileTaskRunPreview();
+                        }}
+                        disabled={!canCompileTask}
+                      >
+                        Compile Preview
+                      </button>
+                      <TextInput
+                        className="min-w-[220px] flex-1"
+                        placeholder="context_id override (optional)"
+                        aria-label="context_id override"
+                        value={compilePreviewContextId}
+                        onChange={(event) =>
+                          onCompilePreviewContextIdChange(event.currentTarget.value)
+                        }
+                        size="sm"
+                        radius="md"
+                      />
+                    </div>
 
-                  {compiledRunPreview ? (
-                    <div className="space-y-3 rounded-xl border border-ui-border bg-ui-surface-soft p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                          onClick={onUseCompiledRunPayload}
-                        >
-                          Use Payload in Create Run
-                        </button>
-                        <button
-                          type="button"
-                          className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-                          onClick={() => {
-                            void onCreateRunFromCompiledPreview();
-                          }}
-                          disabled={busy === "create-run"}
-                        >
-                          Create Run from Preview
-                        </button>
-                      </div>
-                      <div className="grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2">
-                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                          <strong>Conversation</strong>
-                          <div className="mono mt-1 text-xs text-ui-text-muted">
-                            {compiledRunPreview.conversation_id}
+                    {compiledRunPreview ? (
+                      <div className="space-y-3 rounded-xl border border-ui-border bg-ui-surface-soft p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                            onClick={onUseCompiledRunPayload}
+                          >
+                            Use Payload in Create Run
+                          </button>
+                          <button
+                            type="button"
+                            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                            onClick={() => {
+                              void onCreateRunFromCompiledPreview();
+                            }}
+                            disabled={busy === "create-run"}
+                          >
+                            Create Run from Preview
+                          </button>
+                        </div>
+                        <div className="grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2">
+                          <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                            <strong>Conversation</strong>
+                            <div className="mono mt-1 text-xs text-ui-text-muted">
+                              {compiledRunPreview.conversation_id}
+                            </div>
+                          </div>
+                          <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                            <strong>Context</strong>
+                            <div className="mono mt-1 text-xs text-ui-text-muted">
+                              {compiledRunPreview.run_payload.context_id}
+                            </div>
                           </div>
                         </div>
-                        <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                          <strong>Context</strong>
-                          <div className="mono mt-1 text-xs text-ui-text-muted">
-                            {compiledRunPreview.run_payload.context_id}
-                          </div>
-                        </div>
+                        <pre className={TEAM_PANEL_PRE_CLASS}>
+                          {toPrettyJson({
+                            conversation_id: compiledRunPreview.conversation_id,
+                            run_payload: compiledRunPreview.run_payload,
+                            plan: compiledRunPreview.plan,
+                          })}
+                        </pre>
                       </div>
-                      <pre className={TEAM_PANEL_PRE_CLASS}>
-                        {toPrettyJson({
-                          conversation_id: compiledRunPreview.conversation_id,
-                          run_payload: compiledRunPreview.run_payload,
-                          plan: compiledRunPreview.plan,
-                        })}
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className={TEAM_MUTED_TEXT_CLASS}>Compile preview not generated yet.</p>
-                  )}
-                </div>
+                    ) : (
+                      <p className={TEAM_MUTED_TEXT_CLASS}>Compile preview not generated yet.</p>
+                    )}
+
+                    {selectedTask.context &&
+                      typeof selectedTask.context === "object" &&
+                      !Array.isArray(selectedTask.context) && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ui-text-muted">
+                            Task context
+                          </p>
+                          <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2`}>
+                            {toPrettyJson(selectedTask.context)}
+                          </pre>
+                        </div>
+                      )}
+                  </div>
+                </details>
               )}
-
-              {developerMode &&
-                selectedTask.context &&
-                typeof selectedTask.context === "object" &&
-                !Array.isArray(selectedTask.context) && (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ui-text-muted">
-                      Task context
-                    </p>
-                    <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2`}>
-                      {toPrettyJson(selectedTask.context)}
-                    </pre>
-                  </div>
-                )}
             </>
           )}
         </div>

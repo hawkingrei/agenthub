@@ -12,7 +12,10 @@ use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
     normalize_actor_cli_path,
 };
-use crate::agent::{AgentConfig, AgentRecord, AgentSendInputError, WorktreeMode};
+use crate::agent::{
+    AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
+    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode,
+};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
@@ -99,6 +102,17 @@ pub struct SendInputRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub struct CreateAgentTimeTriggerRequest {
+    pub delay_seconds: i64,
+    pub message: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ListAgentTimeTriggersQuery {
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub struct ClearSessionRequest {
     pub provider: Option<String>,
 }
@@ -138,6 +152,14 @@ pub fn router(state: AppState) -> Router {
         .route("/:id/start", post(start_agent))
         .route("/:id/stop", post(stop_agent))
         .route("/:id/input", post(send_input))
+        .route(
+            "/:id/triggers",
+            post(create_agent_time_trigger).get(list_agent_time_triggers),
+        )
+        .route(
+            "/:id/triggers/:trigger_id/cancel",
+            post(cancel_agent_time_trigger),
+        )
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
@@ -295,6 +317,63 @@ async fn send_input(
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
+async fn create_agent_time_trigger(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<CreateAgentTimeTriggerRequest>,
+) -> Result<Json<AgentTimeTriggerRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    if !(1..=60 * 60 * 24 * 30).contains(&payload.delay_seconds) {
+        return Err(ApiError::bad_request(
+            "delay_seconds must be between 1 and 2592000",
+        ));
+    }
+    let delay_seconds = payload.delay_seconds;
+    let fire_at = chrono::Utc::now().timestamp() + delay_seconds;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let record = manager
+        .create_time_trigger(AgentTimeTriggerCreateInput {
+            agent_id: agent_id.clone(),
+            created_by_actor_id: agent_id,
+            message_text: payload.message,
+            fire_at,
+        })
+        .await?;
+    Ok(Json(record))
+}
+
+async fn list_agent_time_triggers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Query(query): Query<ListAgentTimeTriggersQuery>,
+) -> Result<Json<Vec<AgentTimeTriggerRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let records = manager
+        .list_triggers_for_agent(&agent_id, query.limit.unwrap_or(50))
+        .await?;
+    Ok(Json(records))
+}
+
+async fn cancel_agent_time_trigger(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((agent_id, trigger_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let canceled = manager.cancel_trigger(&agent_id, &trigger_id).await?;
+    if !canceled {
+        return Err(ApiError::not_found("agent time trigger not found"));
+    }
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
 async fn list_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -429,6 +508,24 @@ async fn list_permissions(
     let status = query.status.as_deref();
     let records = state.acp_permissions.list(&agent_id, status).await?;
     Ok(Json(records))
+}
+
+async fn ensure_agent_exists(state: &AppState, agent_id: &str) -> Result<(), ApiError> {
+    state
+        .agents
+        .get_agent(agent_id)
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            if error
+                .downcast_ref::<sqlx::Error>()
+                .is_some_and(|inner| matches!(inner, sqlx::Error::RowNotFound))
+            {
+                ApiError::not_found("agent not found")
+            } else {
+                error.into()
+            }
+        })
 }
 
 async fn respond_permission(
@@ -1167,6 +1264,28 @@ mod tests {
         .execute(db)
         .await
         .expect("create team_steps");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_time_triggers");
     }
 
     async fn build_test_state_with_db(db: SqlitePool) -> AppState {
@@ -2373,5 +2492,78 @@ mod tests {
         );
 
         remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn agent_time_trigger_routes_create_list_and_cancel() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("trigger-agent")
+        .bind("trigger-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert trigger agent");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/trigger-agent/triggers",
+                Some(&token),
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check flaky test results."
+                })),
+            ))
+            .await
+            .expect("create trigger");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let trigger_id = created["id"].as_str().expect("trigger id").to_string();
+
+        let list_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/trigger-agent/triggers",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("list triggers");
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let listed = decode_json_body(list_resp).await;
+        assert_eq!(listed.as_array().map(Vec::len), Some(1));
+        assert_eq!(listed[0]["id"], Value::from(trigger_id.clone()));
+        assert_eq!(listed[0]["status"], Value::from("scheduled"));
+
+        let cancel_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/trigger-agent/triggers/{trigger_id}/cancel"),
+                Some(&token),
+                Some(json!({})),
+            ))
+            .await
+            .expect("cancel trigger");
+        assert_eq!(cancel_resp.status(), StatusCode::OK);
+        let canceled = decode_json_body(cancel_resp).await;
+        assert_eq!(canceled["status"], Value::from("ok"));
     }
 }

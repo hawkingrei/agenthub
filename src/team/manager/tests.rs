@@ -534,6 +534,54 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
 }
 
 #[tokio::test]
+async fn append_task_conversation_message_emits_stream_event() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let mut events = manager.subscribe_conversation_events();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-event-team".to_string(),
+            description: Some("team for conversation stream events".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let message = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+        )
+        .await
+        .expect("append message");
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), events.recv())
+        .await
+        .expect("receive stream event")
+        .expect("stream event result");
+    assert_eq!(event.team_id, team.id);
+    assert_eq!(event.task_id, task.id);
+    assert_eq!(event.conversation_id, conversation.id);
+    assert_eq!(event.message_id, Some(message.message_id));
+    assert_eq!(event.source, "conversation_message");
+}
+
+#[tokio::test]
 async fn task_status_updates_are_persisted() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -1952,6 +2000,7 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
     let service = manager.actor_mailbox_service();
+    let mut events = manager.subscribe_conversation_events();
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -2055,6 +2104,15 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
     assert_eq!(payload["text"], json!("hello human"));
     assert_eq!(payload["correlation_id"], json!("corr-1"));
     assert!(payload.get("current_phase").is_none());
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), events.recv())
+        .await
+        .expect("receive canonical shared thread event")
+        .expect("canonical shared thread event result");
+    assert_eq!(event.team_id, team.id);
+    assert_eq!(event.task_id, shared_task_id);
+    assert_eq!(event.message_id, None);
+    assert_eq!(event.source, "canonical_chat_reply");
 }
 
 #[tokio::test]
@@ -3505,13 +3563,12 @@ async fn ensure_shared_thread_mailbox_run_is_idempotent() {
     .expect("count shared thread mailbox runs");
     assert_eq!(run_count, 1);
 
-    let event_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1",
-    )
-    .bind(&first.id)
-    .fetch_one(&db)
-    .await
-    .expect("count shared thread mailbox run events");
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1")
+            .bind(&first.id)
+            .fetch_one(&db)
+            .await
+            .expect("count shared thread mailbox run events");
     assert_eq!(event_count, 2);
 }
 

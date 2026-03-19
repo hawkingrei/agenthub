@@ -161,6 +161,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
     });
   }, [normalizedTeamFilter, teams]);
   const hasTeamFilter = normalizedTeamFilter.length > 0;
+  const compactRail = !showTeamSelector;
 
   const toggleSection = React.useCallback((section: TeamSidebarSection) => {
     setSectionOpen((current) => ({
@@ -180,41 +181,41 @@ export function TeamSidebar(props: TeamSidebarProps) {
             <div className="mt-1 truncate text-[15px] font-semibold leading-tight text-ui-text-primary">
               {selectedTeam?.name ?? (showTeamSelector ? "Select a team" : "Team workspace")}
             </div>
-            <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-              {showTeamSelector
-                ? selectedTeam
+            {showTeamSelector && (
+              <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                {selectedTeam
                   ? "Switch teams from the index below."
-                  : "Choose an existing team or create a new one."
-                : "Browse this team's channels, members, and operations."}
-            </p>
+                  : "Choose an existing team or create a new one."}
+              </p>
+            )}
           </div>
-          <div className="flex items-center gap-2 pt-0.5">
-            <button
-              onClick={() => {
-                void onRefreshTeams();
-              }}
-              disabled={busy === "refresh-teams"}
-              className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS}`}
-              title="Refresh teams"
-              aria-label="Refresh teams"
-            >
-              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              <span>Refresh</span>
-            </button>
-            <div className="relative">
+          {showTeamSelector && (
+            <div className="flex items-center gap-2 pt-0.5">
               <button
-                type="button"
-                className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS}`}
-                aria-label="Open team actions"
-                title="Open team actions"
-                aria-expanded={teamActionsOpen}
-                onClick={() => setTeamActionsOpen((current) => !current)}
+                onClick={() => {
+                  void onRefreshTeams();
+                }}
+                disabled={busy === "refresh-teams"}
+                className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS}`}
+                title="Refresh teams"
+                aria-label="Refresh teams"
               >
-                <i className="bi bi-three-dots" aria-hidden="true" />
+                <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                <span>Refresh</span>
               </button>
-              {teamActionsOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-[16px] border border-ui-border bg-ui-surface p-2 shadow-lg">
-                  {showTeamSelector && (
+              <div className="relative">
+                <button
+                  type="button"
+                  className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS}`}
+                  aria-label="Open team actions"
+                  title="Open team actions"
+                  aria-expanded={teamActionsOpen}
+                  onClick={() => setTeamActionsOpen((current) => !current)}
+                >
+                  <i className="bi bi-three-dots" aria-hidden="true" />
+                </button>
+                {teamActionsOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-[16px] border border-ui-border bg-ui-surface p-2 shadow-lg">
                     <button
                       type="button"
                       className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary`}
@@ -225,26 +226,26 @@ export function TeamSidebar(props: TeamSidebarProps) {
                     >
                       Create Team
                     </button>
-                  )}
-                  {developerMode && (
-                    <>
-                      {showTeamSelector && <div className="my-1 border-t border-ui-border" />}
-                      <button
-                        type="button"
-                        className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary`}
-                        onClick={() => {
-                          setTeamActionsOpen(false);
-                          setTeamDetailsOpen((current) => !current);
-                        }}
-                      >
-                        {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                    {developerMode && (
+                      <>
+                        <div className="my-1 border-t border-ui-border" />
+                        <button
+                          type="button"
+                          className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary`}
+                          onClick={() => {
+                            setTeamActionsOpen(false);
+                            setTeamDetailsOpen((current) => !current);
+                          }}
+                        >
+                          {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         {showTeamSelector && teamDetailsOpen && (
           <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} mt-3 border-t border-ui-border pt-3 text-ui-text-muted`}>
@@ -378,7 +379,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectConversation}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">all</span>
-              <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Shared team thread</span>
+              {!compactRail && (
+                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Shared team thread</span>
+              )}
             </button>
             <button
               type="button"
@@ -390,7 +393,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectKanban}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Kanban</span>
-              <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Task board</span>
+              {!compactRail && (
+                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Task board</span>
+              )}
             </button>
           </div>
 
@@ -485,7 +490,9 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={() => onSelectUtilityTab("runs")}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Runs</span>
-              <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Browse runs</span>
+              {!compactRail && (
+                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>Browse runs</span>
+              )}
             </button>
             <button
               type="button"
@@ -497,9 +504,11 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={() => onSelectUtilityTab("overview")}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary">Advanced</span>
-              <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>
-                Overview, events, steps, debug
-              </span>
+              {!compactRail && (
+                <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>
+                  Overview, events, steps, debug
+                </span>
+              )}
             </button>
           </div>
         </>

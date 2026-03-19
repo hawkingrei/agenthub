@@ -73,6 +73,14 @@ function findButtonByText(container: HTMLElement, text: string): HTMLButtonEleme
   return required(button, `button not found: ${text}`);
 }
 
+function queryButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
+  return (
+    (Array.from(container.querySelectorAll("button")).find((candidate) =>
+      candidate.textContent?.includes(text)
+    ) as HTMLButtonElement | undefined) ?? null
+  );
+}
+
 function findInteractiveByText(
   container: ParentNode,
   text: string,
@@ -789,11 +797,13 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Detail Team");
-    expect(container.textContent).toContain("Browse this team's channels, members, and operations.");
+    expect(container.textContent).not.toContain("Browse this team's channels, members, and operations.");
     expect(container.textContent).not.toContain("Team Selector");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
     expect(container.textContent).not.toContain("Teams 1");
     expect(container.textContent).not.toContain("Create Team");
+    expect(container.textContent).not.toContain("Shared team thread");
+    expect(container.textContent).not.toContain("Task board");
   });
 
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
@@ -1628,7 +1638,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Seen by 2 agents"));
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
-    expect(container.textContent).not.toContain("Seen by 0 agents");
+    expect(container.textContent).not.toContain("Delivery pending");
     expect(container.textContent).toContain("You");
     expect(container.textContent).toContain("LeaderAgent");
     expect(container.textContent).toContain("worker-agent");
@@ -1636,6 +1646,134 @@ describe("team panels interactions", () => {
       container.querySelectorAll("[data-activity-author-kind]")
     ).map((node) => node.getAttribute("data-activity-author-kind"));
     expect(activityKinds).toEqual(["human", "agent"]);
+  });
+
+  it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+    const cancelSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+
+    try {
+      act(() => {
+        root.render(
+          <TeamTaskPanel
+            developerMode={false}
+            tasksLoading={false}
+            onRefreshTasks={vi.fn()}
+            messageDraft=""
+            onMessageDraftChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            onRefreshMessages={vi.fn()}
+            messages={Array.from({ length: 12 }, (_, index) =>
+              buildTaskMessage(index + 1, {
+                from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
+                to_actor_id: null,
+                route: "group_chat",
+                payload: { type: "chat_message", text: `message ${index + 1}` },
+              })
+            )}
+            humanActorId="user"
+            memberLiveStates={[]}
+            memberIds={["leader-agent"]}
+            messagesLoading={false}
+            busy={null}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={toPrettyJson}
+          />
+        );
+      });
+
+      const scrollNode = required(
+        container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+        "team channel scroll container missing"
+      );
+      Object.defineProperty(scrollNode, "scrollHeight", {
+        configurable: true,
+        value: 640,
+      });
+      Object.defineProperty(scrollNode, "clientHeight", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(scrollNode, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: 0,
+      });
+
+      expect(findButtonByText(container, "Jump to top")).not.toBeNull();
+
+      act(() => {
+        root.render(
+          <TeamTaskPanel
+            developerMode={false}
+            tasksLoading={false}
+            onRefreshTasks={vi.fn()}
+            messageDraft=""
+            onMessageDraftChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            onRefreshMessages={vi.fn()}
+            messages={Array.from({ length: 13 }, (_, index) =>
+              buildTaskMessage(index + 1, {
+                from_actor_id:
+                  index === 0 ? "user:u-1" : index === 12 ? "worker-agent" : "leader-agent",
+                to_actor_id: null,
+                route: "group_chat",
+                payload: { type: "chat_message", text: `message ${index + 1}` },
+              })
+            )}
+            humanActorId="user"
+            memberLiveStates={[]}
+            memberIds={["leader-agent", "worker-agent"]}
+            messagesLoading={false}
+            busy={null}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={toPrettyJson}
+          />
+        );
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(scrollNode.scrollTop).toBe(640);
+      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
+
+      act(() => {
+        clickElement(findButtonByText(container, "Jump to top"));
+      });
+      expect(scrollNode.scrollTop).toBe(0);
+      act(() => {
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      expect(queryButtonByText(container, "Jump to bottom")).not.toBeNull();
+
+      act(() => {
+        scrollNode.scrollTop = 80;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+
+      const jumpButton = queryButtonByText(container, "Jump to bottom");
+      expect(jumpButton).not.toBeNull();
+      expect(queryButtonByText(container, "Jump to top")).toBeNull();
+
+      clickElement(jumpButton);
+      expect(scrollNode.scrollTop).toBe(640);
+      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
+    } finally {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    }
   });
 
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
@@ -1787,6 +1925,7 @@ describe("team panels interactions", () => {
       "Create changelog"
     );
     clickElement(findButtonByText(container, "New Task"));
+    clickElement(findInteractiveByText(container, "Developer tools", "summary"));
     changeInputValue(
       required(
         container.querySelector(
@@ -1921,6 +2060,9 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Refresh Thread"));
     clickElement(findButtonByText(container, "Load Older"));
     expect(container.querySelector("h3")).toBeNull();
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Plan");
+    expect(container.textContent).toContain("Debug");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
     expect(container.textContent).toContain("member=worker-agent");
@@ -2001,7 +2143,20 @@ describe("team panels interactions", () => {
             role: "worker",
             latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
           })}
-          memberEvents={[]}
+          memberEvents={[
+            {
+              event_id: 25,
+              agent_id: "worker-agent",
+              session_id: "task-77",
+              seq: "25",
+              ts: 1_700_000_205,
+              stream: "acp",
+              message: JSON.stringify({
+                type: "agent_message",
+                text: "Panel chrome should still render without debug tab.",
+              }),
+            },
+          ]}
           memberEventsHasMore={false}
           memberEventsLoading={false}
           eventsLoading={false}
@@ -2013,6 +2168,9 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Plan");
+    expect(container.textContent).not.toContain("Debug");
     expect(container.textContent).toContain("Refresh Thread");
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");

@@ -1967,6 +1967,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [refreshTasks, selectedTeamId]);
 
   useTeamConversationEffects({
+    token: props.token,
     selectedTeamId,
     selectedConversationId: selectedConversation?.id ?? null,
     tab,
@@ -3294,6 +3295,7 @@ export function TeamPage(props: TeamPageProps) {
             {selectedTeam && (
               <>
                 <div className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName}`}>
+                <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {workspaceEyebrow && (
@@ -3409,34 +3411,37 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   </div>
                   )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!isAgentWorkspace && (
-                      <Tabs
-                        value={primaryWorkspaceTabValue}
-                        onChange={(value) => {
-                          if (value) {
-                            setFocusedAgentMemberId("");
-                            setTab(value as TeamTab);
-                          }
-                        }}
-                        classNames={{
-                          list: workspacePrimaryTabsListClassName,
-                          tab: workspacePrimaryTabClassName,
-                        }}
-                      >
-                        <Tabs.List>
-                          {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
-                            <Tabs.Tab key={item.value} value={item.value}>
-                              <span className="inline-flex items-center gap-1.5">
-                                <i className={item.icon} aria-hidden="true" />
-                                <span>{item.label}</span>
-                              </span>
-                            </Tabs.Tab>
-                          ))}
-                        </Tabs.List>
-                      </Tabs>
-                      )}
-                      <div className={workspaceToolbarClassName}>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ui-border pt-3">
+                  {!isAgentWorkspace ? (
+                    <Tabs
+                      value={primaryWorkspaceTabValue}
+                      onChange={(value) => {
+                        if (value) {
+                          setFocusedAgentMemberId("");
+                          setTab(value as TeamTab);
+                        }
+                      }}
+                      classNames={{
+                        list: workspacePrimaryTabsListClassName,
+                        tab: workspacePrimaryTabClassName,
+                      }}
+                    >
+                      <Tabs.List>
+                        {TEAM_PRIMARY_WORKSPACE_ITEMS.map((item) => (
+                          <Tabs.Tab key={item.value} value={item.value}>
+                            <span className="inline-flex items-center gap-1.5">
+                              <i className={item.icon} aria-hidden="true" />
+                              <span>{item.label}</span>
+                            </span>
+                          </Tabs.Tab>
+                        ))}
+                      </Tabs.List>
+                    </Tabs>
+                  ) : (
+                    <div className="min-h-9" />
+                  )}
+                  <div className={workspaceToolbarClassName}>
                       <button
                         type="button"
                         className={
@@ -3512,9 +3517,8 @@ export function TeamPage(props: TeamPageProps) {
                           </Menu.Dropdown>
                         </Menu>
                       )}
-                    </div>
-                    </div>
                   </div>
+                </div>
                 <div className={workspaceNoticeClassName}>
                   <div className={workspaceNoticeTextClassName}>
                     <span className={workspaceNoticeDotClassName} aria-hidden="true" />
@@ -3548,6 +3552,7 @@ export function TeamPage(props: TeamPageProps) {
                       )}
                     </div>
                   )}
+                </div>
                 </div>
               </div>
 

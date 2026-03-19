@@ -83,9 +83,21 @@ terminology and operating expectations drift.
   - leader: `team-leader-agents-index`
   - worker: `team-worker-agents-index`
 - Read `AGENTS.md` as index.
-- Check unfinished items in `TODO.md` and `.cache/context/todo.md`.
+- Check unfinished items in `TODO.md`; workers in concrete project workspaces should also check `.agenthubmemory/TODO.md`.
+- Worker project memory should live under `.agenthubmemory/`:
+  - `.agenthubmemory/TODO.md` for the durable task ledger
+  - `.agenthubmemory/journal/` for chronological work logs
+  - `.agenthubmemory/note/` for reusable lessons and heuristics
+- Leader usually starts from an empty coordination workspace and can skip `.agenthubmemory/`.
 - Load only required skills for current phase.
 - Keep decisions/errors in workspace-local context files.
+- Agents may self-maintain their own role profile through `profile_patch_proposal`:
+  - `target="team"` updates the durable member identity/card baseline
+  - `target="run"` updates run-scoped temporary overrides
+  - agents must only patch their own member profile, not another member's
+- Agents may schedule one-shot deferred follow-ups via `agent_time_trigger_set`, inspect them via
+  `agent_time_trigger_list`, and cancel them via `agent_time_trigger_cancel`; fired triggers arrive
+  later as ACP prompts back to the same agent.
 
 MCP enforcement baseline:
 
@@ -146,6 +158,10 @@ Constraint:
 ### 4) Context Ownership
 
 - Context is workspace-scoped per member under `.cache/context`.
+- Worker durable project memory should be kept in project-local `.agenthubmemory/` when operating
+  inside a concrete repository.
+- `.cache/context/` remains runtime continuity/state storage; it is not the main long-lived project
+  notebook.
 - Cross-member sharing goes through Team channels (events/mailbox/pointers), not direct filesystem writes.
 - Leader workspace should remain an empty coordination workspace by default.
 
@@ -157,6 +173,9 @@ Constraint:
 - `Kanban` is task-first and should show task state plus linked run history/summary.
 - Leader owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
+- Channels are free-form communication/review lanes; agents should use timed triggers only for
+  deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
+  `Kanban`.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Human-facing conversation remains group-visible even when `@mention` is used.

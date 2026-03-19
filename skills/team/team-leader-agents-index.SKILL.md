@@ -14,8 +14,12 @@ Primary references:
 ## Responsibilities
 
 - Maintain leader workspace `AGENTS.md` as coordination index.
+- Keep leader durable memory lightweight; empty coordination workspaces normally do not need
+  `.agenthubmemory/`.
 - Keep current phase, transition condition, assignment map, and integration checklist.
 - Keep human-facing planning decisions in leader index records.
+- Keep pointers for self-profile maintenance (`profile_patch_proposal`) and timed follow-up
+  reminders (`agent_time_trigger_set/list/cancel`) when they are active.
 
 ## Startup Checklist
 
@@ -25,4 +29,4 @@ Primary references:
    - `team-leader-orchestrator` (role execution skill)
    - `team-actor-mailbox`
    - add `team-deliberation-rules` only when needed
-4. Check `TODO.md` and `.cache/context/todo.md` before mailbox rounds.
+4. Check `TODO.md` before mailbox rounds.

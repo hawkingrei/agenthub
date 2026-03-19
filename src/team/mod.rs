@@ -14,8 +14,8 @@ pub use agenthub_team_domain::{
     TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
 pub use manager::{
-    SendActorMessageInput, TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings,
-    TeamRuntimeRecord, TeamRuntimeStatus,
+    SendActorMessageInput, TeamConversationStreamEvent, TeamManager, TeamMemoryFlushRequest,
+    TeamRemoteRelayWorkerSettings, TeamRuntimeRecord, TeamRuntimeStatus,
 };
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
 pub use runtime::{

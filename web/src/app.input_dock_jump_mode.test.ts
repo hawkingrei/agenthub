@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveInputDockJumpMode } from "./app";
+import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
 
 describe("resolveInputDockJumpMode", () => {
   it("uses ACP jump behavior when ACP view is active", () => {

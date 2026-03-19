@@ -10,6 +10,7 @@ import type {
   TeamTaskRecord,
 } from "../../api";
 import type { StatusTone } from "../../components/status_badge";
+import { mergeOutputsPreserveHistory } from "../../output_cache";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "../team_member_status_strip";
 import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
 
@@ -261,9 +262,20 @@ export function upsertEventList(
 export function upsertAgentEventList(
   prev: AgentEvent[],
   next: AgentEvent[],
-  mode: "replace" | "prepend"
+  mode: "replace" | "prepend",
+  sessionId?: string | null
 ): AgentEvent[] {
-  const merged = mode === "replace" ? [...next] : [...next, ...prev];
+  const scopedPrev =
+    sessionId == null
+      ? prev
+      : prev.filter((event) => (event.session_id ?? null) === sessionId);
+  if (mode === "replace") {
+    if (next.length === 0) {
+      return [];
+    }
+    return mergeOutputsPreserveHistory(scopedPrev, next, true);
+  }
+  const merged = [...next, ...scopedPrev];
   const byId = new Map<number, AgentEvent>();
   for (const event of merged) {
     byId.set(event.event_id, event);

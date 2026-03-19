@@ -249,6 +249,22 @@ describe("team page helpers", () => {
     expect(merged.find((event) => event.event_id === 7)?.message).toBe("old-7");
   });
 
+  it("preserves same-session older agent history on replace refresh", () => {
+    const refreshed = upsertAgentEventList(
+      [
+        buildAgentEvent(1, "older-1", { session_id: "session-1" }),
+        buildAgentEvent(2, "older-2", { session_id: "session-1" }),
+      ],
+      [
+        buildAgentEvent(3, "latest-3", { session_id: "session-1" }),
+        buildAgentEvent(4, "latest-4", { session_id: "session-1" }),
+      ],
+      "replace",
+      "session-1"
+    );
+    expect(refreshed.map((event) => event.event_id)).toEqual([1, 2, 3, 4]);
+  });
+
   it("builds readable agent labels with model metadata", () => {
     const modelFromArgs = buildAgentLabel(
       buildAgent({ args: ["--model", "gpt-5.1"], command: "gemini" })

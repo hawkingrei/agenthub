@@ -38,12 +38,17 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - Leader-specific execution policy lives in `team-leader-orchestrator`.
 - Worker-specific execution policy lives in `team-worker-executor`.
 - Mailbox transport and payload details live in `team-actor-mailbox`.
+- Self-profile updates use `profile_patch_proposal`.
+- Timed self-reminders use `agent_time_trigger_set/list/cancel`.
 - Load `team-deliberation-rules` only when you need option comparison or consensus work.
 
 ## TODO And Context Pointers
 
 - `TODO.md`
-- `.cache/context/todo.md`
+- `.agenthubmemory/TODO.md` (worker/project workspace memory ledger, when applicable)
+- `.agenthubmemory/journal/` (worker/project work log)
+- `.agenthubmemory/note/` (worker/project durable lessons / heuristics)
+- `.cache/context/` runtime continuity artifacts (not a durable TODO source)
 - latest evidence/log paths:
 
 ## Progress Log

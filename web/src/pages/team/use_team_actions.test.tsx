@@ -319,4 +319,78 @@ describe("useTeamActions", () => {
       cleanupHarness(root, container);
     }
   });
+
+  it("keeps older same-session ACP history on replace refresh", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 7,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "7",
+        ts: 123,
+        stream: "acp",
+        message: "new-7",
+      },
+      {
+        event_id: 8,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "8",
+        ts: 124,
+        stream: "acp",
+        message: "new-8",
+      },
+    ]);
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const existingHistory: AgentEvent[] = [
+      {
+        event_id: 1,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "1",
+        ts: 100,
+        stream: "acp",
+        message: "old-1",
+      },
+      {
+        event_id: 2,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "2",
+        ts: 101,
+        stream: "acp",
+        message: "old-2",
+      },
+    ];
+    const options = createBaseOptions({
+      selectedMemberId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      memberEventsRef: { current: existingHistory },
+      setMemberEvents,
+      setMemberEventsHasMore,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      const update = setMemberEvents.mock.calls[0]?.[0];
+      expect(typeof update).toBe("function");
+      expect(update(existingHistory).map((event: AgentEvent) => event.event_id)).toEqual([
+        1, 2, 7, 8,
+      ]);
+      expect(setMemberEventsHasMore).not.toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
 });

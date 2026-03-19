@@ -3327,12 +3327,14 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
                     {
                         "member_id":"planner",
                         "role":"leader",
+                        "description":"Existing planning lead",
                         "prompt":"Lead with checkpoints.",
                         "skills":["planning"]
                     },
                     {
                         "member_id":"reviewer",
                         "role":"worker",
+                        "description":"Review specialist",
                         "prompt":"Review implementation.",
                         "skills":["review"]
                     }
@@ -3360,6 +3362,7 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         "target":"team",
         "member_id":"planner",
         "prompt_append":"Escalate blockers in a dedicated section.",
+        "description":"Lead planner and review owner.",
         "skills_add":["risk-analysis","planning"]
     });
 
@@ -3424,6 +3427,10 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         .unwrap_or_default();
     assert!(planner_prompt.contains("Lead with checkpoints."));
     assert!(planner_prompt.contains("Escalate blockers in a dedicated section."));
+    assert_eq!(
+        planner.get("description").and_then(Value::as_str),
+        Some("Lead planner and review owner.")
+    );
     let planner_skills = planner
         .get("skills")
         .and_then(Value::as_array)
@@ -3456,6 +3463,18 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         applied_events[0].payload["member_id"],
         Value::from("planner")
     );
+    assert_eq!(
+        applied_events[0].payload["description"],
+        Value::from("Lead planner and review owner.")
+    );
+    assert_eq!(
+        applied_events[0].payload["before"]["description"],
+        Value::from("Existing planning lead")
+    );
+    assert_eq!(
+        applied_events[0].payload["after"]["description"],
+        Value::from("Lead planner and review owner.")
+    );
 }
 
 #[tokio::test]
@@ -3476,12 +3495,14 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
                     {
                         "member_id":"leader-agent",
                         "role":"leader",
+                        "description":"Run lead",
                         "prompt":"Lead the run.",
                         "skills":["planning"]
                     },
                     {
                         "member_id":"worker-agent",
                         "role":"worker",
+                        "description":"Baseline execution specialist",
                         "prompt":"Execute baseline tasks.",
                         "skills":["coding"]
                     }
@@ -3521,6 +3542,7 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
                 "target":"run",
                 "member_id":"worker-agent",
                 "prompt_append":"Ask one clarification question before coding when requirements are incomplete.",
+                "description":"Focused implementation specialist.",
                 "skills_add":["actor-mailbox"]
             }),
             idempotency_key: Some("profile-run-1".to_string()),
@@ -3536,6 +3558,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
     assert_eq!(
         updated_run.input["profile_overrides"]["members"]["worker-agent"]["skills_add"][0],
         Value::from("actor-mailbox")
+    );
+    assert_eq!(
+        updated_run.input["profile_overrides"]["members"]["worker-agent"]["description"],
+        Value::from("Focused implementation specialist.")
     );
 
     let Json(unchanged_team) =
@@ -3560,6 +3586,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         worker_member.get("prompt").and_then(Value::as_str),
         Some("Execute baseline tasks.")
     );
+    assert_eq!(
+        worker_member.get("description").and_then(Value::as_str),
+        Some("Baseline execution specialist")
+    );
 
     let Json(snapshot) = get_team_run_snapshot(
         State(state.clone()),
@@ -3580,6 +3610,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
     let worker_prompt = worker_snapshot.prompt.clone().unwrap_or_default();
     assert!(worker_prompt.contains("Execute baseline tasks."));
     assert!(worker_prompt.contains("Ask one clarification question before coding"));
+    assert_eq!(
+        worker_snapshot.description.as_deref(),
+        Some("Focused implementation specialist.")
+    );
     assert!(worker_snapshot.skills.iter().any(|skill| skill == "coding"));
     assert!(
         worker_snapshot
@@ -3605,6 +3639,18 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         .expect("profile_patch_applied event");
     assert_eq!(applied.payload["target"], Value::from("run"));
     assert_eq!(applied.payload["member_id"], Value::from("worker-agent"));
+    assert_eq!(
+        applied.payload["description"],
+        Value::from("Focused implementation specialist.")
+    );
+    assert_eq!(
+        applied.payload["before"]["description"],
+        Value::Null
+    );
+    assert_eq!(
+        applied.payload["after"]["description"],
+        Value::from("Focused implementation specialist.")
+    );
 }
 
 #[tokio::test]

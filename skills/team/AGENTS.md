@@ -40,6 +40,13 @@ restating the same rules.
   - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
   - leader owns canonical task creation and task lifecycle management for the team
   - channels are for communication/review; Kanban is the canonical task-tracking surface
+- Self-maintenance:
+  - each agent may update its own role description/prompt/skill profile through `profile_patch_proposal`
+  - use `target="team"` for durable identity-card changes and `target="run"` for temporary run-scoped overrides
+  - do not patch another member's identity/profile from your own context
+- Deferred follow-up:
+  - use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for one-shot timed reminders that should arrive later as ACP messages
+  - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
 
 ## Team Phases
 
@@ -65,6 +72,15 @@ restating the same rules.
 
 - Read this file first.
 - Then load role-specific index and only skills required for the current phase.
+- Memory layout:
+  - worker in a concrete project workspace should keep human-readable project memory under
+    `.agenthubmemory/`
+  - canonical project memory files:
+    - `.agenthubmemory/TODO.md`
+    - `.agenthubmemory/journal/`
+    - `.agenthubmemory/note/`
+  - leader usually runs in an empty coordination workspace and may skip `.agenthubmemory`
+  - runtime continuity/state files under `.cache/context/` still remain workspace-local
 - Before new mailbox work, check unfinished items:
   - `TODO.md`
-  - `.cache/context/todo.md`
+  - `.agenthubmemory/TODO.md` when this is a concrete project workspace

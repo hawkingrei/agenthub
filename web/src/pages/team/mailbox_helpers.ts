@@ -584,6 +584,7 @@ export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unkno
         type: "profile_patch_proposal",
         target: "run",
         prompt_append: "Add missing domain constraint and output contract.",
+        description: "Planner, reviewer, and runtime owner for database changes.",
         skills_add: ["team-leader-orchestrator"],
       };
     default:

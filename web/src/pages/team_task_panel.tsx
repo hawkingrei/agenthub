@@ -20,7 +20,6 @@ import {
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
@@ -43,32 +42,36 @@ type TeamTaskPanelProps = {
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-3 flex flex-col gap-3 border-t border-ui-border pt-3";
+  "mt-4 flex flex-col gap-3 rounded-[20px] border border-ui-border bg-ui-surface p-3.5 shadow-sm";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-1 py-3 text-ui-sm text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-2 min-h-[240px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
+  "mt-3 min-h-[240px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
-  "mt-2 min-h-[120px] overflow-y-auto pr-1";
-const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
+  "mt-3 min-h-[120px] overflow-y-auto pr-1";
+const TEAM_TASK_ACTIVITY_SHELL_CLASS =
+  "rounded-[22px] border border-ui-border bg-ui-surface-soft/65 px-3 py-3";
+const TEAM_TASK_ACTIVITY_STACK_CLASS =
+  "relative flex w-full flex-col gap-3 pl-6 before:absolute before:bottom-3 before:left-[8px] before:top-3 before:w-px before:bg-ui-border/60";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble border-b border-ui-border/70 px-1 py-3";
+  "acp-bubble relative rounded-[18px] border px-3.5 py-3 before:absolute before:-left-[22px] before:top-5 before:h-2.5 before:w-2.5 before:rounded-full before:border before:bg-ui-surface";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} bg-transparent text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(31,122,61,0.18)] bg-[rgba(31,122,61,0.05)] text-ui-text-primary before:border-[rgba(31,122,61,0.24)] before:bg-[rgba(31,122,61,0.14)]`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} bg-transparent text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-ui-border/80 bg-ui-surface/75 text-ui-text-primary before:border-ui-border before:bg-ui-surface`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 flex-wrap items-center gap-2";
 const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
-  "text-sm font-semibold text-ui-text-primary";
-const TEAM_TASK_ACTIVITY_TIME_CLASS = "text-xs text-ui-text-muted";
+  "text-sm font-semibold tracking-tight text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_TIME_CLASS =
+  "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "acp-text mt-1.5 text-sm leading-6 text-ui-text-primary";
+  "acp-text mt-2 text-[14px] leading-6 text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
@@ -82,6 +85,12 @@ const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "mt-2 flex flex-wrap items-center gap-2";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
+const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
+  "text-[11px] font-medium text-ui-text-muted/80";
+const TEAM_TASK_OPTIONS_ROW_CLASS = "flex items-center justify-end";
+const TEAM_TASK_OPTIONS_PANEL_CLASS =
+  "mt-3 flex flex-wrap items-center gap-2 rounded-[16px] border border-ui-border bg-ui-surface-soft/75 p-2";
+const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
@@ -131,6 +140,11 @@ function resolveActivityItemClassName(
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
 }
 
+function isScrollContainerNearBottom(node: HTMLDivElement, threshold = 24): boolean {
+  const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
+  return remaining <= threshold;
+}
+
 export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const {
     developerMode,
@@ -156,6 +170,8 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
   const [expandedSeenKeys, setExpandedSeenKeys] = React.useState<Record<string, boolean>>({});
+  const activityListRef = React.useRef<HTMLDivElement | null>(null);
+  const [stickToBottom, setStickToBottom] = React.useState(true);
   const liveStateByMemberId = React.useMemo(
     () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
     [memberLiveStates]
@@ -277,10 +293,46 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     messagesLoading || waterfallItems.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
+  const latestWaterfallKey = waterfallItems[waterfallItems.length - 1]?.key ?? "empty";
+
+  const scrollActivityToBottom = React.useCallback(() => {
+    const node = activityListRef.current;
+    if (!node) {
+      return;
+    }
+    node.scrollTop = node.scrollHeight;
+  }, []);
+  const scrollActivityToTop = React.useCallback(() => {
+    const node = activityListRef.current;
+    if (!node) {
+      return;
+    }
+    node.scrollTop = 0;
+  }, []);
+
+  React.useEffect(() => {
+    if (messagesLoading || waterfallItems.length === 0 || !stickToBottom) {
+      return;
+    }
+    const handle = window.requestAnimationFrame(() => {
+      scrollActivityToBottom();
+    });
+    return () => {
+      window.cancelAnimationFrame(handle);
+    };
+  }, [latestWaterfallKey, messagesLoading, scrollActivityToBottom, stickToBottom, waterfallItems.length]);
+
+  const handleActivityScroll = React.useCallback(() => {
+    const node = activityListRef.current;
+    if (!node) {
+      return;
+    }
+    setStickToBottom(isScrollContainerNearBottom(node));
+  }, []);
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+      <div className={TEAM_TASK_OPTIONS_ROW_CLASS}>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
           <button
             type="button"
@@ -296,7 +348,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       </div>
 
       {threadOptionsOpen && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className={TEAM_TASK_OPTIONS_PANEL_CLASS}>
           <button
             type="button"
             className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
@@ -323,8 +375,14 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
         </div>
       )}
 
-      <div className={activityListClassName}>
-        <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
+      <div
+        ref={activityListRef}
+        className={activityListClassName}
+        data-team-channel-scroll="true"
+        onScroll={handleActivityScroll}
+      >
+        <div className={TEAM_TASK_ACTIVITY_SHELL_CLASS}>
+          <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {waterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
             const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
@@ -359,7 +417,9 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                   if (seenActorIds.length === 0) {
                     return (
                       <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
-                        <span className="text-xs text-ui-text-muted">Seen by 0 agents</span>
+                        <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS}>
+                          Delivery pending
+                        </span>
                       </div>
                     );
                   }
@@ -463,13 +523,46 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
           )}
           {!messagesLoading && waterfallItems.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              No thread messages yet.
+              No channel messages yet.
             </div>
           )}
+          </div>
         </div>
       </div>
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {stickToBottom && waterfallItems.length >= TEAM_TASK_TOP_JUMP_MIN_MESSAGES && (
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => {
+                setStickToBottom(false);
+                scrollActivityToTop();
+              }}
+              title="Jump to top"
+              aria-label="Jump to top"
+            >
+              Jump to top
+            </button>
+          )}
+          {!stickToBottom && waterfallItems.length > 0 && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => {
+                setStickToBottom(true);
+                scrollActivityToBottom();
+              }}
+              title="Jump to bottom"
+              aria-label="Jump to bottom"
+            >
+              Jump to bottom
+            </button>
+          </div>
+          )}
+        </div>
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}

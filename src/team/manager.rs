@@ -15,6 +15,7 @@ use chrono::Utc;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
@@ -39,6 +40,7 @@ use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
+    conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
 }
 
 const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
@@ -53,6 +55,16 @@ const MEMORY_FLUSH_MAX_EXCERPT_CHARS: usize = 700;
 const MEMORY_FLUSH_ARTIFACT_KIND: &str = "memory_flush";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND: &str = "shared_thread_mailbox";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE: &str = "teams_all";
+const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamConversationStreamEvent {
+    pub team_id: String,
+    pub task_id: String,
+    pub conversation_id: String,
+    pub message_id: Option<i64>,
+    pub source: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct TeamMemoryFlushRequest {
@@ -177,7 +189,18 @@ impl TeamManager {
     }
 
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
-        Self { db, event_dbs }
+        let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
+        Self {
+            db,
+            event_dbs,
+            conversation_events,
+        }
+    }
+
+    pub fn subscribe_conversation_events(
+        &self,
+    ) -> broadcast::Receiver<TeamConversationStreamEvent> {
+        self.conversation_events.subscribe()
     }
 
     #[cfg(test)]
@@ -587,9 +610,17 @@ impl TeamManager {
         .bind(now)
         .execute(&self.db)
         .await?;
+        let message_id = result.last_insert_rowid();
+        self.emit_conversation_event(TeamConversationStreamEvent {
+            team_id: conversation.team_id.clone(),
+            task_id: task_id.to_string(),
+            conversation_id: conversation.id.clone(),
+            message_id: Some(message_id),
+            source: "conversation_message".to_string(),
+        });
 
         Ok(TeamConversationMessageRecord {
-            message_id: result.last_insert_rowid(),
+            message_id,
             conversation_id: conversation.id,
             task_id: task_id.to_string(),
             from_actor_id: from_actor_id.to_string(),
@@ -3678,6 +3709,52 @@ async fn load_running_session_rows_by_agent(
         );
     }
     Ok(out)
+}
+
+impl TeamManager {
+    pub(crate) async fn shared_thread_target_for_run(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<Option<(String, String, String)>> {
+        let team_id =
+            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+                .bind(run_id)
+                .fetch_optional(&self.db)
+                .await?;
+        let Some(team_id) = team_id else {
+            return Ok(None);
+        };
+        let row = sqlx::query(
+            r#"
+            SELECT
+                t.id AS task_id,
+                c.id AS conversation_id
+            FROM team_tasks t
+            INNER JOIN team_conversations c ON c.task_id = t.id
+            WHERE t.team_id = ?1
+              AND (
+                lower(trim(t.title)) = 'all'
+                OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = 'shared_thread'
+              )
+            ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(&team_id)
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.map(|row| {
+            (
+                team_id,
+                row.get::<String, _>("task_id"),
+                row.get::<String, _>("conversation_id"),
+            )
+        }))
+    }
+
+    pub(crate) fn emit_conversation_event(&self, event: TeamConversationStreamEvent) {
+        let _ = self.conversation_events.send(event);
+    }
 }
 
 fn build_team_member_card(

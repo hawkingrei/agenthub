@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
+use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::team::TeamManager;
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
@@ -64,6 +65,23 @@ struct ActorSendToolArgs {
 struct TeamMembersToolArgs {
     team_id: Option<String>,
     run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentTimeTriggerSetToolArgs {
+    delay_seconds: i64,
+    message: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct AgentTimeTriggerListToolArgs {
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentTimeTriggerCancelToolArgs {
+    trigger_id: String,
 }
 
 fn actor_mcp_usage() -> &'static str {
@@ -254,6 +272,42 @@ fn actor_tools() -> Vec<Value> {
                 "properties": {
                     "team_id": { "type": "string", "minLength": 1 },
                     "run_id": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_set",
+            "description": "Create a one-shot time trigger that will inject a future ACP prompt back into the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["delay_seconds", "message"],
+                "properties": {
+                    "delay_seconds": { "type": "integer", "minimum": 1, "maximum": 2592000 },
+                    "message": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_list",
+            "description": "List recent time triggers for the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 20 }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_cancel",
+            "description": "Cancel a pending time trigger for the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["trigger_id"],
+                "properties": {
+                    "trigger_id": { "type": "string", "minLength": 1 }
                 }
             }
         }),
@@ -585,9 +639,82 @@ async fn tool_team_members(
     }
 }
 
+async fn tool_agent_time_trigger_set(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerSetToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    if !(1..=60 * 60 * 24 * 30).contains(&args.delay_seconds) {
+        return tool_result_error("delay_seconds must be between 1 and 2592000", None);
+    }
+    let message = args.message.trim();
+    if message.is_empty() {
+        return tool_result_error("message must be a non-empty string", None);
+    }
+    let fire_at = chrono::Utc::now().timestamp() + args.delay_seconds;
+    match trigger_manager
+        .create_time_trigger(AgentTimeTriggerCreateInput {
+            agent_id: context.actor_id.clone(),
+            created_by_actor_id: context.actor_id.clone(),
+            message_text: message.to_string(),
+            fire_at,
+        })
+        .await
+    {
+        Ok(record) => tool_result_success(json!(record)),
+        Err(err) => tool_result_error(format!("agent_time_trigger_set failed: {err}"), None),
+    }
+}
+
+async fn tool_agent_time_trigger_list(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerListToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    match trigger_manager
+        .list_triggers_for_agent(context.actor_id.as_str(), args.limit.unwrap_or(20))
+        .await
+    {
+        Ok(records) => tool_result_success(json!(records)),
+        Err(err) => tool_result_error(format!("agent_time_trigger_list failed: {err}"), None),
+    }
+}
+
+async fn tool_agent_time_trigger_cancel(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerCancelToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let trigger_id = args.trigger_id.trim();
+    if trigger_id.is_empty() {
+        return tool_result_error("trigger_id must be a non-empty string", None);
+    }
+    match trigger_manager
+        .cancel_trigger(context.actor_id.as_str(), trigger_id)
+        .await
+    {
+        Ok(true) => tool_result_success(json!({ "status": "ok", "trigger_id": trigger_id })),
+        Ok(false) => tool_result_error("agent_time_trigger_cancel failed: trigger not found", None),
+        Err(err) => tool_result_error(format!("agent_time_trigger_cancel failed: {err}"), None),
+    }
+}
+
 async fn handle_tool_call<S: ActorMailboxService>(
     service: &S,
     manager: &TeamManager,
+    trigger_manager: &AgentTimeTriggerManager,
     context: &ActorMcpContext,
     params: Option<&Value>,
 ) -> Result<Value, Value> {
@@ -613,6 +740,15 @@ async fn handle_tool_call<S: ActorMailboxService>(
         "actor_ack" => tool_actor_ack(service, context, arguments).await,
         "actor_send" => tool_actor_send(service, context, arguments).await,
         "team_members" => tool_team_members(manager, context, arguments).await,
+        "agent_time_trigger_set" => {
+            tool_agent_time_trigger_set(trigger_manager, context, arguments).await
+        }
+        "agent_time_trigger_list" => {
+            tool_agent_time_trigger_list(trigger_manager, context, arguments).await
+        }
+        "agent_time_trigger_cancel" => {
+            tool_agent_time_trigger_cancel(trigger_manager, context, arguments).await
+        }
         other => tool_result_error(format!("unknown tool: {}", other), None),
     };
     Ok(result)
@@ -621,6 +757,7 @@ async fn handle_tool_call<S: ActorMailboxService>(
 async fn handle_jsonrpc_request<S: ActorMailboxService>(
     service: &S,
     manager: &TeamManager,
+    trigger_manager: &AgentTimeTriggerManager,
     context: &ActorMcpContext,
     initialized: &mut bool,
     method: &str,
@@ -674,13 +811,15 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                 "tools": actor_tools()
             }),
         ),
-        "tools/call" => match handle_tool_call(service, manager, context, params).await {
-            Ok(result) => jsonrpc_response(id, result),
-            Err(mut err) => {
-                err["id"] = id;
-                err
+        "tools/call" => {
+            match handle_tool_call(service, manager, trigger_manager, context, params).await {
+                Ok(result) => jsonrpc_response(id, result),
+                Err(mut err) => {
+                    err["id"] = id;
+                    err
+                }
             }
-        },
+        }
         _ => jsonrpc_error(
             id,
             JSONRPC_METHOD_NOT_FOUND,
@@ -698,6 +837,7 @@ fn handle_jsonrpc_notification(initialized: &mut bool, method: &str) {
 
 async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
     let db = agenthub_db::init_db().await?;
+    let trigger_manager = AgentTimeTriggerManager::new(db.clone());
     let manager = TeamManager::new(db);
     let service = manager.actor_mailbox_service();
 
@@ -752,6 +892,7 @@ async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
             let response = handle_jsonrpc_request(
                 &service,
                 &manager,
+                &trigger_manager,
                 &context,
                 &mut initialized,
                 method,
@@ -916,8 +1057,119 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["actor_inbox", "actor_ack", "actor_send", "team_members"]
+            vec![
+                "actor_inbox",
+                "actor_ack",
+                "actor_send",
+                "team_members",
+                "agent_time_trigger_set",
+                "agent_time_trigger_list",
+                "agent_time_trigger_cancel",
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn agent_time_trigger_tools_roundtrip() {
+        let state = build_test_state().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_time_triggers");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id,
+                name,
+                workdir,
+                command,
+                args,
+                worktree_mode,
+                worktree_repo,
+                worktree_ref,
+                code_mode,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'created', ?7, ?8)
+            "#,
+        )
+        .bind("trigger-agent")
+        .bind("trigger-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert trigger agent");
+        let manager = AgentTimeTriggerManager::new(state.db.clone());
+        let context = ActorMcpContext {
+            team_id: None,
+            current_run_id: None,
+            actor_id: "trigger-agent".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let created = tool_agent_time_trigger_set(
+            &manager,
+            &context,
+            Some(
+                &json!({
+                    "delay_seconds": 30,
+                    "message": "Check the queue again."
+                })
+                .as_object()
+                .expect("args object"),
+            ),
+        )
+        .await;
+        assert_eq!(created["isError"], Value::Bool(false));
+        let trigger_id = created["structuredContent"]["id"]
+            .as_str()
+            .expect("trigger id")
+            .to_string();
+
+        let listed = tool_agent_time_trigger_list(&manager, &context, None).await;
+        let listed_records = listed["structuredContent"]
+            .as_array()
+            .expect("listed records");
+        assert_eq!(listed_records.len(), 1);
+        assert_eq!(listed_records[0]["id"], Value::from(trigger_id.clone()));
+
+        let canceled = tool_agent_time_trigger_cancel(
+            &manager,
+            &context,
+            Some(
+                &json!({
+                    "trigger_id": trigger_id
+                })
+                .as_object()
+                .expect("cancel args"),
+            ),
+        )
+        .await;
+        assert_eq!(canceled["isError"], Value::Bool(false));
     }
 
     #[test]
@@ -1074,6 +1326,7 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
         let context = ActorMcpContext {
             team_id: Some(team.id),
             current_run_id: Some(run.id),
@@ -1085,6 +1338,7 @@ mod tests {
         let response = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &context,
             &mut initialized,
             "tools/list",
@@ -1127,6 +1381,7 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
 
         let mut planner_initialized = false;
         let planner_context = ActorMcpContext {
@@ -1138,6 +1393,7 @@ mod tests {
         let init_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &planner_context,
             &mut planner_initialized,
             "initialize",
@@ -1154,6 +1410,7 @@ mod tests {
         let list_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &planner_context,
             &mut planner_initialized,
             "tools/list",
@@ -1175,6 +1432,7 @@ mod tests {
         let send_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &planner_context,
             &mut planner_initialized,
             "tools/call",
@@ -1207,6 +1465,7 @@ mod tests {
         let _ = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &reviewer_context,
             &mut reviewer_initialized,
             "initialize",
@@ -1219,6 +1478,7 @@ mod tests {
         let inbox_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1240,6 +1500,7 @@ mod tests {
         let ack_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1259,6 +1520,7 @@ mod tests {
         let delivered_resp = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1400,6 +1662,7 @@ mod tests {
         let team_id = team.id.clone();
         let run_id = run.id.clone();
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
         let context = ActorMcpContext {
             team_id: Some(team_id.clone()),
             current_run_id: Some(run_id),
@@ -1410,6 +1673,7 @@ mod tests {
         let _ = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &context,
             &mut initialized,
             "initialize",
@@ -1421,6 +1685,7 @@ mod tests {
         let response = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &context,
             &mut initialized,
             "tools/call",
@@ -1521,6 +1786,7 @@ mod tests {
         .expect("insert leader session");
 
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
         let context = ActorMcpContext {
             team_id: Some(team.id.clone()),
             current_run_id: None,
@@ -1531,6 +1797,7 @@ mod tests {
         let _ = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &context,
             &mut initialized,
             "initialize",
@@ -1542,6 +1809,7 @@ mod tests {
         let response = handle_jsonrpc_request(
             &service,
             &state.teams,
+            &trigger_manager,
             &context,
             &mut initialized,
             "tools/call",

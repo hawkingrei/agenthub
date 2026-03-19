@@ -26,7 +26,7 @@ use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
-use super::{TeamManager, redact_sensitive_json};
+use super::{TeamConversationStreamEvent, TeamManager, redact_sensitive_json};
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
 const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -138,6 +138,13 @@ impl TeamManager {
             payload,
             idempotency_key,
         } = request;
+        let should_emit_human_visible_reply = should_persist_human_visible_chat_reply_for_payload(
+            &transport,
+            &to_actor_id,
+            &to_peer_id,
+            &from_actor_id,
+            &payload,
+        );
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
         let result = mailbox
@@ -156,6 +163,19 @@ impl TeamManager {
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
+        if result.created
+            && should_emit_human_visible_reply
+            && let Some((team_id, task_id, conversation_id)) =
+                self.shared_thread_target_for_run(run_id).await?
+        {
+            self.emit_conversation_event(TeamConversationStreamEvent {
+                team_id,
+                task_id,
+                conversation_id,
+                message_id: None,
+                source: "canonical_chat_reply".to_string(),
+            });
+        }
         Ok((result.message, result.created))
     }
 
@@ -1232,10 +1252,27 @@ async fn maybe_persist_human_visible_chat_reply(
 }
 
 fn should_persist_human_visible_chat_reply(cmd: &SendActorMessageCommand) -> bool {
-    cmd.transport == agenthub_team_actor::ActorMessageTransport::Local
-        && cmd.to_peer_id == ACTOR_MAIN_PEER_ID
-        && is_human_actor_id(&cmd.to_actor_id)
-        && !is_human_actor_id(&cmd.from_actor_id)
+    should_persist_human_visible_chat_reply_for_payload(
+        &cmd.transport,
+        &cmd.to_actor_id,
+        &cmd.to_peer_id,
+        &cmd.from_actor_id,
+        &cmd.payload,
+    )
+}
+
+pub(super) fn should_persist_human_visible_chat_reply_for_payload(
+    transport: &agenthub_team_actor::ActorMessageTransport,
+    to_actor_id: &str,
+    to_peer_id: &str,
+    from_actor_id: &str,
+    payload: &Value,
+) -> bool {
+    *transport == agenthub_team_actor::ActorMessageTransport::Local
+        && to_peer_id == ACTOR_MAIN_PEER_ID
+        && is_human_actor_id(to_actor_id)
+        && !is_human_actor_id(from_actor_id)
+        && resolve_canonical_chat_reply(payload).is_some()
 }
 
 fn is_human_actor_id(actor_id: &str) -> bool {
