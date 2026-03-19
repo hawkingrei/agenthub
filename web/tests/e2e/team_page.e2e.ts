@@ -294,9 +294,11 @@ async function selectAgentFromSidebar(
     .first();
   await expect(agentItem).toBeVisible();
   await agentItem.click();
-  await expect(
-    page.getByPlaceholder("Type a message to selected agent")
-  ).toBeVisible();
+  const agentAcpReady = page
+    .locator(".teams-main")
+    .getByRole("tab", { name: "Conversation", exact: true })
+    .first();
+  await expect(agentAcpReady).toBeVisible();
 }
 
 async function selectPrimaryTeamEntryFromSidebar(
@@ -2434,9 +2436,9 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   );
 
   await page
-    .getByPlaceholder("Type a message to selected agent")
+    .getByPlaceholder(/Send input|Type a message \(tap Send/)
     .fill("Please include migration notes in the final report.");
-  await page.getByRole("button", { name: "Send Chat" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".teams-chat-messages")).toContainText(
     "Please include migration notes in the final report."
   );
