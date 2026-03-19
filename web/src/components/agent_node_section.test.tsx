@@ -84,4 +84,15 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Add Node");
     expect(html).toContain("disabled");
   });
+
+  it("keeps the default helper copy when the draft is complete", () => {
+    const html = renderSection({
+      nodeIdInput: "node-east",
+      nodeNameInput: "Node East",
+      grpcTargetInput: "https://node-east.internal:50051",
+    });
+    expect(html).toContain("AgentHub to node and node to node traffic uses encrypted gRPC.");
+    expect(html).toContain("Add Node");
+    expect(html).not.toContain("Node ID is required.");
+  });
 });

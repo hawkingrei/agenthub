@@ -751,6 +751,10 @@ mod tests {
         TeamRemoteRelayAdapter, apply_route_signing, parse_remote_route, parse_route_header_name,
         parse_route_header_value, relay_timeout_ms,
     };
+    use crate::internal::p2p::NodeTransportMetadata;
+    use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
+    use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind};
+    use chrono::Utc;
     use serde_json::json;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -765,6 +769,103 @@ mod tests {
             .connect_with(options)
             .await
             .expect("connect sqlite")
+    }
+
+    async fn create_agent_nodes_table(db: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_nodes table");
+    }
+
+    async fn insert_agent_node(
+        db: &SqlitePool,
+        node_id: &str,
+        grpc_target: &str,
+        tls_server_name: Option<&str>,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_nodes (id, name, grpc_target, tls_server_name, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, 1, 1)
+            "#,
+        )
+        .bind(node_id)
+        .bind(format!("Node {node_id}"))
+        .bind(grpc_target)
+        .bind(tls_server_name)
+        .execute(db)
+        .await
+        .expect("insert agent node");
+    }
+
+    fn grpc_route_value(
+        grpc_target: &str,
+        access_token: &str,
+        tls_server_name: &str,
+    ) -> super::GrpcRemoteRelayRouteValue {
+        super::GrpcRemoteRelayRouteValue {
+            kind: Some("grpc".to_string()),
+            grpc_target: grpc_target.to_string(),
+            access_token: access_token.to_string(),
+            tls_server_name: Some(tls_server_name.to_string()),
+        }
+    }
+
+    fn test_remote_message(
+        target_node_id: &str,
+        grpc_target: &str,
+        tls_server_name: &str,
+    ) -> TeamActorMessageRecord {
+        let mut route = serde_json::Map::new();
+        route.insert("kind".to_string(), json!("grpc"));
+        route.insert("grpc_target".to_string(), json!(grpc_target));
+        route.insert("access_token".to_string(), json!("secret-token"));
+        route.insert("tls_server_name".to_string(), json!(tls_server_name));
+        NodeTransportMetadata {
+            cluster_id: "agenthub".to_string(),
+            source_node_id: "node-a".to_string(),
+            target_node_id: target_node_id.to_string(),
+            broadcast_id: None,
+            correlation_id: None,
+            idempotency_key: Some("relay-test".to_string()),
+            scope: vec!["node:p2p".to_string()],
+            audience: vec!["agenthub-internal".to_string()],
+            issued_at: Utc::now().timestamp(),
+            expires_at: Utc::now().timestamp() + 600,
+            kid: "shared-hs256-test".to_string(),
+            payload_digest: None,
+        }
+        .apply_to_route(&mut route);
+
+        TeamActorMessageRecord {
+            message_id: 1,
+            run_id: "run-1".to_string(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: "node-a".to_string(),
+            from_actor_kind: ActorIdentityKind::Agent,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: ACTOR_NODE_PEER_ID.to_string(),
+            to_actor_kind: ActorIdentityKind::Agent,
+            channel: "coordination".to_string(),
+            transport: TeamActorMessageTransport::Remote,
+            route: Some(json!(route)),
+            payload: json!({"type":"chat_message","text":"hello"}),
+            status: TeamActorMessageStatus::Pending,
+            created_at: Utc::now().timestamp(),
+            delivered_at: None,
+        }
     }
 
     #[test]
@@ -833,30 +934,14 @@ mod tests {
     #[tokio::test]
     async fn grpc_relay_requires_registered_target_node_match() {
         let db = test_db().await;
-        sqlx::query(
-            r#"
-            CREATE TABLE agent_nodes (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                grpc_target TEXT NOT NULL,
-                tls_server_name TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            "#,
+        create_agent_nodes_table(&db).await;
+        insert_agent_node(
+            &db,
+            "node-b",
+            "https://node-b.internal:50051",
+            Some("node-b.internal"),
         )
-        .execute(&db)
-        .await
-        .expect("create agent_nodes table");
-        sqlx::query(
-            r#"
-            INSERT INTO agent_nodes (id, name, grpc_target, tls_server_name, created_at, updated_at)
-            VALUES ('node-b', 'Node B', 'https://node-b.internal:50051', 'node-b.internal', 1, 1)
-            "#,
-        )
-        .execute(&db)
-        .await
-        .expect("insert agent node");
+        .await;
 
         let adapter = TeamRemoteRelayAdapter::new(db);
         adapter.configure_grpc_tls_defaults(Some(GrpcRelayTlsDefaults {
@@ -890,6 +975,174 @@ mod tests {
                 .contains("route.grpc_target must match registered agent node"),
             "unexpected error: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn grpc_relay_rejects_main_target_node() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        let err = adapter
+            .resolve_registered_grpc_route(
+                ACTOR_MAIN_PEER_ID,
+                &grpc_route_value(
+                    "https://node-b.internal:50051",
+                    "secret-token",
+                    "node-b.internal",
+                ),
+            )
+            .await
+            .expect_err("main node target should be rejected");
+        assert!(
+            err.to_string()
+                .contains("must reference a registered remote agent node"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn grpc_relay_requires_registered_tls_server_name_match() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        insert_agent_node(
+            &db,
+            "node-b",
+            "https://node-b.internal:50051",
+            Some("node-b.internal"),
+        )
+        .await;
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        let err = adapter
+            .resolve_registered_grpc_route(
+                "node-b",
+                &grpc_route_value(
+                    "https://node-b.internal:50051",
+                    "secret-token",
+                    "wrong.internal",
+                ),
+            )
+            .await
+            .expect_err("tls server name mismatch should fail");
+        assert!(
+            err.to_string()
+                .contains("route.tls_server_name must match registered agent node"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn grpc_relay_rejects_unregistered_target_node() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        let err = adapter
+            .resolve_registered_grpc_route(
+                "node-missing",
+                &grpc_route_value(
+                    "https://node-b.internal:50051",
+                    "secret-token",
+                    "node-b.internal",
+                ),
+            )
+            .await
+            .expect_err("missing registry entry should fail");
+        assert!(
+            err.to_string().contains("is not registered for gRPC relay"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn deliver_grpc_requires_cluster_tls_defaults() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        insert_agent_node(
+            &db,
+            "node-b",
+            "https://node-b.internal:50051",
+            Some("node-b.internal"),
+        )
+        .await;
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        let message =
+            test_remote_message("node-b", "https://node-b.internal:50051", "node-b.internal");
+        let err = adapter
+            .deliver_grpc(
+                &message,
+                grpc_route_value(
+                    "https://node-b.internal:50051",
+                    "secret-token",
+                    "node-b.internal",
+                ),
+            )
+            .await
+            .expect_err("missing tls defaults should fail");
+        assert!(
+            err.to_string().contains("TLS defaults are unavailable"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn deliver_grpc_requires_access_token() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        insert_agent_node(
+            &db,
+            "node-b",
+            "https://node-b.internal:50051",
+            Some("node-b.internal"),
+        )
+        .await;
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        adapter.configure_grpc_tls_defaults(Some(GrpcRelayTlsDefaults {
+            ca_cert_path: Some("/tmp/ca.pem".to_string()),
+            client_cert_path: None,
+            client_key_path: None,
+        }));
+        let message =
+            test_remote_message("node-b", "https://node-b.internal:50051", "node-b.internal");
+        let err = adapter
+            .deliver_grpc(
+                &message,
+                grpc_route_value("https://node-b.internal:50051", "   ", "node-b.internal"),
+            )
+            .await
+            .expect_err("missing access token should fail");
+        assert!(
+            err.to_string().contains("route.access_token is required"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn grpc_relay_tls_defaults_follow_security_mode() {
+        let dir = std::env::temp_dir().join(format!(
+            "agenthub-remote-relay-tls-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(dir.join("ca-cert.pem"), "ca").expect("write ca");
+        std::fs::write(dir.join("client-cert.pem"), "cert").expect("write client cert");
+        std::fs::write(dir.join("client-key.pem"), "key").expect("write client key");
+
+        let tls_only = GrpcRelayTlsDefaults::from_cert_dir(
+            &dir,
+            crate::internal::tls::InternalGrpcSecurityMode::Tls,
+        );
+        assert!(tls_only.ca_cert_path.is_some());
+        assert!(tls_only.client_cert_path.is_none());
+        assert!(tls_only.client_key_path.is_none());
+
+        let mtls = GrpcRelayTlsDefaults::from_cert_dir(
+            &dir,
+            crate::internal::tls::InternalGrpcSecurityMode::Mtls,
+        );
+        assert!(mtls.ca_cert_path.is_some());
+        assert!(mtls.client_cert_path.is_some());
+        assert!(mtls.client_key_path.is_some());
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

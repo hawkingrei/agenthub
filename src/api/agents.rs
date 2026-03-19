@@ -926,9 +926,9 @@ mod tests {
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
-        parse_agent_source, parse_start_actor_runtime_context, parse_worktree_mode,
-        resolve_create_agent_workdir, resolve_member_description_from_spec, router,
-        sanitize_worktree_segment,
+        map_create_agent_error, parse_agent_source, parse_start_actor_runtime_context,
+        parse_worktree_mode, resolve_create_agent_workdir, resolve_member_description_from_spec,
+        router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -1784,6 +1784,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_team_forge_agent_route_rejects_remote_target_on_legacy_schema() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent_nodes table");
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "legacy-team-forge-remote",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "source": "team_forge",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target team_forge agent");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("agents.target_node_id column")),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
     async fn create_agent_rejects_remote_target_on_legacy_schema() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
@@ -1844,6 +1915,18 @@ mod tests {
             err.to_string().contains("agents.target_node_id column"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn map_create_agent_error_classifies_validation_messages() {
+        let bad_request = map_create_agent_error(anyhow::anyhow!(
+            "remote-target agents require agents.target_node_id column on a legacy schema"
+        ))
+        .into_response();
+        assert_eq!(bad_request.status(), StatusCode::BAD_REQUEST);
+
+        let internal = map_create_agent_error(anyhow::anyhow!("sqlite busy")).into_response();
+        assert_eq!(internal.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]

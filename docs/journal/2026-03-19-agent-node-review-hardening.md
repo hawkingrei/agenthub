@@ -9,6 +9,10 @@
 - installed the Rustls crypto provider in the shared internal gRPC mailbox client connect path
 - restricted `agent_nodes` fetching and node-management UI to root sessions
 - added client-side validation for inline node registration on the `Agents` page
+- expanded regression coverage for:
+  - gRPC relay error branches (`main` target, missing registry entry, TLS server-name mismatch, missing TLS defaults, missing access token)
+  - `create_agent` error mapping and the `source = team_forge` route path
+  - complete-draft `AgentNodeSection` helper rendering
 
 ## Validation
 
@@ -16,8 +20,12 @@
 - `cargo test --locked create_agent_rejects_remote_target_on_legacy_schema -- --nocapture`
 - `cargo test --locked parse_remote_route_rejects_path_based_tls_fields_for_grpc -- --nocapture`
 - `cargo test --locked grpc_relay_requires_registered_target_node_match -- --nocapture`
+- `cargo test --locked grpc_relay_ -- --nocapture`
+- `cargo test --locked deliver_grpc_requires_ -- --nocapture`
 - `cargo test --locked remote_actor_grpc_pipeline_delivers_and_acks_over_tls -- --nocapture`
 - `cargo test --locked bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
+- `cargo test --locked create_team_forge_agent_route_rejects_remote_target_on_legacy_schema -- --nocapture`
+- `cargo test --locked map_create_agent_error_classifies_validation_messages -- --nocapture`
 - `cargo test --locked --test distributed_p2p_pipeline -- --nocapture`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `npm --prefix web run test -- src/app.route_auth.test.ts src/app.runtime_effects.test.tsx src/components/agent_node_section.test.tsx`
