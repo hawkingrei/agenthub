@@ -140,9 +140,9 @@ impl TeamManager {
         } = request;
         let should_emit_human_visible_reply = should_persist_human_visible_chat_reply_for_payload(
             &transport,
-            &to_actor_id,
-            &to_peer_id,
-            &from_actor_id,
+            to_actor_id,
+            to_peer_id,
+            from_actor_id,
             &payload,
         );
         let now = Utc::now().timestamp();
