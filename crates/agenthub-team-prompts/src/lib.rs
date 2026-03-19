@@ -28,6 +28,9 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.\n",
     "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
     "- Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.\n",
+    "- Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.\n",
+    "- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.\n",
+    "- Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.\n",
     "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
     "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
@@ -71,6 +74,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
     "- Use the runtime `team_members` tool to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
     "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
+    "- Load `team-task-lifecycle` whenever you need canonical Team task state guidance.\n",
+    "- Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
     "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.\n",
     "- Always load `team-agents-index` before role-specific execution skills.\n",
@@ -154,8 +159,12 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team-agents-index"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-agents-index"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team-task-lifecycle"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("canonical Team task creation"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("in_review"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("in_review"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Human channel input may be free-form"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("does not need `.agenthubmemory/`"));

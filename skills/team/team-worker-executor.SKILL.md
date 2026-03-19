@@ -18,6 +18,7 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
 - Use `team-worker-agents-index.SKILL.md` to load worker-specific AGENTS template/rules.
 - Use this skill for worker execution and evidence reporting.
+- Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
@@ -137,8 +138,12 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Task Status Discipline
 
 - Treat the leader-owned Team task as the canonical execution unit behind your assignment.
+- Use `team-task-lifecycle` as the canonical Team task state contract.
 - Keep the task moving with timely progress/blocker updates so the leader can maintain correct
   Kanban state.
+- When implementation evidence is ready, push the task toward `in_review`; do not treat worker
+  completion as canonical Team task `completed`.
+- If review requests changes, resume execution from `in_progress` with updated acceptance notes.
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
 - If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
 - Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.

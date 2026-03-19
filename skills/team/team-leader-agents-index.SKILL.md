@@ -20,6 +20,8 @@ Primary references:
 - Keep human-facing planning decisions in leader index records.
 - Keep pointers for self-profile maintenance (`profile_patch_proposal`) and timed follow-up
   reminders (`agent_time_trigger_set/list/cancel`) when they are active.
+- Keep `team-task-lifecycle` in the active skill set whenever leader is creating, reviewing, or
+  closing canonical Team tasks.
 
 ## Startup Checklist
 
@@ -28,5 +30,6 @@ Primary references:
 3. Set `role=leader` and load minimal `Active Skills`:
    - `team-leader-orchestrator` (role execution skill)
    - `team-actor-mailbox`
+   - add `team-task-lifecycle` when task creation/review is active
    - add `team-deliberation-rules` only when needed
 4. Check `TODO.md` before mailbox rounds.

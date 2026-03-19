@@ -217,6 +217,110 @@ export function appendTeamMemberToSpec(
   return nextSpec;
 }
 
+function readOptionalStringField(
+  record: Record<string, unknown>,
+  field: "description" | "model" | "prompt"
+): string {
+  const value = record[field];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readSkillsField(record: Record<string, unknown>): string[] {
+  const raw = record.skills;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item): item is string => item.length > 0);
+}
+
+export function buildTeamMemberDraftFromSpec(
+  spec: unknown,
+  memberId: string
+): TeamMemberProfileDraft | null {
+  const normalizedMemberId = memberId.trim();
+  if (!normalizedMemberId) {
+    return null;
+  }
+  const specObj = asObjectRecord(spec);
+  if (!specObj) {
+    return null;
+  }
+  const members = Array.isArray(specObj.members) ? specObj.members : [];
+  const member = members
+    .map((item) => asObjectRecord(item))
+    .find(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && readMemberId(item) === normalizedMemberId
+    );
+  if (!member) {
+    return null;
+  }
+  const role = readMemberRole(member) === "leader" ? "leader" : "worker";
+  return {
+    member_id: normalizedMemberId,
+    role,
+    description: readOptionalStringField(member, "description"),
+    model: readOptionalStringField(member, "model"),
+    prompt:
+      readOptionalStringField(member, "prompt") ||
+      (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT),
+    skills: readSkillsField(member),
+    custom_skills: "",
+  };
+}
+
+export function updateTeamMemberProfileInSpec(
+  spec: unknown,
+  draft: TeamMemberProfileDraft
+): unknown {
+  const memberId = draft.member_id.trim();
+  if (!memberId) {
+    throw new Error("Member id is required");
+  }
+  const nextSpec = cloneSpecObject(spec);
+  const existingMembers = Array.isArray(nextSpec.members)
+    ? nextSpec.members
+        .map((member) => asObjectRecord(member))
+        .filter((member): member is Record<string, unknown> => Boolean(member))
+    : [];
+  const memberIndex = existingMembers.findIndex((member) => readMemberId(member) === memberId);
+  if (memberIndex < 0) {
+    throw new Error(`Team does not include member ${memberId}`);
+  }
+  const existing = existingMembers[memberIndex];
+  const role = readMemberRole(existing) === "leader" ? "leader" : "worker";
+  const normalizedSkills =
+    role === "leader"
+      ? normalizeSkillSelection(
+          draft.skills,
+          draft.custom_skills,
+          DEFAULT_TEAM_LEADER_SKILLS,
+          REQUIRED_TEAM_LEADER_SKILLS
+        )
+      : normalizeSkillSelection(
+          draft.skills,
+          draft.custom_skills,
+          DEFAULT_TEAM_WORKER_SKILLS,
+          REQUIRED_TEAM_WORKER_SKILLS
+        );
+  const prompt =
+    draft.prompt.trim() ||
+    (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
+  existingMembers[memberIndex] = {
+    ...existing,
+    member_id: memberId,
+    role,
+    description: draft.description.trim() || undefined,
+    model: draft.model.trim() || undefined,
+    prompt,
+    skills: normalizedSkills,
+  };
+  nextSpec.members = existingMembers;
+  return nextSpec;
+}
+
 function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, unknown> | undefined {
   if (!agent) {
     return undefined;

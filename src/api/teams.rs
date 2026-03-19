@@ -39,27 +39,31 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_SKILLS: [&str; 4] = [
+const DEFAULT_TEAM_LEADER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-leader-orchestrator",
     "team-actor-mailbox",
 ];
-const DEFAULT_TEAM_WORKER_SKILLS: [&str; 4] = [
+const DEFAULT_TEAM_WORKER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-worker-executor",
     "team-actor-mailbox",
 ];
-const REQUIRED_TEAM_LEADER_SKILLS: [&str; 4] = [
+const REQUIRED_TEAM_LEADER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-leader-orchestrator",
     "team-actor-mailbox",
 ];
-const REQUIRED_TEAM_WORKER_SKILLS: [&str; 4] = [
+const REQUIRED_TEAM_WORKER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-worker-executor",
     "team-actor-mailbox",
 ];

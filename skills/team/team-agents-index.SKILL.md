@@ -25,6 +25,7 @@ Primary references:
 - Remember two shared runtime capabilities:
   - self-profile updates via `profile_patch_proposal`
   - timed self-reminders via `agent_time_trigger_set/list/cancel`
+  - canonical Team task lifecycle via `team-task-lifecycle`
 
 ## Routing
 
@@ -32,6 +33,7 @@ Primary references:
 - Worker AGENTS index: `team-worker-agents-index`
 - Leader orchestration: `team-leader-orchestrator`
 - Worker execution: `team-worker-executor`
+- Team task lifecycle: `team-task-lifecycle`
 - Deliberation quality gate: `team-deliberation-rules`
 - Actor mailbox protocol: `team-actor-mailbox`
 - Timed self-reminders: actor MCP tools `agent_time_trigger_set`, `agent_time_trigger_list`, `agent_time_trigger_cancel`
@@ -46,5 +48,7 @@ Primary references:
 4. Load role-specific skill set based on current phase:
    - leader -> `team-leader-orchestrator` (+ optional `team-deliberation-rules`)
    - worker -> `team-worker-executor` (+ optional `team-deliberation-rules`)
-5. Check unfinished TODO items in `TODO.md` and, for concrete project workspaces,
+5. Load `team-task-lifecycle` whenever canonical Team task creation, review, or status transitions
+   are part of the current work.
+6. Check unfinished TODO items in `TODO.md` and, for concrete project workspaces,
    `.agenthubmemory/TODO.md` before processing inbox.

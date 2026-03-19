@@ -26,6 +26,7 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
+import * as mailboxHelpers from "./team/mailbox_helpers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -98,6 +99,18 @@ function findButtonByAriaLabel(container: HTMLElement, label: string): HTMLButto
     candidate.getAttribute("aria-label")?.toLowerCase().includes(normalized)
   ) as HTMLButtonElement | undefined;
   return required(button, `button not found by aria-label: ${label}`);
+}
+
+function queryButtonByAriaLabel(
+  container: HTMLElement,
+  label: string
+): HTMLButtonElement | null {
+  const normalized = label.toLowerCase();
+  return (
+    (Array.from(container.querySelectorAll("button")).find((candidate) =>
+      candidate.getAttribute("aria-label")?.toLowerCase().includes(normalized)
+    ) as HTMLButtonElement | undefined) ?? null
+  );
 }
 
 function setNativeValue(
@@ -1474,10 +1487,8 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel supports create/select/send workflow", () => {
-    const onRefreshTasks = vi.fn();
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
-    const onRefreshMessages = vi.fn();
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     function TeamTaskPanelHarness() {
@@ -1485,15 +1496,12 @@ describe("team panels interactions", () => {
       return (
         <TeamTaskPanel
           developerMode={true}
-          tasksLoading={false}
-          onRefreshTasks={onRefreshTasks}
           messageDraft={draft}
           onMessageDraftChange={(value) => {
             onMessageDraftChange(value);
             setDraft(value);
           }}
           onSendMessage={onSendMessage}
-          onRefreshMessages={onRefreshMessages}
           messages={[
             buildTaskMessage(1),
             buildTaskMessage(2, {
@@ -1539,9 +1547,9 @@ describe("team panels interactions", () => {
       root.render(<TeamTaskPanelHarness />);
     });
 
-    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
-    clickElement(findButtonByText(container, "Refresh Channel"));
-    clickElement(findButtonByText(container, "Refresh Thread"));
+    expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
+    expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
+    expect(queryButtonByText(container, "Refresh Thread")).toBeNull();
     changeInputValue(
       required(
         container.querySelector(
@@ -1553,8 +1561,6 @@ describe("team panels interactions", () => {
     );
     clickElement(findButtonByText(container, "Send"));
 
-    expect(onRefreshTasks).toHaveBeenCalledTimes(1);
-    expect(onRefreshMessages).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     expect(onSendMessage).toHaveBeenCalledWith({
       text: "please continue <at>worker-agent</at> and review",
@@ -1745,6 +1751,10 @@ describe("team panels interactions", () => {
       });
 
       expect(scrollNode.scrollTop).toBe(640);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
+      expect(
+        container.querySelector("[data-team-channel-top-spacer='true']")
+      ).not.toBeNull();
       expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
 
@@ -1755,6 +1765,8 @@ describe("team panels interactions", () => {
       act(() => {
         scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(13);
+      expect(container.querySelector("[data-team-channel-top-spacer='true']")).toBeNull();
       expect(queryButtonByText(container, "Jump to bottom")).not.toBeNull();
 
       act(() => {
@@ -1768,11 +1780,66 @@ describe("team panels interactions", () => {
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
       expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();
+    }
+  });
+
+  it("TeamTaskPanel only renders markdown for the visible tail window until history is expanded", async () => {
+    const markdownSpy = vi.spyOn(mailboxHelpers, "renderMarkdownWithMentions");
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    try {
+      act(() => {
+        root.render(
+          <TeamTaskPanel
+            developerMode={false}
+            tasksLoading={false}
+            onRefreshTasks={vi.fn()}
+            messageDraft=""
+            onMessageDraftChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            onRefreshMessages={vi.fn()}
+            messages={Array.from({ length: 13 }, (_, index) =>
+              buildTaskMessage(index + 1, {
+                from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
+                to_actor_id: null,
+                route: "group_chat",
+                payload: { type: "chat_message", text: `message ${index + 1}` },
+              })
+            )}
+            humanActorId="user"
+            memberLiveStates={[]}
+            memberIds={["leader-agent"]}
+            messagesLoading={false}
+            busy={null}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={toPrettyJson}
+          />
+        );
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const initialTexts = markdownSpy.mock.calls.map((call) => call[0]);
+      expect(initialTexts).not.toContain("message 1");
+      expect(initialTexts).toContain("message 4");
+      expect(initialTexts).toContain("message 13");
+
+      act(() => {
+        clickElement(findButtonByText(container, "Jump to top"));
+      });
+
+      const expandedTexts = markdownSpy.mock.calls.map((call) => call[0]);
+      expect(expandedTexts).toContain("message 1");
+    } finally {
+      markdownSpy.mockRestore();
     }
   });
 

@@ -29,6 +29,7 @@ You are the coordinator for a multi-agent team run.
 - Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
 - Use `team-leader-agents-index.SKILL.md` to load leader-specific AGENTS template/rules.
 - Use this skill for leader planning, assignment, synthesis, and human-facing coordination.
+- Use `team-task-lifecycle.SKILL.md` for canonical Team task creation, review, and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
@@ -197,6 +198,11 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - Do not require humans to express requests in a task-shaped format before planning can begin.
 - Create a Team task when execution work needs explicit ownership, progress tracking, or Kanban
   visibility.
+- Use `team-task-lifecycle` as the canonical state-transition contract.
+- The expected Team task path is `open -> in_progress -> in_review -> completed|canceled`.
+- Successful worker execution should normally land in `in_review`, not directly `completed`.
+- Move `in_review -> completed` only after review/acceptance is explicit.
+- Move `in_review -> in_progress` when changes are requested.
 - Keep Kanban-aligned Team task state synchronized with worker evidence and mailbox checkpoints.
 - Before each coordination round, reconcile leader TODO status with actual team progress:
   - move active task to `in_progress`

@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamConversationMessageRecord,
   TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamRunEventRecord,
@@ -281,6 +282,52 @@ export function upsertAgentEventList(
     byId.set(event.event_id, event);
   }
   return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
+}
+
+function sameConversationPayload(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameConversationMessage(
+  left: TeamConversationMessageRecord,
+  right: TeamConversationMessageRecord
+): boolean {
+  return (
+    left.message_id === right.message_id &&
+    left.conversation_id === right.conversation_id &&
+    left.task_id === right.task_id &&
+    left.from_actor_id === right.from_actor_id &&
+    (left.to_actor_id ?? null) === (right.to_actor_id ?? null) &&
+    left.route === right.route &&
+    left.created_at === right.created_at &&
+    sameConversationPayload(left.payload, right.payload)
+  );
+}
+
+export function mergeConversationMessages(
+  prev: TeamConversationMessageRecord[],
+  next: TeamConversationMessageRecord[]
+): TeamConversationMessageRecord[] {
+  if (next.length === 0) {
+    return prev.length === 0 ? prev : [];
+  }
+  const prevById = new Map(prev.map((message) => [message.message_id, message] as const));
+  let changed = prev.length !== next.length;
+  const merged = next.map((message) => {
+    const cached = prevById.get(message.message_id);
+    if (cached && sameConversationMessage(cached, message)) {
+      return cached;
+    }
+    changed = true;
+    return message;
+  });
+  if (!changed) {
+    return prev;
+  }
+  return merged;
 }
 
 export function buildAgentLabel(agent: AgentRecord): string {

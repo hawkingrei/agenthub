@@ -30,6 +30,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
   - leader: `team-leader-orchestrator`
   - worker: `team-worker-executor`
 - optional (load only when needed):
+  - `team-task-lifecycle`
   - `team-deliberation-rules`
 
 ## Shared Contracts
@@ -38,6 +39,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - Leader-specific execution policy lives in `team-leader-orchestrator`.
 - Worker-specific execution policy lives in `team-worker-executor`.
 - Mailbox transport and payload details live in `team-actor-mailbox`.
+- Canonical Team task creation/state rules live in `team-task-lifecycle`.
 - Self-profile updates use `profile_patch_proposal`.
 - Timed self-reminders use `agent_time_trigger_set/list/cancel`.
 - Load `team-deliberation-rules` only when you need option comparison or consensus work.

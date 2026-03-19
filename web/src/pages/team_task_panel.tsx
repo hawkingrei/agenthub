@@ -1,5 +1,6 @@
 import React from "react";
 import { TeamConversationMessageRecord } from "../api";
+import { windowConversation } from "../conversation";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -16,20 +17,18 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
   developerMode: boolean;
-  tasksLoading: boolean;
-  onRefreshTasks: () => Promise<void> | void;
+  tasksLoading?: boolean;
+  onRefreshTasks?: () => Promise<void> | void;
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
-  onRefreshMessages: () => Promise<void> | void;
+  onRefreshMessages?: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;
@@ -87,10 +86,9 @@ const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
   "text-[11px] font-medium text-ui-text-muted/80";
-const TEAM_TASK_OPTIONS_ROW_CLASS = "flex items-center justify-end";
-const TEAM_TASK_OPTIONS_PANEL_CLASS =
-  "mt-2.5 flex flex-wrap items-center gap-2 rounded-[14px] border border-ui-border bg-ui-surface-soft/75 p-2";
 const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
+const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
+const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
@@ -145,15 +143,12 @@ function isScrollContainerNearBottom(node: HTMLDivElement, threshold = 24): bool
   return remaining <= threshold;
 }
 
-export function TeamTaskPanel(props: TeamTaskPanelProps) {
+function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const {
     developerMode,
-    tasksLoading,
-    onRefreshTasks,
     messageDraft,
     onMessageDraftChange,
     onSendMessage,
-    onRefreshMessages,
     messages,
     seenByMessageId = {},
     humanActorId = "user",
@@ -167,7 +162,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
-  const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
   const [expandedSeenKeys, setExpandedSeenKeys] = React.useState<Record<string, boolean>>({});
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
@@ -260,10 +254,28 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       mentionActorIds: normalizedDraft.mentionActorIds,
     });
   }, [mentionCandidates, messageDraft, onSendMessage]);
-  const waterfallItems = React.useMemo(
+  const orderedMessages = React.useMemo(
     () =>
-      messages
-        .map((message) => ({
+      [...messages].sort((left, right) => {
+        if (left.created_at !== right.created_at) {
+          return left.created_at - right.created_at;
+        }
+        if (left.message_id !== right.message_id) {
+          return left.message_id - right.message_id;
+        }
+        return left.from_actor_id.localeCompare(right.from_actor_id);
+      }),
+    [messages]
+  );
+  const activityWindow = React.useMemo(
+    () => windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
+    [orderedMessages, stickToBottom]
+  );
+  const visibleWaterfallItems = React.useMemo(
+    () =>
+      activityWindow.items.map((message) => {
+        const markdownText = resolveMessageText(message, toPrettyJson);
+        return {
           key: `conversation-${message.message_id}`,
           sequence: message.message_id,
           createdAt: message.created_at,
@@ -271,29 +283,26 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
           toActorId: message.to_actor_id ?? null,
           routeOrStatus: message.route,
           streamLabel: "conversation",
-          markdownText: resolveMessageText(message, toPrettyJson),
-          renderedHtml: "",
-        }))
-        .sort((left, right) => {
-          if (left.createdAt !== right.createdAt) {
-            return left.createdAt - right.createdAt;
-          }
-          if (left.sequence !== right.sequence) {
-            return left.sequence - right.sequence;
-          }
-          return left.key.localeCompare(right.key);
-        })
-        .map((item) => ({
-          ...item,
-          renderedHtml: renderMarkdownWithMentions(item.markdownText, memberDisplayNamesById),
-        })),
-    [memberDisplayNamesById, messages, toPrettyJson]
+          renderedHtml: renderMarkdownWithMentions(markdownText, memberDisplayNamesById),
+        };
+      }),
+    [activityWindow.items, memberDisplayNamesById, toPrettyJson]
   );
+  const hiddenWaterfallCount = activityWindow.offset;
+  const hiddenWaterfallSpacerHeight = React.useMemo(() => {
+    if (!stickToBottom || hiddenWaterfallCount <= 0) {
+      return 0;
+    }
+    return hiddenWaterfallCount * TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT;
+  }, [hiddenWaterfallCount, stickToBottom]);
   const activityListClassName =
-    messagesLoading || waterfallItems.length > 0
+    messagesLoading || orderedMessages.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
-  const latestWaterfallKey = waterfallItems[waterfallItems.length - 1]?.key ?? "empty";
+  const latestWaterfallKey =
+    orderedMessages.length > 0
+      ? `conversation-${orderedMessages[orderedMessages.length - 1]?.message_id ?? "empty"}`
+      : "empty";
 
   const scrollActivityToBottom = React.useCallback(() => {
     const node = activityListRef.current;
@@ -311,7 +320,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
   }, []);
 
   React.useEffect(() => {
-    if (messagesLoading || waterfallItems.length === 0 || !stickToBottom) {
+    if (messagesLoading || orderedMessages.length === 0 || !stickToBottom) {
       return;
     }
     const handle = window.requestAnimationFrame(() => {
@@ -320,7 +329,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     return () => {
       window.cancelAnimationFrame(handle);
     };
-  }, [latestWaterfallKey, messagesLoading, scrollActivityToBottom, stickToBottom, waterfallItems.length]);
+  }, [latestWaterfallKey, messagesLoading, orderedMessages.length, scrollActivityToBottom, stickToBottom]);
 
   const handleActivityScroll = React.useCallback(() => {
     const node = activityListRef.current;
@@ -332,49 +341,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
-      <div className={TEAM_TASK_OPTIONS_ROW_CLASS}>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <button
-            type="button"
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={() => setThreadOptionsOpen((current) => !current)}
-            aria-expanded={threadOptionsOpen}
-            aria-label="Toggle thread options"
-            title="Thread options"
-          >
-            <i className="bi bi-three-dots" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      {threadOptionsOpen && (
-        <div className={TEAM_TASK_OPTIONS_PANEL_CLASS}>
-          <button
-            type="button"
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-            onClick={() => {
-              void onRefreshTasks();
-            }}
-            disabled={tasksLoading}
-            title="Refresh channel"
-            aria-label="Refresh channel"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh Channel</span>
-          </button>
-          <button
-            type="button"
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={() => {
-              void onRefreshMessages();
-            }}
-            disabled={messagesLoading}
-          >
-            Refresh Thread
-          </button>
-        </div>
-      )}
-
       <div
         ref={activityListRef}
         className={activityListClassName}
@@ -383,7 +349,14 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
       >
         <div className={TEAM_TASK_ACTIVITY_SHELL_CLASS}>
           <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
-          {waterfallItems.map((item) => {
+          {hiddenWaterfallSpacerHeight > 0 && (
+            <div
+              aria-hidden="true"
+              data-team-channel-top-spacer="true"
+              style={{ height: hiddenWaterfallSpacerHeight }}
+            />
+          )}
+          {visibleWaterfallItems.map((item) => {
             const state = liveStateByMemberId.get(item.fromActorId);
             const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
             const authorLabel = resolveThreadAuthorLabel(
@@ -396,6 +369,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
                 key={item.key}
                 className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
                 data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
+                data-team-channel-item="true"
               >
                 <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                   <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
@@ -521,7 +495,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
               Loading thread...
             </div>
           )}
-          {!messagesLoading && waterfallItems.length === 0 && (
+          {!messagesLoading && orderedMessages.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               No channel messages yet.
             </div>
@@ -532,7 +506,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {stickToBottom && waterfallItems.length >= TEAM_TASK_TOP_JUMP_MIN_MESSAGES && (
+          {stickToBottom && orderedMessages.length >= TEAM_TASK_TOP_JUMP_MIN_MESSAGES && (
             <button
               type="button"
               className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
@@ -546,7 +520,7 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
               Jump to top
             </button>
           )}
-          {!stickToBottom && waterfallItems.length > 0 && (
+          {!stickToBottom && orderedMessages.length > 0 && (
           <div className="flex justify-end">
             <button
               type="button"
@@ -668,3 +642,6 @@ export function TeamTaskPanel(props: TeamTaskPanelProps) {
     </div>
   );
 }
+
+export const TeamTaskPanel = React.memo(TeamTaskPanelImpl);
+TeamTaskPanel.displayName = "TeamTaskPanel";

@@ -122,6 +122,7 @@ mod tests {
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
             member_skills: Vec::new(),
+            contract_version: None,
             continuity: None,
         });
         assert_eq!(skill.name, "agenthub-actor-runtime");

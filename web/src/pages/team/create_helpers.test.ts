@@ -3,6 +3,7 @@ import type { AgentRecord } from "../../api";
 import type { WorkerDraft } from "./member_helpers";
 import {
   appendTeamMemberToSpec,
+  buildTeamMemberDraftFromSpec,
   buildTeamForgeCleanupWarning,
   buildEmptyTeamSpec,
   buildLeaderForgeDefaultWorkdir,
@@ -18,6 +19,7 @@ import {
   resolveUnusedTeamForgeAgentIds,
   teamSpecHasConfiguredMembers,
   teamSpecHasLeader,
+  updateTeamMemberProfileInSpec,
 } from "./create_helpers";
 
 function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
@@ -339,6 +341,83 @@ describe("team create helpers", () => {
         buildForgeAgent({ id: "leader-2" })
       )
     ).toThrow("Team already has a leader");
+  });
+
+  it("builds editable member draft from spec and preserves role defaults", () => {
+    const spec = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "Team architect",
+        model: "codex",
+        prompt: "",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "",
+      },
+      buildForgeAgent({ id: "leader-1" })
+    );
+    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1");
+    expect(draft).toMatchObject({
+      member_id: "leader-1",
+      role: "leader",
+      description: "Team architect",
+      model: "codex",
+      custom_skills: "",
+    });
+    expect(draft?.prompt).toContain("You are the Team Leader in AgentHub.");
+    expect(draft?.skills).toEqual(
+      expect.arrayContaining(["agenthub-actor-runtime", "team-leader-orchestrator"])
+    );
+  });
+
+  it("updates existing team member profile fields without replacing runtime hints", () => {
+    const original = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "Team architect",
+        model: "codex",
+        prompt: "",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "",
+      },
+      buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
+    );
+    const updated = updateTeamMemberProfileInSpec(original, {
+      member_id: "leader-1",
+      role: "leader",
+      description: "Review owner",
+      model: "gpt-5.4",
+      prompt: "Coordinate review and final synthesis.",
+      skills: ["team-deliberation-rules"],
+      custom_skills: "custom-skill",
+    }) as { members: Array<Record<string, unknown>> };
+    expect(updated.members).toHaveLength(1);
+    expect(updated.members[0]).toMatchObject({
+      member_id: "leader-1",
+      role: "leader",
+      description: "Review owner",
+      model: "gpt-5.4",
+      prompt: "Coordinate review and final synthesis.",
+    });
+    expect(updated.members[0]?.skills).toEqual(
+      expect.arrayContaining([
+        "agenthub-actor-runtime",
+        "team-leader-orchestrator",
+        "team-deliberation-rules",
+        "custom-skill",
+      ])
+    );
+    expect(updated.members[0]?.runtime).toEqual({
+      name: "leader-1-name",
+      workdir: "/tmp/leader-1",
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+    });
   });
 
   it("parses error message from plain and JSON-formatted errors", () => {

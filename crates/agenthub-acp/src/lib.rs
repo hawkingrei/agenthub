@@ -65,6 +65,7 @@ pub struct AcpActorSkillContext {
     pub actor_cli_path: String,
     pub member_role: Option<String>,
     pub member_skills: Vec<String>,
+    pub contract_version: Option<String>,
     pub continuity: Option<AcpActorContinuityEnvelope>,
 }
 

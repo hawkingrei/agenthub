@@ -20,6 +20,8 @@ Primary references:
 - Keep worker updates routed to leader unless explicit escalation policy applies.
 - Keep pointers for self-profile maintenance (`profile_patch_proposal`) and timed follow-up
   reminders (`agent_time_trigger_set/list/cancel`) when they are active.
+- Keep `team-task-lifecycle` in the active skill set whenever worker execution must advance a
+  leader-owned Team task toward review.
 
 ## Startup Checklist
 
@@ -28,6 +30,7 @@ Primary references:
 3. Set `role=worker` and load minimal `Active Skills`:
    - `team-worker-executor` (role execution skill)
    - `team-actor-mailbox`
+   - add `team-task-lifecycle` when task progression/review handoff is active
    - add `team-deliberation-rules` only when needed
 4. If this is a concrete project workspace, ensure `.agenthubmemory/{TODO.md,journal/,note/}`
    exists and use it as the durable memory root.

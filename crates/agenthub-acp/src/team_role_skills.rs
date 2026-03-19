@@ -16,10 +16,13 @@ const TEAM_LEADER_AGENTS_INDEX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-leader-agents-index.SKILL.md");
 const TEAM_WORKER_AGENTS_INDEX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-worker-agents-index.SKILL.md");
+const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
 
 const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
 const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
 const TEAM_WORKER_AGENTS_INDEX_SKILL_NAME: &str = "team-worker-agents-index";
+const TEAM_TASK_LIFECYCLE_SKILL_NAME: &str = "team-task-lifecycle";
 const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
 const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
 const TEAM_DELIBERATION_SKILL_NAME: &str = "team-deliberation-rules";
@@ -47,6 +50,7 @@ pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
     name.eq_ignore_ascii_case(TEAM_AGENTS_INDEX_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_LEADER_AGENTS_INDEX_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_AGENTS_INDEX_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_TASK_LIFECYCLE_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_DELIBERATION_SKILL_NAME)
@@ -56,6 +60,7 @@ pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
 pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
     let role = normalize_member_role(context.member_role.as_deref());
     let enable_deliberation = has_member_skill(context, TEAM_DELIBERATION_SKILL_NAME);
+    let enable_task_lifecycle = has_member_skill(context, TEAM_TASK_LIFECYCLE_SKILL_NAME);
     let mut out = Vec::new();
     match role {
         Some("leader") => {
@@ -74,6 +79,13 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-leader-orchestrator".to_string(),
                 TEAM_LEADER_SKILL_TEXT,
             ));
+            if enable_task_lifecycle {
+                out.push(build_skill(
+                    TEAM_TASK_LIFECYCLE_SKILL_NAME.to_string(),
+                    "builtin://agenthub/team/team-task-lifecycle".to_string(),
+                    TEAM_TASK_LIFECYCLE_SKILL_TEXT,
+                ));
+            }
             out.push(build_skill(
                 TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-actor-mailbox".to_string(),
@@ -103,6 +115,13 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-worker-executor".to_string(),
                 TEAM_WORKER_SKILL_TEXT,
             ));
+            if enable_task_lifecycle {
+                out.push(build_skill(
+                    TEAM_TASK_LIFECYCLE_SKILL_NAME.to_string(),
+                    "builtin://agenthub/team/team-task-lifecycle".to_string(),
+                    TEAM_TASK_LIFECYCLE_SKILL_TEXT,
+                ));
+            }
             out.push(build_skill(
                 TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-actor-mailbox".to_string(),
@@ -137,6 +156,7 @@ mod tests {
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: role.map(str::to_string),
             member_skills: Vec::new(),
+            contract_version: None,
             continuity: None,
         }
     }
@@ -175,6 +195,20 @@ mod tests {
                 "team-actor-mailbox"
             ]
         );
+    }
+
+    #[test]
+    fn build_team_role_skills_includes_task_lifecycle_when_requested() {
+        let mut context = context_with_role(Some("leader"));
+        context
+            .member_skills
+            .push("team-task-lifecycle".to_string());
+        let skills = build_team_role_skills(&context);
+        let names = skills
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"team-task-lifecycle"));
     }
 
     #[test]
@@ -219,6 +253,7 @@ mod tests {
         assert!(is_reserved_team_role_skill("team-agents-index"));
         assert!(is_reserved_team_role_skill("team-leader-agents-index"));
         assert!(is_reserved_team_role_skill("team-worker-agents-index"));
+        assert!(is_reserved_team_role_skill("team-task-lifecycle"));
         assert!(is_reserved_team_role_skill("team-leader-orchestrator"));
         assert!(is_reserved_team_role_skill("team-worker-executor"));
         assert!(is_reserved_team_role_skill("team-deliberation-rules"));

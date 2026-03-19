@@ -65,6 +65,7 @@ restating the same rules.
 - worker index loader: `team-worker-agents-index`
 - leader orchestration: `team-leader-orchestrator`
 - worker execution: `team-worker-executor`
+- Team task lifecycle: `team-task-lifecycle`
 - deliberation quality gate: `team-deliberation-rules`
 - mailbox protocol: `team-actor-mailbox`
 

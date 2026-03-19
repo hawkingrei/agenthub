@@ -54,8 +54,8 @@ export type ConversationItem =
   | ToolCallGroupConversationItem
   | ExploreGroupConversationItem;
 
-export type ConversationWindow = {
-  items: ConversationItem[];
+export type ConversationWindow<T = ConversationItem> = {
+  items: T[];
   offset: number;
   total: number;
 };
@@ -389,11 +389,11 @@ function isExploreThinkingItem(
   return item.kind === "agent_thinking" && isExploreThinkingText(item.text);
 }
 
-export function windowConversation(
-  items: ConversationItem[],
+export function windowConversation<T>(
+  items: T[],
   stickToBottom: boolean,
   windowSize: number
-): ConversationWindow {
+): ConversationWindow<T> {
   const total = items.length;
   if (windowSize <= 0 || total <= windowSize || !stickToBottom) {
     return { items, offset: 0, total };

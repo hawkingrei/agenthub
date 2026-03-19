@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamConversationMessageRecord,
   TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamRunEventRecord,
@@ -17,6 +18,7 @@ import {
   DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   listTeamWorkspaceTasks,
+  mergeConversationMessages,
   pickNextWorkerAgentId,
   resolveTeamRuntimeControlTone,
   resolveTeamPageNotice,
@@ -122,6 +124,26 @@ function buildMailboxMessage(
   };
 }
 
+function buildConversationMessage(
+  messageId: number,
+  overrides: Partial<TeamConversationMessageRecord> = {}
+): TeamConversationMessageRecord {
+  return {
+    message_id: messageId,
+    conversation_id: "conv-1",
+    task_id: "task-1",
+    from_actor_id: "leader-agent",
+    to_actor_id: null,
+    route: "group_chat",
+    payload: {
+      type: "chat_message",
+      text: `message-${messageId}`,
+    },
+    created_at: 1_700_000_000 + messageId,
+    ...overrides,
+  };
+}
+
 function buildTask(
   id: string,
   createdAt: number,
@@ -214,6 +236,35 @@ function buildMemberLiveState(
 }
 
 describe("team page helpers", () => {
+  it("merges conversation messages while preserving unchanged object identity", () => {
+    const original = buildConversationMessage(1);
+    const prev = [original, buildConversationMessage(2)];
+    const next = [
+      buildConversationMessage(1),
+      buildConversationMessage(2, {
+        payload: { type: "chat_message", text: "message-2 updated" },
+      }),
+      buildConversationMessage(3),
+    ];
+
+    const merged = mergeConversationMessages(prev, next);
+    expect(merged).toHaveLength(3);
+    expect(merged[0]).toBe(original);
+    expect(merged[1]).not.toBe(prev[1]);
+    expect(merged[2]?.message_id).toBe(3);
+  });
+
+  it("returns the previous conversation array when refresh payload is unchanged", () => {
+    const prev = [buildConversationMessage(1), buildConversationMessage(2)];
+
+    const merged = mergeConversationMessages(prev, [
+      buildConversationMessage(1),
+      buildConversationMessage(2),
+    ]);
+
+    expect(merged).toBe(prev);
+  });
+
   it("upserts run by id and keeps latest-first sort order", () => {
     const list = [buildRun("run-1", 100), buildRun("run-2", 120)];
     const updated = upsertRun(list, buildRun("run-1", 140, "working"));
