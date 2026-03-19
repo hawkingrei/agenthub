@@ -135,22 +135,12 @@ async fn blackbox_distributed_p2p_pipeline_relays_and_acks_over_real_nodes() -> 
 
         seed_team_run(&node_a_db, &team_id, &team_name, &run_id).await?;
         seed_team_run(&node_b_db, &team_id, &team_name, &run_id).await?;
+        insert_agent_node(&node_a_db, "node-b", node_b.grpc_addr).await?;
+        insert_agent_node(&node_b_db, "node-a", node_a.grpc_addr).await?;
 
         let mailbox_token = issue_mailbox_token(&shared_secret, &run_id)?;
-        let route_to_a = grpc_route_json(
-            node_a.grpc_addr,
-            &shared_cert_dir,
-            &mailbox_token,
-            "node-b",
-            "node-a",
-        );
-        let route_to_b = grpc_route_json(
-            node_b.grpc_addr,
-            &shared_cert_dir,
-            &mailbox_token,
-            "node-a",
-            "node-b",
-        );
+        let route_to_a = grpc_route_json(node_a.grpc_addr, &mailbox_token, "node-b", "node-a");
+        let route_to_b = grpc_route_json(node_b.grpc_addr, &mailbox_token, "node-a", "node-b");
         let now = Utc::now().timestamp();
 
         insert_remote_message(
@@ -612,7 +602,6 @@ fn issue_mailbox_token(shared_secret: &str, run_id: &str) -> anyhow::Result<Stri
 
 fn grpc_route_json(
     target: SocketAddr,
-    cert_dir: &Path,
     access_token: &str,
     source_node_id: &str,
     target_node_id: &str,
@@ -622,9 +611,6 @@ fn grpc_route_json(
         "grpc_target": format!("https://{}", target),
         "access_token": access_token,
         "tls_server_name": "localhost",
-        "ca_cert_path": cert_dir.join("ca-cert.pem").display().to_string(),
-        "client_cert_path": cert_dir.join("client-cert.pem").display().to_string(),
-        "client_key_path": cert_dir.join("client-key.pem").display().to_string(),
         "cluster_id": TEST_INTERNAL_ISSUER,
         "source_node_id": source_node_id,
         "target_node_id": target_node_id,
@@ -634,6 +620,37 @@ fn grpc_route_json(
         "expires_at": Utc::now().timestamp() + 600,
         "kid": "shared-hs256-blackbox",
     })
+}
+
+async fn insert_agent_node(
+    db: &SqlitePool,
+    node_id: &str,
+    grpc_addr: SocketAddr,
+) -> anyhow::Result<()> {
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO agent_nodes (
+            id,
+            name,
+            grpc_target,
+            tls_server_name,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind(node_id)
+    .bind(format!("Node {node_id}"))
+    .bind(format!("https://{}", grpc_addr))
+    .bind("localhost")
+    .bind(now)
+    .bind(now)
+    .execute(db)
+    .await
+    .with_context(|| format!("insert agent node {node_id}"))?;
+    Ok(())
 }
 
 async fn wait_for_remote_delivery_count(

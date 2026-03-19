@@ -626,6 +626,38 @@ impl AgentManager {
         Ok(Some(node_id.to_string()))
     }
 
+    fn ensure_remote_agent_control_available(
+        &self,
+        target_node_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let Some(target_node_id) = target_node_id else {
+            return Ok(());
+        };
+        if self.internal_peer_client.is_none() {
+            anyhow::bail!(
+                "remote-target agents require internal gRPC peer config; cannot target agent node '{}'",
+                target_node_id
+            );
+        }
+        Ok(())
+    }
+
+    fn ensure_remote_target_persistable(
+        target_node_id: Option<&str>,
+        has_target_node_id_column: bool,
+    ) -> anyhow::Result<()> {
+        let Some(target_node_id) = target_node_id else {
+            return Ok(());
+        };
+        if !has_target_node_id_column {
+            anyhow::bail!(
+                "remote-target agents require agents.target_node_id column; cannot target agent node '{}' on a legacy schema",
+                target_node_id
+            );
+        }
+        Ok(())
+    }
+
     async fn agent_source_for(&self, agent_id: &str) -> anyhow::Result<String> {
         if !self.has_agents_source_column().await? {
             return Ok(AGENT_SOURCE_MANUAL.to_string());
@@ -905,6 +937,11 @@ impl AgentManager {
         let status = AgentStatus::Created;
         let has_source_column = self.has_agents_source_column().await?;
         let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
+        self.ensure_remote_agent_control_available(target_node_id.as_deref())?;
+        Self::ensure_remote_target_persistable(
+            target_node_id.as_deref(),
+            has_target_node_id_column,
+        )?;
 
         if has_source_column && has_target_node_id_column {
             sqlx::query(

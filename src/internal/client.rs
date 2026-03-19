@@ -30,7 +30,7 @@ use super::proto::agenthub::internal::v1::{
     StartManagedAgentRequest as GrpcStartManagedAgentRequest,
     StopManagedAgentRequest as GrpcStopManagedAgentRequest,
 };
-use super::tls::InternalGrpcSecurityMode;
+use super::tls::{InternalGrpcSecurityMode, install_rustls_crypto_provider};
 
 #[derive(Debug, Clone)]
 pub struct InternalGrpcMailboxClientConfig {
@@ -104,6 +104,7 @@ impl InternalGrpcMailboxClient {
     }
 
     pub async fn connect(config: InternalGrpcMailboxClientConfig) -> anyhow::Result<Self> {
+        install_rustls_crypto_provider();
         let mut endpoint = Endpoint::from_shared(config.target.trim().to_string())?;
         let mut tls = ClientTlsConfig::new();
         if let Some(server_name) = config
@@ -584,7 +585,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use crate::agent::{AgentConfig, WorktreeMode};
+    use crate::agent::{AgentConfig, AgentNodeConfig, WorktreeMode};
     use agenthub_team_actor::{
         ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMailboxService,
         ActorMessageStatus, ActorMessageTransport,
@@ -724,7 +725,6 @@ mod tests {
 
     fn grpc_relay_route(
         addr: SocketAddr,
-        cert_dir: &Path,
         access_token: &str,
         source_node_id: &str,
         target_node_id: &str,
@@ -737,28 +737,6 @@ mod tests {
         );
         route.insert("access_token".to_string(), json!(access_token));
         route.insert("tls_server_name".to_string(), json!("localhost"));
-        route.insert(
-            "ca_cert_path".to_string(),
-            json!(cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
-        );
-        route.insert(
-            "client_cert_path".to_string(),
-            json!(
-                cert_dir
-                    .join("client-cert.pem")
-                    .to_string_lossy()
-                    .to_string()
-            ),
-        );
-        route.insert(
-            "client_key_path".to_string(),
-            json!(
-                cert_dir
-                    .join("client-key.pem")
-                    .to_string_lossy()
-                    .to_string()
-            ),
-        );
         NodeTransportMetadata {
             cluster_id: "agenthub".to_string(),
             source_node_id: source_node_id.to_string(),
@@ -854,6 +832,42 @@ mod tests {
         .expect("insert safe path");
     }
 
+    async fn configure_remote_grpc_relay(
+        state: &crate::state::AppState,
+        cert_dir: &Path,
+        node_id: &str,
+        addr: SocketAddr,
+    ) {
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_nodes table");
+        state
+            .teams
+            .configure_internal_grpc_relay(cert_dir, InternalGrpcSecurityMode::Mtls);
+        state
+            .agents
+            .create_agent_node(AgentNodeConfig {
+                id: node_id.to_string(),
+                name: format!("Node {node_id}"),
+                grpc_target: format!("https://{}", addr),
+                tls_server_name: Some("localhost".to_string()),
+            })
+            .await
+            .expect("create agent node");
+    }
+
     #[tokio::test]
     async fn remote_actor_grpc_pipeline_delivers_and_acks_over_tls() {
         install_rustls_crypto_provider();
@@ -875,14 +889,9 @@ mod tests {
         let server =
             spawn_mtls_internal_grpc_server(remote_state.clone(), authz.clone(), cert_dir.clone())
                 .await;
+        configure_remote_grpc_relay(&source_state, &cert_dir, "node-remote", server.addr).await;
 
-        let route = grpc_relay_route(
-            server.addr,
-            &cert_dir,
-            &access_token,
-            "node-source",
-            "node-remote",
-        );
+        let route = grpc_relay_route(server.addr, &access_token, "node-source", "node-remote");
 
         let sent = source_state
             .teams
@@ -997,21 +1006,11 @@ mod tests {
         let node_b_server =
             spawn_mtls_internal_grpc_server(node_b_state.clone(), authz.clone(), cert_dir.clone())
                 .await;
+        configure_remote_grpc_relay(&node_a_state, &cert_dir, "node-b", node_b_server.addr).await;
+        configure_remote_grpc_relay(&node_b_state, &cert_dir, "node-a", node_a_server.addr).await;
 
-        let route_to_a = grpc_relay_route(
-            node_a_server.addr,
-            &cert_dir,
-            &access_token,
-            "node-b",
-            "node-a",
-        );
-        let route_to_b = grpc_relay_route(
-            node_b_server.addr,
-            &cert_dir,
-            &access_token,
-            "node-a",
-            "node-b",
-        );
+        let route_to_a = grpc_relay_route(node_a_server.addr, &access_token, "node-b", "node-a");
+        let route_to_b = grpc_relay_route(node_b_server.addr, &access_token, "node-a", "node-b");
 
         node_a_state
             .teams

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use agenthub_team_actor::{
@@ -14,11 +15,12 @@ use reqwest::{Method, Url, header};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::Sha256;
+use sqlx::{Row, SqlitePool};
 
-use crate::internal::client::{
-    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
-};
+use crate::agent::AGENT_NODE_MAIN_ID;
+use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig};
 use crate::internal::p2p::{P2PTransport, build_message_metadata};
+use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::TeamActorMessageRecord;
 
 const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -27,17 +29,45 @@ const RELAY_TIMEOUT_MAX_MS: u64 = 60_000;
 
 #[derive(Clone)]
 pub(super) struct TeamRemoteRelayAdapter {
+    db: SqlitePool,
     http_client: reqwest::Client,
+    grpc_tls_defaults: Arc<Mutex<Option<GrpcRelayTlsDefaults>>>,
     grpc_client_cache: Arc<Mutex<HashMap<GrpcRelayClientCacheKey, InternalGrpcMailboxClient>>>,
 }
 
-pub(super) fn shared_remote_relay_adapter() -> &'static TeamRemoteRelayAdapter {
-    static SHARED_RELAY_ADAPTER: OnceLock<TeamRemoteRelayAdapter> = OnceLock::new();
-    SHARED_RELAY_ADAPTER.get_or_init(TeamRemoteRelayAdapter::new)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GrpcRelayTlsDefaults {
+    ca_cert_path: Option<String>,
+    client_cert_path: Option<String>,
+    client_key_path: Option<String>,
+}
+
+impl GrpcRelayTlsDefaults {
+    pub(super) fn from_cert_dir(cert_dir: &Path, security_mode: InternalGrpcSecurityMode) -> Self {
+        let ca_cert_path = path_to_string_if_exists(&cert_dir.join("ca-cert.pem"));
+        let (client_cert_path, client_key_path) = if security_mode == InternalGrpcSecurityMode::Mtls
+        {
+            (
+                path_to_string_if_exists(&cert_dir.join("client-cert.pem")),
+                path_to_string_if_exists(&cert_dir.join("client-key.pem")),
+            )
+        } else {
+            (None, None)
+        };
+        Self {
+            ca_cert_path,
+            client_cert_path,
+            client_key_path,
+        }
+    }
+}
+
+fn path_to_string_if_exists(path: &Path) -> Option<String> {
+    path.exists().then(|| path.to_string_lossy().to_string())
 }
 
 impl TeamRemoteRelayAdapter {
-    fn new() -> Self {
+    pub(super) fn new(db: SqlitePool) -> Self {
         let builder = reqwest::Client::builder()
             .pool_max_idle_per_host(32)
             .connect_timeout(Duration::from_secs(10))
@@ -56,9 +86,22 @@ impl TeamRemoteRelayAdapter {
             reqwest::Client::new()
         });
         Self {
+            db,
             http_client,
+            grpc_tls_defaults: Arc::new(Mutex::new(None)),
             grpc_client_cache: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub(super) fn configure_grpc_tls_defaults(&self, defaults: Option<GrpcRelayTlsDefaults>) {
+        *self
+            .grpc_tls_defaults
+            .lock()
+            .expect("lock grpc tls defaults") = defaults;
+        self.grpc_client_cache
+            .lock()
+            .expect("lock grpc client cache")
+            .clear();
     }
 
     async fn deliver_http(
@@ -140,60 +183,33 @@ impl TeamRemoteRelayAdapter {
         message: &TeamActorMessageRecord,
         route: GrpcRemoteRelayRouteValue,
     ) -> Result<(), ActorRelayError<TeamRemoteRelayError>> {
-        let grpc_target = route.grpc_target.trim();
-        if grpc_target.is_empty() {
-            return Err(ActorRelayError::permanent(
-                TeamRemoteRelayError::MissingGrpcTarget,
-            ));
-        }
-        let url = Url::parse(grpc_target)
-            .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidGrpcTarget))?;
-        if url.scheme() != "https" {
-            return Err(ActorRelayError::permanent(
-                TeamRemoteRelayError::InvalidGrpcTarget,
-            ));
-        }
+        let metadata = build_message_metadata(message);
+        let resolved_route = self
+            .resolve_registered_grpc_route(&metadata.target_node_id, &route)
+            .await?;
         let access_token = route.access_token.trim();
         if access_token.is_empty() {
             return Err(ActorRelayError::permanent(
                 TeamRemoteRelayError::MissingAccessToken,
             ));
         }
-
-        let ca_cert_path =
-            normalize_existing_path(route.ca_cert_path.as_deref(), "route.ca_cert_path").map_err(
-                |err| {
-                    ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(err.to_string()))
-                },
-            )?;
-        let client_cert_path =
-            normalize_existing_path(route.client_cert_path.as_deref(), "route.client_cert_path")
-                .map_err(|err| {
-                    ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(err.to_string()))
-                })?;
-        let client_key_path =
-            normalize_existing_path(route.client_key_path.as_deref(), "route.client_key_path")
-                .map_err(|err| {
-                    ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(err.to_string()))
-                })?;
-        let tls_server_name = route
-            .tls_server_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
+        let grpc_tls_defaults = self
+            .grpc_tls_defaults
+            .lock()
+            .expect("lock grpc tls defaults")
+            .clone()
+            .ok_or_else(|| ActorRelayError::permanent(TeamRemoteRelayError::GrpcTlsUnavailable))?;
 
         let client = self
             .grpc_client_for_route(InternalGrpcMailboxClientConfig {
-                target: grpc_target.to_string(),
+                target: resolved_route.grpc_target,
                 access_token: access_token.to_string(),
-                ca_cert_path,
-                tls_server_name,
-                client_cert_path,
-                client_key_path,
+                ca_cert_path: grpc_tls_defaults.ca_cert_path,
+                tls_server_name: resolved_route.tls_server_name,
+                client_cert_path: grpc_tls_defaults.client_cert_path,
+                client_key_path: grpc_tls_defaults.client_key_path,
             })
             .await?;
-        let metadata = build_message_metadata(message);
 
         client
             .send_p2p_message(ActorSendRequest {
@@ -214,6 +230,92 @@ impl TeamRemoteRelayAdapter {
             .await
             .map_err(map_grpc_actor_error)?;
         Ok(())
+    }
+
+    async fn resolve_registered_grpc_route(
+        &self,
+        target_node_id: &str,
+        route: &GrpcRemoteRelayRouteValue,
+    ) -> Result<ResolvedGrpcRelayRoute, ActorRelayError<TeamRemoteRelayError>> {
+        let normalized_target_node_id = target_node_id.trim();
+        if normalized_target_node_id.is_empty() || normalized_target_node_id == AGENT_NODE_MAIN_ID {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidRoute(
+                    "route target_node_id must reference a registered remote agent node"
+                        .to_string(),
+                ),
+            ));
+        }
+
+        let row = sqlx::query(
+            r#"
+            SELECT grpc_target, tls_server_name
+            FROM agent_nodes
+            WHERE id = ?1
+            "#,
+        )
+        .bind(normalized_target_node_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|err| {
+            ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(format!(
+                "resolve registered gRPC route failed: {err}"
+            )))
+        })?
+        .ok_or_else(|| {
+            ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(format!(
+                "target agent node '{}' is not registered for gRPC relay",
+                normalized_target_node_id
+            )))
+        })?;
+
+        let registered_grpc_target = row.get::<String, _>("grpc_target");
+        let registered_tls_server_name = row
+            .try_get::<Option<String>, _>("tls_server_name")
+            .ok()
+            .flatten()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let requested_grpc_target = route.grpc_target.trim();
+        if requested_grpc_target.is_empty() {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::MissingGrpcTarget,
+            ));
+        }
+        let url = Url::parse(requested_grpc_target)
+            .map_err(|_| ActorRelayError::permanent(TeamRemoteRelayError::InvalidGrpcTarget))?;
+        if url.scheme() != "https" {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidGrpcTarget,
+            ));
+        }
+        if requested_grpc_target != registered_grpc_target {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidRoute(format!(
+                    "route.grpc_target must match registered agent node '{}'",
+                    normalized_target_node_id
+                )),
+            ));
+        }
+
+        let requested_tls_server_name = route
+            .tls_server_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if requested_tls_server_name != registered_tls_server_name.as_deref() {
+            return Err(ActorRelayError::permanent(
+                TeamRemoteRelayError::InvalidRoute(format!(
+                    "route.tls_server_name must match registered agent node '{}'",
+                    normalized_target_node_id
+                )),
+            ));
+        }
+
+        Ok(ResolvedGrpcRelayRoute {
+            grpc_target: registered_grpc_target,
+            tls_server_name: registered_tls_server_name,
+        })
     }
 
     async fn grpc_client_for_route(
@@ -275,6 +377,8 @@ pub(super) enum TeamRemoteRelayError {
     InvalidGrpcTarget,
     #[error("route.access_token is required for gRPC relay")]
     MissingAccessToken,
+    #[error("internal gRPC relay TLS defaults are unavailable")]
+    GrpcTlsUnavailable,
     #[error("route.method is invalid or not supported: {0}")]
     UnsupportedMethod(String),
     #[error("route.auth is invalid")]
@@ -343,12 +447,12 @@ struct GrpcRemoteRelayRouteValue {
     access_token: String,
     #[serde(default)]
     tls_server_name: Option<String>,
-    #[serde(default)]
-    ca_cert_path: Option<String>,
-    #[serde(default)]
-    client_cert_path: Option<String>,
-    #[serde(default)]
-    client_key_path: Option<String>,
+}
+
+#[derive(Debug)]
+struct ResolvedGrpcRelayRoute {
+    grpc_target: String,
+    tls_server_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -371,6 +475,7 @@ enum RemoteRelaySigningValue {
     },
 }
 
+#[derive(Debug)]
 enum ParsedRemoteRelayRoute {
     Http(HttpRemoteRelayRouteValue),
     Grpc(GrpcRemoteRelayRouteValue),
@@ -385,6 +490,15 @@ fn parse_remote_route(
         ))
     })?;
     if object.contains_key("grpc_target") {
+        for forbidden_key in ["ca_cert_path", "client_cert_path", "client_key_path"] {
+            if object.contains_key(forbidden_key) {
+                return Err(ActorRelayError::permanent(
+                    TeamRemoteRelayError::InvalidRoute(format!(
+                        "route.{forbidden_key} is not allowed for gRPC relay"
+                    )),
+                ));
+            }
+        }
         let parsed =
             serde_json::from_value::<GrpcRemoteRelayRouteValue>(route.clone()).map_err(|err| {
                 ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(err.to_string()))
@@ -632,12 +746,26 @@ fn map_grpc_actor_error(err: ActorServiceError) -> ActorRelayError<TeamRemoteRel
 #[cfg(test)]
 mod tests {
     use super::{
-        ParsedRemoteRelayRoute, RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS,
-        RELAY_TIMEOUT_MIN_MS, RemoteRelaySigningValue, apply_route_signing, parse_remote_route,
-        parse_route_header_name, parse_route_header_value, relay_timeout_ms,
-        shared_remote_relay_adapter,
+        GrpcRelayTlsDefaults, ParsedRemoteRelayRoute, RELAY_DEFAULT_TIMEOUT_MS,
+        RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS, RemoteRelaySigningValue,
+        TeamRemoteRelayAdapter, apply_route_signing, parse_remote_route, parse_route_header_name,
+        parse_route_header_value, relay_timeout_ms,
     };
     use serde_json::json;
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    async fn test_db() -> SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true)
+            .foreign_keys(true);
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("connect sqlite")
+    }
 
     #[test]
     fn relay_timeout_ms_defaults_and_clamps() {
@@ -686,10 +814,82 @@ mod tests {
     }
 
     #[test]
-    fn shared_remote_relay_adapter_is_reused() {
-        let first = shared_remote_relay_adapter() as *const _;
-        let second = shared_remote_relay_adapter() as *const _;
-        assert_eq!(first, second);
+    fn parse_remote_route_rejects_path_based_tls_fields_for_grpc() {
+        let err = parse_remote_route(&json!({
+            "kind": "grpc",
+            "grpc_target": "https://node.example.internal:50051",
+            "access_token": "secret-token",
+            "tls_server_name": "node.example.internal",
+            "ca_cert_path": "/tmp/ca.pem",
+        }))
+        .expect_err("gRPC relay route should reject path-based TLS overrides");
+        assert!(
+            err.to_string()
+                .contains("route.ca_cert_path is not allowed"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn grpc_relay_requires_registered_target_node_match() {
+        let db = test_db().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent_nodes table");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_nodes (id, name, grpc_target, tls_server_name, created_at, updated_at)
+            VALUES ('node-b', 'Node B', 'https://node-b.internal:50051', 'node-b.internal', 1, 1)
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("insert agent node");
+
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        adapter.configure_grpc_tls_defaults(Some(GrpcRelayTlsDefaults {
+            ca_cert_path: Some("/tmp/ca.pem".to_string()),
+            client_cert_path: None,
+            client_key_path: None,
+        }));
+
+        let route = super::GrpcRemoteRelayRouteValue {
+            kind: Some("grpc".to_string()),
+            grpc_target: "https://node-b.internal:50051".to_string(),
+            access_token: "secret-token".to_string(),
+            tls_server_name: Some("node-b.internal".to_string()),
+        };
+
+        adapter
+            .resolve_registered_grpc_route("node-b", &route)
+            .await
+            .expect("registered node should resolve");
+
+        let mismatch = super::GrpcRemoteRelayRouteValue {
+            grpc_target: "https://evil.example:50051".to_string(),
+            ..route
+        };
+        let err = adapter
+            .resolve_registered_grpc_route("node-b", &mismatch)
+            .await
+            .expect_err("mismatched grpc target should fail");
+        assert!(
+            err.to_string()
+                .contains("route.grpc_target must match registered agent node"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

@@ -43,16 +43,15 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
   "kind": "grpc",
   "grpc_target": "https://node-east.internal:50051",
   "access_token": "<scoped-token>",
-  "tls_server_name": "node-east.internal",
-  "ca_cert_path": "/path/to/ca-cert.pem",
-  "client_cert_path": "/path/to/client-cert.pem",
-  "client_key_path": "/path/to/client-key.pem"
+  "tls_server_name": "node-east.internal"
 }
 ```
 
 - Relay delivery uses `TeamInternalControl/SendActorMessage` over TLS/mTLS.
 - After a remote relay succeeds, the destination node stores the received mailbox message as local transport so the target actor can consume it without another relay hop.
 - Legacy HTTP relay routes remain accepted for compatibility while node transport moves to gRPC.
+- gRPC relay routes must target a registered `agent_node`; route-level `grpc_target` and `tls_server_name` are validated against the registry entry before a connection is opened.
+- Route-level TLS file paths are rejected; TLS client material is derived from cluster-level internal gRPC configuration, not from user-provided relay JSON.
 
 ### Remote Agent Control
 
@@ -69,11 +68,12 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
 
 - `Agents -> Create Agent` includes:
   - execution-node selection
-  - remote node registration fields
+  - root-only remote node registration fields
   - remote node deletion controls
 - Agent rows show `node:<id>` when bound to a remote node.
 - Remote-node agents can now be started from the `Agents` page through the same start action as local agents.
 - Remote-node agents are excluded from local SSE fan-out because their live output is fetched through `/events` polling against the remote node.
+- Non-root sessions do not fetch `agent_nodes` and do not render inline node-management controls, so the page no longer produces repeated `401` noise for regular users.
 
 ## Contracts
 
@@ -110,12 +110,14 @@ Manual checks:
 3. Select that node for a new agent, start it directly from the `Agents` page, and confirm the card shows `node:<id>`.
 4. Open the agent workbench and confirm remote output appears through event polling after start/input.
 5. Confirm local `main` execution remains the default selection.
+6. Log in as a non-root user and confirm the `Agents` page does not attempt `agent_nodes` admin requests.
 
 ## Operational Notes
 
 - gRPC relay route material currently carries scoped credentials directly so the relay pipeline can be exercised before node bootstrap is fully surfaced in the UI.
 - Remote agent control currently depends on cluster peers sharing internal gRPC auth/TLS configuration (shared secret / CA trust chain); the node registry itself does not store bootstrap secrets.
 - Remote node shadow records remain in the main AgentHub DB, while the execution node persists only its local runtime record with `target_node_id = NULL`.
+- Remote-target agent creation now fails fast if the cluster has no internal peer config or if the local schema cannot persist `agents.target_node_id`; AgentHub does not create shadow records that it cannot later control.
 - The phased scale-out architecture, including gossip boundaries and the shared-key to zero-trust migration path, is documented in `docs/features/distributed-node-architecture.md`.
 
 ## Open Risks
@@ -128,3 +130,4 @@ Manual checks:
 ## Source Journals
 
 - `docs/journal/2026-03-18-agent-node-grpc-control-plane.md`
+- `docs/journal/2026-03-19-agent-node-review-hardening.md`

@@ -19,6 +19,23 @@ type AgentNodeSectionProps = {
   onDeleteNode: (nodeId: string) => void;
 };
 
+export function validateAgentNodeDraft(input: {
+  nodeId: string;
+  nodeName: string;
+  grpcTarget: string;
+}): string | null {
+  if (!input.nodeId.trim()) {
+    return "Node ID is required.";
+  }
+  if (!input.nodeName.trim()) {
+    return "Node name is required.";
+  }
+  if (!input.grpcTarget.trim()) {
+    return "gRPC target is required.";
+  }
+  return null;
+}
+
 export function AgentNodeSection({
   nodes,
   targetNodeId,
@@ -36,6 +53,11 @@ export function AgentNodeSection({
   onCreateNode,
   onDeleteNode,
 }: AgentNodeSectionProps) {
+  const createNodeError = validateAgentNodeDraft({
+    nodeId: nodeIdInput,
+    nodeName: nodeNameInput,
+    grpcTarget: grpcTargetInput,
+  });
   const availableNodes =
     nodes.length > 0
       ? nodes
@@ -90,8 +112,9 @@ export function AgentNodeSection({
         <Stack gap="sm">
           <div>
             <Text fw={600}>Register node</Text>
-            <Text size="xs" c="dimmed">
-              AgentHub to node and node to node traffic uses encrypted gRPC.
+            <Text size="xs" c={createNodeError ? "red" : "dimmed"}>
+              {createNodeError ??
+                "AgentHub to node and node to node traffic uses encrypted gRPC."}
             </Text>
           </div>
 
@@ -126,7 +149,11 @@ export function AgentNodeSection({
           </Group>
 
           <Group justify="flex-end">
-            <Button onClick={onCreateNode} loading={createBusy} disabled={createBusy}>
+            <Button
+              onClick={onCreateNode}
+              loading={createBusy}
+              disabled={createBusy || createNodeError !== null}
+            >
               Add Node
             </Button>
           </Group>

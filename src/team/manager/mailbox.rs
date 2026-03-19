@@ -20,9 +20,7 @@ use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
-use super::{TeamConversationStreamEvent, TeamManager, redact_sensitive_json};
 use super::remote_relay::shared_remote_relay_adapter;
-use super::{TeamManager, redact_sensitive_json};
 use super::{TeamConversationStreamEvent, TeamManager, redact_sensitive_json};
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
@@ -261,7 +259,7 @@ impl TeamManager {
     ) -> anyhow::Result<RelayRemotePendingResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let relay = shared_remote_relay_adapter();
+        let relay = self.remote_relay_adapter.as_ref();
         let result = mailbox
             .relay_remote_pending(
                 relay,

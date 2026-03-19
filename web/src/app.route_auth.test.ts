@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canManageAgentNodes,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   shouldRedirectTeamsToLogin,
@@ -80,5 +81,25 @@ describe("team route auth redirect", () => {
         null
       )
     ).toBeNull();
+  });
+
+  it("restricts agent-node admin surfaces to root users", () => {
+    expect(canManageAgentNodes(null)).toBe(false);
+    expect(
+      canManageAgentNodes({
+        token: "token-1",
+        userId: "user-1",
+        username: "worker",
+        role: "user",
+      })
+    ).toBe(false);
+    expect(
+      canManageAgentNodes({
+        token: "token-1",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    ).toBe(true);
   });
 });

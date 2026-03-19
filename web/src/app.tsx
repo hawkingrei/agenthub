@@ -64,7 +64,7 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "./agent_presets";
-import { AgentNodeSection } from "./components/agent_node_section";
+import { AgentNodeSection, validateAgentNodeDraft } from "./components/agent_node_section";
 import { AgentsPanel } from "./components/agents_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
 import { InputDock } from "./components/input_dock";
@@ -164,6 +164,10 @@ export function shouldRedirectTeamsToLogin(
   token: string | null
 ): boolean {
   return isTeamsRoute(pathname) && (!auth || !token);
+}
+
+export function canManageAgentNodes(auth: AuthState | null): boolean {
+  return auth?.role === "root";
 }
 
 function isTeamsRoute(pathname: string): boolean {
@@ -1231,7 +1235,7 @@ export function App() {
 
   const refreshAgentNodes = useCallback(
     async (opts?: { silent?: boolean }): Promise<AgentNodeRecord[] | null> => {
-      if (!token) {
+      if (!token || !canManageAgentNodes(auth)) {
         setAgentNodes([]);
         return null;
       }
@@ -1247,7 +1251,7 @@ export function App() {
         return null;
       }
     },
-    [token]
+    [auth, token]
   );
 
   useEffect(() => {
@@ -1256,12 +1260,12 @@ export function App() {
   }, [token, refreshAgents]);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !canManageAgentNodes(auth)) {
       setAgentNodes([]);
       return;
     }
     void refreshAgentNodes();
-  }, [token, refreshAgentNodes]);
+  }, [auth, token, refreshAgentNodes]);
 
   useEffect(() => {
     if (targetNodeId === "main") {
@@ -2157,6 +2161,15 @@ export function App() {
 
   const onCreateAgentNode = useCallback(async () => {
     if (!token || createAgentNodeBusy) return;
+    const draftError = validateAgentNodeDraft({
+      nodeId: nodeIdInput,
+      nodeName: nodeNameInput,
+      grpcTarget: nodeGrpcTargetInput,
+    });
+    if (draftError) {
+      setError(draftError);
+      return;
+    }
     setError(null);
     setCreateAgentNodeBusy(true);
     try {
@@ -3244,23 +3257,25 @@ export function App() {
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
         >
-          <AgentNodeSection
-            nodes={agentNodes}
-            targetNodeId={targetNodeId}
-            onTargetNodeIdChange={setTargetNodeId}
-            nodeIdInput={nodeIdInput}
-            onNodeIdInputChange={setNodeIdInput}
-            nodeNameInput={nodeNameInput}
-            onNodeNameInputChange={setNodeNameInput}
-            grpcTargetInput={nodeGrpcTargetInput}
-            onGrpcTargetInputChange={setNodeGrpcTargetInput}
-            tlsServerNameInput={nodeTlsServerNameInput}
-            onTlsServerNameInputChange={setNodeTlsServerNameInput}
-            createBusy={createAgentNodeBusy}
-            deletingNodeIds={deletingAgentNodeIds}
-            onCreateNode={onCreateAgentNode}
-            onDeleteNode={onDeleteAgentNode}
-          />
+          {canManageAgentNodes(auth) && (
+            <AgentNodeSection
+              nodes={agentNodes}
+              targetNodeId={targetNodeId}
+              onTargetNodeIdChange={setTargetNodeId}
+              nodeIdInput={nodeIdInput}
+              onNodeIdInputChange={setNodeIdInput}
+              nodeNameInput={nodeNameInput}
+              onNodeNameInputChange={setNodeNameInput}
+              grpcTargetInput={nodeGrpcTargetInput}
+              onGrpcTargetInputChange={setNodeGrpcTargetInput}
+              tlsServerNameInput={nodeTlsServerNameInput}
+              onTlsServerNameInputChange={setNodeTlsServerNameInput}
+              createBusy={createAgentNodeBusy}
+              deletingNodeIds={deletingAgentNodeIds}
+              onCreateNode={onCreateAgentNode}
+              onDeleteNode={onDeleteAgentNode}
+            />
+          )}
         </CreateAgentModal>
       )}
 

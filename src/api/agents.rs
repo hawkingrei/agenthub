@@ -191,6 +191,21 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
+fn map_create_agent_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    if message.contains("not found")
+        || message.contains("required")
+        || message.contains("must ")
+        || message.contains("invalid ")
+        || message.contains("reserved")
+        || message.contains("legacy schema")
+        || message.contains("internal gRPC peer config")
+    {
+        return ApiError::bad_request(&message);
+    }
+    ApiError::from(err)
+}
+
 async fn create_agent(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -221,12 +236,17 @@ async fn create_agent(
         agent_loop_prompt: payload.agent_loop_prompt,
     };
     let agent = if source == AGENT_SOURCE_MANUAL {
-        state.agents.create_agent(config).await?
+        state
+            .agents
+            .create_agent(config)
+            .await
+            .map_err(map_create_agent_error)?
     } else {
         state
             .agents
             .create_agent_with_source(config, source)
-            .await?
+            .await
+            .map_err(map_create_agent_error)?
     };
     Ok(Json(agent))
 }
@@ -897,6 +917,8 @@ mod tests {
     use crate::acp::default_actor_cli_path;
     use crate::agent::AgentManager;
     use crate::auth::AuthService;
+    use crate::internal::client::InternalGrpcPeerClientConfig;
+    use crate::internal::tls::InternalGrpcSecurityMode;
     use crate::push::PushService;
     use crate::state::AppState;
     use crate::team::TeamManager;
@@ -1433,7 +1455,10 @@ mod tests {
         .expect("create acp_permission_requests");
     }
 
-    async fn build_test_state_with_db(db: SqlitePool) -> AppState {
+    async fn build_test_state_with_db_and_internal_peer(
+        db: SqlitePool,
+        internal_peer_client: Option<InternalGrpcPeerClientConfig>,
+    ) -> AppState {
         let keys_dir = std::env::temp_dir().join(format!("agenthub-api-agents-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&keys_dir).expect("create keys dir");
         let keys_path = keys_dir.join("vapid.json");
@@ -1460,7 +1485,7 @@ mod tests {
         let event_dbs = agenthub_db::AgentEventDbRouter::new(
             std::env::temp_dir().join(format!("agenthub-api-agents-eventdb-{}", Uuid::new_v4())),
         );
-        let agents = Arc::new(AgentManager::new(
+        let agents = Arc::new(AgentManager::new_with_internal_grpc(
             db.clone(),
             event_dbs.clone(),
             None,
@@ -1470,6 +1495,7 @@ mod tests {
             None,
             permissions.clone(),
             auth.clone(),
+            internal_peer_client,
         ));
         let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
         AppState {
@@ -1481,6 +1507,10 @@ mod tests {
             acp_permissions: permissions,
             default_worktree_root: config.default_worktree_root(),
         }
+    }
+
+    async fn build_test_state_with_db(db: SqlitePool) -> AppState {
+        build_test_state_with_db_and_internal_peer(db, None).await
     }
 
     async fn build_test_state() -> AppState {
@@ -1496,6 +1526,28 @@ mod tests {
                 path.display()
             );
         }
+    }
+
+    async fn add_agent_node_support(db: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_nodes table");
+        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+            .execute(db)
+            .await
+            .expect("add target_node_id column");
     }
 
     async fn create_auth_token(state: &AppState) -> String {
@@ -1684,6 +1736,114 @@ mod tests {
         assert_eq!(stop_second.status(), StatusCode::OK);
 
         remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_remote_target_without_internal_peer_client() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db(db).await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-no-peer-config",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("internal gRPC peer config")),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_rejects_remote_target_on_legacy_schema() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent_nodes table");
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+            })
+            .await
+            .expect("create agent node");
+
+        let err = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "legacy-remote-target".to_string(),
+                workdir: "/remote/workdir".to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: Some("node-east".to_string()),
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: true,
+            })
+            .await
+            .expect_err("legacy schema should reject remote target");
+        assert!(
+            err.to_string().contains("agents.target_node_id column"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]

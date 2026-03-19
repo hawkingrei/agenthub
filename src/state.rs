@@ -147,13 +147,19 @@ impl AppState {
             config.codex_acp_default_mode(),
             acp_permissions.clone(),
             auth.clone(),
-            internal_peer_client,
+            internal_peer_client.clone(),
         ));
 
         let teams = Arc::new(TeamManager::new_with_event_dbs(
             db.clone(),
             event_dbs.clone(),
         ));
+        if let Some(peer_client) = internal_peer_client.as_ref() {
+            teams.configure_internal_grpc_relay(
+                std::path::Path::new(&peer_client.cert_dir),
+                peer_client.security_mode,
+            );
+        }
         teams
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
