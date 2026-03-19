@@ -2723,10 +2723,15 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
         Some(&sent.message_id.to_string())
     );
     assert_eq!(captured[0].body["run_id"], run.id);
+    assert_eq!(captured[0].body["source_node_id"], "main");
+    assert_eq!(captured[0].body["target_node_id"], "node");
     assert_eq!(captured[0].body["from_actor_id"], "planner");
     assert_eq!(captured[0].body["from_actor_kind"], "agent");
     assert_eq!(captured[0].body["to_actor_id"], "remote-reviewer");
     assert_eq!(captured[0].body["to_actor_kind"], "agent");
+    assert_eq!(captured[0].body["scope"], json!(["node:p2p"]));
+    assert_eq!(captured[0].body["kid"], "phase1-shared-key");
+    assert!(captured[0].body["payload_digest"].is_string());
     assert_eq!(captured[0].body["payload"]["text"], "review this");
     drop(captured);
     server_handle.abort();

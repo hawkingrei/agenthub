@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify distributed node phase 0/1 rollout in CI: `internal_grpc_mailbox_send_list_ack_are_wire_compatible`, `issue_node_credential_returns_phase0_metadata`, `remote_actor_grpc_pipeline_delivers_and_acks_over_tls`, `bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states`, `remote_actor_messages_relay_success_marks_message_delivered`, and `tests/distributed_p2p_pipeline.rs` should all stay green on both `push` and `pull_request`; record workflow names and run IDs in the related PR before merge (see `docs/journal/2026-03-19-distributed-node-architecture.md`).
+
 - [ ] Refactor `ensure_remote_managed_agent` in `src/agent/manager.rs` to reduce duplicated legacy-schema `INSERT`/`UPDATE` SQL branches, ideally by centralizing the shared column assembly (for example with `sqlx::QueryBuilder`) while keeping schema-compat behavior unchanged. Record follow-up validation notes and push/PR CI run IDs with the refactor PR.
 
 - [ ] Verify deployed leader-driven Team task tools on `agenthub.hawkingrei.com`: leader sessions should be able to create canonical Kanban tasks through `team_task_create`, workers should be able to inspect the canonical Team task list through `team_tasks`, worker sessions must be denied if they attempt `team_task_create` / `team_task_update`, and the `Kanban` tab should surface newly created MCP tasks without a manual refresh while it remains open. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-leader-task-tools-and-kanban-refresh.md`).

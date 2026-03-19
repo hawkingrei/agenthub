@@ -10,6 +10,7 @@ use std::process::Stdio;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::Duration;
 
+use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
 use tokio::io::AsyncWriteExt;
@@ -36,6 +37,7 @@ use crate::acp::{
 use crate::auth::AuthService;
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
+use crate::internal::p2p::{MembershipView, ResolvedNodeEndpoint, derive_cluster_id};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -470,6 +472,29 @@ pub enum AgentInput {
     Acp(AcpHandle),
 }
 
+struct AgentManagerMembershipView<'a> {
+    manager: &'a AgentManager,
+    cluster_id: String,
+}
+
+#[async_trait]
+impl MembershipView for AgentManagerMembershipView<'_> {
+    async fn resolve_node(&self, node_id: &str) -> anyhow::Result<ResolvedNodeEndpoint> {
+        let normalized = node_id.trim();
+        if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
+            return Ok(ResolvedNodeEndpoint::from_agent_node_record(
+                &self.cluster_id,
+                build_main_agent_node_record(),
+            ));
+        }
+        let record = self.manager.get_agent_node(normalized).await?;
+        Ok(ResolvedNodeEndpoint::from_agent_node_record(
+            &self.cluster_id,
+            record,
+        ))
+    }
+}
+
 impl AgentManager {
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
@@ -629,7 +654,11 @@ impl AgentManager {
                 "remote agent control is unavailable because internal gRPC peer config is missing"
             )
         })?;
-        let node = self.get_agent_node(target_node_id).await?;
+        let membership = AgentManagerMembershipView {
+            manager: self,
+            cluster_id: derive_cluster_id(peer_config.expected_issuer.as_deref()),
+        };
+        let node = membership.resolve_node(target_node_id).await?;
         let grpc_target = node
             .grpc_target
             .as_deref()

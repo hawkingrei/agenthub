@@ -12,6 +12,7 @@ use crate::team::{TeamStepRecord, TeamStepStatus};
 use crate::{acp::AcpActorSkillContext, agent::AgentConfig};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
+use super::p2p::{CredentialProvider, NodeCredentialRequest};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
@@ -98,6 +99,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let route = optional_json_object(optional_trimmed(&payload.route_json), "route_json")?;
         let payload_json = parse_json_required(&payload.payload_json, "payload_json")?;
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
+        let from_peer_id = optional_trimmed(&payload.from_peer_id);
+        let to_peer_id = optional_trimmed(&payload.to_peer_id);
 
         let message = self
             .state
@@ -106,9 +109,9 @@ impl TeamInternalControl for TeamInternalControlService {
             .actor_send(ActorSendRequest {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
-                from_peer_id: None,
+                from_peer_id: from_peer_id.map(str::to_string),
                 to_actor_id: to_actor_id.to_string(),
-                to_peer_id: None,
+                to_peer_id: to_peer_id.map(str::to_string),
                 channel: Some(channel.to_string()),
                 transport: Some(transport),
                 route,
@@ -191,6 +194,8 @@ impl TeamInternalControl for TeamInternalControlService {
                 created_at: message.created_at,
                 delivered_at: message.delivered_at.unwrap_or_default(),
                 idempotency_key: String::new(),
+                from_peer_id: message.from_peer_id,
+                to_peer_id: message.to_peer_id,
             })
             .collect::<Vec<_>>();
 
@@ -246,6 +251,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let run_id = acked_message.run_id;
         let from_actor_id = acked_message.from_actor_id;
         let to_actor_id = acked_message.to_actor_id;
+        let from_peer_id = acked_message.from_peer_id;
+        let to_peer_id = acked_message.to_peer_id;
         let channel = acked_message.channel;
         let transport = acked_message.transport.as_str().to_string();
 
@@ -263,6 +270,8 @@ impl TeamInternalControl for TeamInternalControlService {
                 created_at,
                 delivered_at,
                 idempotency_key: String::new(),
+                from_peer_id,
+                to_peer_id,
             }),
         }))
     }
@@ -396,9 +405,18 @@ impl TeamInternalControl for TeamInternalControlService {
         } else {
             DEFAULT_TOKEN_TTL_SECONDS
         };
-        let (access_token, expires_at) = self
+        let issued = self
             .authz
-            .issue_access_token(role, actor_id, run_id, permissions, ttl_seconds)
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: node_id.to_string(),
+                role: role.as_str().to_string(),
+                actor_id: actor_id.map(str::to_string),
+                run_id: run_id.map(str::to_string),
+                permissions,
+                scope: Vec::new(),
+                audience: Vec::new(),
+                ttl_seconds,
+            })
             .map_err(|err| Status::internal(err.to_string()))?;
 
         let (cert_pem, key_pem, ca_cert_pem) =
@@ -417,12 +435,18 @@ impl TeamInternalControl for TeamInternalControlService {
         Ok(Response::new(IssueNodeCredentialResponse {
             node_id: node_id.to_string(),
             role: role.as_str().to_string(),
-            access_token,
-            expires_at,
+            access_token: issued.access_token,
+            expires_at: issued.expires_at,
             cert_pem,
             key_pem,
             ca_cert_pem,
             security_mode: security_mode_to_str(self.security_mode).to_string(),
+            cluster_id: issued.cluster_id,
+            scope: issued.scope,
+            audience: issued.audience,
+            kid: issued.kid,
+            issued_at: issued.issued_at,
+            source_node_id: issued.source_node_id,
         }))
     }
 
@@ -773,9 +797,10 @@ mod tests {
     use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
     use super::super::proto::agenthub::internal::v1::{
-        AckActorMessageRequest, ListActorInboxRequest, SendActorMessageRequest,
+        AckActorMessageRequest, IssueNodeCredentialRequest, ListActorInboxRequest,
+        SendActorMessageRequest,
     };
-    use super::{TeamInternalControlService, map_actor_service_status};
+    use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
 
@@ -865,6 +890,8 @@ mod tests {
                     route_json: r#"{"topic":"review"}"#.to_string(),
                     payload_json: r#"{"text":"please review"}"#.to_string(),
                     idempotency_key: "internal-grpc-msg-1".to_string(),
+                    from_peer_id: "node-a".to_string(),
+                    to_peer_id: "main".to_string(),
                 },
                 &token,
             ),
@@ -903,6 +930,8 @@ mod tests {
         assert_eq!(pending.route_json, r#"{"topic":"review"}"#);
         assert_eq!(pending.payload_json, r#"{"text":"please review"}"#);
         assert_eq!(pending.status, "pending");
+        assert_eq!(pending.from_peer_id, "node-a");
+        assert_eq!(pending.to_peer_id, "main");
 
         let acked = TeamInternalControl::ack_actor_message(
             &service,
@@ -922,6 +951,8 @@ mod tests {
         assert_eq!(acked_message.message_id, send.message_id);
         assert_eq!(acked_message.status, "delivered");
         assert!(acked_message.delivered_at >= acked_message.created_at);
+        assert_eq!(acked_message.from_peer_id, "node-a");
+        assert_eq!(acked_message.to_peer_id, "main");
 
         let pending_after_ack = TeamInternalControl::list_actor_inbox(
             &service,
@@ -959,6 +990,44 @@ mod tests {
         .into_inner();
         assert_eq!(inbox_with_delivered.messages.len(), 1);
         assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    }
+
+    #[tokio::test]
+    async fn issue_node_credential_returns_phase0_metadata() {
+        let state = build_test_state().await;
+        let authz = build_authz();
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let mut request = Request::new(IssueNodeCredentialRequest {
+            node_id: "node-a".to_string(),
+            role: "leader".to_string(),
+            actor_id: String::new(),
+            run_id: String::new(),
+            permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+            ttl_seconds: 600,
+        });
+        request.metadata_mut().insert(
+            BOOTSTRAP_TOKEN_HEADER,
+            MetadataValue::try_from("bootstrap-token").expect("bootstrap metadata"),
+        );
+
+        let response = TeamInternalControl::issue_node_credential(&service, request)
+            .await
+            .expect("issue node credential")
+            .into_inner();
+        assert_eq!(response.node_id, "node-a");
+        assert_eq!(response.source_node_id, "node-a");
+        assert_eq!(response.cluster_id, "agenthub");
+        assert_eq!(response.scope, vec!["agent:manage", "node:p2p"]);
+        assert_eq!(response.audience, vec!["agenthub-internal"]);
+        assert!(response.kid.starts_with("shared-hs256-"));
+        assert!(response.issued_at > 0);
+        assert!(response.expires_at > response.issued_at);
     }
 
     #[tokio::test]

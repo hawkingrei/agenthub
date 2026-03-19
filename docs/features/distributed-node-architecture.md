@@ -53,6 +53,26 @@ The architecture therefore needs a phased plan that keeps today's encrypted gRPC
   - per-node fanout state
   - aggregated acknowledgement and retry state
 
+### Current Implementation Status
+
+As of `2026-03-19`, phases `0` and `1` are implemented in the main codebase:
+
+- phase 0 abstraction freeze now has concrete runtime surfaces in:
+  - `src/internal/p2p.rs`
+  - `src/internal/auth.rs`
+  - `src/agent/manager.rs`
+- phase 1 shared-key direct transport now carries forward-compatible metadata through:
+  - internal auth claims and node credential issuance
+  - internal gRPC actor send/list/ack wire fields
+  - remote relay envelope metadata
+  - blackbox and in-process p2p integration coverage
+
+One implementation boundary is intentionally explicit:
+
+- destination-local mailbox delivery still keeps `to_peer_id = main` so inbox lookup semantics remain local
+- source node identity is preserved on delivered messages via `from_peer_id`
+- explicit `target_node_id` continues to live in route/envelope metadata instead of overloading the destination-local mailbox partition key
+
 ### Phase Breakdown
 
 #### Phase 0: Protocol And Abstraction Freeze

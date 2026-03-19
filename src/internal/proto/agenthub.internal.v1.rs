@@ -17,6 +17,10 @@ pub struct SendActorMessageRequest {
     pub payload_json: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
     pub idempotency_key: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
+    pub from_peer_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "10")]
+    pub to_peer_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SendActorMessageResponse {
@@ -85,6 +89,10 @@ pub struct ActorMessage {
     pub delivered_at: i64,
     #[prost(string, tag = "12")]
     pub idempotency_key: ::prost::alloc::string::String,
+    #[prost(string, tag = "13")]
+    pub from_peer_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "14")]
+    pub to_peer_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TransitionStepRequest {
@@ -155,6 +163,18 @@ pub struct IssueNodeCredentialResponse {
     pub ca_cert_pem: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
     pub security_mode: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
+    pub cluster_id: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "10")]
+    pub scope: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "11")]
+    pub audience: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "12")]
+    pub kid: ::prost::alloc::string::String,
+    #[prost(int64, tag = "13")]
+    pub issued_at: i64,
+    #[prost(string, tag = "14")]
+    pub source_node_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EnsureAgentRecordRequest {

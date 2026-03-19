@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use agenthub_team_actor::{
-    ActorMailboxService, ActorMessageRelay, ActorMessageTransport, ActorRelayError,
+    ACTOR_MAIN_PEER_ID, ActorMessageRelay, ActorMessageTransport, ActorRelayError,
     ActorSendRequest, ActorServiceError, ActorServiceErrorCode,
 };
 use async_trait::async_trait;
@@ -18,6 +18,7 @@ use sha2::Sha256;
 use crate::internal::client::{
     InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
 };
+use crate::internal::p2p::{P2PTransport, build_message_metadata};
 use crate::team::TeamActorMessageRecord;
 
 const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -192,14 +193,15 @@ impl TeamRemoteRelayAdapter {
                 client_key_path,
             })
             .await?;
+        let metadata = build_message_metadata(message);
 
         client
-            .actor_send(ActorSendRequest {
+            .send_p2p_message(ActorSendRequest {
                 run_id: message.run_id.clone(),
                 from_actor_id: message.from_actor_id.clone(),
-                from_peer_id: None,
+                from_peer_id: Some(metadata.source_node_id),
                 to_actor_id: message.to_actor_id.clone(),
-                to_peer_id: None,
+                to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
                 channel: Some(message.channel.clone()),
                 transport: Some(ActorMessageTransport::Local),
                 route: None,
@@ -586,10 +588,23 @@ fn apply_route_signing(
 }
 
 fn build_remote_relay_envelope(message: &TeamActorMessageRecord) -> Value {
+    let metadata = build_message_metadata(message);
     json!({
         "schema_version": 1,
         "message_id": message.message_id,
         "run_id": &message.run_id,
+        "cluster_id": metadata.cluster_id,
+        "source_node_id": metadata.source_node_id,
+        "target_node_id": metadata.target_node_id,
+        "broadcast_id": metadata.broadcast_id,
+        "correlation_id": metadata.correlation_id,
+        "idempotency_key": metadata.idempotency_key,
+        "scope": metadata.scope,
+        "audience": metadata.audience,
+        "issued_at": metadata.issued_at,
+        "expires_at": metadata.expires_at,
+        "kid": metadata.kid,
+        "payload_digest": metadata.payload_digest,
         "from_actor_id": &message.from_actor_id,
         "from_peer_id": &message.from_peer_id,
         "from_actor_kind": &message.from_actor_kind,

@@ -6,7 +6,8 @@ use uuid::Uuid;
 
 use crate::acp::AcpPermissionService;
 use crate::agent::{
-    AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+    AGENT_NODE_MAIN_ID, AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker,
+    AgentTimeTriggerWorkerSettings,
 };
 use crate::auth::AuthService;
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -106,6 +107,7 @@ impl AppState {
                 shared_secret: internal_shared_secret,
                 expected_issuer: config.internal_grpc_auth_issuer(),
                 expected_audience: config.internal_grpc_auth_audience(),
+                source_node_id: AGENT_NODE_MAIN_ID.to_string(),
                 cert_dir: internal_grpc_cert_dir.to_string_lossy().to_string(),
                 security_mode: internal_grpc_security_mode,
             })

@@ -1,5 +1,6 @@
 mod auth;
 pub(crate) mod client;
+pub(crate) mod p2p;
 mod service;
 pub(crate) mod tls;
 

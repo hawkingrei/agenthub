@@ -37,11 +37,15 @@ const TEST_LOG_ROOT: &str = "target/p2p-pipeline-logs";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct InternalAccessClaims {
     role: String,
+    cluster_id: Option<String>,
+    source_node_id: Option<String>,
     actor_id: Option<String>,
     run_id: Option<String>,
     permissions: Vec<String>,
+    scope: Vec<String>,
     issuer: Option<String>,
     audience: Option<String>,
+    kid: Option<String>,
 }
 
 #[derive(Debug)]
@@ -53,6 +57,18 @@ struct SpawnedNode {
     stdout_path: PathBuf,
     stderr_path: PathBuf,
     child: Option<Child>,
+}
+
+struct RemoteMessageSeed<'a> {
+    run_id: &'a str,
+    from_actor_id: &'a str,
+    from_peer_id: &'a str,
+    to_actor_id: &'a str,
+    to_peer_id: &'a str,
+    payload: Value,
+    route_json: &'a Value,
+    idempotency_key: &'a str,
+    created_at: i64,
 }
 
 impl SpawnedNode {
@@ -121,98 +137,120 @@ async fn blackbox_distributed_p2p_pipeline_relays_and_acks_over_real_nodes() -> 
         seed_team_run(&node_b_db, &team_id, &team_name, &run_id).await?;
 
         let mailbox_token = issue_mailbox_token(&shared_secret, &run_id)?;
-        let route_to_a = grpc_route_json(node_a.grpc_addr, &shared_cert_dir, &mailbox_token);
-        let route_to_b = grpc_route_json(node_b.grpc_addr, &shared_cert_dir, &mailbox_token);
+        let route_to_a = grpc_route_json(
+            node_a.grpc_addr,
+            &shared_cert_dir,
+            &mailbox_token,
+            "node-b",
+            "node-a",
+        );
+        let route_to_b = grpc_route_json(
+            node_b.grpc_addr,
+            &shared_cert_dir,
+            &mailbox_token,
+            "node-a",
+            "node-b",
+        );
         let now = Utc::now().timestamp();
 
         insert_remote_message(
             &node_a_db,
-            &run_id,
-            "planner-a",
-            "main",
-            "reviewer-b",
-            "node",
-            json!({
-                "type": "chat_message",
-                "text": "node-a-1",
-                "sequence": 1,
-                "correlation_id": "corr-a-1"
-            }),
-            &route_to_b,
-            "p2p-a-1",
-            now,
+            RemoteMessageSeed {
+                run_id: &run_id,
+                from_actor_id: "planner-a",
+                from_peer_id: "main",
+                to_actor_id: "reviewer-b",
+                to_peer_id: "node",
+                payload: json!({
+                    "type": "chat_message",
+                    "text": "node-a-1",
+                    "sequence": 1,
+                    "correlation_id": "corr-a-1"
+                }),
+                route_json: &route_to_b,
+                idempotency_key: "p2p-a-1",
+                created_at: now,
+            },
         )
         .await?;
         insert_remote_message(
             &node_a_db,
-            &run_id,
-            "planner-a",
-            "main",
-            "reviewer-b",
-            "node",
-            json!({
-                "type": "chat_message",
-                "text": "node-a-2",
-                "sequence": 2,
-                "correlation_id": "corr-a-2"
-            }),
-            &route_to_b,
-            "p2p-a-2",
-            now + 1,
+            RemoteMessageSeed {
+                run_id: &run_id,
+                from_actor_id: "planner-a",
+                from_peer_id: "main",
+                to_actor_id: "reviewer-b",
+                to_peer_id: "node",
+                payload: json!({
+                    "type": "chat_message",
+                    "text": "node-a-2",
+                    "sequence": 2,
+                    "correlation_id": "corr-a-2"
+                }),
+                route_json: &route_to_b,
+                idempotency_key: "p2p-a-2",
+                created_at: now + 1,
+            },
         )
         .await?;
         insert_remote_message(
             &node_a_db,
-            &run_id,
-            "planner-a",
-            "main",
-            "reviewer-b",
-            "node",
-            json!({
-                "type": "chat_message",
-                "text": "node-a-3",
-                "sequence": 3,
-                "correlation_id": "corr-a-3"
-            }),
-            &route_to_b,
-            "p2p-a-3",
-            now + 2,
+            RemoteMessageSeed {
+                run_id: &run_id,
+                from_actor_id: "planner-a",
+                from_peer_id: "main",
+                to_actor_id: "reviewer-b",
+                to_peer_id: "node",
+                payload: json!({
+                    "type": "chat_message",
+                    "text": "node-a-3",
+                    "sequence": 3,
+                    "correlation_id": "corr-a-3"
+                }),
+                route_json: &route_to_b,
+                idempotency_key: "p2p-a-3",
+                created_at: now + 2,
+            },
         )
         .await?;
         insert_remote_message(
             &node_b_db,
-            &run_id,
-            "reviewer-b",
-            "main",
-            "planner-a",
-            "node",
-            json!({
-                "type": "chat_message",
-                "text": "node-b-1",
-                "sequence": 1,
-                "correlation_id": "corr-b-1"
-            }),
-            &route_to_a,
-            "p2p-b-1",
-            now + 3,
+            RemoteMessageSeed {
+                run_id: &run_id,
+                from_actor_id: "reviewer-b",
+                from_peer_id: "main",
+                to_actor_id: "planner-a",
+                to_peer_id: "node",
+                payload: json!({
+                    "type": "chat_message",
+                    "text": "node-b-1",
+                    "sequence": 1,
+                    "correlation_id": "corr-b-1"
+                }),
+                route_json: &route_to_a,
+                idempotency_key: "p2p-b-1",
+                created_at: now + 3,
+            },
         )
         .await?;
         insert_remote_message(
             &node_b_db,
-            &run_id,
-            "reviewer-b",
-            "main",
-            "planner-a",
-            "node",
-            json!({
-                "type": "chat_message",
-                "text": "node-b-2",
-                "sequence": 2,
-                "correlation_id": "corr-b-2"
-            }),
-            &route_to_a,
-            "p2p-b-2",
-            now + 4,
+            RemoteMessageSeed {
+                run_id: &run_id,
+                from_actor_id: "reviewer-b",
+                from_peer_id: "main",
+                to_actor_id: "planner-a",
+                to_peer_id: "node",
+                payload: json!({
+                    "type": "chat_message",
+                    "text": "node-b-2",
+                    "sequence": 2,
+                    "correlation_id": "corr-b-2"
+                }),
+                route_json: &route_to_a,
+                idempotency_key: "p2p-b-2",
+                created_at: now + 4,
+            },
         )
         .await?;
 
@@ -247,8 +285,18 @@ async fn blackbox_distributed_p2p_pipeline_relays_and_acks_over_real_nodes() -> 
             vec!["node-a-1", "node-a-2", "node-a-3"]
         );
         assert_eq!(payload_sequences(&node_b_inbox)?, vec![1, 2, 3]);
+        assert!(
+            node_b_inbox
+                .iter()
+                .all(|message| message.from_peer_id == "node-a" && message.to_peer_id == "main")
+        );
         assert_eq!(payload_texts(&node_a_inbox)?, vec!["node-b-1", "node-b-2"]);
         assert_eq!(payload_sequences(&node_a_inbox)?, vec![1, 2]);
+        assert!(
+            node_a_inbox
+                .iter()
+                .all(|message| message.from_peer_id == "node-b" && message.to_peer_id == "main")
+        );
 
         ack_messages(
             node_b.grpc_addr,
@@ -502,18 +550,7 @@ async fn seed_team_run(
     Ok(())
 }
 
-async fn insert_remote_message(
-    db: &SqlitePool,
-    run_id: &str,
-    from_actor_id: &str,
-    from_peer_id: &str,
-    to_actor_id: &str,
-    to_peer_id: &str,
-    payload: Value,
-    route_json: &Value,
-    idempotency_key: &str,
-    created_at: i64,
-) -> anyhow::Result<()> {
+async fn insert_remote_message(db: &SqlitePool, seed: RemoteMessageSeed<'_>) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         INSERT INTO team_actor_messages (
@@ -533,18 +570,18 @@ async fn insert_remote_message(
         VALUES (?1, ?2, ?3, ?4, ?5, 'coordination', 'remote', ?6, ?7, ?8, 'pending', ?9)
         "#,
     )
-    .bind(run_id)
-    .bind(from_actor_id)
-    .bind(from_peer_id)
-    .bind(to_actor_id)
-    .bind(to_peer_id)
-    .bind(route_json.to_string())
-    .bind(payload.to_string())
-    .bind(idempotency_key)
-    .bind(created_at)
+    .bind(seed.run_id)
+    .bind(seed.from_actor_id)
+    .bind(seed.from_peer_id)
+    .bind(seed.to_actor_id)
+    .bind(seed.to_peer_id)
+    .bind(seed.route_json.to_string())
+    .bind(seed.payload.to_string())
+    .bind(seed.idempotency_key)
+    .bind(seed.created_at)
     .execute(db)
     .await
-    .with_context(|| format!("insert remote message {idempotency_key}"))?;
+    .with_context(|| format!("insert remote message {}", seed.idempotency_key))?;
     Ok(())
 }
 
@@ -553,6 +590,8 @@ fn issue_mailbox_token(shared_secret: &str, run_id: &str) -> anyhow::Result<Stri
     let claims = Claims::with_custom_claims(
         InternalAccessClaims {
             role: TEST_INTERNAL_ROLE.to_string(),
+            cluster_id: Some(TEST_INTERNAL_ISSUER.to_string()),
+            source_node_id: Some("main".to_string()),
             actor_id: None,
             run_id: Some(run_id.to_string()),
             permissions: vec![
@@ -560,8 +599,10 @@ fn issue_mailbox_token(shared_secret: &str, run_id: &str) -> anyhow::Result<Stri
                 "team:inbox:list".to_string(),
                 "team:message:ack".to_string(),
             ],
+            scope: vec!["node:p2p".to_string()],
             issuer: Some(TEST_INTERNAL_ISSUER.to_string()),
             audience: Some(TEST_INTERNAL_AUDIENCE.to_string()),
+            kid: Some("shared-hs256-blackbox".to_string()),
         },
         JwtDuration::from_secs(600),
     );
@@ -569,7 +610,13 @@ fn issue_mailbox_token(shared_secret: &str, run_id: &str) -> anyhow::Result<Stri
         .map_err(|err| anyhow!("issue mailbox token: {err}"))
 }
 
-fn grpc_route_json(target: SocketAddr, cert_dir: &Path, access_token: &str) -> Value {
+fn grpc_route_json(
+    target: SocketAddr,
+    cert_dir: &Path,
+    access_token: &str,
+    source_node_id: &str,
+    target_node_id: &str,
+) -> Value {
     json!({
         "kind": "grpc",
         "grpc_target": format!("https://{}", target),
@@ -578,6 +625,14 @@ fn grpc_route_json(target: SocketAddr, cert_dir: &Path, access_token: &str) -> V
         "ca_cert_path": cert_dir.join("ca-cert.pem").display().to_string(),
         "client_cert_path": cert_dir.join("client-cert.pem").display().to_string(),
         "client_key_path": cert_dir.join("client-key.pem").display().to_string(),
+        "cluster_id": TEST_INTERNAL_ISSUER,
+        "source_node_id": source_node_id,
+        "target_node_id": target_node_id,
+        "scope": ["node:p2p"],
+        "audience": [TEST_INTERNAL_AUDIENCE],
+        "issued_at": Utc::now().timestamp(),
+        "expires_at": Utc::now().timestamp() + 600,
+        "kid": "shared-hs256-blackbox",
     })
 }
 

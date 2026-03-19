@@ -30,6 +30,8 @@ message SendActorMessageRequest {
   string route_json = 6;
   string payload_json = 7;
   string idempotency_key = 8;
+  string from_peer_id = 9;
+  string to_peer_id = 10;
 }
 
 message SendActorMessageResponse {
@@ -73,6 +75,8 @@ message ActorMessage {
   int64 created_at = 10;
   int64 delivered_at = 11;
   string idempotency_key = 12;
+  string from_peer_id = 13;
+  string to_peer_id = 14;
 }
 
 message TransitionStepRequest {
@@ -114,6 +118,12 @@ message IssueNodeCredentialResponse {
   string key_pem = 6;
   string ca_cert_pem = 7;
   string security_mode = 8;
+  string cluster_id = 9;
+  repeated string scope = 10;
+  repeated string audience = 11;
+  string kid = 12;
+  int64 issued_at = 13;
+  string source_node_id = 14;
 }
 
 message EnsureAgentRecordRequest {

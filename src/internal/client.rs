@@ -15,6 +15,7 @@ use tonic::{
 };
 
 use super::auth::{InternalAuthz, InternalAuthzConfig, InternalRole};
+use super::p2p::{CredentialProvider, NodeCredentialRequest, P2PTransport};
 use super::proto::agenthub::internal::v1::team_internal_control_client::TeamInternalControlClient;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest as GrpcAckActorMessageRequest,
@@ -46,6 +47,7 @@ pub struct InternalGrpcPeerClientConfig {
     pub shared_secret: String,
     pub expected_issuer: Option<String>,
     pub expected_audience: Option<String>,
+    pub source_node_id: String,
     pub cert_dir: String,
     pub security_mode: InternalGrpcSecurityMode,
 }
@@ -68,8 +70,18 @@ impl InternalGrpcMailboxClient {
             expected_issuer: config.expected_issuer.clone(),
             expected_audience: config.expected_audience.clone(),
         });
-        let (access_token, _expires_at) =
-            authz.issue_access_token(InternalRole::Leader, None, None, permissions, 600)?;
+        let access_token = authz
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: config.source_node_id.clone(),
+                role: InternalRole::Leader.as_str().to_string(),
+                actor_id: None,
+                run_id: None,
+                permissions,
+                scope: Vec::new(),
+                audience: Vec::new(),
+                ttl_seconds: 600,
+            })?
+            .access_token;
         let cert_dir = Path::new(&config.cert_dir);
         let ca_cert_path = tls_path_if_exists(cert_dir.join("ca-cert.pem"));
         let client_cert_path = tls_path_if_exists(cert_dir.join("client-cert.pem"));
@@ -324,10 +336,18 @@ fn parse_message(
         message_id: message.message_id,
         run_id: message.run_id,
         from_actor_id: message.from_actor_id,
-        from_peer_id: "main".to_string(),
+        from_peer_id: if message.from_peer_id.trim().is_empty() {
+            "main".to_string()
+        } else {
+            message.from_peer_id
+        },
         from_actor_kind,
         to_actor_id: message.to_actor_id,
-        to_peer_id: "main".to_string(),
+        to_peer_id: if message.to_peer_id.trim().is_empty() {
+            "main".to_string()
+        } else {
+            message.to_peer_id
+        },
         to_actor_kind,
         channel: message.channel,
         transport: parse_transport(&message.transport),
@@ -429,6 +449,8 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 route_json,
                 payload_json,
                 idempotency_key: request.idempotency_key.unwrap_or_default(),
+                from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
+                to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
             })?)
             .await
             .map_err(map_grpc_status)?
@@ -517,6 +539,30 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
     }
 }
 
+#[async_trait]
+impl P2PTransport for InternalGrpcMailboxClient {
+    async fn send_p2p_message(
+        &self,
+        request: ActorSendRequest,
+    ) -> Result<ActorSendResponse, ActorServiceError> {
+        self.actor_send(request).await
+    }
+
+    async fn list_p2p_inbox(
+        &self,
+        request: ActorInboxRequest,
+    ) -> Result<ActorInboxResponse, ActorServiceError> {
+        self.actor_inbox(request).await
+    }
+
+    async fn ack_p2p_message(
+        &self,
+        request: ActorAckRequest,
+    ) -> Result<ActorAckResponse, ActorServiceError> {
+        self.actor_ack(request).await
+    }
+}
+
 pub fn normalize_existing_path(
     raw: Option<&str>,
     field_name: &str,
@@ -550,6 +596,7 @@ mod tests {
     use super::{InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig};
     use crate::api::team_tests::build_test_state;
     use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
+    use crate::internal::p2p::NodeTransportMetadata;
     use crate::internal::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer;
     use crate::internal::service::TeamInternalControlService;
     use crate::internal::tls::{
@@ -675,16 +722,59 @@ mod tests {
         }
     }
 
-    fn grpc_relay_route(addr: SocketAddr, cert_dir: &Path, access_token: &str) -> Value {
-        json!({
-            "kind": "grpc",
-            "grpc_target": format!("https://{}", addr),
-            "access_token": access_token,
-            "tls_server_name": "localhost",
-            "ca_cert_path": cert_dir.join("ca-cert.pem").to_string_lossy().to_string(),
-            "client_cert_path": cert_dir.join("client-cert.pem").to_string_lossy().to_string(),
-            "client_key_path": cert_dir.join("client-key.pem").to_string_lossy().to_string(),
-        })
+    fn grpc_relay_route(
+        addr: SocketAddr,
+        cert_dir: &Path,
+        access_token: &str,
+        source_node_id: &str,
+        target_node_id: &str,
+    ) -> Value {
+        let mut route = serde_json::Map::new();
+        route.insert("kind".to_string(), json!("grpc"));
+        route.insert(
+            "grpc_target".to_string(),
+            json!(format!("https://{}", addr)),
+        );
+        route.insert("access_token".to_string(), json!(access_token));
+        route.insert("tls_server_name".to_string(), json!("localhost"));
+        route.insert(
+            "ca_cert_path".to_string(),
+            json!(cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
+        );
+        route.insert(
+            "client_cert_path".to_string(),
+            json!(
+                cert_dir
+                    .join("client-cert.pem")
+                    .to_string_lossy()
+                    .to_string()
+            ),
+        );
+        route.insert(
+            "client_key_path".to_string(),
+            json!(
+                cert_dir
+                    .join("client-key.pem")
+                    .to_string_lossy()
+                    .to_string()
+            ),
+        );
+        NodeTransportMetadata {
+            cluster_id: "agenthub".to_string(),
+            source_node_id: source_node_id.to_string(),
+            target_node_id: target_node_id.to_string(),
+            broadcast_id: None,
+            correlation_id: None,
+            idempotency_key: None,
+            scope: vec!["node:p2p".to_string()],
+            audience: vec!["agenthub-internal".to_string()],
+            issued_at: chrono::Utc::now().timestamp(),
+            expires_at: chrono::Utc::now().timestamp() + 600,
+            kid: "shared-hs256-test".to_string(),
+            payload_digest: None,
+        }
+        .apply_to_route(&mut route);
+        Value::Object(route)
     }
 
     async fn seed_team_run(
@@ -786,7 +876,13 @@ mod tests {
             spawn_mtls_internal_grpc_server(remote_state.clone(), authz.clone(), cert_dir.clone())
                 .await;
 
-        let route = grpc_relay_route(server.addr, &cert_dir, &access_token);
+        let route = grpc_relay_route(
+            server.addr,
+            &cert_dir,
+            &access_token,
+            "node-source",
+            "node-remote",
+        );
 
         let sent = source_state
             .teams
@@ -840,6 +936,8 @@ mod tests {
         assert_eq!(pending.transport, ActorMessageTransport::Local);
         assert_eq!(pending.payload["text"], "review this patch");
         assert_eq!(pending.status, ActorMessageStatus::Pending);
+        assert_eq!(pending.from_peer_id, "node-source");
+        assert_eq!(pending.to_peer_id, "main");
 
         let ack = client
             .actor_ack(agenthub_team_actor::ActorAckRequest {
@@ -900,8 +998,20 @@ mod tests {
             spawn_mtls_internal_grpc_server(node_b_state.clone(), authz.clone(), cert_dir.clone())
                 .await;
 
-        let route_to_a = grpc_relay_route(node_a_server.addr, &cert_dir, &access_token);
-        let route_to_b = grpc_relay_route(node_b_server.addr, &cert_dir, &access_token);
+        let route_to_a = grpc_relay_route(
+            node_a_server.addr,
+            &cert_dir,
+            &access_token,
+            "node-b",
+            "node-a",
+        );
+        let route_to_b = grpc_relay_route(
+            node_b_server.addr,
+            &cert_dir,
+            &access_token,
+            "node-a",
+            "node-b",
+        );
 
         node_a_state
             .teams
@@ -1028,6 +1138,12 @@ mod tests {
                 && message.route.is_none()
                 && message.status == ActorMessageStatus::Pending
         }));
+        assert!(
+            node_b_inbox
+                .messages
+                .iter()
+                .all(|message| message.from_peer_id == "node-a" && message.to_peer_id == "main")
+        );
 
         let node_a_inbox = node_a_client
             .actor_inbox(ActorInboxRequest {
@@ -1045,6 +1161,8 @@ mod tests {
             node_a_inbox.messages[0].transport,
             ActorMessageTransport::Local
         );
+        assert_eq!(node_a_inbox.messages[0].from_peer_id, "node-b");
+        assert_eq!(node_a_inbox.messages[0].to_peer_id, "main");
         assert!(node_a_inbox.messages[0].route.is_none());
         assert_eq!(node_a_inbox.messages[0].status, ActorMessageStatus::Pending);
 
