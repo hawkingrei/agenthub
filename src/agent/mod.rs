@@ -12,7 +12,7 @@ pub use triggers::{
 };
 pub(crate) use node::{
     AGENT_NODE_MAIN_ID, build_main_agent_node_record, normalize_target_node_id,
-    validate_agent_node_config_input,
+    validate_agent_node_config_input, validate_agent_node_update_input,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +106,15 @@ pub struct AgentNodeConfig {
     pub name: String,
     pub grpc_target: String,
     pub tls_server_name: Option<String>,
+    pub default_worktree_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentNodeUpdate {
+    pub name: String,
+    pub grpc_target: String,
+    pub tls_server_name: Option<String>,
+    pub default_worktree_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +123,7 @@ pub struct AgentNodeRecord {
     pub name: String,
     pub grpc_target: Option<String>,
     pub tls_server_name: Option<String>,
+    pub default_worktree_root: Option<String>,
     pub is_main: bool,
     pub created_at: i64,
     pub updated_at: i64,

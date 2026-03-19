@@ -1,5 +1,13 @@
+import React from "react";
 import { Alert, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
-import { AgentNodeRecord } from "../api";
+import { AgentNodeRecord, AgentNodeUpdate } from "../api";
+
+type AgentNodeDraft = {
+  name: string;
+  grpcTarget: string;
+  tlsServerName: string;
+  defaultWorktreeRoot: string;
+};
 
 type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
@@ -13,11 +21,37 @@ type AgentNodeSectionProps = {
   onGrpcTargetInputChange: (value: string) => void;
   tlsServerNameInput: string;
   onTlsServerNameInputChange: (value: string) => void;
+  defaultWorktreeRootInput: string;
+  onDefaultWorktreeRootInputChange: (value: string) => void;
   createBusy: boolean;
+  updatingNodeIds: Record<string, boolean>;
   deletingNodeIds: Record<string, boolean>;
   onCreateNode: () => void;
+  onUpdateNode: (nodeId: string, payload: AgentNodeUpdate) => void;
   onDeleteNode: (nodeId: string) => void;
 };
+
+function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
+  return {
+    name: node.name,
+    grpcTarget: node.grpc_target ?? "",
+    tlsServerName: node.tls_server_name ?? "",
+    defaultWorktreeRoot: node.default_worktree_root ?? "",
+  };
+}
+
+function validateAgentNodeMutableFields(input: {
+  nodeName: string;
+  grpcTarget: string;
+}): string | null {
+  if (!input.nodeName.trim()) {
+    return "Node name is required.";
+  }
+  if (!input.grpcTarget.trim()) {
+    return "gRPC target is required.";
+  }
+  return null;
+}
 
 export function validateAgentNodeDraft(input: {
   nodeId: string;
@@ -27,13 +61,14 @@ export function validateAgentNodeDraft(input: {
   if (!input.nodeId.trim()) {
     return "Node ID is required.";
   }
-  if (!input.nodeName.trim()) {
-    return "Node name is required.";
-  }
-  if (!input.grpcTarget.trim()) {
-    return "gRPC target is required.";
-  }
-  return null;
+  return validateAgentNodeMutableFields(input);
+}
+
+export function validateAgentNodeUpdateDraft(input: {
+  nodeName: string;
+  grpcTarget: string;
+}): string | null {
+  return validateAgentNodeMutableFields(input);
 }
 
 export function AgentNodeSection({
@@ -48,9 +83,13 @@ export function AgentNodeSection({
   onGrpcTargetInputChange,
   tlsServerNameInput,
   onTlsServerNameInputChange,
+  defaultWorktreeRootInput,
+  onDefaultWorktreeRootInputChange,
   createBusy,
+  updatingNodeIds,
   deletingNodeIds,
   onCreateNode,
+  onUpdateNode,
   onDeleteNode,
 }: AgentNodeSectionProps) {
   const createNodeError = validateAgentNodeDraft({
@@ -67,6 +106,7 @@ export function AgentNodeSection({
             name: "Main Node",
             grpc_target: null,
             tls_server_name: null,
+            default_worktree_root: null,
             is_main: true,
             created_at: 0,
             updated_at: 0,
@@ -84,6 +124,27 @@ export function AgentNodeSection({
       : `${node.name} · ${node.grpc_target ?? "gRPC"}`,
   }));
   const remoteNodes = availableNodes.filter((node) => !node.is_main);
+  const [editDrafts, setEditDrafts] = React.useState<Record<string, AgentNodeDraft>>({});
+
+  React.useEffect(() => {
+    setEditDrafts((prev) => {
+      const next: Record<string, AgentNodeDraft> = {};
+      let changed = false;
+      for (const node of remoteNodes) {
+        if (prev[node.id]) {
+          next[node.id] = prev[node.id];
+        } else {
+          next[node.id] = toNodeDraft(node);
+          changed = true;
+        }
+      }
+      const prevKeys = Object.keys(prev);
+      if (prevKeys.length !== Object.keys(next).length) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [remoteNodes]);
 
   return (
     <Stack gap="sm">
@@ -106,6 +167,11 @@ export function AgentNodeSection({
             ? "Run on this AgentHub instance. Local safe-path and worktree policies apply directly."
             : `Bind the agent to ${selectedNode?.name ?? "the remote node"} via encrypted gRPC${selectedNode?.tls_server_name ? ` (${selectedNode.tls_server_name})` : ""}.`}
         </Text>
+        {!selectedNode?.is_main && selectedNode?.default_worktree_root ? (
+          <Text size="sm" mt={6}>
+            Blank create-worktree workdirs default to: {selectedNode.default_worktree_root}
+          </Text>
+        ) : null}
       </Alert>
 
       <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-4 shadow-sm">
@@ -148,6 +214,14 @@ export function AgentNodeSection({
             />
           </Group>
 
+          <TextInput
+            label="Default worktree root"
+            placeholder="~/.agenthub/worktrees/node-east"
+            value={defaultWorktreeRootInput}
+            onChange={(event) => onDefaultWorktreeRootInputChange(event.currentTarget.value)}
+            description="Optional. Used when remote create-worktree agents leave Workdir blank."
+          />
+
           <Group justify="flex-end">
             <Button
               onClick={onCreateNode}
@@ -167,31 +241,130 @@ export function AgentNodeSection({
                 No remote nodes registered yet.
               </Text>
             ) : (
-              remoteNodes.map((node) => (
-                <div
-                  key={node.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-ui-border bg-white px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <Text size="sm" fw={600}>
-                      {node.name}
-                    </Text>
-                    <Text size="xs" c="dimmed" truncate="end">
-                      {node.grpc_target ?? "gRPC target pending"}
-                    </Text>
-                  </div>
-                  <Button
-                    variant="light"
-                    color="red"
-                    size="xs"
-                    loading={Boolean(deletingNodeIds[node.id])}
-                    disabled={Boolean(deletingNodeIds[node.id])}
-                    onClick={() => onDeleteNode(node.id)}
+              remoteNodes.map((node) => {
+                const draft = editDrafts[node.id] ?? toNodeDraft(node);
+                const updateError = validateAgentNodeUpdateDraft({
+                  nodeName: draft.name,
+                  grpcTarget: draft.grpcTarget,
+                });
+                return (
+                  <div
+                    key={node.id}
+                    className="rounded-xl border border-ui-border bg-white px-3 py-3"
                   >
-                    Delete
-                  </Button>
-                </div>
-              ))
+                    <Stack gap="sm">
+                      <Group justify="space-between" align="flex-start">
+                        <div className="min-w-0">
+                          <Text size="sm" fw={600}>
+                            {node.id}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Update routing and remote worktree defaults for this node.
+                          </Text>
+                        </div>
+                        <Text size="xs" c="dimmed">
+                          {new Date(node.updated_at * 1000).toLocaleString()}
+                        </Text>
+                      </Group>
+
+                      <Group grow align="end">
+                        <TextInput
+                          label="Node name"
+                          value={draft.name}
+                          onChange={(event) =>
+                            setEditDrafts((prev) => ({
+                              ...prev,
+                              [node.id]: {
+                                ...draft,
+                                name: event.currentTarget.value,
+                              },
+                            }))
+                          }
+                        />
+                        <TextInput
+                          label="gRPC target"
+                          value={draft.grpcTarget}
+                          onChange={(event) =>
+                            setEditDrafts((prev) => ({
+                              ...prev,
+                              [node.id]: {
+                                ...draft,
+                                grpcTarget: event.currentTarget.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Group>
+
+                      <Group grow align="end">
+                        <TextInput
+                          label="TLS server name"
+                          value={draft.tlsServerName}
+                          onChange={(event) =>
+                            setEditDrafts((prev) => ({
+                              ...prev,
+                              [node.id]: {
+                                ...draft,
+                                tlsServerName: event.currentTarget.value,
+                              },
+                            }))
+                          }
+                        />
+                        <TextInput
+                          label="Default worktree root"
+                          placeholder="Optional"
+                          value={draft.defaultWorktreeRoot}
+                          onChange={(event) =>
+                            setEditDrafts((prev) => ({
+                              ...prev,
+                              [node.id]: {
+                                ...draft,
+                                defaultWorktreeRoot: event.currentTarget.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Group>
+
+                      <Group justify="space-between" align="center">
+                        <Text size="xs" c={updateError ? "red" : "dimmed"}>
+                          {updateError ??
+                            "Leave Default worktree root blank to require explicit remote workdir."}
+                        </Text>
+                        <Group gap="xs">
+                          <Button
+                            variant="light"
+                            size="xs"
+                            loading={Boolean(updatingNodeIds[node.id])}
+                            disabled={Boolean(updatingNodeIds[node.id]) || updateError !== null}
+                            onClick={() =>
+                              onUpdateNode(node.id, {
+                                name: draft.name.trim(),
+                                grpc_target: draft.grpcTarget.trim(),
+                                tls_server_name: draft.tlsServerName.trim() || null,
+                                default_worktree_root:
+                                  draft.defaultWorktreeRoot.trim() || null,
+                              })
+                            }
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="light"
+                            color="red"
+                            size="xs"
+                            loading={Boolean(deletingNodeIds[node.id])}
+                            disabled={Boolean(deletingNodeIds[node.id])}
+                            onClick={() => onDeleteNode(node.id)}
+                          >
+                            Delete
+                          </Button>
+                        </Group>
+                      </Group>
+                    </Stack>
+                  </div>
+                );
+              })
             )}
           </Stack>
         </Stack>

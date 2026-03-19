@@ -354,6 +354,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             name TEXT NOT NULL UNIQUE,
             grpc_target TEXT NOT NULL,
             tls_server_name TEXT,
+            default_worktree_root TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -998,6 +999,12 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agent_nodes ADD COLUMN default_worktree_root TEXT",
+        "agent_nodes.default_worktree_root",
+    )
+    .await;
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_definitions ADD COLUMN owner_user_id TEXT",
@@ -1837,6 +1844,51 @@ mod tests {
             .map(|row| row.get::<String, _>("path"))
             .collect::<Vec<_>>();
         assert_eq!(paths, vec![expand_tilde("~/.agenthub/worktrees")]);
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_agent_nodes_default_worktree_root_column() {
+        let dir = unique_temp_dir("db-agent-nodes-default-worktree-root");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy agent_nodes");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+        let rows = sqlx::query("SELECT name FROM pragma_table_info('agent_nodes')")
+            .fetch_all(&pool)
+            .await
+            .expect("load pragma table info");
+        let column_names = rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("name"))
+            .collect::<Vec<_>>();
+        assert!(
+            column_names
+                .iter()
+                .any(|name| name == "default_worktree_root"),
+            "agent_nodes columns missing default_worktree_root: {column_names:?}"
+        );
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

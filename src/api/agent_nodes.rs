@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::agent::{AgentNodeConfig, AgentNodeRecord};
+use crate::agent::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
 use crate::api::authz::require_root;
 use crate::api::error::ApiError;
 use crate::state::AppState;
@@ -13,7 +13,12 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent_node).get(list_agent_nodes))
-        .route("/:id", get(get_agent_node).delete(delete_agent_node))
+        .route(
+            "/:id",
+            get(get_agent_node)
+                .patch(update_agent_node)
+                .delete(delete_agent_node),
+        )
         .with_state(state)
 }
 
@@ -70,6 +75,21 @@ async fn get_agent_node(
     let node = state
         .agents
         .get_agent_node(&node_id)
+        .await
+        .map_err(|err| map_agent_node_error(err, "agent node not found"))?;
+    Ok(Json(node))
+}
+
+async fn update_agent_node(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(node_id): Path<String>,
+    Json(payload): Json<AgentNodeUpdate>,
+) -> Result<Json<AgentNodeRecord>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    let node = state
+        .agents
+        .update_agent_node(&node_id, payload)
         .await
         .map_err(|err| map_agent_node_error(err, "agent node not found"))?;
     Ok(Json(node))
@@ -197,6 +217,7 @@ mod tests {
                 name: "Node East".to_string(),
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
             })
             .await
             .expect("create agent node");
@@ -251,6 +272,68 @@ mod tests {
                 .as_str()
                 .is_some_and(|value| value.contains("still referenced by 1 agent(s)")),
             "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn patch_agent_node_updates_default_worktree_root() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_nodes table");
+
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::PATCH,
+                "/node-east",
+                Some(&token),
+                Some(json!({
+                    "name": "Node East 2",
+                    "grpc_target": "https://node-east-2.internal:50051",
+                    "tls_server_name": "node-east-2.internal",
+                    "default_worktree_root": "~/.agenthub/worktrees/node-east"
+                })),
+            ))
+            .await
+            .expect("run patch agent node request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["name"], json!("Node East 2"));
+        assert_eq!(
+            body["grpc_target"],
+            json!("https://node-east-2.internal:50051")
+        );
+        assert_eq!(
+            body["default_worktree_root"],
+            json!("~/.agenthub/worktrees/node-east")
         );
     }
 }

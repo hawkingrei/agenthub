@@ -1,6 +1,6 @@
 use url::Url;
 
-use super::{AgentNodeConfig, AgentNodeRecord};
+use super::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
 
 pub(crate) const AGENT_NODE_MAIN_ID: &str = "main";
 pub(crate) const AGENT_NODE_MAIN_NAME: &str = "Main Node";
@@ -11,6 +11,7 @@ pub(crate) fn build_main_agent_node_record() -> AgentNodeRecord {
         name: AGENT_NODE_MAIN_NAME.to_string(),
         grpc_target: None,
         tls_server_name: None,
+        default_worktree_root: None,
         is_main: true,
         created_at: 0,
         updated_at: 0,
@@ -74,7 +75,7 @@ fn validate_agent_node_grpc_target(raw: &str) -> anyhow::Result<String> {
 
 pub(crate) fn validate_agent_node_config_input(
     config: &AgentNodeConfig,
-) -> anyhow::Result<(String, String, String, Option<String>)> {
+) -> anyhow::Result<(String, String, String, Option<String>, Option<String>)> {
     let id = validate_agent_node_id(&config.id)?;
     let name = validate_agent_node_name(&config.name)?;
     let grpc_target = validate_agent_node_grpc_target(&config.grpc_target)?;
@@ -84,7 +85,41 @@ pub(crate) fn validate_agent_node_config_input(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    Ok((id, name, grpc_target, tls_server_name))
+    let default_worktree_root =
+        validate_agent_node_default_worktree_root(config.default_worktree_root.as_deref())?;
+    Ok((
+        id,
+        name,
+        grpc_target,
+        tls_server_name,
+        default_worktree_root,
+    ))
+}
+
+pub(crate) fn validate_agent_node_update_input(
+    config: &AgentNodeUpdate,
+) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
+    let name = validate_agent_node_name(&config.name)?;
+    let grpc_target = validate_agent_node_grpc_target(&config.grpc_target)?;
+    let tls_server_name = config
+        .tls_server_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let default_worktree_root =
+        validate_agent_node_default_worktree_root(config.default_worktree_root.as_deref())?;
+    Ok((name, grpc_target, tls_server_name, default_worktree_root))
+}
+
+fn validate_agent_node_default_worktree_root(raw: Option<&str>) -> anyhow::Result<Option<String>> {
+    let Some(trimmed) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if trimmed.len() > 1024 {
+        anyhow::bail!("agent node default worktree root must be at most 1024 characters");
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 #[cfg(test)]
@@ -92,6 +127,7 @@ mod tests {
     use super::{
         AGENT_NODE_MAIN_ID, AGENT_NODE_MAIN_NAME, build_main_agent_node_record,
         normalize_target_node_id, validate_agent_node_config_input,
+        validate_agent_node_update_input,
     };
     use crate::agent::AgentNodeConfig;
 
@@ -113,6 +149,7 @@ mod tests {
             name: "Node East".to_string(),
             grpc_target: "http://node-east.internal:50051".to_string(),
             tls_server_name: None,
+            default_worktree_root: None,
         })
         .expect_err("plain http should fail");
         assert!(err.to_string().contains("must use https://"));
@@ -122,11 +159,13 @@ mod tests {
             name: "Node Local".to_string(),
             grpc_target: "https://node-local.internal:50051".to_string(),
             tls_server_name: Some("node-local.internal".to_string()),
+            default_worktree_root: Some(" ~/.agenthub/worktrees ".to_string()),
         })
         .expect("https target should pass");
         assert_eq!(ok.0, "node-local");
         assert_eq!(ok.2, "https://node-local.internal:50051");
         assert_eq!(ok.3.as_deref(), Some("node-local.internal"));
+        assert_eq!(ok.4.as_deref(), Some("~/.agenthub/worktrees"));
     }
 
     #[test]
@@ -136,6 +175,22 @@ mod tests {
         assert_eq!(record.name, AGENT_NODE_MAIN_NAME);
         assert!(record.grpc_target.is_none());
         assert!(record.tls_server_name.is_none());
+        assert!(record.default_worktree_root.is_none());
         assert!(record.is_main);
+    }
+
+    #[test]
+    fn validate_agent_node_update_trims_blank_default_worktree_root() {
+        let ok = validate_agent_node_update_input(&crate::agent::AgentNodeUpdate {
+            name: "Node East".to_string(),
+            grpc_target: "https://node-east.internal:50051".to_string(),
+            tls_server_name: Some("  ".to_string()),
+            default_worktree_root: Some("  ".to_string()),
+        })
+        .expect("blank optional fields should normalize");
+        assert_eq!(ok.0, "Node East");
+        assert_eq!(ok.1, "https://node-east.internal:50051");
+        assert!(ok.2.is_none());
+        assert!(ok.3.is_none());
     }
 }

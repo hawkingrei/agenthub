@@ -863,6 +863,7 @@ mod tests {
                 name: format!("Node {node_id}"),
                 grpc_target: format!("https://{}", addr),
                 tls_server_name: Some("localhost".to_string()),
+                default_worktree_root: None,
             })
             .await
             .expect("create agent node");

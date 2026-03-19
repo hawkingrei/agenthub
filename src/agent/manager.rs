@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
@@ -27,7 +27,7 @@ use super::event_message_codec::{decode_message_from_storage, persist_agent_even
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
     AgentRecord, AgentStatus, OutputStream, WorktreeMode, build_main_agent_node_record,
-    normalize_target_node_id, validate_agent_node_config_input,
+    normalize_target_node_id, validate_agent_node_config_input, validate_agent_node_update_input,
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
@@ -575,6 +575,23 @@ impl AgentManager {
         Ok(count > 0)
     }
 
+    async fn has_agent_nodes_default_worktree_root_column(&self) -> anyhow::Result<bool> {
+        if !self.has_agent_nodes_table().await? {
+            return Ok(false);
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT name
+            FROM pragma_table_info('agent_nodes')
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .any(|row| row.get::<String, _>("name") == "default_worktree_root"))
+    }
+
     async fn has_agents_target_node_id_column(&self) -> anyhow::Result<bool> {
         let rows = sqlx::query(
             r#"
@@ -759,40 +776,171 @@ impl AgentManager {
         Ok(session_id)
     }
 
+    fn build_agent_node_record_from_row(
+        row: &SqliteRow,
+        has_default_worktree_root_column: bool,
+    ) -> AgentNodeRecord {
+        AgentNodeRecord {
+            id: row.get("id"),
+            name: row.get("name"),
+            grpc_target: row.try_get("grpc_target").ok(),
+            tls_server_name: row.try_get("tls_server_name").ok(),
+            default_worktree_root: if has_default_worktree_root_column {
+                row.try_get("default_worktree_root").ok()
+            } else {
+                None
+            },
+            is_main: false,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        }
+    }
+
     pub async fn create_agent_node(
         &self,
         config: AgentNodeConfig,
     ) -> anyhow::Result<AgentNodeRecord> {
-        let (id, name, grpc_target, tls_server_name) = validate_agent_node_config_input(&config)?;
+        let has_default_worktree_root_column =
+            self.has_agent_nodes_default_worktree_root_column().await?;
+        let (id, name, grpc_target, tls_server_name, default_worktree_root) =
+            validate_agent_node_config_input(&config)?;
         let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO agent_nodes (
-                id,
-                name,
-                grpc_target,
-                tls_server_name,
-                created_at,
-                updated_at
+        if has_default_worktree_root_column {
+            sqlx::query(
+                r#"
+                INSERT INTO agent_nodes (
+                    id,
+                    name,
+                    grpc_target,
+                    tls_server_name,
+                    default_worktree_root,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(&id)
-        .bind(&name)
-        .bind(&grpc_target)
-        .bind(&tls_server_name)
-        .bind(now)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
+            .bind(&id)
+            .bind(&name)
+            .bind(&grpc_target)
+            .bind(&tls_server_name)
+            .bind(&default_worktree_root)
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        } else {
+            if default_worktree_root.is_some() {
+                anyhow::bail!(
+                    "agent_nodes.default_worktree_root column is required to persist node worktree defaults on a legacy schema"
+                );
+            }
+            sqlx::query(
+                r#"
+                INSERT INTO agent_nodes (
+                    id,
+                    name,
+                    grpc_target,
+                    tls_server_name,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+            )
+            .bind(&id)
+            .bind(&name)
+            .bind(&grpc_target)
+            .bind(&tls_server_name)
+            .bind(now)
+            .bind(now)
+            .execute(&self.db)
+            .await?;
+        }
         Ok(AgentNodeRecord {
             id,
             name,
             grpc_target: Some(grpc_target),
             tls_server_name,
+            default_worktree_root,
             is_main: false,
             created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub async fn update_agent_node(
+        &self,
+        node_id: &str,
+        config: crate::agent::AgentNodeUpdate,
+    ) -> anyhow::Result<AgentNodeRecord> {
+        let normalized = node_id.trim();
+        if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
+            anyhow::bail!(
+                "agent node '{}' is reserved and cannot be updated",
+                AGENT_NODE_MAIN_ID
+            );
+        }
+        let has_default_worktree_root_column =
+            self.has_agent_nodes_default_worktree_root_column().await?;
+        let (name, grpc_target, tls_server_name, default_worktree_root) =
+            validate_agent_node_update_input(&config)?;
+        let now = Utc::now().timestamp();
+        let result = if has_default_worktree_root_column {
+            sqlx::query(
+                r#"
+                UPDATE agent_nodes
+                SET name = ?2,
+                    grpc_target = ?3,
+                    tls_server_name = ?4,
+                    default_worktree_root = ?5,
+                    updated_at = ?6
+                WHERE id = ?1
+                "#,
+            )
+            .bind(normalized)
+            .bind(&name)
+            .bind(&grpc_target)
+            .bind(&tls_server_name)
+            .bind(&default_worktree_root)
+            .bind(now)
+            .execute(&self.db)
+            .await?
+        } else {
+            if default_worktree_root.is_some() {
+                anyhow::bail!(
+                    "agent_nodes.default_worktree_root column is required to persist node worktree defaults on a legacy schema"
+                );
+            }
+            sqlx::query(
+                r#"
+                UPDATE agent_nodes
+                SET name = ?2,
+                    grpc_target = ?3,
+                    tls_server_name = ?4,
+                    updated_at = ?5
+                WHERE id = ?1
+                "#,
+            )
+            .bind(normalized)
+            .bind(&name)
+            .bind(&grpc_target)
+            .bind(&tls_server_name)
+            .bind(now)
+            .execute(&self.db)
+            .await?
+        };
+        if result.rows_affected() == 0 {
+            anyhow::bail!("agent node '{}' not found", normalized);
+        }
+        Ok(AgentNodeRecord {
+            id: normalized.to_string(),
+            name,
+            grpc_target: Some(grpc_target),
+            tls_server_name,
+            default_worktree_root,
+            is_main: false,
+            created_at: self.get_agent_node(normalized).await?.created_at,
             updated_at: now,
         })
     }
@@ -802,25 +950,34 @@ impl AgentManager {
         if !self.has_agent_nodes_table().await? {
             return Ok(nodes);
         }
-        let rows = sqlx::query(
-            r#"
-            SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
-            FROM agent_nodes
-            ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let has_default_worktree_root_column =
+            self.has_agent_nodes_default_worktree_root_column().await?;
+        let rows = if has_default_worktree_root_column {
+            sqlx::query(
+                r#"
+                SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
+                FROM agent_nodes
+                ORDER BY created_at DESC
+                "#,
+            )
+            .fetch_all(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
+                FROM agent_nodes
+                ORDER BY created_at DESC
+                "#,
+            )
+            .fetch_all(&self.db)
+            .await?
+        };
         for row in rows {
-            nodes.push(AgentNodeRecord {
-                id: row.get("id"),
-                name: row.get("name"),
-                grpc_target: row.try_get("grpc_target").ok(),
-                tls_server_name: row.try_get("tls_server_name").ok(),
-                is_main: false,
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            });
+            nodes.push(Self::build_agent_node_record_from_row(
+                &row,
+                has_default_worktree_root_column,
+            ));
         }
         Ok(nodes)
     }
@@ -830,25 +987,35 @@ impl AgentManager {
         if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
             return Ok(build_main_agent_node_record());
         }
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
-            FROM agent_nodes
-            WHERE id = ?1
-            "#,
-        )
-        .bind(normalized)
-        .fetch_one(&self.db)
-        .await?;
-        Ok(AgentNodeRecord {
-            id: row.get("id"),
-            name: row.get("name"),
-            grpc_target: row.try_get("grpc_target").ok(),
-            tls_server_name: row.try_get("tls_server_name").ok(),
-            is_main: false,
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        let has_default_worktree_root_column =
+            self.has_agent_nodes_default_worktree_root_column().await?;
+        let row = if has_default_worktree_root_column {
+            sqlx::query(
+                r#"
+                SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
+                FROM agent_nodes
+                WHERE id = ?1
+                "#,
+            )
+            .bind(normalized)
+            .fetch_one(&self.db)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
+                FROM agent_nodes
+                WHERE id = ?1
+                "#,
+            )
+            .bind(normalized)
+            .fetch_one(&self.db)
+            .await?
+        };
+        Ok(Self::build_agent_node_record_from_row(
+            &row,
+            has_default_worktree_root_column,
+        ))
     }
 
     pub async fn delete_agent_node(&self, node_id: &str) -> anyhow::Result<()> {

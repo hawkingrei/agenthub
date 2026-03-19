@@ -31,8 +31,10 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
   - `name`
   - `grpc_target`
   - `tls_server_name`
+  - `default_worktree_root` (optional)
 - `main` is a reserved built-in node identifier and always resolves to the local process.
 - `AgentConfig` / `AgentRecord` now carry `target_node_id`.
+- Root operators can update registered node routing and `default_worktree_root` in place without re-registering the node.
 
 ### Actor Transport
 
@@ -63,17 +65,20 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
   - stop a remote runtime
 - Before syncing to the execution node, the control plane strips `target_node_id` so the node-local database only stores local agent records.
 - Peer auth/TLS material is derived from cluster-level internal gRPC config, while the node registry stays focused on routing (`grpc_target`, `tls_server_name`).
+- When a remote-target agent uses `create_worktree` and leaves `workdir` blank, AgentHub now derives the runtime root from the selected node's `default_worktree_root`. If the node has no default root configured, remote create-worktree requests must still provide an explicit `workdir`.
 
 ### Frontend
 
 - `Agents -> Create Agent` includes:
   - execution-node selection
   - root-only remote node registration fields
+  - root-only inline node config editing
   - remote node deletion controls
 - Agent rows show `node:<id>` when bound to a remote node.
 - Remote-node agents can now be started from the `Agents` page through the same start action as local agents.
 - Remote-node agents are excluded from local SSE fan-out because their live output is fetched through `/events` polling against the remote node.
 - Non-root sessions do not fetch `agent_nodes` and do not render inline node-management controls, so the page no longer produces repeated `401` noise for regular users.
+- The create-agent modal switches its create-worktree placeholder to the selected node's default root so operators can see which remote runtime root will be used before submitting.
 
 ## Contracts
 
@@ -107,10 +112,11 @@ Manual checks:
 
 1. Open `Agents -> Create Agent`.
 2. Register a remote node with an `https://` gRPC target.
-3. Select that node for a new agent, start it directly from the `Agents` page, and confirm the card shows `node:<id>`.
-4. Open the agent workbench and confirm remote output appears through event polling after start/input.
-5. Confirm local `main` execution remains the default selection.
-6. Log in as a non-root user and confirm the `Agents` page does not attempt `agent_nodes` admin requests.
+3. Update that node and set `default_worktree_root`.
+4. Select that node for a new `create_worktree` agent, leave `Workdir` blank, start it directly from the `Agents` page, and confirm the card shows `node:<id>`.
+5. Open the agent workbench and confirm remote output appears through event polling after start/input.
+6. Confirm local `main` execution remains the default selection.
+7. Log in as a non-root user and confirm the `Agents` page does not attempt `agent_nodes` admin requests.
 
 ## Operational Notes
 
@@ -131,3 +137,4 @@ Manual checks:
 
 - `docs/journal/2026-03-18-agent-node-grpc-control-plane.md`
 - `docs/journal/2026-03-19-agent-node-review-hardening.md`
+- `docs/journal/2026-03-19-agent-node-config-and-userdocs.md`

@@ -214,12 +214,17 @@ async fn create_agent(
     let _user = require_user(&headers, &state).await?;
     let source = parse_agent_source(payload.source.as_deref())?;
     let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
+    let default_worktree_root = resolve_create_agent_default_worktree_root(
+        &state,
+        payload.target_node_id.as_deref(),
+        &worktree_mode,
+    )
+    .await?;
     let workdir = resolve_create_agent_workdir(
         &payload.workdir,
         &payload.name,
-        payload.target_node_id.as_deref(),
         &worktree_mode,
-        &state.default_worktree_root,
+        default_worktree_root.as_deref(),
     )?;
     let config = AgentConfig {
         name: payload.name,
@@ -671,25 +676,46 @@ fn parse_agent_source(value: Option<&str>) -> Result<&'static str, ApiError> {
     }
 }
 
+async fn resolve_create_agent_default_worktree_root(
+    state: &AppState,
+    target_node_id: Option<&str>,
+    worktree_mode: &WorktreeMode,
+) -> Result<Option<String>, ApiError> {
+    if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
+        return Ok(None);
+    }
+    let Some(target_node_id) = normalize_target_node_id(target_node_id) else {
+        return Ok(Some(state.default_worktree_root.clone()));
+    };
+    let node = state
+        .agents
+        .get_agent_node(&target_node_id)
+        .await
+        .map_err(map_create_agent_error)?;
+    Ok(node.default_worktree_root)
+}
+
 fn resolve_create_agent_workdir(
     requested_workdir: &str,
     agent_name: &str,
-    target_node_id: Option<&str>,
     worktree_mode: &WorktreeMode,
-    default_worktree_root: &str,
+    default_worktree_root: Option<&str>,
 ) -> Result<String, ApiError> {
     let trimmed = requested_workdir.trim();
     if !trimmed.is_empty() {
         return Ok(trimmed.to_string());
     }
-    if normalize_target_node_id(target_node_id).is_some() {
-        return Err(ApiError::bad_request(
-            "workdir is required for remote-target agents",
-        ));
-    }
     if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
         return Err(ApiError::bad_request("workdir is required"));
     }
+    let Some(default_worktree_root) = default_worktree_root
+        .map(str::trim)
+        .filter(|root| !root.is_empty())
+    else {
+        return Err(ApiError::bad_request(
+            "workdir is required for remote-target agents unless the selected node defines default_worktree_root",
+        ));
+    };
     Ok(default_worktree_path(agent_name, default_worktree_root))
 }
 
@@ -1064,9 +1090,8 @@ mod tests {
         let resolved = resolve_create_agent_workdir(
             " /tmp/work ",
             "planner",
-            None,
             &WorktreeMode::CreateWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect("resolve workdir");
         assert_eq!(resolved, "/tmp/work");
@@ -1077,9 +1102,8 @@ mod tests {
         let resolved = resolve_create_agent_workdir(
             "",
             "Team Planner",
-            None,
             &WorktreeMode::CreateWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect("resolve default workdir");
         assert!(resolved.starts_with("~/.agenthub/worktrees/team-planner-"));
@@ -1090,9 +1114,8 @@ mod tests {
         let err = resolve_create_agent_workdir(
             "",
             "planner",
-            None,
             &WorktreeMode::ReuseWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect_err("blank workdir should be rejected");
         let _ = err;
@@ -1100,15 +1123,21 @@ mod tests {
 
     #[test]
     fn resolve_create_agent_workdir_rejects_blank_remote_target_defaults() {
-        let err = resolve_create_agent_workdir(
+        let err = resolve_create_agent_workdir("", "planner", &WorktreeMode::CreateWorktree, None)
+            .expect_err("blank remote-target workdir should be rejected");
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_uses_remote_target_default_root() {
+        let resolved = resolve_create_agent_workdir(
             "",
             "planner",
-            Some("node-east"),
             &WorktreeMode::CreateWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees/node-east"),
         )
-        .expect_err("blank remote-target workdir should be rejected");
-        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
+        .expect("remote target default workdir");
+        assert!(resolved.starts_with("~/.agenthub/worktrees/node-east/planner-"));
     }
 
     #[test]
@@ -1536,6 +1565,7 @@ mod tests {
                 name TEXT NOT NULL UNIQUE,
                 grpc_target TEXT NOT NULL,
                 tls_server_name TEXT,
+                default_worktree_root TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -1751,6 +1781,7 @@ mod tests {
                 name: "Node East".to_string(),
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
             })
             .await
             .expect("create agent node");
@@ -1784,6 +1815,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_agent_route_uses_remote_node_default_worktree_root_when_blank() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: Some("~/.agenthub/worktrees/node-east".to_string()),
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-default-worktree",
+                    "workdir": "",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": "/tmp/repo",
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent with node default root");
+        let status = response.status();
+        let body = decode_json_body(response).await;
+        assert_eq!(status, StatusCode::OK, "unexpected response body: {body}");
+        assert!(
+            body["workdir"].as_str().is_some_and(|value| value
+                .starts_with("~/.agenthub/worktrees/node-east/remote-default-worktree-")),
+            "unexpected response body: {body}"
+        );
+    }
+
+    #[tokio::test]
     async fn create_team_forge_agent_route_rejects_remote_target_on_legacy_schema() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
@@ -1794,6 +1885,7 @@ mod tests {
                 name TEXT NOT NULL UNIQUE,
                 grpc_target TEXT NOT NULL,
                 tls_server_name TEXT,
+                default_worktree_root TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -1821,6 +1913,7 @@ mod tests {
                 name: "Node East".to_string(),
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
             })
             .await
             .expect("create agent node");
@@ -1865,6 +1958,7 @@ mod tests {
                 name TEXT NOT NULL UNIQUE,
                 grpc_target TEXT NOT NULL,
                 tls_server_name TEXT,
+                default_worktree_root TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -1892,6 +1986,7 @@ mod tests {
                 name: "Node East".to_string(),
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
             })
             .await
             .expect("create agent node");

@@ -16,6 +16,9 @@ AgentHub deployment is intentionally simple:
 - One SQLite database for persisted state
 - Browser clients connected with HTTP + SSE
 
+Optional scale-out deployments can add remote Agent Nodes for execution and
+mailbox delivery while keeping AgentHub as the main control plane.
+
 ## Runtime Components
 
 Prepare these components before rollout:
@@ -47,6 +50,15 @@ Use this for shared environments:
 - Run under a dedicated OS user (not root)
 - Manage process lifecycle with a supervisor (for example systemd)
 - Keep AgentHub behind an internal reverse proxy or VPN boundary
+
+### Distributed node mode
+
+Use this when execution must span multiple machines:
+
+- Keep one AgentHub instance as the main control plane
+- Register remote Agent Nodes from the `Agents` page
+- Use encrypted gRPC between AgentHub and nodes
+- Configure a node-specific default worktree root when remote filesystems differ
 
 ## Recommended Network Shape
 

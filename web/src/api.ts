@@ -63,6 +63,14 @@ export type AgentNodeConfig = {
   name: string;
   grpc_target: string;
   tls_server_name?: string | null;
+  default_worktree_root?: string | null;
+};
+
+export type AgentNodeUpdate = {
+  name: string;
+  grpc_target: string;
+  tls_server_name?: string | null;
+  default_worktree_root?: string | null;
 };
 
 export type AgentNodeRecord = {
@@ -70,6 +78,7 @@ export type AgentNodeRecord = {
   name: string;
   grpc_target?: string | null;
   tls_server_name?: string | null;
+  default_worktree_root?: string | null;
   is_main: boolean;
   created_at: number;
   updated_at: number;
@@ -898,6 +907,11 @@ export const api = {
   createAgentNode: (token: string, payload: AgentNodeConfig) =>
     apiFetch<AgentNodeRecord>("/api/agent_nodes", token, {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAgentNode: (token: string, id: string, payload: AgentNodeUpdate) =>
+    apiFetch<AgentNodeRecord>(`/api/agent_nodes/${encodePathSegment(id)}`, token, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   deleteAgentNode: (token: string, id: string) =>
