@@ -433,8 +433,20 @@ export function useTeamActions(options: UseTeamActionsOptions) {
           sessionId,
           beforeId
         );
-        setMemberEvents((prev) => upsertAgentEventList(prev, list, mode));
-        setMemberEventsHasMore(list.length >= MEMBER_EVENT_PAGE_LIMIT);
+        const currentSessionEvents = memberEventsRef.current.filter(
+          (event) => (event.session_id ?? null) === sessionId
+        );
+        const preserveLoadedHistory =
+          mode === "replace" &&
+          currentSessionEvents.length > 0 &&
+          list.length > 0 &&
+          currentSessionEvents[0]!.event_id < list[0]!.event_id;
+        setMemberEvents((prev) =>
+          upsertAgentEventList(prev, list, mode, sessionId)
+        );
+        if (!preserveLoadedHistory) {
+          setMemberEventsHasMore(list.length >= MEMBER_EVENT_PAGE_LIMIT);
+        }
       } finally {
         setMemberEventsLoading(false);
       }

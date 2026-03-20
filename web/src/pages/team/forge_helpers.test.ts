@@ -86,6 +86,7 @@ describe("team forge helpers", () => {
   it("resolves leader and worker forge defaults", () => {
     const leaderDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
+      teamSpec: { members: [] },
       role: "leader",
       workerCount: 0,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
@@ -101,15 +102,87 @@ describe("team forge helpers", () => {
 
     const workerDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
+      teamSpec: {
+        members: [
+          {
+            member_id: "alpha-desk-leader",
+            role: "leader",
+            runtime: {
+              workdir: "/Users/weizhenwang/devel/opensource/agent/tidb",
+              worktree_mode: "use_existing",
+              worktree_repo: null,
+            },
+          },
+        ],
+      },
       role: "worker",
       workerCount: 2,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
       agentPresetId: "kimi",
     });
     expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
-    expect(workerDefaults.agentWorkdir).toBe("");
+    expect(workerDefaults.agentWorkdir).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
     expect(workerDefaults.worktreeMode).toBe("use_existing");
+    expect(workerDefaults.worktreeRepo).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
     expect(workerDefaults.draft.role).toBe("worker");
     expect(workerDefaults.draft.model).toBe("kimi");
+  });
+
+  it("does not use worktree_repo as the worker workdir default", () => {
+    const workerDefaults = resolveTeamForgeDefaults({
+      teamName: "Alpha Desk",
+      teamSpec: {
+        members: [
+          {
+            member_id: "worker-1",
+            role: "worker",
+            runtime: {
+              workdir: "/Users/weizhenwang/devel/opensource/agent/shiro",
+              worktree_mode: "create_worktree",
+              worktree_repo: "/Users/weizhenwang/devel/opensource/agent/tidb",
+            },
+          },
+        ],
+      },
+      role: "worker",
+      workerCount: 0,
+      defaultWorktreeRoot: "~/.agenthub/worktrees",
+    });
+
+    expect(workerDefaults.agentWorkdir).toBe(
+      "/Users/weizhenwang/devel/opensource/agent/shiro"
+    );
+    expect(workerDefaults.worktreeRepo).toBe(
+      "/Users/weizhenwang/devel/opensource/agent/tidb"
+    );
+  });
+
+  it("falls back to leader workdir when no runtime worktree repo exists", () => {
+    const workerDefaults = resolveTeamForgeDefaults({
+      teamName: "Alpha Desk",
+      teamSpec: {
+        members: [
+          {
+            member_id: "alpha-desk-leader",
+            role: "leader",
+            runtime: {
+              workdir: "/Users/weizhenwang/devel/opensource/agent/tidb",
+              worktree_mode: "use_existing",
+              worktree_repo: null,
+            },
+          },
+        ],
+      },
+      role: "worker",
+      workerCount: 1,
+      defaultWorktreeRoot: "~/.agenthub/worktrees",
+    });
+
+    expect(workerDefaults.agentWorkdir).toBe(
+      "/Users/weizhenwang/devel/opensource/agent/tidb"
+    );
+    expect(workerDefaults.worktreeRepo).toBe(
+      "/Users/weizhenwang/devel/opensource/agent/tidb"
+    );
   });
 });

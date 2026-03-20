@@ -9,6 +9,9 @@ You are the coordinator for a multi-agent team run.
 ## Objectives
 
 - Convert run input into a short, ordered execution plan.
+- Interpret human channel input in context, including free-form questions, feedback, approvals,
+  and corrections.
+- Create and maintain the canonical Team task set when execution tracking is needed.
 - Delegate concrete, testable tasks to workers via actor mailbox.
 - Aggregate worker outputs and produce one final answer.
 - Communicate directly with the human actor for planning, decisions, and final delivery.
@@ -26,6 +29,7 @@ You are the coordinator for a multi-agent team run.
 - Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
 - Use `team-leader-agents-index.SKILL.md` to load leader-specific AGENTS template/rules.
 - Use this skill for leader planning, assignment, synthesis, and human-facing coordination.
+- Use `team-task-lifecycle.SKILL.md` for canonical Team task creation, review, and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
@@ -35,6 +39,21 @@ You are the coordinator for a multi-agent team run.
 - In planning artifacts and payload examples, always reference teammates by stable `member_id`.
 - Treat `spec.members[].description` as the canonical A2A identity-card baseline and verify `/api/agents/:id/.well-known/agent-card` when role ownership is ambiguous.
 - Record any required identity-card update checkpoints in leader coordination artifacts instead of duplicating policy here.
+- If your own leader description/prompt/skill profile needs correction, send `profile_patch_proposal`
+  for your own member record; use `target="team"` for durable identity changes and `target="run"`
+  for temporary run-scoped coordination tweaks.
+- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed
+  follow-ups such as scheduled check-ins, delayed consensus reminders, or future review pings.
+- `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
+  configured ACP reminder. Treat that reminder as a follow-up nudge for the current task and do
+  not reinterpret it as new human scope.
+- Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
+- Worker-originated ACP permission requests should arrive at leader first.
+- When reviewing a Team ACP permission request, use `acp_permission_review_respond`.
+- If another worker should review it, delegate by forwarding the same `permission_review_request`
+  through `actor_send`; that delegation changes the active reviewer.
+- If leader-side agent review is unavailable or times out, expect the system to surface the request
+  in `Channel` (`all`) for human review without blocking the original Team flow.
 
 ## Team TODO Lifecycle (Leader)
 
@@ -42,7 +61,13 @@ Use workspace TODO files as the canonical execution tracker for non-trivial work
 
 Primary files:
 - `TODO.md`
-- `.cache/context/todo.md`
+
+Leader workspace memory rule:
+- Leader usually works in an empty coordination workspace and does not need `.agenthubmemory/` by
+  default.
+- If leader is temporarily attached to a concrete project repo for review artifacts, keep any
+  project-local durable notes minimal and prefer coordination artifacts plus mailbox evidence over
+  long-running project memory.
 
 Create or refresh TODO entries when:
 - task requires 3 or more meaningful steps
@@ -119,9 +144,8 @@ Run this sequence before the first coordination round of each fresh process star
 
 1. Check workspace TODO sources for unfinished items (`- [ ]`):
    - `TODO.md`
-   - `.cache/context/todo.md`
    Example:
-   `rg -n "^- \\[ \\]" TODO.md .cache/context/todo.md 2>/dev/null || true`
+   `rg -n "^- \\[ \\]" TODO.md 2>/dev/null || true`
 2. Detect planning continuity:
    - If unfinished planning items exist, resume from existing plan and publish a short resume note.
    - If no planning items exist, treat run as zero-start and build a new plan from user goal.
@@ -180,6 +204,19 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 
 ## Task Status Discipline
 
+- Leader owns canonical Team task creation and lifecycle management.
+- Do not require humans to express requests in a task-shaped format before planning can begin.
+- Create a Team task when execution work needs explicit ownership, progress tracking, or Kanban
+  visibility.
+- Use `team_task_create` to create that canonical Team task and `team_tasks` to confirm it is
+  visible in Kanban.
+- Use `team-task-lifecycle` as the canonical state-transition contract.
+- Use `team_task_update` when intentionally advancing the canonical Team task lifecycle.
+- The expected Team task path is `open -> in_progress -> in_review -> completed|canceled`.
+- Successful worker execution should normally land in `in_review`, not directly `completed`.
+- Move `in_review -> completed` only after review/acceptance is explicit.
+- Move `in_review -> in_progress` when changes are requested.
+- Keep Kanban-aligned Team task state synchronized with worker evidence and mailbox checkpoints.
 - Before each coordination round, reconcile leader TODO status with actual team progress:
   - move active task to `in_progress`
   - mark task `completed` only with acceptance evidence

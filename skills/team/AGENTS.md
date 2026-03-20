@@ -36,8 +36,31 @@ restating the same rules.
   - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for leader relay
   - leader remains owner of planning decisions and final integrated response
 - Human/task boundary:
-  - humans provide goals/constraints
-  - internal Team `task` objects are created by leader planning
+  - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
+  - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
+  - `team_task_create` is the canonical MCP tool for leader-owned Team task creation
+  - `team_task_update` is the canonical MCP tool for leader-owned Team task lifecycle changes
+  - `team_tasks` is the canonical MCP tool for inspecting the current Team Kanban surface
+  - leader owns canonical task creation and task lifecycle management for the team
+  - channels are for communication/review; Kanban is the canonical task-tracking surface
+- Self-maintenance:
+  - each agent may update its own role description/prompt/skill profile through `profile_patch_proposal`
+  - use `target="team"` for durable identity-card changes and `target="run"` for temporary run-scoped overrides
+  - do not patch another member's identity/profile from your own context
+- Deferred follow-up:
+  - use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for one-shot timed reminders that should arrive later as ACP messages
+  - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
+- Agent loop:
+  - `agent_loop` is a human/operator-controlled idle watchdog, disabled by default
+  - enable or retune it only when a human/operator explicitly asks
+  - when enabled, silence may cause a configured ACP reminder prompt to be injected later
+  - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
+- ACP permission review:
+  - worker-originated ACP permission requests should route to leader first
+  - leader may review directly or manually delegate review to another worker through normal Team coordination
+  - only leader or the worker currently delegated by leader should use `acp_permission_review_respond`
+  - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
+  - human review remains valid and should not block the original Team workflow
 
 ## Team Phases
 
@@ -56,6 +79,7 @@ restating the same rules.
 - worker index loader: `team-worker-agents-index`
 - leader orchestration: `team-leader-orchestrator`
 - worker execution: `team-worker-executor`
+- Team task lifecycle: `team-task-lifecycle`
 - deliberation quality gate: `team-deliberation-rules`
 - mailbox protocol: `team-actor-mailbox`
 
@@ -63,6 +87,15 @@ restating the same rules.
 
 - Read this file first.
 - Then load role-specific index and only skills required for the current phase.
+- Memory layout:
+  - worker in a concrete project workspace should keep human-readable project memory under
+    `.agenthubmemory/`
+  - canonical project memory files:
+    - `.agenthubmemory/TODO.md`
+    - `.agenthubmemory/journal/`
+    - `.agenthubmemory/note/`
+  - leader usually runs in an empty coordination workspace and may skip `.agenthubmemory`
+  - runtime continuity/state files under `.cache/context/` still remain workspace-local
 - Before new mailbox work, check unfinished items:
   - `TODO.md`
-  - `.cache/context/todo.md`
+  - `.agenthubmemory/TODO.md` when this is a concrete project workspace

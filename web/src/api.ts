@@ -16,6 +16,9 @@ export type AgentConfig = {
   worktree_repo?: string | null;
   worktree_ref?: string | null;
   code_mode: boolean;
+  agent_loop_enabled?: boolean;
+  agent_loop_idle_seconds?: number | null;
+  agent_loop_prompt?: string | null;
 };
 
 export type AgentRecord = {
@@ -28,6 +31,9 @@ export type AgentRecord = {
   worktree_repo?: string | null;
   worktree_ref?: string | null;
   code_mode: boolean;
+  agent_loop_enabled?: boolean;
+  agent_loop_idle_seconds?: number | null;
+  agent_loop_prompt?: string | null;
   status: string;
   created_at: number;
   updated_at: number;
@@ -42,6 +48,8 @@ export type AgentDiscoveryIdentityRecord = {
 export type AgentDiscoveryRuntimeRecord = {
   acp_provider?: string | null;
   code_mode: boolean;
+  agent_loop_enabled?: boolean;
+  agent_loop_idle_seconds?: number | null;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;
@@ -159,7 +167,7 @@ export type TeamRunStatus =
   | "failed"
   | "canceled";
 
-export type TeamTaskStatus = "open" | "in_progress" | "completed" | "canceled";
+export type TeamTaskStatus = "open" | "in_progress" | "in_review" | "completed" | "canceled";
 
 export type TeamStepStatus =
   | "submitted"
@@ -907,6 +915,19 @@ export const api = {
     apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/code_mode`, token, {
       method: "POST",
       body: JSON.stringify({ code_mode }),
+    }),
+  setAgentLoop: (
+    token: string,
+    id: string,
+    payload: {
+      enabled: boolean;
+      idle_seconds?: number | null;
+      prompt?: string | null;
+    }
+  ) =>
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/agent_loop`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   clearAcpSession: (token: string, id: string, provider?: string) =>
     apiFetch<{ status: string }>(

@@ -72,6 +72,7 @@ import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { PermissionModal } from "./components/permission_modal";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
+import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
 import { getAcpConversationCacheStats } from "./components/acp_conversation";
 import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
@@ -685,36 +686,6 @@ export function schedulePermissionPollLoop(
     clearTimeoutFn
     );
   }, delay);
-}
-
-type InputDockJumpModeArgs = {
-  hasAcp: boolean;
-  showConversationJump: boolean;
-  jumpToConversationBottom: () => void;
-  showTerminalJump: boolean;
-  jumpToTerminalBottom: () => void;
-};
-
-export function resolveInputDockJumpMode({
-  hasAcp,
-  showConversationJump,
-  jumpToConversationBottom,
-  showTerminalJump,
-  jumpToTerminalBottom,
-}: InputDockJumpModeArgs): {
-  showConversationJump: boolean;
-  onJumpToBottom: () => void;
-} {
-  if (hasAcp) {
-    return {
-      showConversationJump,
-      onJumpToBottom: jumpToConversationBottom,
-    };
-  }
-  return {
-    showConversationJump: showTerminalJump,
-    onJumpToBottom: jumpToTerminalBottom,
-  };
 }
 
 export function App() {
@@ -1669,7 +1640,7 @@ export function App() {
       }, delay);
     };
     requestSseReconnectRef.current = scheduleReconnect;
-    const openSource = () => {
+    function openSource() {
       if (cancelled) return;
       setSseState("connecting");
       const source = new EventSource(
@@ -1753,7 +1724,7 @@ export function App() {
           scheduleReconnect();
         })();
       };
-    };
+    }
     openSource();
     return () => {
       cancelled = true;
@@ -2491,7 +2462,7 @@ export function App() {
         agentsResizeCleanupRef.current = null;
       };
 
-      const onPointerMove = (moveEvent: PointerEvent) => {
+      function onPointerMove(moveEvent: PointerEvent) {
         const workspaceWidth = workspace.getBoundingClientRect().width;
         const nextMaxWidth = resolveAgentsPanelMaxWidth(workspaceWidth);
         const nextWidth = clampAgentsPanelWidth(
@@ -2500,11 +2471,11 @@ export function App() {
         );
         agentsPanelWidthRef.current = nextWidth;
         setAgentsPanelWidth(nextWidth);
-      };
+      }
 
-      const onPointerUp = () => {
+      function onPointerUp() {
         cleanup();
-      };
+      }
 
       agentsResizeCleanupRef.current = cleanup;
       window.addEventListener("pointermove", onPointerMove);

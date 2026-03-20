@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamConversationMessageRecord,
   TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamRunEventRecord,
@@ -14,14 +15,19 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
+  DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   listTeamWorkspaceTasks,
+  mergeConversationMessages,
   pickNextWorkerAgentId,
   resolveTeamRuntimeControlTone,
+  resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
+  resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   resolveTeamConversationTask,
+  refreshTeamConversationMailboxAfterSend,
   sortTasksByActivity,
   toPrettyJson,
   updateCachedTeamRuntimeStatus,
@@ -29,7 +35,12 @@ import {
   upsertEventList,
   upsertRun,
 } from "./page_helpers";
-import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
+import { mergeMailboxMessages } from "./mailbox_helpers";
+import type {
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  TeamMemberLiveState,
+} from "./member_helpers";
 
 function buildRun(
   id: string,
@@ -113,6 +124,26 @@ function buildMailboxMessage(
     status: "delivered",
     created_at: 1_700_000_001,
     delivered_at: 1_700_000_010,
+    ...overrides,
+  };
+}
+
+function buildConversationMessage(
+  messageId: number,
+  overrides: Partial<TeamConversationMessageRecord> = {}
+): TeamConversationMessageRecord {
+  return {
+    message_id: messageId,
+    conversation_id: "conv-1",
+    task_id: "task-1",
+    from_actor_id: "leader-agent",
+    to_actor_id: null,
+    route: "group_chat",
+    payload: {
+      type: "chat_message",
+      text: `message-${messageId}`,
+    },
+    created_at: 1_700_000_000 + messageId,
     ...overrides,
   };
 }
@@ -208,7 +239,63 @@ function buildMemberLiveState(
   };
 }
 
+function buildMemberStatus(
+  overrides: Partial<TeamMemberAgentStatus> = {}
+): TeamMemberAgentStatus {
+  return {
+    member_id: "leader-agent",
+    role: "leader",
+    agent_name: "Leader Agent",
+    status: "stopped",
+    missing_agent: false,
+    ...overrides,
+  };
+}
+
 describe("team page helpers", () => {
+  it("merges conversation messages while preserving unchanged object identity", () => {
+    const original = buildConversationMessage(1);
+    const prev = [original, buildConversationMessage(2)];
+    const next = [
+      buildConversationMessage(1),
+      buildConversationMessage(2, {
+        route: "to_member",
+      }),
+      buildConversationMessage(3),
+    ];
+
+    const merged = mergeConversationMessages(prev, next);
+    expect(merged).toHaveLength(3);
+    expect(merged[0]).toBe(original);
+    expect(merged[1]).not.toBe(prev[1]);
+    expect(merged[2]?.message_id).toBe(3);
+  });
+
+  it("reuses immutable conversation messages by id even when payload object identity changes", () => {
+    const original = buildConversationMessage(1);
+    const prev = [original];
+
+    const merged = mergeConversationMessages(prev, [
+      buildConversationMessage(1, {
+        payload: { type: "chat_message", text: "updated text that should be ignored" },
+      }),
+    ]);
+
+    expect(merged).toBe(prev);
+    expect(merged[0]).toBe(original);
+  });
+
+  it("returns the previous conversation array when refresh payload is unchanged", () => {
+    const prev = [buildConversationMessage(1), buildConversationMessage(2)];
+
+    const merged = mergeConversationMessages(prev, [
+      buildConversationMessage(1),
+      buildConversationMessage(2),
+    ]);
+
+    expect(merged).toBe(prev);
+  });
+
   it("upserts run by id and keeps latest-first sort order", () => {
     const list = [buildRun("run-1", 100), buildRun("run-2", 120)];
     const updated = upsertRun(list, buildRun("run-1", 140, "working"));
@@ -244,6 +331,31 @@ describe("team page helpers", () => {
     expect(merged.find((event) => event.event_id === 7)?.message).toBe("old-7");
   });
 
+  it("preserves same-session older agent history on replace refresh", () => {
+    const refreshed = upsertAgentEventList(
+      [
+        buildAgentEvent(1, "older-1", { session_id: "session-1" }),
+        buildAgentEvent(2, "older-2", { session_id: "session-1" }),
+      ],
+      [
+        buildAgentEvent(3, "latest-3", { session_id: "session-1" }),
+        buildAgentEvent(4, "latest-4", { session_id: "session-1" }),
+      ],
+      "replace",
+      "session-1"
+    );
+    expect(refreshed.map((event) => event.event_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("keeps replace semantics when no session id is provided", () => {
+    const refreshed = upsertAgentEventList(
+      [buildAgentEvent(1, "old-1"), buildAgentEvent(2, "old-2")],
+      [buildAgentEvent(3, "new-3"), buildAgentEvent(4, "new-4")],
+      "replace"
+    );
+    expect(refreshed.map((event) => event.event_id)).toEqual([3, 4]);
+  });
+
   it("builds readable agent labels with model metadata", () => {
     const modelFromArgs = buildAgentLabel(
       buildAgent({ args: ["--model", "gpt-5.1"], command: "gemini" })
@@ -270,7 +382,7 @@ describe("team page helpers", () => {
       buildTask("task-2", 110, 110),
       buildTask("task-3", 90, 120, {
         title: DEFAULT_TEAM_THREAD_TITLE,
-        context: { bootstrap_kind: "shared_thread" },
+        context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
       }),
     ];
     expect(sortTasksByActivity(tasks).map((task) => task.id)).toEqual([
@@ -292,6 +404,7 @@ describe("team page helpers", () => {
     );
     expect(resolveTeamConversationTask([], "team-1")).toBeNull();
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
+    expect(DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND).toBe("shared_thread");
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {
@@ -328,6 +441,112 @@ describe("team page helpers", () => {
     expect(seen).toEqual({
       7: ["worker-agent", "worker-agent-2"],
     });
+  });
+
+  it("resolves seen-by coverage from merged visible and shared-thread mailbox sources", () => {
+    const seen = resolveTaskMessageSeenByActors(
+      mergeMailboxMessages(
+        [
+          buildMailboxMessage(10, {
+            status: "pending",
+            to_actor_id: "worker-agent",
+            payload: {
+              type: "chat_message",
+              text: "visible snapshot copy",
+              task_conversation_id: "conv-1",
+              task_message_id: 42,
+            },
+          }),
+        ],
+        [
+          buildMailboxMessage(11, {
+            status: "delivered",
+            to_actor_id: "worker-agent",
+            payload: {
+              type: "chat_message",
+              text: "shared-thread mailbox copy",
+              task_conversation_id: "conv-1",
+              task_message_id: 42,
+            },
+          }),
+        ]
+      ),
+      "conv-1",
+      ["worker-agent"]
+    );
+
+    expect(seen).toEqual({
+      42: ["worker-agent"],
+    });
+  });
+
+  it("prefers team runtime members for shared-thread seen-by resolution", () => {
+    expect(
+      resolveTaskConversationMemberIds(
+        [
+          { member_id: "leader-agent" },
+          { member_id: "worker-agent" },
+        ],
+        [{ member_id: "stale-run-member" }]
+      )
+    ).toEqual(["leader-agent", "worker-agent"]);
+    expect(
+      resolveTaskConversationMemberIds(null, [{ member_id: "snapshot-only-member" }])
+    ).toEqual(["snapshot-only-member"]);
+  });
+
+  it("refreshes shared-thread mailbox after send when there is no active run", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: "",
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledWith("task-all");
+    expect(refreshSnapshot).not.toHaveBeenCalled();
+    expect(refreshEvents).not.toHaveBeenCalled();
+  });
+
+  it("treats null active run ids as no-active-run during shared-thread refresh", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: null,
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledWith("task-all");
+    expect(refreshSnapshot).not.toHaveBeenCalled();
+    expect(refreshEvents).not.toHaveBeenCalled();
+  });
+
+  it("refreshes active run snapshot after send when execution is live", async () => {
+    const refreshSnapshot = vi.fn(async () => undefined);
+    const refreshEvents = vi.fn(async () => undefined);
+    const refreshTaskMessages = vi.fn(async () => undefined);
+
+    await refreshTeamConversationMailboxAfterSend({
+      activeRunId: "run-123",
+      taskId: "task-all",
+      refreshSnapshot,
+      refreshEvents,
+      refreshTaskMessages,
+    });
+
+    expect(refreshSnapshot).toHaveBeenCalledWith("run-123");
+    expect(refreshEvents).toHaveBeenCalledWith("run-123");
+    expect(refreshTaskMessages).not.toHaveBeenCalled();
   });
 
   it("resolves team runtime status from member availability summary", () => {
@@ -390,6 +609,25 @@ describe("team page helpers", () => {
     });
   });
 
+  it("classifies runtime summaries separately from actual warnings", () => {
+    expect(resolveTeamPageNotice("Team runtime updated (started=3)")).toEqual({
+      kind: "runtime",
+      title: "Team runtime",
+      message: "Team runtime updated (started=3)",
+    });
+    expect(resolveTeamPageNotice("Team runtime stopped (stopped=3)")).toEqual({
+      kind: "runtime",
+      title: "Team runtime",
+      message: "Team runtime stopped (stopped=3)",
+    });
+    expect(resolveTeamPageNotice("Unable to initialize shared team thread.")).toEqual({
+      kind: "warning",
+      title: "Team runtime update",
+      message: "Unable to initialize shared team thread.",
+    });
+    expect(resolveTeamPageNotice("   ")).toBeNull();
+  });
+
   it("clears cached runtime session ids when stop-team optimistic update applies", () => {
     const control: TeamRuntimeControlResponse["members"] = [
       { member_id: "leader-agent", session_id: "session-leader", action: "stopped" },
@@ -406,6 +644,41 @@ describe("team page helpers", () => {
     expect(updated?.status).toBe("stopped");
     expect(updated?.members.every((member) => member.session_id == null)).toBe(true);
     expect(updated?.members.every((member) => member.session_status === "stopped")).toBe(true);
+  });
+
+  it("synthesizes optimistic runtime members when start-team has no cached runtime yet", () => {
+    const control: TeamRuntimeControlResponse["members"] = [
+      { member_id: "leader-agent", session_id: "session-leader", action: "started" },
+      { member_id: "worker-agent", session_id: "session-worker", action: "started" },
+    ];
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "running",
+      control,
+      () => "running",
+      [
+        buildMemberStatus(),
+        buildMemberStatus({
+          member_id: "worker-agent",
+          role: "worker",
+          agent_name: "Worker Agent",
+        }),
+      ]
+    );
+    expect(updated?.status).toBe("running");
+    expect(updated?.members).toHaveLength(2);
+    expect(updated?.members.map((member) => member.member_id)).toEqual([
+      "leader-agent",
+      "worker-agent",
+    ]);
+    expect(updated?.members.every((member) => member.session_status === "running")).toBe(true);
+    expect(updated?.members.every((member) => member.agent_status === "running")).toBe(true);
+    expect(updated?.members.map((member) => member.session_id)).toEqual([
+      "session-leader",
+      "session-worker",
+    ]);
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {

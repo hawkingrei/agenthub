@@ -122,6 +122,12 @@ pub(crate) fn normalize_actor_context(
         actor_cli_path,
         member_role,
         member_skills,
+        contract_version: context
+            .contract_version
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
         continuity: context.continuity,
     })
 }

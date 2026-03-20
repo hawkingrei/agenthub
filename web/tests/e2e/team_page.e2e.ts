@@ -201,7 +201,13 @@ async function createTeamMemberFromModal(
   const openButtonLabel = "Add Agent";
   const title = "Add Agent";
   const confirmLabel = "Create Agent";
-  await page.getByRole("button", { name: openButtonLabel, exact: true }).first().click();
+  const openButton = page.getByRole("button", { name: openButtonLabel, exact: true }).first();
+  if ((await openButton.count()) > 0) {
+    await openButton.click();
+  } else {
+    await openSelectedTeamMenu(page);
+    await page.getByRole("menuitem", { name: openButtonLabel, exact: true }).click();
+  }
   const dialog = page
     .locator("[role='dialog']")
     .filter({ hasText: title })
@@ -294,9 +300,58 @@ async function selectAgentFromSidebar(
     .first();
   await expect(agentItem).toBeVisible();
   await agentItem.click();
+  const teamsMain = page.locator(".teams-main");
+  const agentAcpReady = teamsMain
+    .getByRole("tab", { name: "Conversation", exact: true })
+    .first();
+  if ((await agentAcpReady.count()) > 0) {
+    await expect(agentAcpReady).toBeVisible();
+    return;
+  }
+  const noEvents = teamsMain.getByText("No thread events found in this agent session.", {
+    exact: true,
+  });
+  if ((await noEvents.count()) > 0) {
+    await expect(noEvents).toBeVisible();
+    return;
+  }
   await expect(
-    page.getByPlaceholder("Type a message to selected agent")
+    teamsMain.getByText("Selected agent has no thread session yet.", { exact: true })
   ).toBeVisible();
+}
+
+async function openSelectedTeamMenu(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const trigger = page.getByRole("button", { name: "Open selected team menu", exact: true });
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+    await trigger.click();
+  }
+}
+
+async function clickSelectedTeamMenuItem(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
+  await openSelectedTeamMenu(page);
+  const item = page.getByRole("menuitem", { name: label, exact: true });
+  await expect(item).toBeVisible();
+  await item.click();
+}
+
+async function openKanbanDeveloperTools(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
+  if ((await compilePreviewButton.count()) === 0) {
+    const developerToolsSummary = page.locator("summary").filter({
+      has: page.getByText("Developer tools", { exact: true }),
+    });
+    await expect(developerToolsSummary).toBeVisible();
+    await developerToolsSummary.click();
+  }
+  await expect(compilePreviewButton).toBeVisible();
 }
 
 async function selectPrimaryTeamEntryFromSidebar(
@@ -1167,10 +1222,10 @@ test("team runtime controls update shared runtime badge", async ({ page }) => {
   await openTeamFromSelector(page, "runtime controls team");
   await expect(page.getByText("team running", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Stop Team", exact: true }).click();
+  await clickSelectedTeamMenuItem(page, "Stop Team");
   await expect(page.getByText("team stopped", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start Team", exact: true }).click();
+  await clickSelectedTeamMenuItem(page, "Start Team");
   await expect(page.getByText("team running", { exact: true })).toBeVisible();
 });
 
@@ -1186,7 +1241,8 @@ test("team create flow stores mission metadata before member setup", async ({ pa
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
   await expect(page.getByRole("heading", { name: "quest-team", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   const payload = fixture.getCreatePayload();
@@ -1217,7 +1273,8 @@ test("team member setup adds the first agent and appends more agents through spe
     customSkills: "custom-leader-skill",
     identity: "Principal planner and reviewer",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
 
   await createTeamMemberFromModal(page, {
     workdir: "/workspace/member-setup-worker",
@@ -1289,7 +1346,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Mobile");
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
 
   await expect(page.locator(".teams-main").getByText("Team Mobile", { exact: true })).toBeVisible();
 
@@ -1485,7 +1542,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await page.setViewportSize({ width: 1366, height: 900 });
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Desktop");
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await expect(page.locator(".teams-main").getByText("Team Desktop", { exact: true })).toBeVisible();
   await openAdvancedView(page, "Overview");
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
@@ -1530,8 +1587,8 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
   await selectPrimaryTeamEntryFromSidebar(page, "all");
-  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
-  await openMainTeamAction(page, "Mailbox");
+  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
+  await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
     const selectors = [".teams-chat-head"];
@@ -1560,7 +1617,8 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: "forge-team",
     goal: "Bind leader in-place before worker setup.",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
@@ -1568,7 +1626,8 @@ test("team setup keeps add agent wording after the first member binds", async ({
     identity: "Leader bound in-place",
   });
 
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");
@@ -1900,7 +1959,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
   await page.getByRole("button", { name: "Create Run", exact: true }).click();
 
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "quant-run-1"
   );
@@ -1987,8 +2046,8 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Compile Team");
-  await openMainTeamAction(page, "Kanban");
-  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
+  await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
@@ -2098,10 +2157,10 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   let activeRun: TeamRunRecord | null = null;
   let nextMessageId = 50;
   const createRunRequests: Array<{ context_id?: string; input?: unknown }> = [];
-  const sentMessagePayloads: Array<{
-    from_actor_id: string;
-    to_actor_id: string;
-    payload: unknown;
+  const sentAcpInputs: Array<{
+    agent_id: string;
+    input: string;
+    session_id?: string;
   }> = [];
   const messages: TeamActorMessageRecord[] = [
     {
@@ -2396,6 +2455,25 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     }
   );
 
+  await page.route(/\/api\/agents\/[^/]+\/input$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const match = request.url().match(/\/api\/agents\/([^/]+)\/input$/);
+    const agentId = decodeURIComponent(match?.[1] ?? "");
+    const payload = request.postDataJSON() as {
+      input: string;
+      session_id?: string;
+    };
+    sentAcpInputs.push({
+      agent_id: agentId,
+      input: payload.input,
+      session_id: payload.session_id,
+    });
+    await route.fulfill(jsonResponse({ status: "ok" }));
+  });
+
   await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
     if (request.method() !== "GET") {
       await route.fallback();
@@ -2406,15 +2484,15 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Chat First Team");
-  await openMainTeamAction(page, "Kanban");
-  await expect(page.getByRole("button", { name: "Compile Preview", exact: true })).toBeVisible();
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
+  await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation-chat-1", { exact: true })).toBeVisible();
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
   expect(createRunRequests).toHaveLength(1);
   expect(createRunRequests[0]).toMatchObject({
@@ -2426,24 +2504,17 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   ).toBe("task-chat-1");
 
   await selectAgentFromSidebar(page, "Worker Agent");
-  await expect(page.locator(".teams-chat-messages")).toContainText(
-    "Please implement endpoint scaffolding and tests."
-  );
-  await expect(page.locator(".teams-chat-messages")).toContainText(
-    "Endpoint and tests are complete."
-  );
-
-  await page
-    .getByPlaceholder("Type a message to selected agent")
-    .fill("Please include migration notes in the final report.");
-  await page.getByRole("button", { name: "Send Chat" }).click();
-  await expect(page.locator(".teams-chat-messages")).toContainText(
-    "Please include migration notes in the final report."
-  );
-  expect(sentMessagePayloads).toHaveLength(1);
-  expect(sentMessagePayloads[0]).toMatchObject({
-    from_actor_id: "agent-leader-1",
-    to_actor_id: "agent-worker-1",
+  const agentInput = page.getByPlaceholder(/Send input|Type a message \(tap Send/);
+  await expect(agentInput).toBeVisible();
+  await agentInput.fill("Please include migration notes in the final report.");
+  await page.getByRole("button", { name: "Send input", exact: true }).click();
+  await expect
+    .poll(() => sentAcpInputs.length, { timeout: 15_000 })
+    .toBe(1);
+  expect(sentAcpInputs).toHaveLength(1);
+  expect(sentAcpInputs[0]).toMatchObject({
+    agent_id: "agent-worker-1",
+    input: "Please include migration notes in the final report.",
   });
 
   await openAdvancedView(page, "Member Console");
@@ -2451,7 +2522,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await expect(page.locator(".teams-step-body")).not.toContainText("Loading discovery card...");
   await expect(page.locator(".teams-step-body")).toContainText("acp_gemini");
 
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await openAdvancedView(page, "Events");
   await expect(page.locator(".teams-event-list")).toContainText(
     "Final deliverable prepared and returned to user."
@@ -2625,7 +2696,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   await gotoTeams(page);
   await openTeamFromSelector(page, "virtual-tool-team");
 
-  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
   await page
     .getByPlaceholder("Message #all")
     .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
@@ -2634,7 +2705,8 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
     "Please build a tiny JSON CLI with parse and pretty-print commands."
   );
 
-  await openMainTeamAction(page, "Kanban");
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
+  await openKanbanDeveloperTools(page);
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
   await expect(page.locator(".teams-step-body")).toContainText(
@@ -2937,7 +3009,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await enableDeveloperMode(page);
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Mailbox");
-  await openMainTeamAction(page, "Mailbox");
+  await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-shell")).toBeVisible();
 
   const unreadWorker2Before = await unreadFor("Worker Agent Two");
@@ -2988,7 +3060,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .fill('{"type":"chat_message","text":"advanced-mailbox-ping"}');
   await advancedPanel.getByRole("button", { name: "Send Message" }).click();
 
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await openAdvancedView(page, "Overview");
   await page
     .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
@@ -3030,7 +3102,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   await expect(page.locator(".team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".team-item", { hasText: "Team Delete B" })).toBeVisible();
   await openTeamFromSelector(page, "Team Delete A");
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
   await expect(page.locator(".teams-main").getByText("Team Delete A", { exact: true })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
@@ -3106,7 +3178,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team A");
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await openMainTeamAction(page, "Runs");
 
   const runFilter = page.getByLabel("Run status filter");
   await expect(runFilter).toHaveValue("all");

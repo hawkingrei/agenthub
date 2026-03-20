@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   AgentRecord,
   TeamActorMessageRecord,
+  TeamConversationMessageRecord,
   TeamRuntimeControlResponse,
   TeamRuntimeRecord,
   TeamRunEventRecord,
@@ -10,14 +11,29 @@ import type {
   TeamTaskRecord,
 } from "../../api";
 import type { StatusTone } from "../../components/status_badge";
+import { mergeOutputsPreserveHistory } from "../../output_cache";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "../team_member_status_strip";
-import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
+import type {
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  TeamMemberLiveState,
+} from "./member_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
 }
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
+export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
+
+function collectMemberIds(
+  members?: Array<{ member_id?: string | null }> | null
+): string[] {
+  const ids = members
+    ?.map((member) => member.member_id?.trim() ?? "")
+    .filter(Boolean) ?? [];
+  return [...new Set(ids)];
+}
 
 export type TeamRuntimeStatusView = {
   status: "running" | "stopped" | "degraded";
@@ -31,6 +47,10 @@ export type TeamRuntimeControlTone = {
   statusColor: "teal" | "yellow" | "gray";
   countColor: "teal" | "yellow" | "gray";
 };
+
+export type TeamPageNotice =
+  | { kind: "runtime"; title: string; message: string }
+  | { kind: "warning"; title: string; message: string };
 
 export type AgentWorkspaceStatusView = {
   role: string;
@@ -165,20 +185,74 @@ export function resolveTeamRuntimeControlTone(
   };
 }
 
+export function resolveTeamPageNotice(message: string | null | undefined): TeamPageNotice | null {
+  const normalized = message?.trim() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  if (
+    normalized.startsWith("Team runtime updated") ||
+    normalized.startsWith("Team runtime stopped")
+  ) {
+    return {
+      kind: "runtime",
+      title: "Team runtime",
+      message: normalized,
+    };
+  }
+  return {
+    kind: "warning",
+    title: "Team runtime update",
+    message: normalized,
+  };
+}
+
 export function updateCachedTeamRuntimeStatus(
   previousRuntime: TeamRuntimeRecord | undefined,
   teamId: string,
   teamName: string,
   status: TeamRuntimeRecord["status"],
   members: TeamRuntimeControlResponse["members"],
-  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
+  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null,
+  fallbackMemberStatuses?: TeamMemberAgentStatus[]
 ): TeamRuntimeRecord | undefined {
-  if (!previousRuntime) {
-    return undefined;
-  }
   const memberUpdates = new Map(
     members.map((member) => [member.member_id, member] as const)
   );
+  if (!previousRuntime) {
+    if (!fallbackMemberStatuses || fallbackMemberStatuses.length === 0) {
+      return undefined;
+    }
+    const stopped = status === "stopped";
+    return {
+      team_id: teamId,
+      team_name: teamName,
+      status,
+      members: fallbackMemberStatuses.map((member) => {
+        const updated = memberUpdates.get(member.member_id);
+        const sessionStatus = stopped
+          ? "stopped"
+          : nextSessionStatus
+            ? nextSessionStatus(member.status)
+            : (member.status ?? undefined);
+        return {
+          member_id: member.member_id,
+          display_name: member.agent_name?.trim() || member.member_id,
+          role: member.role,
+          description: null,
+          agent_status: sessionStatus,
+          session_id: stopped ? undefined : (updated?.session_id ?? undefined),
+          session_status: sessionStatus,
+          card: {
+            card_id: member.member_id,
+            schema_version: "1",
+            description: member.role,
+            capability_tags: [],
+          },
+        };
+      }),
+    };
+  }
   const stopped = status === "stopped";
   return {
     ...previousRuntime,
@@ -225,14 +299,67 @@ export function upsertEventList(
 export function upsertAgentEventList(
   prev: AgentEvent[],
   next: AgentEvent[],
-  mode: "replace" | "prepend"
+  mode: "replace" | "prepend",
+  sessionId?: string | null
 ): AgentEvent[] {
-  const merged = mode === "replace" ? [...next] : [...next, ...prev];
+  if (mode === "replace") {
+    if (next.length === 0) {
+      return [];
+    }
+    if (sessionId == null) {
+      return [...next].sort((a, b) => a.event_id - b.event_id);
+    }
+    const scopedPrev = prev.filter((event) => (event.session_id ?? null) === sessionId);
+    return mergeOutputsPreserveHistory(scopedPrev, next, true);
+  }
+  const scopedPrev =
+    sessionId == null
+      ? prev
+      : prev.filter((event) => (event.session_id ?? null) === sessionId);
+  const merged = [...next, ...scopedPrev];
   const byId = new Map<number, AgentEvent>();
   for (const event of merged) {
     byId.set(event.event_id, event);
   }
   return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
+}
+
+function sameConversationMessage(
+  left: TeamConversationMessageRecord,
+  right: TeamConversationMessageRecord
+): boolean {
+  return (
+    left.message_id === right.message_id &&
+    left.conversation_id === right.conversation_id &&
+    left.task_id === right.task_id &&
+    left.from_actor_id === right.from_actor_id &&
+    (left.to_actor_id ?? null) === (right.to_actor_id ?? null) &&
+    left.route === right.route &&
+    left.created_at === right.created_at
+  );
+}
+
+export function mergeConversationMessages(
+  prev: TeamConversationMessageRecord[],
+  next: TeamConversationMessageRecord[]
+): TeamConversationMessageRecord[] {
+  if (next.length === 0) {
+    return prev.length === 0 ? prev : [];
+  }
+  const prevById = new Map(prev.map((message) => [message.message_id, message] as const));
+  let changed = prev.length !== next.length;
+  const merged = next.map((message) => {
+    const cached = prevById.get(message.message_id);
+    if (cached && sameConversationMessage(cached, message)) {
+      return cached;
+    }
+    changed = true;
+    return message;
+  });
+  if (!changed) {
+    return prev;
+  }
+  return merged;
 }
 
 export function buildAgentLabel(agent: AgentRecord): string {
@@ -266,7 +393,10 @@ export function isSharedThreadTask(task: TeamTaskRecord): boolean {
   if (!task.context || typeof task.context !== "object" || Array.isArray(task.context)) {
     return false;
   }
-  return (task.context as { bootstrap_kind?: unknown }).bootstrap_kind === "shared_thread";
+  return (
+    (task.context as { bootstrap_kind?: unknown }).bootstrap_kind ===
+    DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND
+  );
 }
 
 export function resolveTeamConversationTask(
@@ -369,6 +499,38 @@ export function resolveTaskMessageSeenByActors(
       [...actorIds].sort((left, right) => left.localeCompare(right)),
     ])
   );
+}
+
+export function resolveTaskConversationMemberIds(
+  runtimeMembers?: Array<Pick<TeamRuntimeRecord["members"][number], "member_id">> | null,
+  snapshotMembers?: Array<{ member_id?: string | null }> | null
+): string[] {
+  const runtimeIds = collectMemberIds(runtimeMembers);
+  if (runtimeIds.length > 0) {
+    return runtimeIds;
+  }
+  return collectMemberIds(snapshotMembers);
+}
+
+export async function refreshTeamConversationMailboxAfterSend(args: {
+  activeRunId?: string | null;
+  taskId?: string | null;
+  refreshSnapshot: (runId: string) => Promise<unknown>;
+  refreshEvents: (runId: string) => Promise<unknown>;
+  refreshTaskMessages: (taskIdOverride?: string) => Promise<unknown>;
+}): Promise<void> {
+  const activeRunId = args.activeRunId?.trim() ?? "";
+  if (activeRunId) {
+    await Promise.all([
+      args.refreshSnapshot(activeRunId),
+      args.refreshEvents(activeRunId),
+    ]);
+    return;
+  }
+  const taskId = args.taskId?.trim() ?? "";
+  if (taskId) {
+    await args.refreshTaskMessages(taskId);
+  }
 }
 
 export function formatTs(ts?: number | null): string {

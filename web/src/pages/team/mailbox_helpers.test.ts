@@ -336,6 +336,12 @@ describe("mailbox helpers", () => {
     for (const key of keys) {
       const payload = buildMailboxPayloadTemplate(key);
       expect(payload).not.toEqual({});
+      if (key === "profile_patch_proposal") {
+        expect(payload).toMatchObject({
+          type: "profile_patch_proposal",
+          description: expect.any(String),
+        });
+      }
     }
     expect(buildMailboxPayloadTemplate("unknown" as never)).toEqual({});
   });

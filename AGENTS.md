@@ -139,7 +139,7 @@ agenthub/
   - In shared group chat, workers may reply to human-visible conversation directly for implementation progress, facts, and scoped answers; leader remains owner of planning decisions and final synthesis.
   - Leader should keep the current phase and phase-transition condition in `AGENTS.md`
   - Leader must answer human planning questions directly and should not redirect human users to worker agents
-  - On cold start, leader/worker should check unfinished items in `TODO.md` and `.cache/context/todo.md` before new mailbox work
+  - On cold start, leader should check unfinished items in `TODO.md`; workers in concrete project workspaces should also check `.agenthubmemory/TODO.md` before new mailbox work
   - TODO lifecycle details (when to create, status transitions, completion guardrails) belong to role skills; `AGENTS.md` only keeps pointers and current progress index
   - Backend runtime enforces leader starts with `worktree_mode=use_existing` and an empty workspace
   - Each worker must execute in its own git worktree with a random feature branch, and periodically sync from `main`

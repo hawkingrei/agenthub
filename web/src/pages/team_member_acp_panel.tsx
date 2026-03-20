@@ -1,13 +1,13 @@
 import React from "react";
 import { buildAcpView } from "../acp";
 import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
-import { AcpConversation } from "../components/acp_conversation";
+import { AcpPanel } from "../components/acp_panel";
+import { getAcpConversationCacheStats } from "../components/acp_conversation";
+import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";
-import { buildConversationMessages } from "../conversation";
+import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
-import { isNearBottom } from "../scroll";
 import {
-  ACP_JUMP_BOTTOM_BUTTON_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -31,6 +31,10 @@ type TeamMemberAcpPanelProps = {
   onRefresh: () => Promise<void> | void;
   onLoadOlder: () => Promise<void> | void;
 };
+
+type TeamMemberAcpTab = "conversation" | "plan" | "debug";
+
+const NOOP = () => {};
 
 export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const {
@@ -64,30 +68,63 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [memberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
-  const conversationItems = React.useMemo(
-    () =>
-      buildConversationMessages(
-        acpView.messages,
-        acpView.toolCalls,
-        acpView.plan,
-        selectedSessionId
-      ),
-    [acpView.messages, acpView.plan, acpView.toolCalls, selectedSessionId]
-  );
-
-  const conversationRef = React.useRef<HTMLDivElement>(null);
+  const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
+  const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
+  const conversationEventMeta = React.useMemo(() => {
+    const memberId = selectedMemberId.trim();
+    if (!memberId || !selectedSessionId) {
+      return {};
+    }
+    return {
+      [`${memberId}:${selectedSessionId}`]: {
+        oldestId: oldestMemberEventId,
+        hasMore: memberEventsHasMore,
+        loading: memberEventsLoading,
+        loaded: !memberEventsLoading || memberEvents.length > 0,
+      },
+    };
+  }, [
+    memberEvents.length,
+    memberEventsHasMore,
+    memberEventsLoading,
+    oldestMemberEventId,
+    selectedMemberId,
+    selectedSessionId,
+  ]);
+  const acpConversation = useAcpConversation({
+    acpView,
+    activeAgent: selectedMemberId.trim() || null,
+    activeSessionId: selectedSessionId ?? null,
+    acpTab: effectiveAcpTab,
+    eventMeta: conversationEventMeta,
+    isAgentActive: Boolean(selectedSessionId),
+    onLoadOlder: () => {
+      void onLoadOlder();
+    },
+  });
+  const terminalRef = React.useRef<HTMLDivElement | null>(null);
   const isComposingRef = React.useRef(false);
   const inputHistoryDraftRef = React.useRef("");
-  const [stickToBottom, setStickToBottom] = React.useState(true);
   const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [inputHistory, setInputHistory] = React.useState<string[]>([]);
   const [inputHistoryCursor, setInputHistoryCursor] = React.useState(-1);
   const [sendingInput, setSendingInput] = React.useState(false);
+  const [terminalShowJump, setTerminalShowJump] = React.useState(false);
+  const [acpModeId, setAcpModeId] = React.useState("");
+  const [acpModelId, setAcpModelId] = React.useState("");
+  const [acpConfigId, setAcpConfigId] = React.useState("");
+  const [acpConfigValue, setAcpConfigValue] = React.useState("");
   const sendingInputRef = React.useRef(false);
+  const ansi = React.useCallback((inputValue: string) => inputValue, []);
+  const terminalOutputs = React.useMemo(
+    () => memberEvents.filter((event) => event.stream !== "acp"),
+    [memberEvents]
+  );
 
   React.useEffect(() => {
     setThreadOptionsOpen(false);
+    setAcpTab("conversation");
   }, [selectedMemberId, selectedSessionId]);
   React.useEffect(() => {
     setInput("");
@@ -96,50 +133,33 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     inputHistoryDraftRef.current = "";
   }, [selectedMemberId, selectedSessionId]);
 
-  React.useEffect(() => {
-    if (!stickToBottom) {
-      return;
-    }
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollTop = container.scrollHeight;
-  }, [conversationItems.length, stickToBottom]);
-
-  const onConversationScroll = React.useCallback(() => {
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    setStickToBottom(
-      isNearBottom(
-        container.scrollHeight,
-        container.scrollTop,
-        container.clientHeight
-      )
-    );
-  }, []);
-
-  const onJumpToBottom = React.useCallback(() => {
-    const container = conversationRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollTop = container.scrollHeight;
-    setStickToBottom(true);
-  }, []);
-
   const canLoadOlder =
     Boolean(selectedMemberId.trim() && selectedSessionId) &&
     !memberEventsLoading &&
     memberEventsHasMore &&
     oldestMemberEventId != null;
-  const shouldRenderConversation =
-    Boolean(selectedMemberId.trim() && selectedSessionId) &&
-    (memberEventsLoading || acpView.hasAcp || conversationItems.length > 0);
-  const showJumpButton = !stickToBottom && conversationItems.length > 0;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
+  const handleTerminalScroll = React.useCallback(() => {
+    const element = terminalRef.current;
+    if (!element) {
+      setTerminalShowJump(false);
+      return;
+    }
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+    setTerminalShowJump(remaining > 48);
+  }, []);
+  const jumpToTerminalBottom = React.useCallback(() => {
+    const element = terminalRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+    setTerminalShowJump(false);
+  }, []);
+  React.useEffect(() => {
+    if (acpTab !== "debug") {
+      return;
+    }
+    handleTerminalScroll();
+  }, [acpTab, handleTerminalScroll, terminalOutputs.length]);
   const handleSendInput = React.useCallback(async () => {
     const text = input.trim();
     if (!text || !selectedSessionId || !onSendInput || sendingInputRef.current) {
@@ -208,6 +228,166 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     },
     [inputHistory]
   );
+  const acpConversationProps = React.useMemo(
+    () => ({
+      items: acpConversation.conversationRenderItems,
+      windowOffset: acpConversation.conversationWindowOffset,
+      isFrozenView: acpConversation.isFrozenView,
+      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
+      collapseCutoff: acpConversation.collapseCutoff,
+      runStatus: acpView.runStatus?.status ?? null,
+      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
+      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      pendingCount: acpConversation.conversationPendingCount,
+      avgHeight: acpConversation.conversationAvgHeight,
+      topHint: memberEventsLoading
+        ? "Loading ACP events..."
+        : acpConversation.showConversationTopReachedHint
+          ? "Already at top"
+          : null,
+      focusedToolCallId: acpConversation.focusedConversationToolCallId,
+      onScroll: acpConversation.handleConversationScroll,
+      containerRef: acpConversation.acpConversationRef,
+      ansi,
+    }),
+    [
+      acpConversation.acpConversationRef,
+      acpConversation.collapseCutoff,
+      acpConversation.conversationAvgHeight,
+      acpConversation.conversationPendingCount,
+      acpConversation.conversationRenderItems,
+      acpConversation.conversationStickToBottom,
+      acpConversation.conversationVirtualBottomSpacer,
+      acpConversation.conversationVirtualTopSpacer,
+      acpConversation.conversationWindowOffset,
+      acpConversation.focusedConversationToolCallId,
+      acpConversation.handleConversationScroll,
+      acpConversation.isFrozenView,
+      acpConversation.shouldAutoCollapse,
+      acpConversation.showConversationTopReachedHint,
+      acpView.runStatus?.status,
+      ansi,
+      memberEventsLoading,
+    ]
+  );
+  const acpRuntimeMetrics = React.useMemo(() => {
+    const cacheStats = getAcpConversationCacheStats();
+    return {
+      totalConversationItems: acpConversation.conversationTotalItems,
+      sourceConversationItems: acpConversation.conversationSourceItems,
+      renderedConversationItems: acpConversation.conversationRenderedItems,
+      pendingConversationItems: acpConversation.conversationPendingCount,
+      virtualizedConversation: acpConversation.conversationVirtualized,
+      stickToBottom: acpConversation.conversationStickToBottom,
+      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+      rawEventCount: acpView.rawEvents.length,
+      toolCallCount: acpView.toolCalls.length,
+      messageCount: acpView.messages.length,
+      markdownCacheHits: cacheStats.markdownHits,
+      markdownCacheMisses: cacheStats.markdownMisses,
+      ansiCacheHits: cacheStats.ansiHits,
+      ansiCacheMisses: cacheStats.ansiMisses,
+      payloadParses: cacheStats.payloadParses,
+      payloadParseFailures: cacheStats.payloadParseFailures,
+    };
+  }, [
+    acpConversation.conversationAvgHeight,
+    acpConversation.conversationPendingCount,
+    acpConversation.conversationRenderedItems,
+    acpConversation.conversationSourceItems,
+    acpConversation.conversationStickToBottom,
+    acpConversation.conversationTotalItems,
+    acpConversation.conversationVirtualized,
+    acpView.messages.length,
+    acpView.rawEvents.length,
+    acpView.toolCalls.length,
+  ]);
+  const acpPanelProps = React.useMemo(
+    () => ({
+      acpView,
+      subtitle: selectedSessionId ? `session ${selectedSessionId}` : null,
+      mobileTitle: null,
+      acpTab: effectiveAcpTab,
+      developerMode,
+      onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
+      showConversationBadge: acpConversation.showConversationBadge,
+      showConversationJump: acpConversation.showConversationJump,
+      onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
+      conversation: acpConversationProps,
+      plan: {
+        plan: acpView.plan,
+      },
+      debug: {
+        terminalOutputs,
+        ansi,
+        terminalRef,
+        onTerminalScroll: handleTerminalScroll,
+        showTerminalJump: terminalShowJump,
+        onJumpToTerminalBottom: jumpToTerminalBottom,
+        currentMode: acpView.currentMode,
+        rawEvents: acpView.rawEvents,
+        acpPermissionHistory: [],
+        acpModeId,
+        acpModelId,
+        acpConfigId,
+        acpConfigValue,
+        onAcpModeIdChange: setAcpModeId,
+        onAcpModelIdChange: setAcpModelId,
+        onAcpConfigIdChange: setAcpConfigId,
+        onAcpConfigValueChange: setAcpConfigValue,
+        canControlAcp: false,
+        onAcpSetMode: NOOP,
+        onAcpSetModel: NOOP,
+        onAcpSetConfig: NOOP,
+        onAcpCancel: NOOP,
+        onAcpClearSession: NOOP,
+        onJumpToPermissionHistory: NOOP,
+        runtimeMetrics: acpRuntimeMetrics,
+      },
+    }),
+    [
+      acpConfigId,
+      acpConfigValue,
+      acpConversation.jumpToConversationBottom,
+      acpConversation.showConversationBadge,
+      acpConversation.showConversationJump,
+      acpConversationProps,
+      acpModeId,
+      acpModelId,
+      acpRuntimeMetrics,
+      acpView,
+      ansi,
+      developerMode,
+      effectiveAcpTab,
+      handleTerminalScroll,
+      jumpToTerminalBottom,
+      selectedSessionId,
+      terminalOutputs,
+      terminalShowJump,
+    ]
+  );
+  const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
+  const inputDockJumpMode = React.useMemo(
+    () =>
+      resolveInputDockJumpMode({
+        hasAcp: acpView.hasAcp,
+        showConversationJump: acpConversation.showConversationJump,
+        jumpToConversationBottom: acpConversation.jumpToConversationBottom,
+        showTerminalJump: terminalShowJump,
+        jumpToTerminalBottom,
+      }),
+    [
+      acpConversation.jumpToConversationBottom,
+      acpConversation.showConversationJump,
+      acpView.hasAcp,
+      jumpToTerminalBottom,
+      terminalShowJump,
+    ]
+  );
+  const shouldRenderPanel =
+    Boolean(selectedMemberId.trim() && selectedSessionId) &&
+    (memberEventsLoading || memberEvents.length > 0 || acpView.hasAcp || acpConversation.conversationTotalItems > 0);
 
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
@@ -285,40 +465,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         </p>
       )}
 
-      {shouldRenderConversation && (
+      {shouldRenderPanel && (
         <div className="relative mt-3">
-          <AcpConversation
-            items={conversationItems}
-            windowOffset={0}
-            isFrozenView={false}
-            shouldAutoCollapse={true}
-            collapseCutoff={0}
-            runStatus={acpView.runStatus?.status ?? null}
-            virtualTopSpacer={0}
-            virtualBottomSpacer={0}
-            stickToBottom={stickToBottom}
-            pendingCount={0}
-            avgHeight={48}
-            topHint={memberEventsLoading ? "Loading ACP events..." : null}
-            focusedToolCallId={null}
-            onScroll={onConversationScroll}
-            containerRef={conversationRef}
-            ansi={(input) => input}
-          />
-          {showJumpButton && (
-            <button
-              className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
-              onClick={onJumpToBottom}
-              title="Jump to bottom"
-              aria-label="Jump to bottom"
-            >
-              <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
-            </button>
-          )}
+          <AcpPanel {...acpPanelProps} />
         </div>
       )}
 
-      {canSendInput && (
+      {canSendInput && showInputDock && (
         <div className="mt-3">
           <InputDock
             input={input}
@@ -333,8 +486,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
             onInterrupt={() => {}}
             onNavigateHistory={handleNavigateHistory}
             onSelectHistoryCommand={handleSelectHistoryCommand}
-            onJumpToBottom={onJumpToBottom}
-            showConversationJump={showJumpButton}
+            onJumpToBottom={inputDockJumpMode.onJumpToBottom}
+            showConversationJump={inputDockJumpMode.showConversationJump}
             isComposingRef={isComposingRef}
           />
           {sendingInput && (

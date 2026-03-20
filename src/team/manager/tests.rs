@@ -273,6 +273,9 @@ async fn setup_test_db() -> SqlitePool {
             worktree_repo TEXT,
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
+            agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+            agent_loop_idle_seconds INTEGER,
+            agent_loop_prompt TEXT,
             source TEXT NOT NULL DEFAULT 'manual',
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
@@ -534,6 +537,54 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
 }
 
 #[tokio::test]
+async fn append_task_conversation_message_emits_stream_event() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let mut events = manager.subscribe_conversation_events();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-event-team".to_string(),
+            description: Some("team for conversation stream events".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let message = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+        )
+        .await
+        .expect("append message");
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), events.recv())
+        .await
+        .expect("receive stream event")
+        .expect("stream event result");
+    assert_eq!(event.team_id, team.id);
+    assert_eq!(event.task_id, task.id);
+    assert_eq!(event.conversation_id, conversation.id);
+    assert_eq!(event.message_id, Some(message.message_id));
+    assert_eq!(event.source, "conversation_message");
+}
+
+#[tokio::test]
 async fn task_status_updates_are_persisted() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -615,7 +666,7 @@ async fn create_run_marks_linked_task_in_progress() {
 }
 
 #[tokio::test]
-async fn linked_run_completion_marks_task_completed() {
+async fn linked_run_completion_marks_task_in_review() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
 
@@ -668,7 +719,7 @@ async fn linked_run_completion_marks_task_completed() {
         .expect("complete step");
 
     let reloaded = manager.get_task(&task.id).await.expect("reload task");
-    assert_eq!(reloaded.status, TeamTaskStatus::Completed);
+    assert_eq!(reloaded.status, TeamTaskStatus::InReview);
 }
 
 #[tokio::test]
@@ -1952,6 +2003,7 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
     let service = manager.actor_mailbox_service();
+    let mut events = manager.subscribe_conversation_events();
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -2055,6 +2107,15 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
     assert_eq!(payload["text"], json!("hello human"));
     assert_eq!(payload["correlation_id"], json!("corr-1"));
     assert!(payload.get("current_phase").is_none());
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), events.recv())
+        .await
+        .expect("receive canonical shared thread event")
+        .expect("canonical shared thread event result");
+    assert_eq!(event.team_id, team.id);
+    assert_eq!(event.task_id, shared_task_id);
+    assert_eq!(event.message_id, None);
+    assert_eq!(event.source, "canonical_chat_reply");
 }
 
 #[tokio::test]
@@ -3402,6 +3463,10 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .cancel_run(&first_run.id)
         .await
         .expect("cancel first run");
+    let shared_thread_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create hidden shared thread mailbox run");
 
     sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
         .bind(100_i64)
@@ -3415,6 +3480,12 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .execute(&db)
         .await
         .expect("set second run created_at");
+    sqlx::query("UPDATE team_runs SET created_at = ?1 WHERE id = ?2")
+        .bind(300_i64)
+        .bind(&shared_thread_run.id)
+        .execute(&db)
+        .await
+        .expect("set shared thread run created_at");
 
     let all_runs = manager
         .list_runs(&team.id, 100, None, None)
@@ -3442,6 +3513,80 @@ async fn list_runs_supports_status_filter_and_cursor() {
         .expect("list runs with cursor");
     assert_eq!(cursor_runs.len(), 1);
     assert_eq!(cursor_runs[0].id, first_run.id);
+
+    let limited_runs = manager
+        .list_runs(&team.id, 1, None, None)
+        .await
+        .expect("list limited visible runs");
+    assert_eq!(limited_runs.len(), 1);
+    assert_eq!(limited_runs[0].id, second_run.id);
+
+    let limited_cursor_runs = manager
+        .list_runs(&team.id, 1, None, Some(200))
+        .await
+        .expect("list limited cursor visible runs");
+    assert_eq!(limited_cursor_runs.len(), 1);
+    assert_eq!(limited_cursor_runs[0].id, first_run.id);
+
+    let hidden_run = manager
+        .get_latest_run_for_task(&team.id, "shared-thread-task")
+        .await
+        .expect("load hidden shared thread run")
+        .expect("hidden shared thread run should exist");
+    assert_eq!(hidden_run.id, shared_thread_run.id);
+    assert_eq!(
+        hidden_run.input["bootstrap_kind"],
+        Value::from("shared_thread_mailbox")
+    );
+}
+
+#[tokio::test]
+async fn ensure_shared_thread_mailbox_run_is_idempotent() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "shared-thread-mailbox-idempotent-team".to_string(),
+            description: Some("team to verify shared thread mailbox idempotency".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let first = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create first shared thread mailbox run");
+    let second = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("reuse shared thread mailbox run");
+
+    assert_eq!(first.id, second.id);
+
+    let run_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_runs
+        WHERE team_id = ?1
+          AND trim(COALESCE(json_extract(input_json, '$.bootstrap_kind'), '')) = 'shared_thread_mailbox'
+          AND trim(COALESCE(json_extract(input_json, '$.task_id'), '')) = 'shared-thread-task'
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread mailbox runs");
+    assert_eq!(run_count, 1);
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1")
+            .bind(&first.id)
+            .fetch_one(&db)
+            .await
+            .expect("count shared thread mailbox run events");
+    assert_eq!(event_count, 2);
 }
 
 #[tokio::test]

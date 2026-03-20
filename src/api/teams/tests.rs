@@ -26,8 +26,11 @@ use crate::agent::WorktreeMode;
 use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::state::AppState;
-use crate::team::{TeamDefinitionConfig, TeamManager};
+use crate::team::{TeamActorMessageTransport, TeamDefinitionConfig, TeamManager};
 use agenthub_config::{AppConfig, PushConfig, WebConfig};
+use agenthub_team_actor::{
+    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
+};
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
@@ -61,6 +64,7 @@ fn build_team_member_actor_context(
         actor_cli_path: default_actor_cli_path()?,
         member_role: Some(member.role.clone()),
         member_skills: member.skills.clone(),
+        contract_version: None,
         continuity: None,
     })
 }
@@ -279,6 +283,9 @@ async fn init_test_schema(db: &SqlitePool) {
             worktree_repo TEXT,
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
+            agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+            agent_loop_idle_seconds INTEGER,
+            agent_loop_prompt TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
@@ -344,6 +351,16 @@ async fn init_test_schema(db: &SqlitePool) {
             agent_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
             acp_session_id TEXT,
+            team_id TEXT,
+            requester_actor_id TEXT,
+            requester_role TEXT,
+            review_target_actor_id TEXT,
+            review_dispatch_status TEXT,
+            review_delivery_run_id TEXT,
+            review_message_id INTEGER,
+            review_dispatched_at INTEGER,
+            reviewed_by_actor_id TEXT,
+            human_review_notified_at INTEGER,
             tool_call_id TEXT,
             options_json TEXT NOT NULL,
             tool_call_json TEXT,
@@ -915,6 +932,9 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
         })
         .await
         .expect("create agent");
@@ -928,6 +948,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         actor_cli_path: actor_cli_path.clone(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 

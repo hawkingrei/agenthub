@@ -1,3 +1,4 @@
+use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
@@ -9,13 +10,17 @@ use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
-use crate::team::TeamManager;
+use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
+use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
+use crate::team::{TEAM_TASK_STATUS_VALUES, TeamManager, TeamTaskStatus};
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 
 const JSONRPC_PARSE_ERROR: i32 = -32700;
 const JSONRPC_INVALID_REQUEST: i32 = -32600;
@@ -64,6 +69,58 @@ struct ActorSendToolArgs {
 struct TeamMembersToolArgs {
     team_id: Option<String>,
     run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTasksToolArgs {
+    team_id: Option<String>,
+    limit: Option<i64>,
+    status: Option<String>,
+    include_shared_thread: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTaskCreateToolArgs {
+    team_id: Option<String>,
+    title: String,
+    status: Option<String>,
+    topic: Option<String>,
+    context: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTaskUpdateToolArgs {
+    team_id: Option<String>,
+    task_id: String,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentTimeTriggerSetToolArgs {
+    delay_seconds: i64,
+    message: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct AgentTimeTriggerListToolArgs {
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentTimeTriggerCancelToolArgs {
+    trigger_id: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct AcpPermissionReviewRespondToolArgs {
+    permission_id: String,
+    option_id: Option<String>,
+    outcome: Option<String>,
 }
 
 fn actor_mcp_usage() -> &'static str {
@@ -254,6 +311,100 @@ fn actor_tools() -> Vec<Value> {
                 "properties": {
                     "team_id": { "type": "string", "minLength": 1 },
                     "run_id": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "team_tasks",
+            "description": "List canonical Team Kanban tasks for the current team.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES, "default": "all" },
+                    "include_shared_thread": { "type": "boolean", "default": false }
+                }
+            }
+        }),
+        json!({
+            "name": "team_task_create",
+            "description": "Create a canonical Team task in Kanban. Leader only.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["title"],
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "title": { "type": "string", "minLength": 1 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES, "default": "open" },
+                    "topic": { "type": "string", "minLength": 1 },
+                    "context": { "type": "object" }
+                }
+            }
+        }),
+        json!({
+            "name": "team_task_update",
+            "description": "Advance or reopen a canonical Team task state. Leader only.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "status"],
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "task_id": { "type": "string", "minLength": 1 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_set",
+            "description": "Create a one-shot time trigger that will inject a future ACP prompt back into the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["delay_seconds", "message"],
+                "properties": {
+                    "delay_seconds": { "type": "integer", "minimum": 1, "maximum": 2592000 },
+                    "message": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_list",
+            "description": "List recent time triggers for the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 20 }
+                }
+            }
+        }),
+        json!({
+            "name": "agent_time_trigger_cancel",
+            "description": "Cancel a pending time trigger for the current agent.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["trigger_id"],
+                "properties": {
+                    "trigger_id": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "acp_permission_review_respond",
+            "description": "Approve or cancel a pending ACP permission request for your Team.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["permission_id"],
+                "properties": {
+                    "permission_id": { "type": "string", "minLength": 1 },
+                    "option_id": { "type": "string", "minLength": 1 },
+                    "outcome": { "type": "string", "enum": ["cancelled"] }
                 }
             }
         }),
@@ -482,6 +633,8 @@ async fn tool_actor_ack<S: ActorMailboxService>(
 
 async fn tool_actor_send<S: ActorMailboxService>(
     service: &S,
+    manager: &TeamManager,
+    permissions: &AcpPermissionService,
     context: &ActorMcpContext,
     arguments: Option<&Map<String, Value>>,
 ) -> Value {
@@ -493,7 +646,7 @@ async fn tool_actor_send<S: ActorMailboxService>(
         Ok(value) => value,
         Err(err) => return tool_result_error(err.to_string(), None),
     };
-    let payload = match args.payload {
+    let mut payload = match args.payload {
         Some(payload) => payload,
         None => return tool_result_error("payload is required", None),
     };
@@ -515,6 +668,18 @@ async fn tool_actor_send<S: ActorMailboxService>(
     let channel =
         take_optional(args.channel).unwrap_or_else(|| context.default_channel.to_string());
     let allow_duplicate = args.allow_duplicate.unwrap_or(false);
+    let permission_review_request_id = match maybe_prepare_permission_review_delegation(
+        manager,
+        permissions,
+        context,
+        &to_actor_id,
+        &mut payload,
+    )
+    .await
+    {
+        Ok(request_id) => request_id,
+        Err(err) => return tool_result_error(format!("actor_send failed: {err}"), None),
+    };
     let to_peer_id = if transport == ActorMessageTransport::Remote {
         ACTOR_NODE_PEER_ID
     } else {
@@ -538,10 +703,10 @@ async fn tool_actor_send<S: ActorMailboxService>(
     };
     let response = service
         .actor_send(ActorSendRequest {
-            run_id,
+            run_id: run_id.clone(),
             from_actor_id: context.actor_id.clone(),
             from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-            to_actor_id,
+            to_actor_id: to_actor_id.clone(),
             to_peer_id: Some(to_peer_id.to_string()),
             channel: Some(channel),
             transport: Some(transport),
@@ -551,15 +716,101 @@ async fn tool_actor_send<S: ActorMailboxService>(
         })
         .await;
     match response {
-        Ok(response) => tool_result_success(json!({
-            "message_id": response.message_id,
-            "state": response.state,
-            "deduped": response.deduped,
-            "created_at": response.created_at,
-            "message": response.message,
-        })),
+        Ok(response) => {
+            if let Some(permission_id) = permission_review_request_id.as_deref()
+                && let Err(err) = permissions
+                    .record_review_dispatch(
+                        permission_id,
+                        Some(to_actor_id.as_str()),
+                        "leader_delegated",
+                        Some(run_id.as_str()),
+                        Some(response.message_id),
+                    )
+                    .await
+            {
+                return tool_result_error(
+                    format!("actor_send failed: {err}"),
+                    Some(json!({
+                        "permission_id": permission_id,
+                        "message_id": response.message_id,
+                    })),
+                );
+            }
+            tool_result_success(json!({
+                "message_id": response.message_id,
+                "state": response.state,
+                "deduped": response.deduped,
+                "created_at": response.created_at,
+                "message": response.message,
+            }))
+        }
         Err(err) => tool_result_actor_service_error(err),
     }
+}
+
+async fn maybe_prepare_permission_review_delegation(
+    manager: &TeamManager,
+    permissions: &AcpPermissionService,
+    context: &ActorMcpContext,
+    to_actor_id: &str,
+    payload: &mut Value,
+) -> Result<Option<String>, String> {
+    let Some(payload_obj) = payload.as_object_mut() else {
+        return Ok(None);
+    };
+    if payload_obj.get("type").and_then(Value::as_str) != Some("permission_review_request") {
+        return Ok(None);
+    }
+    let permission_id = payload_obj
+        .get("permission_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "permission_review_request payload requires permission_id".to_string())?;
+    let Some(team_id) = context.team_id.as_deref() else {
+        return Err("team_id is required to delegate permission review".to_string());
+    };
+    let team = manager
+        .get_team(team_id)
+        .await
+        .map_err(|err| format!("load team failed: {err}"))?;
+    let leader_member_id = team
+        .spec
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "team has no leader configured".to_string())?;
+    if context.actor_id != leader_member_id {
+        return Err("only leader may delegate permission review requests".to_string());
+    }
+    let record = permissions
+        .get(&permission_id)
+        .await
+        .map_err(|err| format!("load permission request failed: {err}"))?
+        .ok_or_else(|| "permission request not found".to_string())?;
+    if record.team_id.as_deref() != Some(team_id) {
+        return Err("permission request does not belong to this team".to_string());
+    }
+    if record.status != "pending" {
+        return Err("permission request is already resolved".to_string());
+    }
+    if !manager
+        .team_has_member(team_id, to_actor_id)
+        .await
+        .map_err(|err| format!("load team members failed: {err}"))?
+    {
+        return Err("delegated reviewer is not a member of this team".to_string());
+    }
+    if record.requester_actor_id.as_deref() == Some(to_actor_id) {
+        return Err("requester cannot review its own permission request".to_string());
+    }
+    payload_obj.insert(
+        "review_target_actor_id".to_string(),
+        Value::String(to_actor_id.to_string()),
+    );
+    Ok(Some(permission_id))
 }
 
 async fn tool_team_members(
@@ -585,9 +836,434 @@ async fn tool_team_members(
     }
 }
 
-async fn handle_tool_call<S: ActorMailboxService>(
-    service: &S,
+fn parse_team_task_status_argument(raw: &str) -> Result<TeamTaskStatus, String> {
+    match raw.trim() {
+        "open" => Ok(TeamTaskStatus::Open),
+        "in_progress" => Ok(TeamTaskStatus::InProgress),
+        "in_review" => Ok(TeamTaskStatus::InReview),
+        "completed" => Ok(TeamTaskStatus::Completed),
+        "canceled" => Ok(TeamTaskStatus::Canceled),
+        other => Err(format!(
+            "invalid task status '{other}', expected one of: {}",
+            TEAM_TASK_STATUS_VALUES.join(", ")
+        )),
+    }
+}
+
+fn resolve_team_leader_member_id(spec: &Value) -> Result<String, String> {
+    if let Some(leader_member_id) = spec
+        .as_object()
+        .and_then(|obj| obj.get("leader_member_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(leader_member_id.to_string());
+    }
+
+    if let Some(members) = spec
+        .as_object()
+        .and_then(|obj| obj.get("members"))
+        .and_then(Value::as_array)
+    {
+        for member in members {
+            let Some(member_obj) = member.as_object() else {
+                continue;
+            };
+            let role = member_obj
+                .get("role")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            let member_id = member_obj
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            if role.eq_ignore_ascii_case("leader") && !member_id.is_empty() {
+                return Ok(member_id.to_string());
+            }
+        }
+    }
+
+    if let Some(entrypoint) = spec
+        .as_object()
+        .and_then(|obj| obj.get("entrypoint"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(entrypoint.to_string());
+    }
+
+    Err("team has no leader configured".to_string())
+}
+
+async fn load_team_for_context(
     manager: &TeamManager,
+    context: &ActorMcpContext,
+    explicit_team_id: Option<String>,
+) -> Result<crate::team::TeamDefinitionRecord, String> {
+    let team_id = take_optional(explicit_team_id)
+        .or_else(|| context.team_id.clone())
+        .ok_or_else(|| "team_id is required for this tool call".to_string())?;
+    let team = manager
+        .get_team(&team_id)
+        .await
+        .map_err(|err| format!("load team failed: {err}"))?;
+    if !manager
+        .team_has_member(&team.id, &context.actor_id)
+        .await
+        .map_err(|err| format!("load team members failed: {err}"))?
+    {
+        return Err("current actor is not a member of this team".to_string());
+    }
+    Ok(team)
+}
+
+async fn ensure_leader_team_access(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    explicit_team_id: Option<String>,
+) -> Result<crate::team::TeamDefinitionRecord, String> {
+    let team = load_team_for_context(manager, context, explicit_team_id).await?;
+    let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
+    if context.actor_id != leader_member_id {
+        return Err("only leader may create or update Team tasks".to_string());
+    }
+    Ok(team)
+}
+
+fn is_shared_thread_task(task: &crate::team::TeamTaskRecord) -> bool {
+    if task
+        .title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+    {
+        return true;
+    }
+    task.context
+        .as_object()
+        .and_then(|obj| obj.get("bootstrap_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
+}
+
+async fn tool_team_tasks(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTasksToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match load_team_for_context(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let status_filter = match args.status.as_deref().map(str::trim) {
+        Some("all") | None => None,
+        Some(raw) => match parse_team_task_status_argument(raw) {
+            Ok(status) => Some(status),
+            Err(err) => return tool_result_error(err, None),
+        },
+    };
+    let include_shared_thread = args.include_shared_thread.unwrap_or(false);
+    let limit = args.limit.unwrap_or(100).clamp(1, 500);
+    let mut tasks = match manager.list_tasks(&team.id, limit).await {
+        Ok(tasks) => tasks,
+        Err(err) => return tool_result_error(format!("team_tasks failed: {err}"), None),
+    };
+    if !include_shared_thread {
+        tasks.retain(|task| !is_shared_thread_task(task));
+    }
+    if let Some(status) = status_filter {
+        tasks.retain(|task| task.status == status);
+    }
+    tool_result_success(json!(tasks))
+}
+
+async fn tool_team_task_create(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTaskCreateToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match ensure_leader_team_access(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let title = args.title.trim();
+    if title.is_empty() {
+        return tool_result_error("title must be a non-empty string", None);
+    }
+    let requested_status = match args.status.as_deref() {
+        Some(raw) => match parse_team_task_status_argument(raw) {
+            Ok(status) => status,
+            Err(err) => return tool_result_error(err, None),
+        },
+        None => TeamTaskStatus::Open,
+    };
+    let topic = take_optional(args.topic);
+    let (task, conversation) = match manager
+        .create_task(
+            &team.id,
+            title,
+            &context.actor_id,
+            args.context.unwrap_or_else(|| json!({})),
+            "group_chat",
+            topic.as_deref(),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => return tool_result_error(format!("team_task_create failed: {err}"), None),
+    };
+    let task = if requested_status == TeamTaskStatus::Open {
+        task
+    } else {
+        match manager.update_task_status(&task.id, requested_status).await {
+            Ok(updated) => updated,
+            Err(err) => return tool_result_error(format!("team_task_create failed: {err}"), None),
+        }
+    };
+    tool_result_success(json!({
+        "task": task,
+        "conversation": conversation,
+    }))
+}
+
+async fn tool_team_task_update(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTaskUpdateToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match ensure_leader_team_access(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let task_id = args.task_id.trim();
+    if task_id.is_empty() {
+        return tool_result_error("task_id must be a non-empty string", None);
+    }
+    let status = match parse_team_task_status_argument(&args.status) {
+        Ok(status) => status,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let existing = match manager.get_task(task_id).await {
+        Ok(task) => task,
+        Err(err) => return tool_result_error(format!("team_task_update failed: {err}"), None),
+    };
+    if existing.team_id != team.id {
+        return tool_result_error("task does not belong to this team", None);
+    }
+    match manager.update_task_status(task_id, status).await {
+        Ok(task) => tool_result_success(json!(task)),
+        Err(err) => tool_result_error(format!("team_task_update failed: {err}"), None),
+    }
+}
+
+async fn tool_agent_time_trigger_set(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerSetToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    if !(1..=60 * 60 * 24 * 30).contains(&args.delay_seconds) {
+        return tool_result_error("delay_seconds must be between 1 and 2592000", None);
+    }
+    let message = args.message.trim();
+    if message.is_empty() {
+        return tool_result_error("message must be a non-empty string", None);
+    }
+    let fire_at = chrono::Utc::now().timestamp() + args.delay_seconds;
+    match trigger_manager
+        .create_time_trigger(AgentTimeTriggerCreateInput {
+            agent_id: context.actor_id.clone(),
+            created_by_actor_id: context.actor_id.clone(),
+            message_text: message.to_string(),
+            fire_at,
+        })
+        .await
+    {
+        Ok(record) => tool_result_success(json!(record)),
+        Err(err) => tool_result_error(format!("agent_time_trigger_set failed: {err}"), None),
+    }
+}
+
+async fn tool_agent_time_trigger_list(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerListToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    match trigger_manager
+        .list_triggers_for_agent(context.actor_id.as_str(), args.limit.unwrap_or(20))
+        .await
+    {
+        Ok(records) => tool_result_success(json!(records)),
+        Err(err) => tool_result_error(format!("agent_time_trigger_list failed: {err}"), None),
+    }
+}
+
+async fn tool_agent_time_trigger_cancel(
+    trigger_manager: &AgentTimeTriggerManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AgentTimeTriggerCancelToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let trigger_id = args.trigger_id.trim();
+    if trigger_id.is_empty() {
+        return tool_result_error("trigger_id must be a non-empty string", None);
+    }
+    match trigger_manager
+        .cancel_trigger(context.actor_id.as_str(), trigger_id)
+        .await
+    {
+        Ok(true) => tool_result_success(json!({ "status": "ok", "trigger_id": trigger_id })),
+        Ok(false) => tool_result_error("agent_time_trigger_cancel failed: trigger not found", None),
+        Err(err) => tool_result_error(format!("agent_time_trigger_cancel failed: {err}"), None),
+    }
+}
+
+async fn tool_acp_permission_review_respond(
+    permissions: &AcpPermissionService,
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<AcpPermissionReviewRespondToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let permission_id = args.permission_id.trim();
+    if permission_id.is_empty() {
+        return tool_result_error("permission_id must be a non-empty string", None);
+    }
+    let Some(record) = (match permissions.get(permission_id).await {
+        Ok(record) => record,
+        Err(err) => {
+            return tool_result_error(format!("acp_permission_review_respond failed: {err}"), None);
+        }
+    }) else {
+        return tool_result_error("permission request not found", None);
+    };
+    let Some(team_id) = context.team_id.as_deref() else {
+        return tool_result_error("team_id is required for permission review", None);
+    };
+    if record.team_id.as_deref() != Some(team_id) {
+        return tool_result_error("permission request does not belong to this team", None);
+    }
+    if !manager
+        .team_has_member(team_id, context.actor_id.as_str())
+        .await
+        .unwrap_or(false)
+    {
+        return tool_result_error("current actor is not a member of this team", None);
+    }
+    let team = match manager.get_team(team_id).await {
+        Ok(team) => team,
+        Err(err) => {
+            return tool_result_error(
+                format!("acp_permission_review_respond failed: load team failed: {err}"),
+                None,
+            );
+        }
+    };
+    let leader_member_id = team
+        .spec
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if record.requester_actor_id.as_deref() == Some(context.actor_id.as_str()) {
+        return tool_result_error("requester cannot review its own permission request", None);
+    }
+    let authorized_actor = leader_member_id == Some(context.actor_id.as_str())
+        || record.review_target_actor_id.as_deref() == Some(context.actor_id.as_str());
+    if !authorized_actor {
+        return tool_result_error(
+            "current actor is not the active reviewer for this permission request",
+            None,
+        );
+    }
+    if record.status != "pending" {
+        return tool_result_success(json!({
+            "status": "already_resolved",
+            "permission_id": permission_id,
+            "request_status": record.status,
+        }));
+    }
+
+    let outcome = if let Some(option_id) = args.option_id.as_ref() {
+        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id.clone()))
+    } else {
+        match args.outcome.as_deref() {
+            Some("cancelled") | None => RequestPermissionOutcome::Cancelled,
+            Some(other) => {
+                return tool_result_error(
+                    format!("unsupported outcome '{other}', expected 'cancelled'"),
+                    None,
+                );
+            }
+        }
+    };
+
+    let respond_result = match permissions
+        .respond(
+            permission_id,
+            outcome,
+            args.option_id.clone(),
+            Some(context.actor_id.clone()),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            return tool_result_error(format!("acp_permission_review_respond failed: {err}"), None);
+        }
+    };
+    if matches!(respond_result, AcpPermissionRespondResult::AlreadyResolved) {
+        let request_status = permissions
+            .get(permission_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|current| current.status)
+            .unwrap_or_else(|| "resolved".to_string());
+        return tool_result_success(json!({
+            "status": "already_resolved",
+            "permission_id": permission_id,
+            "request_status": request_status,
+        }));
+    }
+    tool_result_success(json!({
+        "status": "ok",
+        "permission_id": permission_id,
+        "reviewed_by_actor_id": context.actor_id,
+    }))
+}
+
+async fn handle_tool_call<S: ActorMailboxService>(
+    tool_context: &ActorToolContext<'_, S>,
     context: &ActorMcpContext,
     params: Option<&Value>,
 ) -> Result<Value, Value> {
@@ -609,18 +1285,54 @@ async fn handle_tool_call<S: ActorMailboxService>(
     })?;
     let arguments = params.get("arguments").and_then(Value::as_object);
     let result = match name {
-        "actor_inbox" => tool_actor_inbox(service, context, arguments).await,
-        "actor_ack" => tool_actor_ack(service, context, arguments).await,
-        "actor_send" => tool_actor_send(service, context, arguments).await,
-        "team_members" => tool_team_members(manager, context, arguments).await,
+        "actor_inbox" => tool_actor_inbox(tool_context.service, context, arguments).await,
+        "actor_ack" => tool_actor_ack(tool_context.service, context, arguments).await,
+        "actor_send" => {
+            tool_actor_send(
+                tool_context.service,
+                tool_context.manager,
+                tool_context.permissions,
+                context,
+                arguments,
+            )
+            .await
+        }
+        "team_members" => tool_team_members(tool_context.manager, context, arguments).await,
+        "team_tasks" => tool_team_tasks(tool_context.manager, context, arguments).await,
+        "team_task_create" => tool_team_task_create(tool_context.manager, context, arguments).await,
+        "team_task_update" => tool_team_task_update(tool_context.manager, context, arguments).await,
+        "agent_time_trigger_set" => {
+            tool_agent_time_trigger_set(tool_context.trigger_manager, context, arguments).await
+        }
+        "agent_time_trigger_list" => {
+            tool_agent_time_trigger_list(tool_context.trigger_manager, context, arguments).await
+        }
+        "agent_time_trigger_cancel" => {
+            tool_agent_time_trigger_cancel(tool_context.trigger_manager, context, arguments).await
+        }
+        "acp_permission_review_respond" => {
+            tool_acp_permission_review_respond(
+                tool_context.permissions,
+                tool_context.manager,
+                context,
+                arguments,
+            )
+            .await
+        }
         other => tool_result_error(format!("unknown tool: {}", other), None),
     };
     Ok(result)
 }
 
+struct ActorToolContext<'a, S: ActorMailboxService> {
+    service: &'a S,
+    manager: &'a TeamManager,
+    trigger_manager: &'a AgentTimeTriggerManager,
+    permissions: &'a AcpPermissionService,
+}
+
 async fn handle_jsonrpc_request<S: ActorMailboxService>(
-    service: &S,
-    manager: &TeamManager,
+    tool_context: &ActorToolContext<'_, S>,
     context: &ActorMcpContext,
     initialized: &mut bool,
     method: &str,
@@ -663,7 +1375,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                         "title": "AgentHub Actor Mailbox",
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, and team_members for Team runtime context."
+                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, team_members for Team runtime context, team_tasks / team_task_create / team_task_update for canonical Kanban task tracking, and acp_permission_review_respond when a Team permission review request arrives."
                 }),
             )
         }
@@ -674,7 +1386,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                 "tools": actor_tools()
             }),
         ),
-        "tools/call" => match handle_tool_call(service, manager, context, params).await {
+        "tools/call" => match handle_tool_call(tool_context, context, params).await {
             Ok(result) => jsonrpc_response(id, result),
             Err(mut err) => {
                 err["id"] = id;
@@ -698,6 +1410,8 @@ fn handle_jsonrpc_notification(initialized: &mut bool, method: &str) {
 
 async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
     let db = agenthub_db::init_db().await?;
+    let trigger_manager = AgentTimeTriggerManager::new(db.clone());
+    let permissions = AcpPermissionService::new(db.clone());
     let manager = TeamManager::new(db);
     let service = manager.actor_mailbox_service();
 
@@ -705,6 +1419,12 @@ async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
     let mut reader = BufReader::new(stdin).lines();
     let mut stdout = tokio::io::stdout();
     let mut initialized = false;
+    let tool_context = ActorToolContext {
+        service: &service,
+        manager: &manager,
+        trigger_manager: &trigger_manager,
+        permissions: &permissions,
+    };
 
     while let Some(line) = reader.next_line().await? {
         let trimmed = line.trim();
@@ -750,8 +1470,7 @@ async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
         };
         if let Some(id) = request_id(obj.get("id")) {
             let response = handle_jsonrpc_request(
-                &service,
-                &manager,
+                &tool_context,
                 &context,
                 &mut initialized,
                 method,
@@ -787,6 +1506,7 @@ mod tests {
     use super::*;
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
+    use sqlx::Row;
     use uuid::Uuid;
 
     #[test]
@@ -916,8 +1636,614 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["actor_inbox", "actor_ack", "actor_send", "team_members"]
+            vec![
+                "actor_inbox",
+                "actor_ack",
+                "actor_send",
+                "team_members",
+                "team_tasks",
+                "team_task_create",
+                "team_task_update",
+                "agent_time_trigger_set",
+                "agent_time_trigger_list",
+                "agent_time_trigger_cancel",
+                "acp_permission_review_respond",
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn agent_time_trigger_tools_roundtrip() {
+        let state = build_test_state().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_time_triggers");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id,
+                name,
+                workdir,
+                command,
+                args,
+                worktree_mode,
+                worktree_repo,
+                worktree_ref,
+                code_mode,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'created', ?7, ?8)
+            "#,
+        )
+        .bind("trigger-agent")
+        .bind("trigger-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert trigger agent");
+        let manager = AgentTimeTriggerManager::new(state.db.clone());
+        let context = ActorMcpContext {
+            team_id: None,
+            current_run_id: None,
+            actor_id: "trigger-agent".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let created = tool_agent_time_trigger_set(
+            &manager,
+            &context,
+            Some(
+                json!({
+                    "delay_seconds": 30,
+                    "message": "Check the queue again."
+                })
+                .as_object()
+                .expect("args object"),
+            ),
+        )
+        .await;
+        assert_eq!(created["isError"], Value::Bool(false));
+        let trigger_id = created["structuredContent"]["id"]
+            .as_str()
+            .expect("trigger id")
+            .to_string();
+
+        let listed = tool_agent_time_trigger_list(&manager, &context, None).await;
+        let listed_records = listed["structuredContent"]
+            .as_array()
+            .expect("listed records");
+        assert_eq!(listed_records.len(), 1);
+        assert_eq!(listed_records[0]["id"], Value::from(trigger_id.clone()));
+
+        let canceled = tool_agent_time_trigger_cancel(
+            &manager,
+            &context,
+            Some(
+                json!({
+                    "trigger_id": trigger_id
+                })
+                .as_object()
+                .expect("cancel args"),
+            ),
+        )
+        .await;
+        assert_eq!(canceled["isError"], Value::Bool(false));
+    }
+
+    #[tokio::test]
+    async fn acp_permission_review_respond_updates_pending_team_request() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-permission-review-{}", Uuid::new_v4()),
+                description: Some("actor mcp permission review".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("worker-agent")
+        .bind("worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("worker-session")
+        .bind("worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-review-1")
+        .bind("worker-agent")
+        .bind("worker-session")
+        .bind("acp-session-1")
+        .bind(&team.id)
+        .bind("worker")
+        .bind("worker")
+        .bind("tool-call-1")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let context = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let response = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &context,
+            Some(
+                json!({
+                    "permission_id": "perm-review-1",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("review args"),
+            ),
+        )
+        .await;
+        assert_eq!(response["isError"], Value::Bool(false), "{response}");
+
+        let row = sqlx::query(
+            "SELECT status, selected_option_id, reviewed_by_actor_id FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind("perm-review-1")
+        .fetch_one(&state.db)
+        .await
+        .expect("load permission request");
+        assert_eq!(row.get::<String, _>("status"), "responded");
+        assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
+        assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "leader");
+    }
+
+    #[tokio::test]
+    async fn acp_permission_review_respond_reports_already_resolved_for_second_reviewer() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-permission-race-{}", Uuid::new_v4()),
+                description: Some("actor mcp permission race".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("worker-agent-race")
+        .bind("worker-agent-race")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("worker-session-race")
+        .bind("worker-agent-race")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-review-race")
+        .bind("worker-agent-race")
+        .bind("worker-session-race")
+        .bind("acp-session-race")
+        .bind(&team.id)
+        .bind("worker")
+        .bind("worker")
+        .bind("tool-call-race")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let leader = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let first = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "permission_id": "perm-review-race",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("review args"),
+            ),
+        )
+        .await;
+        assert_eq!(first["isError"], Value::Bool(false), "{first}");
+        let first_payload = serde_json::from_str::<Value>(
+            first["content"][0]["text"]
+                .as_str()
+                .expect("first payload text"),
+        )
+        .expect("parse first payload");
+        assert_eq!(first_payload["status"], "ok");
+        assert_eq!(first_payload["permission_id"], "perm-review-race");
+        assert_eq!(first_payload["reviewed_by_actor_id"], "leader");
+
+        let second = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "permission_id": "perm-review-race",
+                    "outcome": "cancelled"
+                })
+                .as_object()
+                .expect("second review args"),
+            ),
+        )
+        .await;
+        assert_eq!(second["isError"], Value::Bool(false), "{second}");
+        let second_payload = second["content"][0]["text"]
+            .as_str()
+            .expect("second payload text");
+        assert!(
+            second_payload.contains("\"status\":\"already_resolved\""),
+            "{second_payload}"
+        );
+        assert!(
+            second_payload.contains("\"request_status\":\"responded\""),
+            "{second_payload}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leader_delegation_updates_active_reviewer_and_blocks_other_members() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-permission-delegate-{}", Uuid::new_v4()),
+                description: Some("actor mcp permission delegation".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"observer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-permission-delegate"),
+                json!({"goal":"review"}),
+            )
+            .await
+            .expect("create run");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("worker-agent-delegate")
+        .bind("worker-agent-delegate")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("worker-session-delegate")
+        .bind("worker-agent-delegate")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                review_target_actor_id,
+                review_dispatch_status,
+                review_delivery_run_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'pending', ?14)
+            "#,
+        )
+        .bind("perm-review-delegate")
+        .bind("worker-agent-delegate")
+        .bind("worker-session-delegate")
+        .bind("acp-session-delegate")
+        .bind(&team.id)
+        .bind("worker")
+        .bind("worker")
+        .bind("leader")
+        .bind("leader_dispatched")
+        .bind(&run.id)
+        .bind("tool-call-delegate")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let service = state.teams.actor_mailbox_service();
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let leader = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: Some(run.id.clone()),
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let reviewer = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: Some(run.id.clone()),
+            actor_id: "reviewer".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let observer = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: Some(run.id.clone()),
+            actor_id: "observer".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let delegated = tool_actor_send(
+            &service,
+            &state.teams,
+            &permissions,
+            &leader,
+            Some(
+                json!({
+                    "to_actor_id":"reviewer",
+                    "payload":{
+                        "type":"permission_review_request",
+                        "permission_id":"perm-review-delegate",
+                        "review_target_actor_id":"leader"
+                    }
+                })
+                .as_object()
+                .expect("delegate args"),
+            ),
+        )
+        .await;
+        assert_eq!(delegated["isError"], Value::Bool(false), "{delegated}");
+
+        let delegated_row = sqlx::query(
+            "SELECT review_target_actor_id, review_dispatch_status FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind("perm-review-delegate")
+        .fetch_one(&state.db)
+        .await
+        .expect("load delegated permission");
+        assert_eq!(
+            delegated_row.get::<String, _>("review_target_actor_id"),
+            "reviewer"
+        );
+        assert_eq!(
+            delegated_row.get::<String, _>("review_dispatch_status"),
+            "leader_delegated"
+        );
+
+        let blocked = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &observer,
+            Some(
+                json!({
+                    "permission_id": "perm-review-delegate",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("observer args"),
+            ),
+        )
+        .await;
+        assert_eq!(blocked["isError"], Value::Bool(true), "{blocked}");
+        assert_eq!(
+            blocked["content"][0]["text"],
+            "current actor is not the active reviewer for this permission request"
+        );
+
+        let approved = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &reviewer,
+            Some(
+                json!({
+                    "permission_id": "perm-review-delegate",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("reviewer args"),
+            ),
+        )
+        .await;
+        assert_eq!(approved["isError"], Value::Bool(false), "{approved}");
     }
 
     #[test]
@@ -1074,6 +2400,14 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let tool_context = ActorToolContext {
+            service: &service,
+            manager: &state.teams,
+            trigger_manager: &trigger_manager,
+            permissions: &permissions,
+        };
         let context = ActorMcpContext {
             team_id: Some(team.id),
             current_run_id: Some(run.id),
@@ -1083,8 +2417,7 @@ mod tests {
 
         let mut initialized = false;
         let response = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &context,
             &mut initialized,
             "tools/list",
@@ -1127,6 +2460,14 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let tool_context = ActorToolContext {
+            service: &service,
+            manager: &state.teams,
+            trigger_manager: &trigger_manager,
+            permissions: &permissions,
+        };
 
         let mut planner_initialized = false;
         let planner_context = ActorMcpContext {
@@ -1136,8 +2477,7 @@ mod tests {
             default_channel: "coordination".to_string(),
         };
         let init_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &planner_context,
             &mut planner_initialized,
             "initialize",
@@ -1152,8 +2492,7 @@ mod tests {
         assert!(planner_initialized);
 
         let list_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &planner_context,
             &mut planner_initialized,
             "tools/list",
@@ -1169,12 +2508,23 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             tool_names,
-            vec!["actor_inbox", "actor_ack", "actor_send", "team_members"]
+            vec![
+                "actor_inbox",
+                "actor_ack",
+                "actor_send",
+                "team_members",
+                "team_tasks",
+                "team_task_create",
+                "team_task_update",
+                "agent_time_trigger_set",
+                "agent_time_trigger_list",
+                "agent_time_trigger_cancel",
+                "acp_permission_review_respond",
+            ]
         );
 
         let send_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &planner_context,
             &mut planner_initialized,
             "tools/call",
@@ -1205,8 +2555,7 @@ mod tests {
         };
         let mut reviewer_initialized = false;
         let _ = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &reviewer_context,
             &mut reviewer_initialized,
             "initialize",
@@ -1217,8 +2566,7 @@ mod tests {
         assert!(reviewer_initialized);
 
         let inbox_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1238,8 +2586,7 @@ mod tests {
         assert_eq!(inbox_messages[0]["status"], "delivered");
 
         let ack_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1257,8 +2604,7 @@ mod tests {
         );
 
         let delivered_resp = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &reviewer_context,
             &mut reviewer_initialized,
             "tools/call",
@@ -1400,6 +2746,14 @@ mod tests {
         let team_id = team.id.clone();
         let run_id = run.id.clone();
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let tool_context = ActorToolContext {
+            service: &service,
+            manager: &state.teams,
+            trigger_manager: &trigger_manager,
+            permissions: &permissions,
+        };
         let context = ActorMcpContext {
             team_id: Some(team_id.clone()),
             current_run_id: Some(run_id),
@@ -1408,8 +2762,7 @@ mod tests {
         };
         let mut initialized = false;
         let _ = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &context,
             &mut initialized,
             "initialize",
@@ -1419,8 +2772,7 @@ mod tests {
         .await;
 
         let response = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &context,
             &mut initialized,
             "tools/call",
@@ -1464,6 +2816,182 @@ mod tests {
         assert_eq!(members[1]["session_id"], "session-worker");
         assert_eq!(members[1]["session_status"], "running");
         assert_eq!(members[1]["steps"][0]["status"], "submitted");
+    }
+
+    #[tokio::test]
+    async fn team_task_tools_create_list_and_update_canonical_tasks() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-tasks-{}", Uuid::new_v4()),
+                description: Some("actor mcp team tasks".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let _shared = state
+            .teams
+            .ensure_shared_thread_target_for_team(&team.id, "leader")
+            .await
+            .expect("ensure shared thread");
+        let leader = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let worker = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "worker".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let created = tool_team_task_create(
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "title": "Investigate planner regression",
+                    "status": "in_progress",
+                    "topic": "planner regression",
+                    "context": {
+                        "source": "leader_planning",
+                        "acceptance": "Regression root cause is identified."
+                    }
+                })
+                .as_object()
+                .expect("create args"),
+            ),
+        )
+        .await;
+        assert_eq!(created["isError"], Value::Bool(false), "{created}");
+        let created_task = &created["structuredContent"]["task"];
+        assert_eq!(created_task["title"], "Investigate planner regression");
+        assert_eq!(created_task["status"], "in_progress");
+        let created_task_id = created_task["id"]
+            .as_str()
+            .expect("created task id")
+            .to_string();
+
+        let listed = tool_team_tasks(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "status": "in_progress"
+                })
+                .as_object()
+                .expect("list args"),
+            ),
+        )
+        .await;
+        assert_eq!(listed["isError"], Value::Bool(false), "{listed}");
+        let listed_tasks = listed["structuredContent"]
+            .as_array()
+            .expect("listed tasks");
+        assert_eq!(listed_tasks.len(), 1);
+        assert_eq!(listed_tasks[0]["id"], Value::from(created_task_id.clone()));
+        assert_ne!(listed_tasks[0]["title"], Value::from("all"));
+
+        let updated = tool_team_task_update(
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "task_id": created_task_id,
+                    "status": "in_review"
+                })
+                .as_object()
+                .expect("update args"),
+            ),
+        )
+        .await;
+        assert_eq!(updated["isError"], Value::Bool(false), "{updated}");
+        assert_eq!(updated["structuredContent"]["status"], "in_review");
+    }
+
+    #[tokio::test]
+    async fn worker_cannot_create_or_update_team_tasks() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-task-authz-{}", Uuid::new_v4()),
+                description: Some("actor mcp team task authz".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let worker = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "worker".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let create = tool_team_task_create(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "title": "Should fail"
+                })
+                .as_object()
+                .expect("create args"),
+            ),
+        )
+        .await;
+        assert_eq!(create["isError"], Value::Bool(true), "{create}");
+        assert_eq!(
+            create["content"][0]["text"],
+            "only leader may create or update Team tasks"
+        );
+
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "Leader-owned task",
+                "leader",
+                json!({}),
+                "group_chat",
+                None,
+            )
+            .await
+            .expect("create task");
+        let update = tool_team_task_update(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "task_id": task.id,
+                    "status": "completed"
+                })
+                .as_object()
+                .expect("update args"),
+            ),
+        )
+        .await;
+        assert_eq!(update["isError"], Value::Bool(true), "{update}");
+        assert_eq!(
+            update["content"][0]["text"],
+            "only leader may create or update Team tasks"
+        );
     }
 
     #[tokio::test]
@@ -1521,6 +3049,14 @@ mod tests {
         .expect("insert leader session");
 
         let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let tool_context = ActorToolContext {
+            service: &service,
+            manager: &state.teams,
+            trigger_manager: &trigger_manager,
+            permissions: &permissions,
+        };
         let context = ActorMcpContext {
             team_id: Some(team.id.clone()),
             current_run_id: None,
@@ -1529,8 +3065,7 @@ mod tests {
         };
         let mut initialized = false;
         let _ = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &context,
             &mut initialized,
             "initialize",
@@ -1540,8 +3075,7 @@ mod tests {
         .await;
 
         let response = handle_jsonrpc_request(
-            &service,
-            &state.teams,
+            &tool_context,
             &context,
             &mut initialized,
             "tools/call",

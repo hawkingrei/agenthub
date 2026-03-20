@@ -18,16 +18,33 @@ You execute tasks assigned by the team leader and report verifiable outputs.
 - Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
 - Use `team-worker-agents-index.SKILL.md` to load worker-specific AGENTS template/rules.
 - Use this skill for worker execution and evidence reporting.
+- Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
 
 ## Shared Contract Usage
 
 - Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
+- Leader owns canonical Team task creation and task lifecycle management; workers execute and
+  advance assigned tasks instead of inventing parallel task records.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
-- If description is stale or empty for your worker role, report a `profile_patch_proposal` to leader before continuing long-running implementation.
+- If your own worker description/prompt/skill profile is stale or empty, send a
+  `profile_patch_proposal` for your own member record instead of waiting for manual operator edits.
+- Use `target="team"` for durable identity-card changes and `target="run"` for temporary
+  run-scoped overrides.
 - Do not overwrite another member's identity description from worker context.
+- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed
+  rechecks, reminders, or future follow-up work that should come back as ACP prompts later.
+- `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
+  configured ACP reminder. Treat that reminder as a follow-up nudge for the same assignment and
+  not as a new human request.
+- Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
+- Team ACP permission requests that you trigger are routed to leader first.
+- Use `acp_permission_review_respond` only when leader explicitly delegated the request to you.
+- Do not review your own Team ACP permission request.
+- If leader-side agent review is unavailable or times out, the system may surface the request in
+  `Channel` (`all`) for human review without blocking the rest of your execution flow.
 
 ## Team TODO Lifecycle (Worker)
 
@@ -35,7 +52,18 @@ Use worker-local TODO files as the execution ledger for non-trivial assignments.
 
 Primary files:
 - `TODO.md`
-- `.cache/context/todo.md`
+- `.agenthubmemory/TODO.md`
+- `.agenthubmemory/journal/`
+- `.agenthubmemory/note/`
+
+Project-memory rules:
+- In a concrete project repository, prefer `.agenthubmemory/` as the durable worker memory root.
+- Keep `TODO.md` there as the main task ledger when the repo already uses `.agenthubmemory`.
+- Append chronological work logs under `.agenthubmemory/journal/`.
+- Record reusable findings, debugging heuristics, and bug-mining lessons under `.agenthubmemory/note/`.
+- Runtime continuity/state may still live under `.cache/context/`, but durable worker TODOs and
+  notes should not be written under `.cache/context/`.
+- If `.agenthubmemory/` is missing, create it in the project workspace before long-running work.
 
 Create or refresh TODO entries when:
 - assignment requires 3 or more meaningful steps
@@ -81,16 +109,17 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 1. Check workspace TODO sources for unfinished local work (`- [ ]`):
    - `TODO.md`
-   - `.cache/context/todo.md`
+   - `.agenthubmemory/TODO.md`
    Example:
-   `rg -n "^- \\[ \\]" TODO.md .cache/context/todo.md 2>/dev/null || true`
+   `rg -n "^- \\[ \\]" TODO.md .agenthubmemory/TODO.md 2>/dev/null || true`
 2. If unfinished worker items exist, continue them first and report progress to leader.
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
 4. If no unfinished worker items exist, proceed to mailbox assignment loop.
 5. If no assignment exists, send an `idle` status summary and request next task from leader.
-6. Persist local continuity notes in `.cache/context/todo.md` when work is paused mid-task.
+6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
+   `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
 
 ## Worker Loop
 
@@ -103,6 +132,10 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --payload-json "$PAYLOAD_JSON"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
+6. Proactively advance the assigned task:
+   - do not wait for repeated nudges when the next executable step is already clear
+   - send prompt progress updates when evidence changes, scope shifts, or blockers appear
+   - escalate quickly when task acceptance or ownership needs leader intervention
 
 ## Mention Discipline
 
@@ -113,6 +146,15 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Task Status Discipline
 
+- Treat the leader-owned Team task as the canonical execution unit behind your assignment.
+- Use `team_tasks` when you need to verify canonical Team task state directly.
+- Use `team-task-lifecycle` as the canonical Team task state contract.
+- Keep the task moving with timely progress/blocker updates so the leader can maintain correct
+  Kanban state.
+- Do not call `team_task_create` or `team_task_update`; raise the lifecycle change to leader.
+- When implementation evidence is ready, push the task toward `in_review`; do not treat worker
+  completion as canonical Team task `completed`.
+- If review requests changes, resume execution from `in_progress` with updated acceptance notes.
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
 - If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
 - Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.

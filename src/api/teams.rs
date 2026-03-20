@@ -39,27 +39,31 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_SKILLS: [&str; 4] = [
+const DEFAULT_TEAM_LEADER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-leader-orchestrator",
     "team-actor-mailbox",
 ];
-const DEFAULT_TEAM_WORKER_SKILLS: [&str; 4] = [
+const DEFAULT_TEAM_WORKER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-worker-executor",
     "team-actor-mailbox",
 ];
-const REQUIRED_TEAM_LEADER_SKILLS: [&str; 4] = [
+const REQUIRED_TEAM_LEADER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-leader-orchestrator",
     "team-actor-mailbox",
 ];
-const REQUIRED_TEAM_WORKER_SKILLS: [&str; 4] = [
+const REQUIRED_TEAM_WORKER_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
+    "team-task-lifecycle",
     "team-worker-executor",
     "team-actor-mailbox",
 ];
@@ -85,7 +89,7 @@ fn team_owner_matches_user(team: &TeamDefinitionRecord, user: &UserRecord) -> bo
     }
 }
 
-async fn load_team_for_user(
+pub(crate) async fn load_team_for_user(
     state: &AppState,
     team_id: &str,
     user: &UserRecord,
@@ -795,7 +799,8 @@ async fn send_team_task_message(
         .map_err(map_team_internal_error)?;
     if from_actor_id == actor_scope.user_actor_id
         && let Err(err) =
-            maybe_forward_task_message_to_mailbox(&state, &team, &actor_scope, &message).await
+            maybe_forward_task_message_to_mailbox(&state, &team, &task, &actor_scope, &message)
+                .await
     {
         tracing::warn!(
             team_id = %team.id,
@@ -1016,7 +1021,7 @@ async fn get_team_run_snapshot(
     let run_member_overrides = extract_run_member_profile_overrides(&run.input);
 
     let mut members = Vec::with_capacity(member_specs.len());
-    for member in member_specs {
+    for mut member in member_specs {
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
@@ -1040,6 +1045,9 @@ async fn get_team_run_snapshot(
         if let Some(override_item) = run_member_overrides.get(member.member_id.as_str()) {
             if let Some(prompt_append) = override_item.prompt_append.as_deref() {
                 prompt = Some(merge_prompt_append(prompt.as_deref(), Some(prompt_append)));
+            }
+            if let Some(description) = override_item.description.as_deref() {
+                member.description = Some(description.to_string());
             }
             let _added = merge_skills_unique(&mut skills, &override_item.skills_add);
         }
@@ -1384,29 +1392,31 @@ async fn maybe_notify_actor_new_mailbox_message_type(
         return Ok(());
     };
 
-    let has_pending_same_type = state
-        .teams
-        .has_pending_actor_message_payload_type(
-            run_id,
-            &message.to_actor_id,
-            payload_type.as_str(),
-            Some(message.message_id),
-        )
-        .await?;
-    if has_pending_same_type {
-        append_actor_mailbox_type_hint_event(
-            state,
-            run_id,
-            serde_json::json!({
-                "status": "suppressed",
-                "reason": "pending_same_type_exists",
-                "message_id": message.message_id,
-                "to_actor_id": message.to_actor_id,
-                "payload_type": payload_type,
-            }),
-        )
-        .await;
-        return Ok(());
+    if should_suppress_mailbox_type_hint_for_pending_same_type(payload_type.as_str()) {
+        let has_pending_same_type = state
+            .teams
+            .has_pending_actor_message_payload_type(
+                run_id,
+                &message.to_actor_id,
+                payload_type.as_str(),
+                Some(message.message_id),
+            )
+            .await?;
+        if has_pending_same_type {
+            append_actor_mailbox_type_hint_event(
+                state,
+                run_id,
+                serde_json::json!({
+                    "status": "suppressed",
+                    "reason": "pending_same_type_exists",
+                    "message_id": message.message_id,
+                    "to_actor_id": message.to_actor_id,
+                    "payload_type": payload_type,
+                }),
+            )
+            .await;
+            return Ok(());
+        }
     }
 
     let hint = build_actor_mailbox_type_hint_prompt(run_id, payload_type.as_str());
@@ -1470,6 +1480,10 @@ fn build_actor_mailbox_type_hint_prompt(run_id: &str, payload_type: &str) -> Str
     format!(
         "New mailbox message type '{payload_type}' is pending in run '{run_id}'. Use actor_inbox to inspect pending messages and batch-handle this type before ack."
     )
+}
+
+fn should_suppress_mailbox_type_hint_for_pending_same_type(payload_type: &str) -> bool {
+    !payload_type.trim().eq_ignore_ascii_case("chat_message")
 }
 
 async fn list_team_run_inbox(
@@ -1575,14 +1589,19 @@ fn parse_profile_patch_proposal(
         .map(parse_optional_prompt_append)
         .transpose()?
         .flatten();
+    let description = payload_obj
+        .get("description")
+        .map(parse_optional_profile_patch_description)
+        .transpose()?
+        .flatten();
     let skills_add = payload_obj
         .get("skills_add")
         .map(parse_profile_patch_skills_add)
         .transpose()?
         .unwrap_or_default();
-    if prompt_append.is_none() && skills_add.is_empty() {
+    if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
         return Err(ApiError::bad_request(
-            "profile_patch_proposal requires prompt_append and/or skills_add",
+            "profile_patch_proposal requires prompt_append and/or description and/or skills_add",
         ));
     }
 
@@ -1590,6 +1609,7 @@ fn parse_profile_patch_proposal(
         target,
         member_id,
         prompt_append,
+        description,
         skills_add,
     }))
 }
@@ -1650,6 +1670,22 @@ fn parse_profile_patch_skills_add(value: &Value) -> Result<Vec<String>, ApiError
     Ok(out)
 }
 
+fn parse_optional_profile_patch_description(value: &Value) -> Result<Option<String>, ApiError> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let raw = value.as_str().ok_or_else(|| {
+        ApiError::bad_request("profile_patch_proposal.description must be a non-empty string")
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal.description must be a non-empty string",
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 async fn apply_profile_patch_proposal(
     state: &AppState,
     run: &TeamRunRecord,
@@ -1697,13 +1733,16 @@ async fn apply_profile_patch_proposal(
                         "applied_by": from_actor_id,
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
+                        "description": proposal.description,
                         "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
+                            "description": before.description,
                             "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
+                            "description": after.description,
                             "skills": after.skills_add,
                         },
                     }),
@@ -1738,13 +1777,16 @@ async fn apply_profile_patch_proposal(
                         "applied_by": from_actor_id,
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
+                        "description": proposal.description,
                         "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
+                            "description": before.description,
                             "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
+                            "description": after.description,
                             "skills": after.skills_add,
                         },
                     }),
@@ -1787,6 +1829,12 @@ fn apply_profile_patch_to_team_spec(
             Some(prompt_append),
         );
         member_obj.insert("prompt".to_string(), Value::String(merged));
+    }
+    if let Some(description) = proposal.description.as_deref() {
+        member_obj.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
     }
     if !proposal.skills_add.is_empty() {
         let mut current = parse_skills_array(member_obj.get("skills"))?;
@@ -1833,6 +1881,12 @@ fn apply_profile_patch_to_run_input(
             Some(prompt_append),
         );
         member_obj.insert("prompt_append".to_string(), Value::String(merged));
+    }
+    if let Some(description) = proposal.description.as_deref() {
+        member_obj.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
     }
 
     if !proposal.skills_add.is_empty() {
@@ -1925,6 +1979,12 @@ fn extract_member_profile_override_from_spec(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
+        description: member_obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
         skills_add: parse_skills_array(member_obj.get("skills"))?,
     })
 }
@@ -1957,6 +2017,12 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
+        let description = member_obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         let skills_add = member_obj
             .get("skills_add")
             .and_then(Value::as_array)
@@ -1974,13 +2040,14 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
                 out
             })
             .unwrap_or_default();
-        if prompt_append.is_none() && skills_add.is_empty() {
+        if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
             continue;
         }
         out.insert(
             member_id.clone(),
             MemberProfileOverride {
                 prompt_append,
+                description,
                 skills_add,
             },
         );
@@ -2093,6 +2160,7 @@ fn normalize_task_status(value: Option<&str>) -> Result<TeamTaskStatus, ApiError
     {
         Some("open") => Ok(TeamTaskStatus::Open),
         Some("in_progress") => Ok(TeamTaskStatus::InProgress),
+        Some("in_review") => Ok(TeamTaskStatus::InReview),
         Some("completed") => Ok(TeamTaskStatus::Completed),
         Some("canceled") => Ok(TeamTaskStatus::Canceled),
         _ => Err(ApiError::bad_request(&format!(
@@ -2288,12 +2356,10 @@ fn resolve_task_message_target(
 async fn maybe_forward_task_message_to_mailbox(
     state: &AppState,
     team: &TeamDefinitionRecord,
+    task: &TeamTaskRecord,
     actor_scope: &TaskActorScope,
     message: &TeamConversationMessageRecord,
 ) -> Result<(), ApiError> {
-    let Some(run) = load_latest_active_run_for_team(state, &team.id).await? else {
-        return Ok(());
-    };
     let Some(mailbox_sender) = resolve_task_mailbox_sender(actor_scope) else {
         return Ok(());
     };
@@ -2304,6 +2370,11 @@ async fn maybe_forward_task_message_to_mailbox(
     if recipient_ids.is_empty() {
         return Ok(());
     }
+    let Some(run) =
+        resolve_task_message_mailbox_run(state, team, task, &message.conversation_id).await?
+    else {
+        return Ok(());
+    };
     for to_actor_id in recipient_ids {
         let forwarded_payload = build_task_mailbox_forward_payload(
             &message.payload,
@@ -2358,6 +2429,38 @@ async fn load_latest_active_run_for_team(
     Ok(runs
         .into_iter()
         .find(|run| is_team_run_status_active(&run.status)))
+}
+
+async fn resolve_task_message_mailbox_run(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+    task: &TeamTaskRecord,
+    conversation_id: &str,
+) -> Result<Option<TeamRunRecord>, ApiError> {
+    if let Some(run) = load_latest_active_run_for_team(state, &team.id).await? {
+        return Ok(Some(run));
+    }
+    if !is_shared_thread_task(task) {
+        return Ok(None);
+    }
+    let run = state
+        .teams
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, conversation_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Some(run))
+}
+
+fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
+    if task.title.trim().eq_ignore_ascii_case("all") {
+        return true;
+    }
+    task.context
+        .as_object()
+        .and_then(|obj| obj.get("bootstrap_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
 }
 
 fn is_team_run_status_active(status: &TeamRunStatus) -> bool {
@@ -3193,12 +3296,14 @@ struct ProfilePatchProposal {
     target: ProfilePatchTarget,
     member_id: String,
     prompt_append: Option<String>,
+    description: Option<String>,
     skills_add: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct MemberProfileOverride {
     prompt_append: Option<String>,
+    description: Option<String>,
     skills_add: Vec<String>,
 }
 

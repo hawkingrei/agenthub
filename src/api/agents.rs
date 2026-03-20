@@ -9,10 +9,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::acp::{
-    AcpActorSkillContext, AcpPermissionRecord, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
-    normalize_actor_cli_path,
+    AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
+    default_actor_cli_path, normalize_actor_cli_path,
 };
-use crate::agent::{AgentConfig, AgentRecord, AgentSendInputError, WorktreeMode};
+use crate::agent::{
+    AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
+    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode,
+};
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::state::AppState;
@@ -31,6 +34,9 @@ pub struct CreateAgentRequest {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: Option<bool>,
+    pub agent_loop_enabled: Option<bool>,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -59,6 +65,8 @@ pub struct AgentDiscoveryIdentity {
 pub struct AgentDiscoveryRuntime {
     pub acp_provider: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
     pub worktree_mode: WorktreeMode,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -92,10 +100,28 @@ pub struct SetCodeModeRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub struct SetAgentLoopRequest {
+    pub enabled: bool,
+    pub idle_seconds: Option<i64>,
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
     pub session_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateAgentTimeTriggerRequest {
+    pub delay_seconds: i64,
+    pub message: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ListAgentTimeTriggersQuery {
+    pub limit: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -138,9 +164,18 @@ pub fn router(state: AppState) -> Router {
         .route("/:id/start", post(start_agent))
         .route("/:id/stop", post(stop_agent))
         .route("/:id/input", post(send_input))
+        .route(
+            "/:id/triggers",
+            post(create_agent_time_trigger).get(list_agent_time_triggers),
+        )
+        .route(
+            "/:id/triggers/:trigger_id/cancel",
+            post(cancel_agent_time_trigger),
+        )
         .route("/:id", delete(delete_agent))
         .route("/:id/events", get(list_events))
         .route("/:id/code_mode", post(set_code_mode))
+        .route("/:id/agent_loop", post(set_agent_loop))
         .route("/:id/acp/session/clear", post(clear_acp_session))
         .route("/:id/acp/mode", post(set_acp_mode))
         .route("/:id/acp/model", post(set_acp_model))
@@ -177,6 +212,9 @@ async fn create_agent(
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
         code_mode: payload.code_mode.unwrap_or(true),
+        agent_loop_enabled: payload.agent_loop_enabled.unwrap_or(false),
+        agent_loop_idle_seconds: payload.agent_loop_idle_seconds,
+        agent_loop_prompt: payload.agent_loop_prompt,
     };
     let agent = if source == AGENT_SOURCE_MANUAL {
         state.agents.create_agent(config).await?
@@ -295,6 +333,63 @@ async fn send_input(
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
+async fn create_agent_time_trigger(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<CreateAgentTimeTriggerRequest>,
+) -> Result<Json<AgentTimeTriggerRecord>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    if !(1..=60 * 60 * 24 * 30).contains(&payload.delay_seconds) {
+        return Err(ApiError::bad_request(
+            "delay_seconds must be between 1 and 2592000",
+        ));
+    }
+    let delay_seconds = payload.delay_seconds;
+    let fire_at = chrono::Utc::now().timestamp() + delay_seconds;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let record = manager
+        .create_time_trigger(AgentTimeTriggerCreateInput {
+            agent_id: agent_id.clone(),
+            created_by_actor_id: agent_id,
+            message_text: payload.message,
+            fire_at,
+        })
+        .await?;
+    Ok(Json(record))
+}
+
+async fn list_agent_time_triggers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Query(query): Query<ListAgentTimeTriggersQuery>,
+) -> Result<Json<Vec<AgentTimeTriggerRecord>>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let records = manager
+        .list_triggers_for_agent(&agent_id, query.limit.unwrap_or(50))
+        .await?;
+    Ok(Json(records))
+}
+
+async fn cancel_agent_time_trigger(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((agent_id, trigger_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    ensure_agent_exists(&state, &agent_id).await?;
+    let manager = AgentTimeTriggerManager::new(state.db.clone());
+    let canceled = manager.cancel_trigger(&agent_id, &trigger_id).await?;
+    if !canceled {
+        return Err(ApiError::not_found("agent time trigger not found"));
+    }
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
 async fn list_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -328,6 +423,45 @@ async fn set_code_mode(
     state
         .agents
         .set_code_mode(&agent_id, payload.code_mode)
+        .await?;
+    Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+async fn set_agent_loop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetAgentLoopRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let prompt = payload
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if payload.enabled && prompt.is_none() {
+        return Err(ApiError::bad_request(
+            "agent_loop.prompt is required when enabling agent loop",
+        ));
+    }
+    if payload.enabled
+        && !payload
+            .idle_seconds
+            .is_some_and(|value| (10..=86_400).contains(&value))
+    {
+        return Err(ApiError::bad_request(
+            "agent_loop.idle_seconds must be between 10 and 86400 when enabling agent loop",
+        ));
+    }
+    state
+        .agents
+        .set_agent_loop_config(
+            &agent_id,
+            payload.enabled,
+            payload.idle_seconds,
+            prompt.as_deref(),
+        )
         .await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
@@ -431,6 +565,24 @@ async fn list_permissions(
     Ok(Json(records))
 }
 
+async fn ensure_agent_exists(state: &AppState, agent_id: &str) -> Result<(), ApiError> {
+    state
+        .agents
+        .get_agent(agent_id)
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            if error
+                .downcast_ref::<sqlx::Error>()
+                .is_some_and(|inner| matches!(inner, sqlx::Error::RowNotFound))
+            {
+                ApiError::not_found("agent not found")
+            } else {
+                error.into()
+            }
+        })
+}
+
 async fn respond_permission(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -438,7 +590,15 @@ async fn respond_permission(
     Json(payload): Json<PermissionResponseRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let _ = agent_id;
+    if !state
+        .acp_permissions
+        .belongs_to_agent(&permission_id, &agent_id)
+        .await?
+    {
+        return Err(ApiError::not_found(
+            "permission request not found for agent",
+        ));
+    }
     let outcome = if let Some(option_id) = payload.option_id.as_ref() {
         agent_client_protocol::RequestPermissionOutcome::Selected(
             agent_client_protocol::SelectedPermissionOutcome::new(option_id.clone()),
@@ -453,11 +613,15 @@ async fn respond_permission(
             }
         }
     };
-    state
+    let respond_result = state
         .acp_permissions
-        .respond(&permission_id, outcome, payload.option_id)
+        .respond(&permission_id, outcome, payload.option_id, None)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    let status = match respond_result {
+        AcpPermissionRespondResult::Applied => "ok",
+        AcpPermissionRespondResult::AlreadyResolved => "already_resolved",
+    };
+    Ok(Json(serde_json::json!({ "status": status })))
 }
 
 fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
@@ -547,6 +711,9 @@ fn build_agent_discovery_card(
     if agent.code_mode {
         capability_tags.push("code_mode".to_string());
     }
+    if agent.agent_loop_enabled {
+        capability_tags.push("agent_loop".to_string());
+    }
     if matches!(
         agent.worktree_mode,
         WorktreeMode::CreateWorktree | WorktreeMode::ReuseWorktree
@@ -581,6 +748,8 @@ fn build_agent_discovery_card(
         runtime: AgentDiscoveryRuntime {
             acp_provider: acp_provider.map(str::to_string),
             code_mode: agent.code_mode,
+            agent_loop_enabled: agent.agent_loop_enabled,
+            agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             worktree_mode: agent.worktree_mode.clone(),
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
@@ -690,6 +859,7 @@ fn parse_start_actor_runtime_context(
             .member_role
             .map(|value| value.trim().to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     }))
 }
@@ -706,6 +876,7 @@ mod tests {
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
     use serde_json::{Value, json};
+    use sqlx::Row;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use tower::ServiceExt;
@@ -773,6 +944,9 @@ mod tests {
             worktree_repo: Some("/tmp/repo".to_string()),
             worktree_ref: Some("main".to_string()),
             code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
             status: crate::agent::AgentStatus::Running,
             created_at: 1,
             updated_at: 2,
@@ -817,6 +991,9 @@ mod tests {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: false,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
             status: crate::agent::AgentStatus::Created,
             created_at: 1,
             updated_at: 2,
@@ -1067,6 +1244,9 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+                agent_loop_idle_seconds INTEGER,
+                agent_loop_prompt TEXT,
                 source TEXT NOT NULL DEFAULT 'manual',
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
@@ -1167,6 +1347,61 @@ mod tests {
         .execute(db)
         .await
         .expect("create team_steps");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_time_triggers");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                acp_session_id TEXT,
+                team_id TEXT,
+                requester_actor_id TEXT,
+                requester_role TEXT,
+                review_target_actor_id TEXT,
+                review_dispatch_status TEXT,
+                review_delivery_run_id TEXT,
+                review_message_id INTEGER,
+                review_dispatched_at INTEGER,
+                reviewed_by_actor_id TEXT,
+                human_review_notified_at INTEGER,
+                tool_call_id TEXT,
+                options_json TEXT NOT NULL,
+                tool_call_json TEXT,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                created_at INTEGER NOT NULL,
+                responded_at INTEGER,
+                FOREIGN KEY(agent_id) REFERENCES agents(id),
+                FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create acp_permission_requests");
     }
 
     async fn build_test_state_with_db(db: SqlitePool) -> AppState {
@@ -2156,6 +2391,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create hidden member");
@@ -2171,6 +2409,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create visible agent");
@@ -2328,6 +2569,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect("create manual agent");
@@ -2344,6 +2588,9 @@ mod tests {
                     worktree_repo: None,
                     worktree_ref: None,
                     code_mode: false,
+                    agent_loop_enabled: false,
+                    agent_loop_idle_seconds: None,
+                    agent_loop_prompt: None,
                 },
                 "team_forge",
             )
@@ -2373,5 +2620,389 @@ mod tests {
         );
 
         remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn agent_time_trigger_routes_create_list_and_cancel() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("trigger-agent")
+        .bind("trigger-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert trigger agent");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/trigger-agent/triggers",
+                Some(&token),
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check flaky test results."
+                })),
+            ))
+            .await
+            .expect("create trigger");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let trigger_id = created["id"].as_str().expect("trigger id").to_string();
+
+        let list_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/trigger-agent/triggers",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("list triggers");
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let listed = decode_json_body(list_resp).await;
+        assert_eq!(listed.as_array().map(Vec::len), Some(1));
+        assert_eq!(listed[0]["id"], Value::from(trigger_id.clone()));
+        assert_eq!(listed[0]["status"], Value::from("scheduled"));
+
+        let cancel_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/trigger-agent/triggers/{trigger_id}/cancel"),
+                Some(&token),
+                Some(json!({})),
+            ))
+            .await
+            .expect("cancel trigger");
+        assert_eq!(cancel_resp.status(), StatusCode::OK);
+        let canceled = decode_json_body(cancel_resp).await;
+        assert_eq!(canceled["status"], Value::from("ok"));
+    }
+
+    #[tokio::test]
+    async fn set_agent_loop_route_updates_agent_config_without_blocking() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("loop-agent")
+        .bind("loop-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert loop agent");
+
+        let enable_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": true,
+                    "idle_seconds": 900,
+                    "prompt": "Resume by checking the current ACP thread and taking the next step."
+                })),
+            ))
+            .await
+            .expect("enable agent loop");
+        assert_eq!(enable_resp.status(), StatusCode::OK);
+        let enabled_body = decode_json_body(enable_resp).await;
+        assert_eq!(enabled_body["status"], Value::from("ok"));
+
+        let enabled_row = sqlx::query(
+            "SELECT agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt FROM agents WHERE id = ?1",
+        )
+        .bind("loop-agent")
+        .fetch_one(&state.db)
+        .await
+        .expect("load enabled loop agent row");
+        assert_eq!(enabled_row.get::<i64, _>("agent_loop_enabled"), 1);
+        assert_eq!(enabled_row.get::<i64, _>("agent_loop_idle_seconds"), 900);
+        assert_eq!(
+            enabled_row.get::<String, _>("agent_loop_prompt"),
+            "Resume by checking the current ACP thread and taking the next step."
+        );
+
+        let invalid_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": true,
+                    "idle_seconds": 900
+                })),
+            ))
+            .await
+            .expect("reject loop config without prompt");
+        assert_eq!(invalid_resp.status(), StatusCode::BAD_REQUEST);
+        let invalid_text = decode_text_body(invalid_resp).await;
+        assert!(
+            invalid_text.contains("agent_loop.prompt is required"),
+            "unexpected error: {invalid_text}"
+        );
+
+        let disable_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/loop-agent/agent_loop",
+                Some(&token),
+                Some(json!({
+                    "enabled": false
+                })),
+            ))
+            .await
+            .expect("disable agent loop");
+        assert_eq!(disable_resp.status(), StatusCode::OK);
+
+        let disabled_row = sqlx::query(
+            "SELECT agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt FROM agents WHERE id = ?1",
+        )
+        .bind("loop-agent")
+        .fetch_one(&state.db)
+        .await
+        .expect("load disabled loop agent row");
+        assert_eq!(disabled_row.get::<i64, _>("agent_loop_enabled"), 0);
+        assert_eq!(disabled_row.get::<i64, _>("agent_loop_idle_seconds"), 900);
+        assert_eq!(
+            disabled_row.get::<String, _>("agent_loop_prompt"),
+            "Resume by checking the current ACP thread and taking the next step."
+        );
+    }
+
+    #[tokio::test]
+    async fn respond_permission_route_rejects_permission_from_other_agent() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        for agent_id in ["agent-a", "agent-b"] {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+                "#,
+            )
+            .bind(agent_id)
+            .bind(agent_id)
+            .bind("/tmp")
+            .bind("agenthub-codex-acp")
+            .bind("[]")
+            .bind("use_existing")
+            .bind(now)
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert agent");
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("session-a")
+        .bind("agent-a")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent session");
+
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind("perm-owned-by-agent-a")
+        .bind("agent-a")
+        .bind("session-a")
+        .bind("acp-session-a")
+        .bind("tool-call-a")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-b/permissions/perm-owned-by-agent-a/respond",
+                Some(&token),
+                Some(json!({
+                    "option_id": "allow"
+                })),
+            ))
+            .await
+            .expect("respond permission route");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = decode_text_body(response).await;
+        assert!(
+            body.contains("permission request not found for agent"),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn respond_permission_route_reports_already_resolved_after_first_response() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("agent-resolve")
+        .bind("agent-resolve")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("session-resolve")
+        .bind("agent-resolve")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind("perm-resolve")
+        .bind("agent-resolve")
+        .bind("session-resolve")
+        .bind("acp-session-resolve")
+        .bind("tool-call-resolve")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-resolve/permissions/perm-resolve/respond",
+                Some(&token),
+                Some(json!({
+                    "option_id": "allow"
+                })),
+            ))
+            .await
+            .expect("first respond permission route");
+        assert_eq!(first.status(), StatusCode::OK);
+        let first_body = decode_json_body(first).await;
+        assert_eq!(first_body["status"], "ok");
+
+        let second = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-resolve/permissions/perm-resolve/respond",
+                Some(&token),
+                Some(json!({
+                    "outcome": "cancelled"
+                })),
+            ))
+            .await
+            .expect("second respond permission route");
+        assert_eq!(second.status(), StatusCode::OK);
+        let second_body = decode_json_body(second).await;
+        assert_eq!(second_body["status"], "already_resolved");
     }
 }

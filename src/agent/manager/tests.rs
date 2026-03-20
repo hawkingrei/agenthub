@@ -158,6 +158,9 @@ fn build_agent_record_for_policy(
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,
         code_mode: true,
+        agent_loop_enabled: false,
+        agent_loop_idle_seconds: None,
+        agent_loop_prompt: None,
         status: AgentStatus::Created,
         created_at: 0,
         updated_at: 0,
@@ -179,6 +182,7 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
     let session_id = "session-leader-1";
@@ -202,7 +206,7 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
 }
 
 #[test]
-fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
+fn runtime_start_policy_allows_worker_use_existing_workdir_for_validation() {
     let tmp = std::env::temp_dir().join(format!("agenthub-worker-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     let agent =
@@ -215,15 +219,16 @@ fn runtime_start_policy_rejects_worker_without_create_worktree_mode() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
-    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
-        .expect_err("worker must use create_worktree");
-    assert!(
-        err.to_string()
-            .contains("team worker policy requires worktree_mode=create_worktree")
-    );
+    let policy = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
+        .expect("worker use_existing workdir should be allowed");
+    assert!(matches!(policy.worktree_mode, WorktreeMode::UseExisting));
+    assert_eq!(policy.workdir, agent.workdir);
+    assert!(policy.worktree_repo.is_none());
+    assert!(policy.worker_branch.is_none());
 }
 
 #[test]
@@ -245,6 +250,7 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -281,6 +287,7 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -304,6 +311,7 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -325,6 +333,7 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 
@@ -353,6 +362,7 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
         actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
+        contract_version: None,
         continuity: None,
     };
 

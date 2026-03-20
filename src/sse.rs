@@ -9,13 +9,16 @@ use axum::{
     routing::get,
 };
 use futures::stream::Stream;
+use sqlx::Error as SqlxError;
 use tokio::{
     sync::{broadcast, mpsc, watch},
     task::JoinHandle,
 };
 
 use crate::agent::AgentOutput;
+use crate::api::{ApiError, load_team_for_user};
 use crate::state::AppState;
+use crate::team::TeamConversationStreamEvent;
 
 #[derive(Debug, serde::Deserialize)]
 struct SseTokenQuery {
@@ -32,6 +35,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/agents", get(sse_agents))
         .route("/agents/:id", get(sse_agent))
+        .route(
+            "/teams/:team_id/tasks/:task_id/messages",
+            get(sse_team_task_messages),
+        )
         .with_state(state)
 }
 
@@ -98,9 +105,60 @@ async fn sse_agents(
     sse_response(output_rxs)
 }
 
+async fn sse_team_task_messages(
+    State(state): State<AppState>,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Query(query): Query<SseTokenQuery>,
+) -> impl IntoResponse {
+    let user = match state.auth.validate_session(&query.token).await {
+        Ok(user) => user,
+        Err(_) => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+    };
+    if let Err(error) = load_team_for_user(&state, &team_id, &user).await {
+        return error.into_response();
+    }
+    let task = match state.teams.get_task(&task_id).await {
+        Ok(task) if task.team_id == team_id => task,
+        Ok(_) => return (StatusCode::NOT_FOUND, "task not found").into_response(),
+        Err(error) => return map_sse_not_found_error(error, "task not found").into_response(),
+    };
+    let conversation = match state.teams.get_task_conversation(&task.id).await {
+        Ok(conversation) => conversation,
+        Err(error) => {
+            return map_sse_not_found_error(error, "conversation not found").into_response();
+        }
+    };
+    let event_rx = state.teams.subscribe_conversation_events();
+    team_conversation_sse_response(event_rx, team_id, task_id, conversation.id)
+}
+
+fn map_sse_not_found_error(error: anyhow::Error, msg: &str) -> ApiError {
+    if matches!(
+        error.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    ) {
+        return ApiError::not_found(msg);
+    }
+    tracing::error!("team task message sse internal error: {}", error);
+    ApiError::from(anyhow::anyhow!("internal server error"))
+}
+
 fn sse_response(output_rxs: Vec<broadcast::Receiver<AgentOutput>>) -> axum::response::Response {
     let stream = output_stream(output_rxs);
-    let mut response = Sse::new(stream).into_response();
+    decorate_sse_response(Sse::new(stream).into_response())
+}
+
+fn team_conversation_sse_response(
+    event_rx: broadcast::Receiver<TeamConversationStreamEvent>,
+    team_id: String,
+    task_id: String,
+    conversation_id: String,
+) -> axum::response::Response {
+    let stream = team_conversation_stream(event_rx, team_id, task_id, conversation_id);
+    decorate_sse_response(Sse::new(stream).into_response())
+}
+
+fn decorate_sse_response(mut response: axum::response::Response) -> axum::response::Response {
     let headers = response.headers_mut();
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     headers.insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
@@ -131,6 +189,7 @@ const OUTPUT_STREAM_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const OUTPUT_STREAM_BATCH_MAX_EVENTS: usize = 32;
 const OUTPUT_STREAM_BATCH_MAX_BYTES: usize = 64 * 1024;
 const OUTPUT_STREAM_BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+const TEAM_CONVERSATION_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
@@ -328,6 +387,12 @@ struct SseServerBatchMessage {
     payload: Vec<AgentOutput>,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct TeamConversationSseMessage {
+    r#type: String,
+    payload: TeamConversationStreamEvent,
+}
+
 fn output_to_message(output: &AgentOutput) -> SseServerMessage {
     let msg_type = if matches!(output.stream, crate::agent::OutputStream::Acp) {
         "acp"
@@ -338,6 +403,85 @@ fn output_to_message(output: &AgentOutput) -> SseServerMessage {
         r#type: msg_type.to_string(),
         payload: serde_json::json!(output),
     }
+}
+
+fn team_conversation_event_to_message(
+    event: TeamConversationStreamEvent,
+) -> TeamConversationSseMessage {
+    TeamConversationSseMessage {
+        r#type: "team_conversation".to_string(),
+        payload: event,
+    }
+}
+
+fn team_conversation_stream(
+    event_rx: broadcast::Receiver<TeamConversationStreamEvent>,
+    team_id: String,
+    task_id: String,
+    conversation_id: String,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    futures::stream::unfold(
+        (
+            tokio::time::interval(TEAM_CONVERSATION_STREAM_HEARTBEAT_INTERVAL),
+            event_rx,
+            team_id,
+            task_id,
+            conversation_id,
+        ),
+        |(mut heartbeat, mut event_rx, team_id, task_id, conversation_id)| async move {
+            loop {
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        return Some((
+                            Ok(Event::default().data("heartbeat")),
+                            (heartbeat, event_rx, team_id, task_id, conversation_id),
+                        ));
+                    }
+                    msg = event_rx.recv() => {
+                        match msg {
+                            Ok(event)
+                                if event.team_id == team_id
+                                    && event.task_id == task_id
+                                    && event.conversation_id == conversation_id =>
+                            {
+                                let text = match serde_json::to_string(
+                                    &team_conversation_event_to_message(event),
+                                ) {
+                                    Ok(text) => text,
+                                    Err(_) => continue,
+                                };
+                                return Some((
+                                    Ok(Event::default().data(text)),
+                                    (heartbeat, event_rx, team_id, task_id, conversation_id),
+                                ));
+                            }
+                            Ok(_) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                let event = TeamConversationStreamEvent {
+                                    team_id: team_id.clone(),
+                                    task_id: task_id.clone(),
+                                    conversation_id: conversation_id.clone(),
+                                    message_id: None,
+                                    source: "stream_replay_required".to_string(),
+                                };
+                                let text = match serde_json::to_string(
+                                    &team_conversation_event_to_message(event),
+                                ) {
+                                    Ok(text) => text,
+                                    Err(_) => continue,
+                                };
+                                return Some((
+                                    Ok(Event::default().data(text)),
+                                    (heartbeat, event_rx, team_id, task_id, conversation_id),
+                                ));
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 fn push_batched_output(state: &mut OutputStreamState, output: AgentOutput) {
@@ -408,11 +552,12 @@ mod tests {
     use crate::{
         acp::AcpPermissionService,
         agent::{AgentOutput, OutputStream},
+        api::team_tests::build_test_state as build_team_test_state,
         auth::AuthService,
         config::{AppConfig, PushConfig, WebConfig},
         push::PushService,
         state::AppState,
-        team::TeamManager,
+        team::{TeamConversationStreamEvent, TeamDefinitionConfig, TeamManager},
     };
 
     use super::parse_agent_ids;
@@ -500,6 +645,9 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+                agent_loop_idle_seconds INTEGER,
+                agent_loop_prompt TEXT,
                 status TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -783,6 +931,130 @@ mod tests {
         assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
     }
 
+    #[tokio::test]
+    async fn team_task_messages_sse_requires_valid_token() {
+        let state = build_team_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-auth".to_string(),
+                description: Some("team conversation sse auth".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"leader_plan",
+                    "members":[{"member_id":"leader"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "all",
+                "user",
+                serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                "group_chat",
+                Some("all"),
+            )
+            .await
+            .expect("create shared thread task");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/tasks/{}/messages?token=bad-token",
+                team.id, task.id
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn team_task_messages_sse_returns_ok_for_accessible_team_task() {
+        let state = build_team_test_state().await;
+        let token = create_auth_token(&state).await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-ok".to_string(),
+                description: Some("team conversation sse ok".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"leader_plan",
+                    "members":[{"member_id":"leader"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "all",
+                "user",
+                serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                "group_chat",
+                Some("all"),
+            )
+            .await
+            .expect("create shared thread task");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/tasks/{}/messages?token={}",
+                team.id, task.id, token
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn team_task_messages_sse_preserves_internal_errors_as_500() {
+        let state = build_team_test_state().await;
+        let token = create_auth_token(&state).await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-internal".to_string(),
+                description: Some("team conversation sse internal error".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"leader_plan",
+                    "members":[{"member_id":"leader"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "all",
+                "user",
+                serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                "group_chat",
+                Some("all"),
+            )
+            .await
+            .expect("create shared thread task");
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&state.db)
+            .await
+            .expect("disable foreign keys");
+        sqlx::query("DROP TABLE team_definitions")
+            .execute(&state.db)
+            .await
+            .expect("drop team_definitions");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/tasks/{}/messages?token={}",
+                team.id, task.id, token
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
     #[test]
     fn output_to_message_uses_output_type_for_non_acp_streams() {
         let msg = super::output_to_message(&sample_output(OutputStream::Stdout));
@@ -816,6 +1088,53 @@ mod tests {
             .expect("receive second event")
             .expect("stream should not end")
             .expect("stream event should be ok");
+    }
+
+    #[tokio::test]
+    async fn team_conversation_stream_emits_only_matching_events() {
+        use futures::StreamExt;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let mut stream = std::pin::pin!(super::team_conversation_stream(
+            rx,
+            "team-1".to_string(),
+            "task-1".to_string(),
+            "conversation-1".to_string(),
+        ));
+
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive heartbeat event")
+            .expect("stream should not end")
+            .expect("heartbeat should be ok");
+        assert!(format!("{first:?}").contains("heartbeat"));
+
+        tx.send(TeamConversationStreamEvent {
+            team_id: "team-2".to_string(),
+            task_id: "task-2".to_string(),
+            conversation_id: "conversation-2".to_string(),
+            message_id: Some(10),
+            source: "conversation_message".to_string(),
+        })
+        .expect("send unrelated event");
+        tx.send(TeamConversationStreamEvent {
+            team_id: "team-1".to_string(),
+            task_id: "task-1".to_string(),
+            conversation_id: "conversation-1".to_string(),
+            message_id: Some(11),
+            source: "conversation_message".to_string(),
+        })
+        .expect("send matching event");
+
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("receive matching event")
+            .expect("stream should not end")
+            .expect("matching event should be ok");
+        let second_debug = format!("{second:?}");
+        assert!(second_debug.contains("team_conversation"));
+        assert!(second_debug.contains("task-1"));
+        assert!(second_debug.contains("message_id"));
     }
 
     #[tokio::test]

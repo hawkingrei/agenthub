@@ -1,9 +1,14 @@
 pub(crate) mod event_message_codec;
 mod manager;
+mod triggers;
 
 use serde::{Deserialize, Serialize};
 
 pub use manager::{AgentManager, AgentSendInputError};
+pub use triggers::{
+    AgentTimeTriggerCreateInput, AgentTimeTriggerManager, AgentTimeTriggerRecord,
+    AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
@@ -15,6 +20,9 @@ pub struct AgentConfig {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +36,9 @@ pub struct AgentRecord {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
+    pub agent_loop_enabled: bool,
+    pub agent_loop_idle_seconds: Option<i64>,
+    pub agent_loop_prompt: Option<String>,
     pub status: AgentStatus,
     pub created_at: i64,
     pub updated_at: i64,

@@ -11,7 +11,10 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use super::codec::{is_acp_message, is_dir_empty};
-use super::{AgentHandle, AgentManager, expand_tilde, normalize_path, worktree_mode_to_str};
+use super::{
+    AgentHandle, AgentInput, AgentManager, expand_tilde, normalize_agent_loop_config,
+    normalize_path, spawn_agent_loop_controller, worktree_mode_to_str,
+};
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentOutput, AgentRecord, OutputStream, WorktreeMode};
 use crate::push::PushService;
@@ -774,6 +777,81 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(
+        skip(self, prompt),
+        fields(agent_id = %agent_id, enabled = enabled, idle_seconds = ?idle_seconds),
+        err
+    )]
+    pub async fn set_agent_loop_config(
+        &self,
+        agent_id: &str,
+        enabled: bool,
+        idle_seconds: Option<i64>,
+        prompt: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let current = self.get_agent(agent_id).await?;
+        let next_idle_seconds = idle_seconds.or(current.agent_loop_idle_seconds);
+        let next_prompt = prompt
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| current.agent_loop_prompt.clone());
+        let next_config =
+            normalize_agent_loop_config(enabled, next_idle_seconds, next_prompt.as_deref());
+        if enabled && next_config.is_none() {
+            anyhow::bail!(
+                "agent loop requires idle_seconds between 10 and 86400 and a non-empty prompt"
+            );
+        }
+
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET agent_loop_enabled = ?1,
+                agent_loop_idle_seconds = ?2,
+                agent_loop_prompt = ?3,
+                updated_at = ?4
+            WHERE id = ?5
+            "#,
+        )
+        .bind(if enabled { 1 } else { 0 })
+        .bind(next_idle_seconds)
+        .bind(next_prompt.as_deref())
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+
+        let mut guard = self.inner.write().await;
+        if let Some(handle) = guard.get_mut(agent_id) {
+            match (&handle.input, next_config) {
+                (AgentInput::Acp(acp), Some(config)) => {
+                    if let Some(controller) = &handle.loop_controller {
+                        controller.reconfigure(config)?;
+                    } else {
+                        handle.loop_controller = Some(spawn_agent_loop_controller(
+                            self.event_dbs.clone(),
+                            self.idle_gc.clone(),
+                            handle.output_tx.clone(),
+                            acp.clone(),
+                            agent_id.to_string(),
+                            handle.session_id.clone(),
+                            config,
+                        ));
+                    }
+                }
+                (_, None) => {
+                    if let Some(controller) = handle.loop_controller.take() {
+                        controller.stop();
+                    }
+                }
+                (AgentInput::Stdin(_), Some(_)) => {}
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) async fn update_team_member_runtime_config(
         &self,
         agent_id: &str,
@@ -925,9 +1003,9 @@ mod tests {
         sqlx::query(
             r#"
             INSERT INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, 0, NULL, NULL, ?7, ?8, ?9)
             "#,
         )
         .bind(&agent_id)
@@ -978,6 +1056,7 @@ mod tests {
             ))),
             session_id: session_id.clone(),
             actor_context: None,
+            loop_controller: None,
         };
         state
             .agents
@@ -1310,6 +1389,37 @@ branch refs/heads/agent-a
             .await
             .expect("load agent row");
         assert_eq!(row.get::<i64, _>("code_mode"), 1);
+    }
+
+    #[tokio::test]
+    async fn set_agent_loop_config_updates_agent_row_without_blocking_runtime() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, _session_id) = insert_agent_and_session(&state.db, "agent-loop").await;
+
+        state
+            .agents
+            .set_agent_loop_config(
+                &agent_id,
+                true,
+                Some(900),
+                Some("Resume by checking the current ACP thread and taking the next step."),
+            )
+            .await
+            .expect("set agent loop");
+
+        let row = sqlx::query(
+            "SELECT agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt FROM agents WHERE id = ?1",
+        )
+        .bind(&agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load agent row");
+        assert_eq!(row.get::<i64, _>("agent_loop_enabled"), 1);
+        assert_eq!(row.get::<i64, _>("agent_loop_idle_seconds"), 900);
+        assert_eq!(
+            row.get::<String, _>("agent_loop_prompt"),
+            "Resume by checking the current ACP thread and taking the next step."
+        );
     }
 
     #[tokio::test]

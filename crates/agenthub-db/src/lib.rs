@@ -232,6 +232,9 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             worktree_repo TEXT,
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
+            agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+            agent_loop_idle_seconds INTEGER,
+            agent_loop_prompt TEXT,
             source TEXT NOT NULL DEFAULT 'manual',
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
@@ -611,6 +614,27 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_time_triggers (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            fire_at INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            fired_at INTEGER,
+            last_error TEXT,
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
     if let Err(err) = sqlx::query(
@@ -758,6 +782,36 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     if let Err(err) = sqlx::query(
         r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_time_triggers_agent_created
+        ON agent_time_triggers(agent_id, created_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_time_triggers_agent_created: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_time_triggers_status_fire_at
+        ON agent_time_triggers(status, fire_at);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_agent_time_triggers_status_fire_at: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
         CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_conv_id
         ON team_conversation_messages(conversation_id, id);
         "#,
@@ -892,6 +946,16 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             agent_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
             acp_session_id TEXT,
+            team_id TEXT,
+            requester_actor_id TEXT,
+            requester_role TEXT,
+            review_target_actor_id TEXT,
+            review_dispatch_status TEXT,
+            review_delivery_run_id TEXT,
+            review_message_id INTEGER,
+            review_dispatched_at INTEGER,
+            reviewed_by_actor_id TEXT,
+            human_review_notified_at INTEGER,
             tool_call_id TEXT,
             options_json TEXT NOT NULL,
             tool_call_json TEXT,
@@ -951,6 +1015,24 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await;
     add_column_if_missing(
         &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_enabled INTEGER NOT NULL DEFAULT 0",
+        "agents.agent_loop_enabled",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_idle_seconds INTEGER",
+        "agents.agent_loop_idle_seconds",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN agent_loop_prompt TEXT",
+        "agents.agent_loop_prompt",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
         "ALTER TABLE agents ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
         "agents.source",
     )
@@ -959,6 +1041,66 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT",
         "acp_permission_requests.acp_session_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN team_id TEXT",
+        "acp_permission_requests.team_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN requester_actor_id TEXT",
+        "acp_permission_requests.requester_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN requester_role TEXT",
+        "acp_permission_requests.requester_role",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_target_actor_id TEXT",
+        "acp_permission_requests.review_target_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_dispatch_status TEXT",
+        "acp_permission_requests.review_dispatch_status",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_delivery_run_id TEXT",
+        "acp_permission_requests.review_delivery_run_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_message_id INTEGER",
+        "acp_permission_requests.review_message_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_dispatched_at INTEGER",
+        "acp_permission_requests.review_dispatched_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN reviewed_by_actor_id TEXT",
+        "acp_permission_requests.reviewed_by_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN human_review_notified_at INTEGER",
+        "acp_permission_requests.human_review_notified_at",
     )
     .await;
     add_column_if_missing(

@@ -1,4 +1,9 @@
-use std::net::SocketAddr;
+use std::{
+    future::{Future, IntoFuture},
+    net::SocketAddr,
+    pin::Pin,
+    time::Duration,
+};
 
 use axum::{Router, routing::get};
 use tower_http::compression::CompressionLayer;
@@ -8,6 +13,8 @@ use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 use agenthub_logging::{LogSpec, init_tracing, split_log_path};
+
+const SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn log_config_details(
     config: &agenthub_config::AppConfig,
@@ -115,7 +122,7 @@ fn build_app_router(
     app
 }
 
-async fn shutdown_signal(state: crate::state::AppState) {
+async fn wait_for_shutdown_signal() {
     let ctrl_c = async {
         if let Err(err) = tokio::signal::ctrl_c().await {
             tracing::error!(error = %err, "failed to listen for Ctrl+C");
@@ -143,13 +150,31 @@ async fn shutdown_signal(state: crate::state::AppState) {
         _ = ctrl_c => {}
         _ = terminate => {}
     }
+}
 
+async fn run_shutdown_cleanup(state: crate::state::AppState) {
     tracing::warn!("shutdown signal received; marking running agents exited");
     if let Err(err) = state.agents.mark_exited_on_startup().await {
         tracing::error!(
             error = %err,
             "shutdown cleanup failed to mark running agents exited"
         );
+    }
+}
+
+async fn await_server_shutdown<F>(server: Pin<&mut F>) -> std::io::Result<()>
+where
+    F: Future<Output = std::io::Result<()>>,
+{
+    match tokio::time::timeout(SERVER_SHUTDOWN_TIMEOUT, server).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(
+                timeout_seconds = SERVER_SHUTDOWN_TIMEOUT.as_secs(),
+                "graceful shutdown timed out; forcing exit"
+            );
+            Ok(())
+        }
     }
 }
 
@@ -181,16 +206,34 @@ pub async fn run() -> anyhow::Result<()> {
     let app = build_app_router(state.clone(), api_router, web_dir.as_deref());
 
     let addr: SocketAddr = config.listen_addr().parse()?;
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     tracing::info!("listening on {}", addr);
-    axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
-        .with_graceful_shutdown(shutdown_signal(state))
-        .await?;
+    let server = axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
+        .with_graceful_shutdown(async move {
+            if shutdown_rx.changed().await.is_err() {
+                // Receiver dropped before shutdown signal; let graceful shutdown future end.
+            }
+        })
+        .into_future();
+    tokio::pin!(server);
+
+    tokio::select! {
+        result = &mut server => {
+            result?;
+        }
+        _ = wait_for_shutdown_signal() => {
+            run_shutdown_cleanup(state).await;
+            let _ = shutdown_tx.send(true);
+            await_server_shutdown(server.as_mut()).await?;
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::future;
 
     use axum::{
         body::{Body, to_bytes},
@@ -279,5 +322,23 @@ mod tests {
             .expect("read response body");
         let body_text = String::from_utf8(body.to_vec()).expect("utf8 body");
         assert!(body_text.contains("agenthub-test"));
+    }
+
+    #[tokio::test]
+    async fn await_server_shutdown_returns_when_server_finishes_before_timeout() {
+        let server = async { Ok::<(), std::io::Error>(()) };
+        tokio::pin!(server);
+        super::await_server_shutdown(server.as_mut())
+            .await
+            .expect("server result");
+    }
+
+    #[tokio::test]
+    async fn await_server_shutdown_forces_exit_after_timeout() {
+        let server = future::pending::<std::io::Result<()>>();
+        tokio::pin!(server);
+        super::await_server_shutdown(server.as_mut())
+            .await
+            .expect("forced shutdown result");
     }
 }

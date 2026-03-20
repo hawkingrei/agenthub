@@ -607,6 +607,7 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 actor_cli_path: actor_cli_path.clone(),
                 member_role: Some("leader".to_string()),
                 member_skills: Vec::new(),
+                contract_version: None,
                 continuity: None,
             }),
         )
@@ -625,6 +626,7 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 actor_cli_path,
                 member_role: Some("worker".to_string()),
                 member_skills: Vec::new(),
+                contract_version: None,
                 continuity: None,
             }),
         )
@@ -730,13 +732,13 @@ async fn teams_api_start_and_stop_team_runtime() {
 }
 
 #[tokio::test]
-async fn teams_api_start_team_repairs_legacy_worker_runtime_from_prompt_hint() {
+async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_validation_is_allowed() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     let now = Utc::now().timestamp();
     let repo = create_named_worker_test_repo("shiro");
     let worker_id = "shiro-reviewer";
-    insert_legacy_team_member_agent(&state, worker_id).await;
+    let legacy_workdir = insert_legacy_team_member_agent(&state, worker_id).await;
     sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
         .bind(&repo)
         .bind(now)
@@ -779,10 +781,23 @@ async fn teams_api_start_team_repairs_legacy_worker_runtime_from_prompt_hint() {
         .expect("load repaired reviewer agent");
     assert!(matches!(
         reviewer.worktree_mode,
-        crate::agent::WorktreeMode::CreateWorktree
+        crate::agent::WorktreeMode::UseExisting
     ));
-    assert_eq!(reviewer.worktree_repo.as_deref(), Some(repo.as_str()));
-    assert_eq!(reviewer.worktree_ref.as_deref(), Some("HEAD"));
+    assert_eq!(reviewer.workdir, legacy_workdir);
+    assert!(
+        reviewer
+            .worktree_repo
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    );
+    assert!(
+        reviewer
+            .worktree_ref
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    );
 }
 
 #[tokio::test]
@@ -850,6 +865,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         actor_cli_path: default_actor_cli_path().expect("actor cli path"),
         member_role: Some("leader".to_string()),
         member_skills: vec!["team-leader-orchestrator".to_string()],
+        contract_version: None,
         continuity: None,
     };
 
@@ -3098,7 +3114,7 @@ async fn team_run_messages_api_supports_idempotency_key() {
 }
 
 #[tokio::test]
-async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pending() {
+async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_suppress() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -3209,6 +3225,25 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
     .await
     .expect("send worker status message");
 
+    let Json(worker_status_repeat) = send_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: "reviewer".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({"type":"worker_status","status":"done-again"}),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send repeated worker status message");
+
     let Json(events) = list_team_run_events(
         State(state.clone()),
         headers.clone(),
@@ -3225,7 +3260,7 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
         .iter()
         .filter(|event| event.event_type == "actor_mailbox_type_hint")
         .collect::<Vec<_>>();
-    assert_eq!(hint_events.len(), 3);
+    assert_eq!(hint_events.len(), 4);
 
     let first_hint = hint_events
         .iter()
@@ -3239,11 +3274,8 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
         .iter()
         .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
         .expect("second chat hint event");
-    assert_eq!(second_hint.payload["status"], json!("suppressed"));
-    assert_eq!(
-        second_hint.payload["reason"],
-        json!("pending_same_type_exists")
-    );
+    let second_status = second_hint.payload["status"].as_str().expect("second status");
+    assert_ne!(second_status, "suppressed");
     assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
 
     let worker_status_hint = hint_events
@@ -3256,6 +3288,20 @@ async fn team_run_messages_api_type_hints_suppress_when_same_payload_type_is_pen
     assert_ne!(worker_status_state, "suppressed");
     assert_eq!(
         worker_status_hint.payload["payload_type"],
+        json!("worker_status")
+    );
+
+    let repeated_worker_status_hint = hint_events
+        .iter()
+        .find(|event| event.payload["message_id"] == json!(worker_status_repeat.message_id))
+        .expect("repeated worker status hint event");
+    assert_eq!(repeated_worker_status_hint.payload["status"], json!("suppressed"));
+    assert_eq!(
+        repeated_worker_status_hint.payload["reason"],
+        json!("pending_same_type_exists")
+    );
+    assert_eq!(
+        repeated_worker_status_hint.payload["payload_type"],
         json!("worker_status")
     );
 
@@ -3284,12 +3330,14 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
                     {
                         "member_id":"planner",
                         "role":"leader",
+                        "description":"Existing planning lead",
                         "prompt":"Lead with checkpoints.",
                         "skills":["planning"]
                     },
                     {
                         "member_id":"reviewer",
                         "role":"worker",
+                        "description":"Review specialist",
                         "prompt":"Review implementation.",
                         "skills":["review"]
                     }
@@ -3317,6 +3365,7 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         "target":"team",
         "member_id":"planner",
         "prompt_append":"Escalate blockers in a dedicated section.",
+        "description":"Lead planner and review owner.",
         "skills_add":["risk-analysis","planning"]
     });
 
@@ -3381,6 +3430,10 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         .unwrap_or_default();
     assert!(planner_prompt.contains("Lead with checkpoints."));
     assert!(planner_prompt.contains("Escalate blockers in a dedicated section."));
+    assert_eq!(
+        planner.get("description").and_then(Value::as_str),
+        Some("Lead planner and review owner.")
+    );
     let planner_skills = planner
         .get("skills")
         .and_then(Value::as_array)
@@ -3413,6 +3466,18 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         applied_events[0].payload["member_id"],
         Value::from("planner")
     );
+    assert_eq!(
+        applied_events[0].payload["description"],
+        Value::from("Lead planner and review owner.")
+    );
+    assert_eq!(
+        applied_events[0].payload["before"]["description"],
+        Value::from("Existing planning lead")
+    );
+    assert_eq!(
+        applied_events[0].payload["after"]["description"],
+        Value::from("Lead planner and review owner.")
+    );
 }
 
 #[tokio::test]
@@ -3433,12 +3498,14 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
                     {
                         "member_id":"leader-agent",
                         "role":"leader",
+                        "description":"Run lead",
                         "prompt":"Lead the run.",
                         "skills":["planning"]
                     },
                     {
                         "member_id":"worker-agent",
                         "role":"worker",
+                        "description":"Baseline execution specialist",
                         "prompt":"Execute baseline tasks.",
                         "skills":["coding"]
                     }
@@ -3478,6 +3545,7 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
                 "target":"run",
                 "member_id":"worker-agent",
                 "prompt_append":"Ask one clarification question before coding when requirements are incomplete.",
+                "description":"Focused implementation specialist.",
                 "skills_add":["actor-mailbox"]
             }),
             idempotency_key: Some("profile-run-1".to_string()),
@@ -3493,6 +3561,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
     assert_eq!(
         updated_run.input["profile_overrides"]["members"]["worker-agent"]["skills_add"][0],
         Value::from("actor-mailbox")
+    );
+    assert_eq!(
+        updated_run.input["profile_overrides"]["members"]["worker-agent"]["description"],
+        Value::from("Focused implementation specialist.")
     );
 
     let Json(unchanged_team) =
@@ -3517,6 +3589,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         worker_member.get("prompt").and_then(Value::as_str),
         Some("Execute baseline tasks.")
     );
+    assert_eq!(
+        worker_member.get("description").and_then(Value::as_str),
+        Some("Baseline execution specialist")
+    );
 
     let Json(snapshot) = get_team_run_snapshot(
         State(state.clone()),
@@ -3537,6 +3613,10 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
     let worker_prompt = worker_snapshot.prompt.clone().unwrap_or_default();
     assert!(worker_prompt.contains("Execute baseline tasks."));
     assert!(worker_prompt.contains("Ask one clarification question before coding"));
+    assert_eq!(
+        worker_snapshot.description.as_deref(),
+        Some("Focused implementation specialist.")
+    );
     assert!(worker_snapshot.skills.iter().any(|skill| skill == "coding"));
     assert!(
         worker_snapshot
@@ -3562,6 +3642,18 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         .expect("profile_patch_applied event");
     assert_eq!(applied.payload["target"], Value::from("run"));
     assert_eq!(applied.payload["member_id"], Value::from("worker-agent"));
+    assert_eq!(
+        applied.payload["description"],
+        Value::from("Focused implementation specialist.")
+    );
+    assert_eq!(
+        applied.payload["before"]["description"],
+        Value::Null
+    );
+    assert_eq!(
+        applied.payload["after"]["description"],
+        Value::from("Focused implementation specialist.")
+    );
 }
 
 #[tokio::test]
@@ -3768,6 +3860,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         vec![
             "agenthub-actor-runtime".to_string(),
             "team-agents-index".to_string(),
+            "team-task-lifecycle".to_string(),
             "team-leader-orchestrator".to_string(),
             "team-actor-mailbox".to_string(),
             "planning".to_string(),
@@ -3922,6 +4015,184 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
 }
 
 #[tokio::test]
+async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active_run() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-mailbox-forward-team".to_string(),
+            description: Some("shared thread mailbox forwarding coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(task_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create shared thread task");
+    assert!(task_created.latest_run.is_none());
+
+    let Json(directed_message) = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"<at>worker-1</at> please inspect the channel delivery path"
+            }),
+        }),
+    )
+    .await
+    .expect("send shared thread message");
+
+    let mailbox_run = state
+        .teams
+        .get_latest_run_for_task(&team.id, &task_created.task.id)
+        .await
+        .expect("load shared thread mailbox run")
+        .expect("shared thread mailbox run should exist");
+    assert_eq!(mailbox_run.status, crate::team::TeamRunStatus::Completed);
+    assert_eq!(
+        mailbox_run.input["bootstrap_kind"],
+        Value::from("shared_thread_mailbox")
+    );
+    assert_eq!(mailbox_run.input["channel"], Value::from("all"));
+    assert_eq!(
+        mailbox_run.input["task_id"],
+        Value::from(task_created.task.id.clone())
+    );
+
+    let rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&mailbox_run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load mailbox rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get::<String, _>("from_actor_id"), "planner");
+    assert_eq!(rows[0].get::<String, _>("to_actor_id"), "worker-1");
+    let forwarded_payload: Value =
+        serde_json::from_str(rows[0].get::<String, _>("payload_json").as_str())
+            .expect("parse forwarded payload");
+    assert_eq!(forwarded_payload["delivery_scope"], Value::from("mention"));
+    assert_eq!(
+        forwarded_payload["task_message_id"],
+        Value::from(directed_message.message_id)
+    );
+    assert_eq!(
+        forwarded_payload["task_conversation_id"],
+        Value::from(directed_message.conversation_id.clone())
+    );
+
+    let service = state.teams.actor_mailbox_service();
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: mailbox_run.id.clone(),
+            actor_id: "worker-1".to_string(),
+            cursor: None,
+            limit: Some(50),
+            states: None,
+        })
+        .await
+        .expect("load worker inbox");
+    assert_eq!(inbox.messages.len(), 1);
+    assert_eq!(inbox.messages[0].message_id, directed_message.message_id);
+
+    let acked = service
+        .actor_ack(ActorAckRequest {
+            run_id: mailbox_run.id.clone(),
+            actor_id: "worker-1".to_string(),
+            message_id: inbox.messages[0].message_id,
+            ack_token: None,
+            result: None,
+        })
+        .await
+        .expect("ack mailbox message");
+    assert_eq!(acked.state, crate::team::TeamActorMessageStatus::Delivered);
+
+    let _reply = service
+        .actor_send(ActorSendRequest {
+            run_id: mailbox_run.id.clone(),
+            from_actor_id: "worker-1".to_string(),
+            from_peer_id: None,
+            to_actor_id: "user".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"@planner delivery path looks healthy",
+                "correlation_id":"corr-shared-thread-forward"
+            }),
+            idempotency_key: Some("shared-thread-forward-reply".to_string()),
+        })
+        .await
+        .expect("send shared thread reply");
+
+    let Json(messages) = list_team_task_messages(
+        State(state),
+        headers,
+        Path((team.id, task_created.task.id)),
+        Query(ListTeamTaskMessagesQuery {
+            limit: Some(50),
+            before_id: None,
+        }),
+    )
+    .await
+    .expect("list shared thread messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].from_actor_id, directed_message.from_actor_id);
+    assert_eq!(messages[1].from_actor_id, "worker-1");
+    assert_eq!(messages[1].route, "group_chat");
+    assert_eq!(messages[1].to_actor_id, None);
+    assert_eq!(messages[1].payload["type"], Value::from("chat_message"));
+    assert_eq!(
+        messages[1].payload["text"],
+        Value::from("@planner delivery path looks healthy")
+    );
+    assert_eq!(
+        messages[1].payload["correlation_id"],
+        Value::from("corr-shared-thread-forward")
+    );
+}
+
+#[tokio::test]
 async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -3969,6 +4240,18 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     assert_eq!(updated.id, created.task.id);
     assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
 
+    let Json(reviewing) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: "in_review".to_string(),
+        }),
+    )
+    .await
+    .expect("move task into review");
+    assert_eq!(reviewing.status, crate::team::TeamTaskStatus::InReview);
+
     let err = update_team_task(
         State(state),
         headers,
@@ -3982,7 +4265,7 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     let body = decode_json_body(err.into_response()).await;
     assert_eq!(
         body["error"],
-        Value::from("status must be one of: open, in_progress, completed, canceled")
+        Value::from("status must be one of: open, in_progress, in_review, completed, canceled")
     );
 }
 

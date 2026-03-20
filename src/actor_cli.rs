@@ -138,9 +138,12 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             }
             let explicit_team_id = take_optional(team_id);
             let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id
-                .clone()
-                .or_else(|| normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV));
+            let team_id = explicit_team_id.clone().or_else(|| {
+                if explicit_run_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+            });
             let run_id = explicit_run_id.or_else(|| {
                 if explicit_team_id.is_some() {
                     return None;
@@ -622,6 +625,16 @@ mod tests {
 
     #[test]
     fn parse_team_members_accepts_run_id_flag() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env-should-be-ignored");
+            std::env::set_var(
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+                "run-env-should-be-ignored",
+            );
+        }
         let args = vec![
             "team-members".to_string(),
             "--run-id".to_string(),
@@ -635,6 +648,8 @@ mod tests {
             }
             _ => panic!("expected team-members command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
     }
 
     #[test]

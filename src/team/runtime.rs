@@ -44,10 +44,20 @@ struct TeamRuntimeMemberSpec {
 
 #[derive(Debug, Clone, Deserialize)]
 struct TeamRuntimeMemberRuntimeHint {
+    #[allow(dead_code)]
     name: Option<String>,
     workdir: Option<String>,
     worktree_repo: Option<String>,
     worktree_ref: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    agent_loop_enabled: Option<bool>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    agent_loop_idle_seconds: Option<i64>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    agent_loop_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +145,7 @@ fn build_team_member_actor_context(
         actor_cli_path: actor_cli_path.to_string(),
         member_role: Some(member.role.clone()),
         member_skills: member.skills.clone(),
+        contract_version: None,
         continuity: None,
     })
 }
@@ -162,8 +173,9 @@ fn trimmed_opt(value: Option<&str>) -> Option<String> {
 }
 
 fn worker_runtime_is_valid(agent: &AgentRecord) -> bool {
-    matches!(agent.worktree_mode, WorktreeMode::CreateWorktree)
-        && trimmed_opt(agent.worktree_repo.as_deref()).is_some()
+    matches!(agent.worktree_mode, WorktreeMode::UseExisting)
+        || (matches!(agent.worktree_mode, WorktreeMode::CreateWorktree)
+            && trimmed_opt(agent.worktree_repo.as_deref()).is_some())
 }
 
 fn build_worker_runtime_hint_config(
