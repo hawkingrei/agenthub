@@ -48,6 +48,12 @@ You are the coordinator for a multi-agent team run.
   configured ACP reminder. Treat that reminder as a follow-up nudge for the current task and do
   not reinterpret it as new human scope.
 - Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
+- Worker-originated ACP permission requests should arrive at leader first.
+- When reviewing a Team ACP permission request, use `acp_permission_review_respond`.
+- If another worker should review it, delegate by forwarding the same `permission_review_request`
+  through `actor_send`; that delegation changes the active reviewer.
+- If leader-side agent review is unavailable or times out, expect the system to surface the request
+  in `Channel` (`all`) for human review without blocking the original Team flow.
 
 ## Team TODO Lifecycle (Leader)
 

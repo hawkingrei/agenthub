@@ -69,9 +69,35 @@ pub struct AcpActorSkillContext {
     pub continuity: Option<AcpActorContinuityEnvelope>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AcpPermissionRoutingMetadata {
+    pub team_id: Option<String>,
+    pub requester_actor_id: Option<String>,
+    pub requester_role: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AcpPermissionReviewRequest {
+    pub request_id: String,
+    pub agent_id: String,
+    pub agent_session_id: String,
+    pub acp_session_id: String,
+    pub tool_call_id: Option<String>,
+    pub options: Vec<AcpPermissionOption>,
+    pub tool_call: Option<Value>,
+    pub current_run_id: Option<String>,
+    pub routing: AcpPermissionRoutingMetadata,
+}
+
+#[async_trait::async_trait]
+pub trait AcpPermissionReviewDispatcher: Send + Sync {
+    async fn dispatch_review(&self, request: AcpPermissionReviewRequest) -> anyhow::Result<()>;
+}
+
 pub struct SpawnAcpSessionRequest {
     pub event_sink: Arc<dyn AcpEventSink>,
     pub permissions: Arc<AcpPermissionService>,
+    pub permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
     pub agent_id: String,
     pub agent_session_id: String,
     pub resume_session_id: Option<String>,
@@ -442,8 +468,10 @@ fn dedupe_skills(skills: Vec<AcpSkill>) -> Vec<AcpSkill> {
 pub struct AcpClient {
     sink: Arc<dyn AcpEventSink>,
     permissions: Arc<AcpPermissionService>,
+    permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
     agent_id: String,
     session_id: String,
+    actor_context: Option<AcpActorSkillContext>,
     chunk_state: Arc<Mutex<AcpChunkState>>,
 }
 
@@ -451,14 +479,18 @@ impl AcpClient {
     pub fn new(
         sink: Arc<dyn AcpEventSink>,
         permissions: Arc<AcpPermissionService>,
+        permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
         agent_id: String,
         session_id: String,
+        actor_context: Option<AcpActorSkillContext>,
     ) -> Self {
         Self {
             sink,
             permissions,
+            permission_review_dispatcher,
             agent_id,
             session_id,
+            actor_context,
             chunk_state: Arc::new(Mutex::new(AcpChunkState::default())),
         }
     }
@@ -492,9 +524,57 @@ impl Client for AcpClient {
             .collect::<Vec<_>>();
         let (request_id, response_rx) = self
             .permissions
-            .create_request(&self.agent_id, &self.session_id, &args)
+            .create_request(
+                &self.agent_id,
+                &self.session_id,
+                &args,
+                self.actor_context
+                    .as_ref()
+                    .map(|context| AcpPermissionRoutingMetadata {
+                        team_id: context.team_id.clone(),
+                        requester_actor_id: Some(context.actor_id.clone()),
+                        requester_role: context.member_role.clone(),
+                    }),
+            )
             .await
             .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
+        if let Some(dispatcher) = self.permission_review_dispatcher.as_ref() {
+            let tool_call = serde_json::to_value(&args.tool_call).ok();
+            let dispatch_request = AcpPermissionReviewRequest {
+                request_id: request_id.clone(),
+                agent_id: self.agent_id.clone(),
+                agent_session_id: self.session_id.clone(),
+                acp_session_id: args.session_id.to_string(),
+                tool_call_id: Some(args.tool_call.tool_call_id.to_string()),
+                options: options.clone(),
+                tool_call,
+                current_run_id: self
+                    .actor_context
+                    .as_ref()
+                    .and_then(|context| context.current_run_id.clone()),
+                routing: self
+                    .actor_context
+                    .as_ref()
+                    .map(|context| AcpPermissionRoutingMetadata {
+                        team_id: context.team_id.clone(),
+                        requester_actor_id: Some(context.actor_id.clone()),
+                        requester_role: context.member_role.clone(),
+                    })
+                    .unwrap_or(AcpPermissionRoutingMetadata {
+                        team_id: None,
+                        requester_actor_id: None,
+                        requester_role: None,
+                    }),
+            };
+            if let Err(err) = dispatcher.dispatch_review(dispatch_request).await {
+                self.emit_json(serde_json::json!({
+                    "type": "permission_review_dispatch_error",
+                    "permission_id": request_id,
+                    "error": err.to_string(),
+                }))
+                .await;
+            }
+        }
         self.emit_json(serde_json::json!({
             "type": "permission_request",
             "permission_id": request_id,
@@ -749,6 +829,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     let SpawnAcpSessionRequest {
         event_sink,
         permissions,
+        permission_review_dispatcher,
         agent_id,
         agent_session_id,
         resume_session_id,
@@ -813,8 +894,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let client = AcpClient::new(
                 event_sink.clone(),
                 permissions,
+                permission_review_dispatcher,
                 agent_id.clone(),
                 agent_session_id.clone(),
+                actor_context.clone(),
             );
             let outgoing = stdin.compat_write();
             let incoming = stdout.compat();
@@ -1165,6 +1248,15 @@ pub struct AcpPermissionRecord {
     pub agent_id: String,
     pub session_id: String,
     pub acp_session_id: Option<String>,
+    pub team_id: Option<String>,
+    pub requester_actor_id: Option<String>,
+    pub requester_role: Option<String>,
+    pub review_target_actor_id: Option<String>,
+    pub review_dispatch_status: Option<String>,
+    pub review_delivery_run_id: Option<String>,
+    pub review_message_id: Option<i64>,
+    pub reviewed_by_actor_id: Option<String>,
+    pub human_review_notified_at: Option<i64>,
     pub tool_call_id: Option<String>,
     pub options: Vec<AcpPermissionOption>,
     pub tool_call: Option<Value>,
@@ -1172,6 +1264,12 @@ pub struct AcpPermissionRecord {
     pub selected_option_id: Option<String>,
     pub created_at: i64,
     pub responded_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpPermissionRespondResult {
+    Applied,
+    AlreadyResolved,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1206,6 +1304,7 @@ impl AcpPermissionService {
         agent_id: &str,
         agent_session_id: &str,
         args: &RequestPermissionRequest,
+        routing: Option<AcpPermissionRoutingMetadata>,
     ) -> anyhow::Result<(String, oneshot::Receiver<RequestPermissionOutcome>)> {
         let id = uuid::Uuid::new_v4().to_string();
         let options = args
@@ -1222,21 +1321,31 @@ impl AcpPermissionService {
         let agent_session_id = agent_session_id.to_string();
         let acp_session_id = args.session_id.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
+        let routing_team_id = routing.as_ref().and_then(|value| value.team_id.clone());
+        let routing_requester_actor_id = routing
+            .as_ref()
+            .and_then(|value| value.requester_actor_id.clone());
+        let routing_requester_role = routing
+            .as_ref()
+            .and_then(|value| value.requester_role.clone());
         self.runtime_handle
             .spawn(async move {
                 sqlx::query(
                     r#"
                     INSERT INTO acp_permission_requests (
-                        id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
-                        status, created_at
+                        id, agent_id, session_id, acp_session_id, team_id, requester_actor_id, requester_role,
+                        tool_call_id, options_json, tool_call_json, status, created_at
                     )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
                     "#,
                 )
                 .bind(id_for_db)
                 .bind(agent_id)
                 .bind(agent_session_id)
                 .bind(acp_session_id)
+                .bind(routing_team_id)
+                .bind(routing_requester_actor_id)
+                .bind(routing_requester_role)
                 .bind(tool_call_id)
                 .bind(options_json)
                 .bind(tool_call_json)
@@ -1258,33 +1367,153 @@ impl AcpPermissionService {
         request_id: &str,
         outcome: RequestPermissionOutcome,
         selected_option_id: Option<String>,
-    ) -> anyhow::Result<()> {
+        reviewed_by_actor_id: Option<String>,
+    ) -> anyhow::Result<AcpPermissionRespondResult> {
         let now = Utc::now().timestamp();
         let db = self.db.clone();
         let request_id_for_db = request_id.to_string();
-        self.runtime_handle
+        let rows_affected = self
+            .runtime_handle
             .spawn(async move {
                 sqlx::query(
                     r#"
                     UPDATE acp_permission_requests
-                    SET status = 'responded', selected_option_id = ?1, responded_at = ?2
-                    WHERE id = ?3
+                    SET status = 'responded', selected_option_id = ?1, reviewed_by_actor_id = ?2, responded_at = ?3
+                    WHERE id = ?4 AND status = 'pending'
                     "#,
                 )
                 .bind(selected_option_id)
+                .bind(reviewed_by_actor_id)
                 .bind(now)
                 .bind(request_id_for_db)
                 .execute(&db)
                 .await
             })
             .await
-            .map_err(|err| anyhow::anyhow!("acp permission respond join failed: {err}"))??;
+            .map_err(|err| anyhow::anyhow!("acp permission respond join failed: {err}"))??
+            .rows_affected();
 
+        if rows_affected == 0 {
+            return Ok(AcpPermissionRespondResult::AlreadyResolved);
+        }
         let mut pending = self.pending.lock().await;
         if let Some(sender) = pending.remove(request_id) {
             let _ = sender.send(outcome);
         }
+        Ok(AcpPermissionRespondResult::Applied)
+    }
+
+    pub async fn belongs_to_agent(&self, request_id: &str, agent_id: &str) -> anyhow::Result<bool> {
+        let db = self.db.clone();
+        let request_id = request_id.to_string();
+        let agent_id = agent_id.to_string();
+        let row = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM acp_permission_requests WHERE id = ?1 AND agent_id = ?2",
+                )
+                .bind(request_id)
+                .bind(agent_id)
+                .fetch_one(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission ownership join failed: {err}"))??;
+        Ok(row > 0)
+    }
+
+    pub async fn get(&self, request_id: &str) -> anyhow::Result<Option<AcpPermissionRecord>> {
+        let db = self.db.clone();
+        let request_id = request_id.to_string();
+        let row = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    SELECT id, agent_id, session_id, acp_session_id, team_id, requester_actor_id, requester_role,
+                           review_target_actor_id, review_dispatch_status, review_delivery_run_id, review_message_id,
+                           reviewed_by_actor_id, human_review_notified_at, tool_call_id, options_json, tool_call_json,
+                           status, selected_option_id, created_at, responded_at
+                    FROM acp_permission_requests
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(request_id)
+                .fetch_optional(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission get join failed: {err}"))??;
+        row.map(parse_permission_record_row).transpose()
+    }
+
+    pub async fn record_review_dispatch(
+        &self,
+        request_id: &str,
+        review_target_actor_id: Option<&str>,
+        review_dispatch_status: &str,
+        review_delivery_run_id: Option<&str>,
+        review_message_id: Option<i64>,
+    ) -> anyhow::Result<()> {
+        let now = Utc::now().timestamp();
+        let db = self.db.clone();
+        let request_id = request_id.to_string();
+        let review_target_actor_id = review_target_actor_id.map(str::to_string);
+        let review_dispatch_status = review_dispatch_status.to_string();
+        let review_delivery_run_id = review_delivery_run_id.map(str::to_string);
+        self.runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE acp_permission_requests
+                    SET review_target_actor_id = ?1,
+                        review_dispatch_status = ?2,
+                        review_delivery_run_id = ?3,
+                        review_message_id = ?4,
+                        review_dispatched_at = ?5
+                    WHERE id = ?6
+                    "#,
+                )
+                .bind(review_target_actor_id)
+                .bind(review_dispatch_status)
+                .bind(review_delivery_run_id)
+                .bind(review_message_id)
+                .bind(now)
+                .bind(request_id)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission dispatch join failed: {err}"))??;
         Ok(())
+    }
+
+    pub async fn mark_human_review_notified(&self, request_id: &str) -> anyhow::Result<bool> {
+        let now = Utc::now().timestamp();
+        let db = self.db.clone();
+        let request_id = request_id.to_string();
+        let rows_affected = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE acp_permission_requests
+                    SET human_review_notified_at = ?1
+                    WHERE id = ?2
+                      AND status = 'pending'
+                      AND human_review_notified_at IS NULL
+                    "#,
+                )
+                .bind(now)
+                .bind(request_id)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission human notify join failed: {err}"))??
+            .rows_affected();
+        Ok(rows_affected > 0)
     }
 
     pub async fn mark_timeout(
@@ -1301,13 +1530,14 @@ impl AcpPermissionService {
         };
         let db = self.db.clone();
         let request_id_for_db = request_id.to_string();
-        self.runtime_handle
+        let rows_affected = self
+            .runtime_handle
             .spawn(async move {
                 sqlx::query(
                     r#"
                     UPDATE acp_permission_requests
                     SET status = 'timeout', selected_option_id = ?1, responded_at = ?2
-                    WHERE id = ?3
+                    WHERE id = ?3 AND status = 'pending'
                     "#,
                 )
                 .bind(selected_option_id)
@@ -1317,9 +1547,12 @@ impl AcpPermissionService {
                 .await
             })
             .await
-            .map_err(|err| anyhow::anyhow!("acp permission timeout join failed: {err}"))??;
-        let mut pending = self.pending.lock().await;
-        pending.remove(request_id);
+            .map_err(|err| anyhow::anyhow!("acp permission timeout join failed: {err}"))??
+            .rows_affected();
+        if rows_affected > 0 {
+            let mut pending = self.pending.lock().await;
+            pending.remove(request_id);
+        }
         Ok(())
     }
 
@@ -1337,7 +1570,9 @@ impl AcpPermissionService {
                 if let Some(status) = status {
                     sqlx::query(
                         r#"
-                        SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                        SELECT id, agent_id, session_id, acp_session_id, team_id, requester_actor_id, requester_role,
+                               review_target_actor_id, review_dispatch_status, review_delivery_run_id, review_message_id,
+                               reviewed_by_actor_id, human_review_notified_at, tool_call_id, options_json, tool_call_json,
                                status, selected_option_id, created_at, responded_at
                         FROM acp_permission_requests
                         WHERE agent_id = ?1 AND status = ?2
@@ -1351,7 +1586,9 @@ impl AcpPermissionService {
                 } else {
                     sqlx::query(
                         r#"
-                        SELECT id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json,
+                        SELECT id, agent_id, session_id, acp_session_id, team_id, requester_actor_id, requester_role,
+                               review_target_actor_id, review_dispatch_status, review_delivery_run_id, review_message_id,
+                               reviewed_by_actor_id, human_review_notified_at, tool_call_id, options_json, tool_call_json,
                                status, selected_option_id, created_at, responded_at
                         FROM acp_permission_requests
                         WHERE agent_id = ?1
@@ -1368,37 +1605,82 @@ impl AcpPermissionService {
 
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
-            let options_json: String = row.get("options_json");
-            let tool_call_json: Option<String> = row.try_get("tool_call_json").ok();
-            let options =
-                serde_json::from_str::<Vec<AcpPermissionOption>>(&options_json).unwrap_or_default();
-            let tool_call = tool_call_json.and_then(|raw| serde_json::from_str(&raw).ok());
-            out.push(AcpPermissionRecord {
-                id: row.get("id"),
-                agent_id: row.get("agent_id"),
-                session_id: row.get("session_id"),
-                acp_session_id: row.try_get("acp_session_id").ok(),
-                tool_call_id: row.try_get("tool_call_id").ok(),
-                options,
-                tool_call,
-                status: row.get("status"),
-                selected_option_id: row.try_get("selected_option_id").ok(),
-                created_at: row.get("created_at"),
-                responded_at: row.try_get("responded_at").ok(),
-            });
+            out.push(parse_permission_record_row(row)?);
         }
         Ok(out)
     }
+}
+
+fn parse_permission_record_row(
+    row: sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<AcpPermissionRecord> {
+    let options_json: String = row.get("options_json");
+    let tool_call_json = row
+        .try_get::<Option<String>, _>("tool_call_json")
+        .unwrap_or(None);
+    let options =
+        serde_json::from_str::<Vec<AcpPermissionOption>>(&options_json).unwrap_or_default();
+    let tool_call = tool_call_json.and_then(|raw| serde_json::from_str(&raw).ok());
+    Ok(AcpPermissionRecord {
+        id: row.get("id"),
+        agent_id: row.get("agent_id"),
+        session_id: row.get("session_id"),
+        acp_session_id: row
+            .try_get::<Option<String>, _>("acp_session_id")
+            .unwrap_or(None),
+        team_id: row.try_get::<Option<String>, _>("team_id").unwrap_or(None),
+        requester_actor_id: row
+            .try_get::<Option<String>, _>("requester_actor_id")
+            .unwrap_or(None),
+        requester_role: row
+            .try_get::<Option<String>, _>("requester_role")
+            .unwrap_or(None),
+        review_target_actor_id: row
+            .try_get::<Option<String>, _>("review_target_actor_id")
+            .unwrap_or(None),
+        review_dispatch_status: row
+            .try_get::<Option<String>, _>("review_dispatch_status")
+            .unwrap_or(None),
+        review_delivery_run_id: row
+            .try_get::<Option<String>, _>("review_delivery_run_id")
+            .unwrap_or(None),
+        review_message_id: row
+            .try_get::<Option<i64>, _>("review_message_id")
+            .unwrap_or(None),
+        reviewed_by_actor_id: row
+            .try_get::<Option<String>, _>("reviewed_by_actor_id")
+            .unwrap_or(None),
+        human_review_notified_at: row
+            .try_get::<Option<i64>, _>("human_review_notified_at")
+            .unwrap_or(None),
+        tool_call_id: row
+            .try_get::<Option<String>, _>("tool_call_id")
+            .unwrap_or(None),
+        options,
+        tool_call,
+        status: row.get("status"),
+        selected_option_id: row
+            .try_get::<Option<String>, _>("selected_option_id")
+            .unwrap_or(None),
+        created_at: row.get("created_at"),
+        responded_at: row
+            .try_get::<Option<i64>, _>("responded_at")
+            .unwrap_or(None),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle,
-        AcpPromptDeliveryPolicy, AcpSendError, build_actor_mailbox_mcp_server,
-        load_mcp_servers_from_path, should_queue_while_prompts_active,
+        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy, AcpSendError,
+        build_actor_mailbox_mcp_server, load_mcp_servers_from_path,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
+    use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
+    use sqlx::Row;
+    use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
@@ -1414,6 +1696,7 @@ mod tests {
             actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
             member_skills: Vec::new(),
+            contract_version: None,
             continuity: None,
         }
     }
@@ -1621,5 +1904,107 @@ mod tests {
         let names = servers.iter().map(server_name).collect::<Vec<_>>();
         assert!(names.contains(&"local-stdio"));
         assert!(names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME));
+    }
+
+    #[tokio::test]
+    async fn permission_service_respond_reports_already_resolved_after_first_winner() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                acp_session_id TEXT,
+                team_id TEXT,
+                requester_actor_id TEXT,
+                requester_role TEXT,
+                review_target_actor_id TEXT,
+                review_dispatch_status TEXT,
+                review_delivery_run_id TEXT,
+                review_message_id INTEGER,
+                review_dispatched_at INTEGER,
+                reviewed_by_actor_id TEXT,
+                human_review_notified_at INTEGER,
+                tool_call_id TEXT,
+                options_json TEXT NOT NULL,
+                tool_call_json TEXT,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                created_at INTEGER NOT NULL,
+                responded_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create permission table");
+        let service = AcpPermissionService::new(db.clone());
+        let request_id = "perm-service-race".to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json, status, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind(&request_id)
+        .bind("agent-1")
+        .bind("session-1")
+        .bind("acp-session-1")
+        .bind("tool-call-1")
+        .bind(
+            serde_json::json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(serde_json::json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&db)
+        .await
+        .expect("insert permission request");
+
+        let first = service
+            .respond(
+                &request_id,
+                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("allow")),
+                Some("allow".to_string()),
+                Some("leader".to_string()),
+            )
+            .await
+            .expect("first respond");
+        assert_eq!(first, AcpPermissionRespondResult::Applied);
+
+        let second = service
+            .respond(
+                &request_id,
+                RequestPermissionOutcome::Cancelled,
+                None,
+                Some("worker".to_string()),
+            )
+            .await
+            .expect("second respond");
+        assert_eq!(second, AcpPermissionRespondResult::AlreadyResolved);
+
+        let row = sqlx::query(
+            "SELECT status, selected_option_id, reviewed_by_actor_id FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind(&request_id)
+        .fetch_one(&db)
+        .await
+        .expect("reload permission request");
+        assert_eq!(row.get::<String, _>("status"), "responded");
+        assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
+        assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "leader");
     }
 }

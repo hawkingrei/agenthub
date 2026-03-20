@@ -104,6 +104,14 @@ terminology and operating expectations drift.
   - it injects a configured ACP follow-up prompt only after a silence timeout
   - injected loop prompts are follow-up nudges for the current task, not new human intent
   - enabling/disabling or updating loop settings must not block normal Team profile/task flows
+- Team ACP permission review is mailbox-first:
+  - worker-originated ACP permission requests route to leader first
+  - leader may review directly or delegate the request through normal Team coordination
+  - only leader or the current leader-delegated reviewer may resolve the request through
+    `acp_permission_review_respond`
+  - if agent review is unavailable or times out, the system posts a human-review request into
+    `Conversation` (`all`)
+  - human review stays valid in parallel and must not block the original Team workflow
 
 MCP enforcement baseline:
 
@@ -149,7 +157,7 @@ Constraint:
 ### 2) Status Values
 
 - Task:
-  - `open`, `in_progress`, `completed`, `canceled`
+  - `open`, `in_progress`, `in_review`, `completed`, `canceled`
 - Run/step:
   - `submitted`, `working`, `input_required`, `completed`, `failed`, `canceled`
 
@@ -182,6 +190,8 @@ Constraint:
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
+- Team ACP permission review requests should escalate through leader first and fall back to human
+  review in `Conversation` (`all`) when agent review cannot complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Human-facing conversation remains group-visible even when `@mention` is used.
@@ -219,3 +229,4 @@ Constraint:
 - `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
 - `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
 - `docs/journal/2026-03-05-team-conversation-event-bus-contract.md`
+- `docs/journal/2026-03-20-team-acp-permission-review-routing.md`

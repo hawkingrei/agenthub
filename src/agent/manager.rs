@@ -7,7 +7,7 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -30,9 +30,9 @@ use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
 use crate::acp::{
-    AcpActorSkillContext, AcpHandle, AcpPermissionService, AcpPromptDeliveryPolicy,
-    AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context,
-    spawn_acp_session,
+    AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
+    AcpPromptDeliveryPolicy, AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths,
+    normalize_actor_context, spawn_acp_session,
 };
 use crate::auth::AuthService;
 use crate::push::PushService;
@@ -50,6 +50,7 @@ pub struct AgentManager {
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
+    permission_review_dispatcher: Arc<StdRwLock<Option<Arc<dyn AcpPermissionReviewDispatcher>>>>,
     starting: Arc<Mutex<HashSet<String>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
@@ -489,8 +490,18 @@ impl AgentManager {
             codex_acp_binary,
             acp_default_mode,
             permissions,
+            permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn set_permission_review_dispatcher(
+        &self,
+        dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
+    ) {
+        if let Ok(mut guard) = self.permission_review_dispatcher.write() {
+            *guard = dispatcher;
         }
     }
 
@@ -1542,9 +1553,15 @@ impl AgentManager {
                 session_id.clone(),
             ));
             let client_info = Implementation::new("agenthub", env!("CARGO_PKG_VERSION"));
+            let permission_review_dispatcher = self
+                .permission_review_dispatcher
+                .read()
+                .ok()
+                .and_then(|guard| guard.clone());
             let handle = match spawn_acp_session(SpawnAcpSessionRequest {
                 event_sink,
                 permissions: self.permissions.clone(),
+                permission_review_dispatcher,
                 agent_id: agent.id.clone(),
                 agent_session_id: session_id.clone(),
                 resume_session_id,

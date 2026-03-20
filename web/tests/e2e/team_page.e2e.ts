@@ -1552,7 +1552,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
   await selectPrimaryTeamEntryFromSidebar(page, "all");
-  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
   await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
@@ -2009,7 +2009,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Compile Team");
-  await openMainTeamAction(page, "Kanban");
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
   await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -2428,7 +2428,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Chat First Team");
-  await openMainTeamAction(page, "Kanban");
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
   await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
@@ -2647,7 +2647,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   await gotoTeams(page);
   await openTeamFromSelector(page, "virtual-tool-team");
 
-  await expect(page.getByRole("heading", { name: "all", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
   await page
     .getByPlaceholder("Message #all")
     .fill("Please build a tiny JSON CLI with parse and pretty-print commands.");
@@ -2656,7 +2656,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
     "Please build a tiny JSON CLI with parse and pretty-print commands."
   );
 
-  await openMainTeamAction(page, "Kanban");
+  await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
   await openKanbanDeveloperTools(page);
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");

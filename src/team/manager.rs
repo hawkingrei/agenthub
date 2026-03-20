@@ -3714,6 +3714,114 @@ async fn load_running_session_rows_by_agent(
 }
 
 impl TeamManager {
+    pub async fn ensure_shared_thread_target_for_team(
+        &self,
+        team_id: &str,
+        created_by_actor_id: &str,
+    ) -> anyhow::Result<(String, String)> {
+        let mut tx = self.db.begin().await?;
+        let existing = sqlx::query(
+            r#"
+            SELECT
+                t.id AS task_id,
+                c.id AS conversation_id
+            FROM team_tasks t
+            INNER JOIN team_conversations c ON c.task_id = t.id
+            WHERE t.team_id = ?1
+              AND (
+                lower(trim(t.title)) = 'all'
+                OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = 'shared_thread'
+              )
+            ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(team_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(row) = existing {
+            tx.commit().await?;
+            return Ok((
+                row.get::<String, _>("task_id"),
+                row.get::<String, _>("conversation_id"),
+            ));
+        }
+
+        let now = Utc::now().timestamp();
+        let task_id = Uuid::new_v4().to_string();
+        let conversation_id = Uuid::new_v4().to_string();
+        let context_json = serde_json::json!({
+            "bootstrap_kind": "shared_thread",
+            "bootstrap_source": "server_canonical_reply",
+        })
+        .to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_tasks (
+                id,
+                team_id,
+                title,
+                status,
+                created_by_actor_id,
+                context_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, 'all', 'open', ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&task_id)
+        .bind(team_id)
+        .bind(created_by_actor_id)
+        .bind(context_json)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id,
+                team_id,
+                task_id,
+                mode,
+                topic,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, 'group_chat', 'all', ?4, ?5)
+            "#,
+        )
+        .bind(&conversation_id)
+        .bind(team_id)
+        .bind(&task_id)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok((task_id, conversation_id))
+    }
+
+    pub async fn team_has_member(&self, team_id: &str, member_id: &str) -> anyhow::Result<bool> {
+        let team = self.get_team(team_id).await?;
+        let members = team
+            .spec
+            .get("members")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(members.iter().any(|member| {
+            member
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_some_and(|value| value == member_id)
+        }))
+    }
+
     pub(crate) async fn shared_thread_target_for_run(
         &self,
         run_id: &str,

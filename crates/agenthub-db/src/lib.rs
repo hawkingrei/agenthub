@@ -946,6 +946,16 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             agent_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
             acp_session_id TEXT,
+            team_id TEXT,
+            requester_actor_id TEXT,
+            requester_role TEXT,
+            review_target_actor_id TEXT,
+            review_dispatch_status TEXT,
+            review_delivery_run_id TEXT,
+            review_message_id INTEGER,
+            review_dispatched_at INTEGER,
+            reviewed_by_actor_id TEXT,
+            human_review_notified_at INTEGER,
             tool_call_id TEXT,
             options_json TEXT NOT NULL,
             tool_call_json TEXT,
@@ -1031,6 +1041,66 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE acp_permission_requests ADD COLUMN acp_session_id TEXT",
         "acp_permission_requests.acp_session_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN team_id TEXT",
+        "acp_permission_requests.team_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN requester_actor_id TEXT",
+        "acp_permission_requests.requester_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN requester_role TEXT",
+        "acp_permission_requests.requester_role",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_target_actor_id TEXT",
+        "acp_permission_requests.review_target_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_dispatch_status TEXT",
+        "acp_permission_requests.review_dispatch_status",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_delivery_run_id TEXT",
+        "acp_permission_requests.review_delivery_run_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_message_id INTEGER",
+        "acp_permission_requests.review_message_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN review_dispatched_at INTEGER",
+        "acp_permission_requests.review_dispatched_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN reviewed_by_actor_id TEXT",
+        "acp_permission_requests.reviewed_by_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE acp_permission_requests ADD COLUMN human_review_notified_at INTEGER",
+        "acp_permission_requests.human_review_notified_at",
     )
     .await;
     add_column_if_missing(

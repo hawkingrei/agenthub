@@ -1,5 +1,6 @@
 mod manager;
 mod orchestrator;
+mod permission_review;
 mod runtime;
 
 pub use agenthub_team_actor::{
@@ -18,6 +19,9 @@ pub use manager::{
     TeamRemoteRelayWorkerSettings, TeamRuntimeRecord, TeamRuntimeStatus,
 };
 pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
+pub use permission_review::{
+    TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
+};
 pub use runtime::{
     TeamRuntimeControlRecord, TeamRuntimeStartError, ensure_team_runtime_started, stop_team_runtime,
 };

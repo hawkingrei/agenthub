@@ -12,6 +12,7 @@ use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::team::{
     TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
+    TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
     TeamRemoteRelayWorkerSettings,
 };
 
@@ -131,6 +132,14 @@ impl AppState {
         teams
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
+        agents.set_permission_review_dispatcher(Some(Arc::new(
+            TeamPermissionReviewDispatcher::new(
+                teams.clone(),
+                agents.clone(),
+                acp_permissions.clone(),
+                TeamPermissionReviewDispatcherSettings::default(),
+            ),
+        )));
 
         Ok((agents, teams, push, auth, acp_permissions))
     }

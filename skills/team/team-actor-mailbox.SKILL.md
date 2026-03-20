@@ -74,6 +74,12 @@ Recommended fields:
 ## Escalation Rules
 
 - Worker reports blockers to leader first.
+- Worker-originated ACP permission requests should route to leader first through mailbox-oriented
+  coordination; use `acp_permission_review_respond` to deliver the final review outcome.
+- If leader forwards a `permission_review_request` via `actor_send`, that forwarded target becomes
+  the active reviewer; other members should not approve it.
+- If agent review cannot complete in time, the system may surface the same permission request in
+  `Channel` (`all`) for human review without blocking the original run.
 - Shared group chat and direct-human reply boundaries follow `skills/team/AGENTS.md`.
 - For collaboration-intensive work, proactively mention impacted peers (`@member_id`) instead of relying on broadcast.
 

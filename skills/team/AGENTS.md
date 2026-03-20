@@ -52,6 +52,12 @@ restating the same rules.
   - enable or retune it only when a human/operator explicitly asks
   - when enabled, silence may cause a configured ACP reminder prompt to be injected later
   - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
+- ACP permission review:
+  - worker-originated ACP permission requests should route to leader first
+  - leader may review directly or manually delegate review to another worker through normal Team coordination
+  - only leader or the worker currently delegated by leader should use `acp_permission_review_respond`
+  - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
+  - human review remains valid and should not block the original Team workflow
 
 ## Team Phases
 

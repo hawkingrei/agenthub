@@ -9,8 +9,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::acp::{
-    AcpActorSkillContext, AcpPermissionRecord, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path,
-    normalize_actor_cli_path,
+    AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
+    default_actor_cli_path, normalize_actor_cli_path,
 };
 use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
@@ -590,7 +590,15 @@ async fn respond_permission(
     Json(payload): Json<PermissionResponseRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let _ = agent_id;
+    if !state
+        .acp_permissions
+        .belongs_to_agent(&permission_id, &agent_id)
+        .await?
+    {
+        return Err(ApiError::not_found(
+            "permission request not found for agent",
+        ));
+    }
     let outcome = if let Some(option_id) = payload.option_id.as_ref() {
         agent_client_protocol::RequestPermissionOutcome::Selected(
             agent_client_protocol::SelectedPermissionOutcome::new(option_id.clone()),
@@ -605,11 +613,15 @@ async fn respond_permission(
             }
         }
     };
-    state
+    let respond_result = state
         .acp_permissions
-        .respond(&permission_id, outcome, payload.option_id)
+        .respond(&permission_id, outcome, payload.option_id, None)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    let status = match respond_result {
+        AcpPermissionRespondResult::Applied => "ok",
+        AcpPermissionRespondResult::AlreadyResolved => "already_resolved",
+    };
+    Ok(Json(serde_json::json!({ "status": status })))
 }
 
 fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
@@ -1357,6 +1369,39 @@ mod tests {
         .execute(db)
         .await
         .expect("create agent_time_triggers");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                acp_session_id TEXT,
+                team_id TEXT,
+                requester_actor_id TEXT,
+                requester_role TEXT,
+                review_target_actor_id TEXT,
+                review_dispatch_status TEXT,
+                review_delivery_run_id TEXT,
+                review_message_id INTEGER,
+                review_dispatched_at INTEGER,
+                reviewed_by_actor_id TEXT,
+                human_review_notified_at INTEGER,
+                tool_call_id TEXT,
+                options_json TEXT NOT NULL,
+                tool_call_json TEXT,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                created_at INTEGER NOT NULL,
+                responded_at INTEGER,
+                FOREIGN KEY(agent_id) REFERENCES agents(id),
+                FOREIGN KEY(session_id) REFERENCES agent_sessions(id)
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create acp_permission_requests");
     }
 
     async fn build_test_state_with_db(db: SqlitePool) -> AppState {
@@ -2754,5 +2799,210 @@ mod tests {
             disabled_row.get::<String, _>("agent_loop_prompt"),
             "Resume by checking the current ACP thread and taking the next step."
         );
+    }
+
+    #[tokio::test]
+    async fn respond_permission_route_rejects_permission_from_other_agent() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        for agent_id in ["agent-a", "agent-b"] {
+            sqlx::query(
+                r#"
+                INSERT INTO agents (
+                    id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+                "#,
+            )
+            .bind(agent_id)
+            .bind(agent_id)
+            .bind("/tmp")
+            .bind("agenthub-codex-acp")
+            .bind("[]")
+            .bind("use_existing")
+            .bind(now)
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert agent");
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("session-a")
+        .bind("agent-a")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent session");
+
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind("perm-owned-by-agent-a")
+        .bind("agent-a")
+        .bind("session-a")
+        .bind("acp-session-a")
+        .bind("tool-call-a")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-b/permissions/perm-owned-by-agent-a/respond",
+                Some(&token),
+                Some(json!({
+                    "option_id": "allow"
+                })),
+            ))
+            .await
+            .expect("respond permission route");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = decode_text_body(response).await;
+        assert!(
+            body.contains("permission request not found for agent"),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn respond_permission_route_reports_already_resolved_after_first_response() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
+            "#,
+        )
+        .bind("agent-resolve")
+        .bind("agent-resolve")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("session-resolve")
+        .bind("agent-resolve")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind("perm-resolve")
+        .bind("agent-resolve")
+        .bind("session-resolve")
+        .bind("acp-session-resolve")
+        .bind("tool-call-resolve")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let first = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-resolve/permissions/perm-resolve/respond",
+                Some(&token),
+                Some(json!({
+                    "option_id": "allow"
+                })),
+            ))
+            .await
+            .expect("first respond permission route");
+        assert_eq!(first.status(), StatusCode::OK);
+        let first_body = decode_json_body(first).await;
+        assert_eq!(first_body["status"], "ok");
+
+        let second = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-resolve/permissions/perm-resolve/respond",
+                Some(&token),
+                Some(json!({
+                    "outcome": "cancelled"
+                })),
+            ))
+            .await
+            .expect("second respond permission route");
+        assert_eq!(second.status(), StatusCode::OK);
+        let second_body = decode_json_body(second).await;
+        assert_eq!(second_body["status"], "already_resolved");
     }
 }

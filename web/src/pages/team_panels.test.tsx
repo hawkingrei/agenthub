@@ -448,7 +448,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Worker Agent");
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
     expect(container.textContent).toContain("Worker Agent");
-    clickElement(findButtonByText(container, "all"));
+    clickElement(findButtonByText(container, "# all"));
     clickElement(findButtonByText(container, "Worker Agent"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
@@ -460,8 +460,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Teams 2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).toContain("Runs");
-    expect(container.textContent).toContain("Advanced");
+    expect(container.textContent).toContain("Channel");
+    expect(container.textContent).toContain("# all");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");
@@ -530,13 +530,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("worker · working");
     expect(container.textContent).not.toContain("team-1");
 
-    clickElement(findButtonByText(container, "Runs"));
-    expect(onSelectUtilityTab).toHaveBeenCalledWith("runs");
-    clickElement(findButtonByText(container, "Advanced"));
-    expect(onSelectUtilityTab).toHaveBeenCalledWith("overview");
     expect(container.textContent).toContain("Teams 2");
-    expect(container.textContent).toContain("Advanced");
-    expect(container.textContent).toContain("all");
+    expect(container.textContent).toContain("# all");
+    expect(container.textContent).not.toContain("Runs");
+    expect(container.textContent).not.toContain("Advanced");
 
     act(() => {
       root.render(
@@ -665,6 +662,69 @@ describe("team panels interactions", () => {
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
     clickElement(findButtonByText(container, "Create Team"));
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("TeamSidebar keeps selected team metadata behind the sidebar title trigger", () => {
+    const teamOne = buildTeam({
+      description: "Triage TiDB issues and coordinate the fuzzing backlog.",
+    });
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={2}
+            teams={[teamOne]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            selectedTeamRuntimeStatus={{
+              label: "Team running",
+              online: 3,
+              total: 3,
+              status: "running",
+            }}
+            selectedTeamMemberCount={3}
+            selectedTeamHasConfiguredMembers={true}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+              }),
+              buildMemberLiveState({
+                member_id: "worker-agent-2",
+                role: "worker",
+                agent_name: "Worker Agent 2",
+              }),
+            ]}
+            focusedAgentMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectConversation={() => {}}
+            onSelectKanban={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+            onOpenTeamMemberForge={() => {}}
+            onStartTeamRuntime={() => {}}
+            onStopTeamRuntime={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(findButtonByAriaLabel(container, "Open selected team menu")).not.toBeNull();
+    expect(container.textContent).not.toContain("Team running · 3/3 online");
+    expect(container.textContent).not.toContain("Triage TiDB issues and coordinate the fuzzing backlog.");
+    expect(container.textContent).toContain("Team One");
   });
 
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
