@@ -5,13 +5,7 @@ use super::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
 pub(crate) const AGENT_NODE_MAIN_ID: &str = "main";
 pub(crate) const AGENT_NODE_MAIN_NAME: &str = "Main Node";
 
-type ValidatedAgentNodeConfig = (
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-);
+type ValidatedAgentNodeConfig = (String, String, String, Option<String>, Option<String>);
 
 type ValidatedAgentNodeUpdate = (String, String, Option<String>, Option<String>);
 
