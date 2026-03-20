@@ -64,4 +64,19 @@ export default [
       "no-console": "warn",
     },
   },
+  {
+    files: ["src/app.tsx", "src/pages/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-use-before-define": [
+        "error",
+        {
+          functions: false,
+          classes: true,
+          variables: true,
+          enums: true,
+          typedefs: false,
+        },
+      ],
+    },
+  },
 ];

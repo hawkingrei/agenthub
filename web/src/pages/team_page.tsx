@@ -465,21 +465,6 @@ export function TeamPage(props: TeamPageProps) {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
-  const hasConversationStreamTarget = Boolean(
-    eventsAutoRefresh &&
-      tab === "conversation" &&
-      selectedTeamId &&
-      (selectedConversation?.id ?? "").trim()
-  );
-  const connectionBadge = useMemo(
-    () =>
-      deriveConnectionBadge(
-        networkOnline,
-        hasConversationStreamTarget,
-        conversationSseState
-      ),
-    [conversationSseState, hasConversationStreamTarget, networkOnline]
-  );
   const navigateToTeamDetail = useCallback((teamId: string) => {
     navigateTeamRoute(buildTeamDetailPath(teamId));
   }, []);
@@ -2040,6 +2025,21 @@ export function TeamPage(props: TeamPageProps) {
     }
     return resolveTeamConversationTask(taskList, selectedTeamId);
   }, [selectedTeamId, taskList]);
+  const hasConversationStreamTarget = Boolean(
+    eventsAutoRefresh &&
+      tab === "conversation" &&
+      selectedTeamId &&
+      (selectedConversation?.id ?? "").trim()
+  );
+  const connectionBadge = useMemo(
+    () =>
+      deriveConnectionBadge(
+        networkOnline,
+        hasConversationStreamTarget,
+        conversationSseState
+      ),
+    [conversationSseState, hasConversationStreamTarget, networkOnline]
+  );
   const workspaceTasks = useMemo(() => {
     if (!selectedTeamId) {
       return [];

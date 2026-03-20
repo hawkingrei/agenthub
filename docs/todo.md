@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify deployed Team page TDZ guard on `agenthub.hawkingrei.com`: the Team detail route should no longer blank on load after workbench badge/state refactors, and frontend CI/local lint should reject TS/TSX `use-before-define` regressions before bundling. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-page-tdz-lint-guard.md`).
+
 - [ ] Verify deployed Team channel SSE state + fallback refresh on `agenthub.hawkingrei.com`: when `Teams -> # all` is open, the workbench badge should reflect the real Team conversation stream state (`connecting/connected/reconnecting` instead of permanently `idle`), and shared-thread messages/`Seen by` updates should continue to refresh without manual reload even if SSE stops delivering events and HTTP polling has to take over; record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-channel-sse-state-and-fallback-poll.md`).
 
 - [ ] Verify deployed Team agent lifecycle optimistic sync on `agenthub.hawkingrei.com`: immediately after `Start Team`, Team member lifecycle badges and `Teams -> Agents -> Agent ACP` should reflect a running session even if the page had no cached Team runtime yet, instead of falling back to stale catalog `stopped` status while shared-thread `Seen by` already advances. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-agent-acp-runtime-optimistic-state.md`).

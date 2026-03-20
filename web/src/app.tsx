@@ -1640,7 +1640,7 @@ export function App() {
       }, delay);
     };
     requestSseReconnectRef.current = scheduleReconnect;
-    const openSource = () => {
+    function openSource() {
       if (cancelled) return;
       setSseState("connecting");
       const source = new EventSource(
@@ -1724,7 +1724,7 @@ export function App() {
           scheduleReconnect();
         })();
       };
-    };
+    }
     openSource();
     return () => {
       cancelled = true;
@@ -2462,7 +2462,7 @@ export function App() {
         agentsResizeCleanupRef.current = null;
       };
 
-      const onPointerMove = (moveEvent: PointerEvent) => {
+      function onPointerMove(moveEvent: PointerEvent) {
         const workspaceWidth = workspace.getBoundingClientRect().width;
         const nextMaxWidth = resolveAgentsPanelMaxWidth(workspaceWidth);
         const nextWidth = clampAgentsPanelWidth(
@@ -2471,11 +2471,11 @@ export function App() {
         );
         agentsPanelWidthRef.current = nextWidth;
         setAgentsPanelWidth(nextWidth);
-      };
+      }
 
-      const onPointerUp = () => {
+      function onPointerUp() {
         cleanup();
-      };
+      }
 
       agentsResizeCleanupRef.current = cleanup;
       window.addEventListener("pointermove", onPointerMove);

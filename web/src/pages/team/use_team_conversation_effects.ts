@@ -142,7 +142,7 @@ export function useTeamConversationEffects({
       }, delay);
     };
 
-    const openSource = () => {
+    function openSource() {
       closeSource();
       updateSseState(reconnectAttempt > 0 ? "reconnecting" : "connecting");
       const nextSource = new EventSource(
@@ -173,7 +173,7 @@ export function useTeamConversationEffects({
         closeSource();
         scheduleReconnect();
       };
-    };
+    }
 
     openSource();
     return () => {
