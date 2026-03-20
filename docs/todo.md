@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify `fix/team-runtime-bugfixes` web CI stabilization after the ACP-send selector and coverage-pool change: `Web E2E` should pass with the Team ACP `Send input` selector, and `Web` should finish `npm run test:coverage` under `vitest --pool=forks --maxWorkers=1` without `ERR_WORKER_OUT_OF_MEMORY`. Record push/PR run IDs after merge (see `docs/journal/2026-03-20-team-web-ci-coverage-and-acp-e2e.md`).
+
 - [ ] Verify deployed Team page TDZ guard on `agenthub.hawkingrei.com`: the Team detail route should no longer blank on load after workbench badge/state refactors, and frontend CI/local lint should reject TS/TSX `use-before-define` regressions before bundling. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-page-tdz-lint-guard.md`).
 
 - [ ] Verify deployed Team channel SSE state + fallback refresh on `agenthub.hawkingrei.com`: when `Teams -> # all` is open, the workbench badge should reflect the real Team conversation stream state (`connecting/connected/reconnecting` instead of permanently `idle`), and shared-thread messages/`Seen by` updates should continue to refresh without manual reload even if SSE stops delivering events and HTTP polling has to take over; record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-channel-sse-state-and-fallback-poll.md`).
