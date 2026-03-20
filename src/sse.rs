@@ -9,13 +9,14 @@ use axum::{
     routing::get,
 };
 use futures::stream::Stream;
+use sqlx::Error as SqlxError;
 use tokio::{
     sync::{broadcast, mpsc, watch},
     task::JoinHandle,
 };
 
 use crate::agent::AgentOutput;
-use crate::api::load_team_for_user;
+use crate::api::{ApiError, load_team_for_user};
 use crate::state::AppState;
 use crate::team::TeamConversationStreamEvent;
 
@@ -113,19 +114,33 @@ async fn sse_team_task_messages(
         Ok(user) => user,
         Err(_) => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
     };
-    if load_team_for_user(&state, &team_id, &user).await.is_err() {
-        return (StatusCode::NOT_FOUND, "team not found").into_response();
+    if let Err(error) = load_team_for_user(&state, &team_id, &user).await {
+        return error.into_response();
     }
     let task = match state.teams.get_task(&task_id).await {
         Ok(task) if task.team_id == team_id => task,
-        _ => return (StatusCode::NOT_FOUND, "task not found").into_response(),
+        Ok(_) => return (StatusCode::NOT_FOUND, "task not found").into_response(),
+        Err(error) => return map_sse_not_found_error(error, "task not found").into_response(),
     };
     let conversation = match state.teams.get_task_conversation(&task.id).await {
         Ok(conversation) => conversation,
-        Err(_) => return (StatusCode::NOT_FOUND, "conversation not found").into_response(),
+        Err(error) => {
+            return map_sse_not_found_error(error, "conversation not found").into_response();
+        }
     };
     let event_rx = state.teams.subscribe_conversation_events();
     team_conversation_sse_response(event_rx, team_id, task_id, conversation.id)
+}
+
+fn map_sse_not_found_error(error: anyhow::Error, msg: &str) -> ApiError {
+    if matches!(
+        error.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    ) {
+        return ApiError::not_found(msg);
+    }
+    tracing::error!("team task message sse internal error: {}", error);
+    ApiError::from(anyhow::anyhow!("internal server error"))
 }
 
 fn sse_response(output_rxs: Vec<broadcast::Receiver<AgentOutput>>) -> axum::response::Response {
@@ -991,6 +1006,53 @@ mod tests {
             .await
             .expect("execute request");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn team_task_messages_sse_preserves_internal_errors_as_500() {
+        let state = build_team_test_state().await;
+        let token = create_auth_token(&state).await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-internal".to_string(),
+                description: Some("team conversation sse internal error".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"leader_plan",
+                    "members":[{"member_id":"leader"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "all",
+                "user",
+                serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                "group_chat",
+                Some("all"),
+            )
+            .await
+            .expect("create shared thread task");
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&state.db)
+            .await
+            .expect("disable foreign keys");
+        sqlx::query("DROP TABLE team_definitions")
+            .execute(&state.db)
+            .await
+            .expect("drop team_definitions");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/tasks/{}/messages?token={}",
+                team.id, task.id, token
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]

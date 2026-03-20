@@ -42,18 +42,21 @@ struct TeamRuntimeMemberSpec {
     runtime: Option<TeamRuntimeMemberRuntimeHint>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct TeamRuntimeMemberRuntimeHint {
+    #[allow(dead_code)]
     name: Option<String>,
     workdir: Option<String>,
     worktree_repo: Option<String>,
     worktree_ref: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     agent_loop_enabled: Option<bool>,
     #[serde(default)]
+    #[allow(dead_code)]
     agent_loop_idle_seconds: Option<i64>,
     #[serde(default)]
+    #[allow(dead_code)]
     agent_loop_prompt: Option<String>,
 }
 

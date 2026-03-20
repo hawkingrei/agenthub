@@ -212,7 +212,6 @@ impl AppState {
         };
 
         let home_path = PathBuf::from(home);
-        std::fs::create_dir_all(&home_path)?;
         for gitignore_path in resolve_global_gitignore_paths(&home_path) {
             append_gitignore_entry(&gitignore_path, GLOBAL_GITIGNORE_ENTRY)?;
         }

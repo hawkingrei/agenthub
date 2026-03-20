@@ -13,6 +13,7 @@ mod push;
 mod settings;
 mod teams;
 
+pub(crate) use self::error::ApiError;
 pub(crate) use self::teams::load_team_for_user;
 #[cfg(test)]
 pub(crate) use self::teams::tests as team_tests;

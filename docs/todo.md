@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify deployed PR #127 review-thread cleanup: Team conversation refreshes should keep same-session ACP history while still replacing unrelated session payloads, shared-thread conversation merges should stay smooth without payload-stringify hotspots, Team member profile editing should reject partially numeric `agent_loop_idle_seconds` values instead of coercing them, and Team task-message SSE should return `500` for real backend faults instead of masking them as `404 team not found`. Record local/visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-pr127-review-thread-cleanup.md`).
+
 - [ ] Verify `fix/team-runtime-bugfixes` web CI stabilization after the ACP-send selector and coverage-pool split: `Web E2E` should pass with the Team ACP `Send input` selector plus async payload polling, and `Web` should finish `npm run test:coverage` with the coverage run excluding `team_page.smoke.test.tsx` while `npm run test:smoke` continues to cover that route separately. Record push/PR run IDs after merge (see `docs/journal/2026-03-20-team-web-ci-coverage-and-acp-e2e.md`).
 
 - [ ] Verify deployed Team page TDZ guard on `agenthub.hawkingrei.com`: the Team detail route should no longer blank on load after workbench badge/state refactors, and frontend CI/local lint should reject TS/TSX `use-before-define` regressions before bundling. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-page-tdz-lint-guard.md`).

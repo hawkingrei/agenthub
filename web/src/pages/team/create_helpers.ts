@@ -339,7 +339,11 @@ export function updateTeamMemberProfileInSpec(
   const prompt =
     draft.prompt.trim() ||
     (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
-  const parsedLoopIdleSeconds = Number.parseInt(draft.agent_loop_idle_seconds.trim(), 10);
+  const loopIdleRaw = draft.agent_loop_idle_seconds.trim();
+  const parsedLoopIdleSeconds =
+    loopIdleRaw !== "" && /^\d+$/.test(loopIdleRaw)
+      ? Number.parseInt(loopIdleRaw, 10)
+      : Number.NaN;
   existingMembers[memberIndex] = {
     ...existing,
     member_id: memberId,
@@ -352,7 +356,7 @@ export function updateTeamMemberProfileInSpec(
       ...asObjectRecord(existing.runtime),
       agent_loop_enabled: draft.agent_loop_enabled || undefined,
       agent_loop_idle_seconds:
-        draft.agent_loop_idle_seconds.trim() !== "" && Number.isFinite(parsedLoopIdleSeconds)
+        loopIdleRaw !== "" && Number.isFinite(parsedLoopIdleSeconds)
           ? parsedLoopIdleSeconds
           : undefined,
       agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,

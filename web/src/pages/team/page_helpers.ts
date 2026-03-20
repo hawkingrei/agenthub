@@ -302,29 +302,26 @@ export function upsertAgentEventList(
   mode: "replace" | "prepend",
   sessionId?: string | null
 ): AgentEvent[] {
-  const scopedPrev =
-    sessionId == null
-      ? prev
-      : prev.filter((event) => (event.session_id ?? null) === sessionId);
   if (mode === "replace") {
     if (next.length === 0) {
       return [];
     }
+    if (sessionId == null) {
+      return [...next].sort((a, b) => a.event_id - b.event_id);
+    }
+    const scopedPrev = prev.filter((event) => (event.session_id ?? null) === sessionId);
     return mergeOutputsPreserveHistory(scopedPrev, next, true);
   }
+  const scopedPrev =
+    sessionId == null
+      ? prev
+      : prev.filter((event) => (event.session_id ?? null) === sessionId);
   const merged = [...next, ...scopedPrev];
   const byId = new Map<number, AgentEvent>();
   for (const event of merged) {
     byId.set(event.event_id, event);
   }
   return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
-}
-
-function sameConversationPayload(left: unknown, right: unknown): boolean {
-  if (left === right) {
-    return true;
-  }
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sameConversationMessage(
@@ -338,8 +335,7 @@ function sameConversationMessage(
     left.from_actor_id === right.from_actor_id &&
     (left.to_actor_id ?? null) === (right.to_actor_id ?? null) &&
     left.route === right.route &&
-    left.created_at === right.created_at &&
-    sameConversationPayload(left.payload, right.payload)
+    left.created_at === right.created_at
   );
 }
 

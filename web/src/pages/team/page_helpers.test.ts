@@ -259,7 +259,7 @@ describe("team page helpers", () => {
     const next = [
       buildConversationMessage(1),
       buildConversationMessage(2, {
-        payload: { type: "chat_message", text: "message-2 updated" },
+        route: "to_member",
       }),
       buildConversationMessage(3),
     ];
@@ -269,6 +269,20 @@ describe("team page helpers", () => {
     expect(merged[0]).toBe(original);
     expect(merged[1]).not.toBe(prev[1]);
     expect(merged[2]?.message_id).toBe(3);
+  });
+
+  it("reuses immutable conversation messages by id even when payload object identity changes", () => {
+    const original = buildConversationMessage(1);
+    const prev = [original];
+
+    const merged = mergeConversationMessages(prev, [
+      buildConversationMessage(1, {
+        payload: { type: "chat_message", text: "updated text that should be ignored" },
+      }),
+    ]);
+
+    expect(merged).toBe(prev);
+    expect(merged[0]).toBe(original);
   });
 
   it("returns the previous conversation array when refresh payload is unchanged", () => {
@@ -331,6 +345,15 @@ describe("team page helpers", () => {
       "session-1"
     );
     expect(refreshed.map((event) => event.event_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("keeps replace semantics when no session id is provided", () => {
+    const refreshed = upsertAgentEventList(
+      [buildAgentEvent(1, "old-1"), buildAgentEvent(2, "old-2")],
+      [buildAgentEvent(3, "new-3"), buildAgentEvent(4, "new-4")],
+      "replace"
+    );
+    expect(refreshed.map((event) => event.event_id)).toEqual([3, 4]);
   });
 
   it("builds readable agent labels with model metadata", () => {
