@@ -84,28 +84,11 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "499b7ff5c6c842e43fb188f6da7c99a258ae89a9df8c896d6e9784da9b4b23e7"
-dependencies = [
- "agent-client-protocol-schema 0.10.8",
- "anyhow",
- "async-broadcast",
- "async-trait",
- "derive_more 2.1.1",
- "futures",
- "log",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "agent-client-protocol"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c56a59cf6315e99f874d2c1f96c69d2da5ffe0087d211297fc4a41f849770a2"
 dependencies = [
- "agent-client-protocol-schema 0.11.2",
+ "agent-client-protocol-schema",
  "anyhow",
  "async-broadcast",
  "async-trait",
@@ -114,20 +97,6 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "agent-client-protocol-schema"
-version = "0.10.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bc1fef9c32f03bce2ab44af35b6f483bfd169bf55cc59beeb2e3b1a00ae4d1"
-dependencies = [
- "anyhow",
- "derive_more 2.1.1",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "strum 0.27.2",
 ]
 
 [[package]]
@@ -148,7 +117,7 @@ dependencies = [
 name = "agenthub"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol 0.9.5",
+ "agent-client-protocol",
  "agenthub-acp",
  "agenthub-config",
  "agenthub-db",
@@ -200,7 +169,7 @@ dependencies = [
 name = "agenthub-acp"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol 0.9.5",
+ "agent-client-protocol",
  "agenthub-acp-core",
  "agenthub-text",
  "anyhow",
@@ -219,7 +188,7 @@ dependencies = [
 name = "agenthub-acp-core"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol 0.9.5",
+ "agent-client-protocol",
  "serde",
  "serde_json",
  "tracing",
@@ -229,7 +198,7 @@ dependencies = [
 name = "agenthub-codex-acp"
 version = "0.10.0"
 dependencies = [
- "agent-client-protocol 0.10.2",
+ "agent-client-protocol",
  "anyhow",
  "async-trait",
  "clap",
@@ -1453,7 +1422,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "shlex",
- "strum_macros 0.28.0",
+ "strum_macros",
  "thiserror 2.0.18",
  "tracing",
  "ts-rs",
@@ -1850,7 +1819,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "strum_macros 0.28.0",
+ "strum_macros",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.28.0",
@@ -1895,7 +1864,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "strum 0.27.2",
- "strum_macros 0.28.0",
+ "strum_macros",
  "sys-locale",
  "tracing",
  "ts-rs",
@@ -4155,7 +4124,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -8465,9 +8434,6 @@ name = "strum"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
-dependencies = [
- "strum_macros 0.27.2",
-]
 
 [[package]]
 name = "strum"
@@ -8475,19 +8441,7 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
- "strum_macros 0.28.0",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
+ "strum_macros",
 ]
 
 [[package]]
