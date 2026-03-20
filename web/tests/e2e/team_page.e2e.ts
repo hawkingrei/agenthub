@@ -201,7 +201,13 @@ async function createTeamMemberFromModal(
   const openButtonLabel = "Add Agent";
   const title = "Add Agent";
   const confirmLabel = "Create Agent";
-  await page.getByRole("button", { name: openButtonLabel, exact: true }).first().click();
+  const openButton = page.getByRole("button", { name: openButtonLabel, exact: true }).first();
+  if ((await openButton.count()) > 0) {
+    await openButton.click();
+  } else {
+    await openSelectedTeamMenu(page);
+    await page.getByRole("menuitem", { name: openButtonLabel, exact: true }).click();
+  }
   const dialog = page
     .locator("[role='dialog']")
     .filter({ hasText: title })
@@ -302,9 +308,36 @@ async function selectAgentFromSidebar(
     await expect(agentAcpReady).toBeVisible();
     return;
   }
+  const noEvents = teamsMain.getByText("No thread events found in this agent session.", {
+    exact: true,
+  });
+  if ((await noEvents.count()) > 0) {
+    await expect(noEvents).toBeVisible();
+    return;
+  }
   await expect(
     teamsMain.getByText("Selected agent has no thread session yet.", { exact: true })
   ).toBeVisible();
+}
+
+async function openSelectedTeamMenu(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const trigger = page.getByRole("button", { name: "Open selected team menu", exact: true });
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+    await trigger.click();
+  }
+}
+
+async function clickSelectedTeamMenuItem(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
+  await openSelectedTeamMenu(page);
+  const item = page.getByRole("menuitem", { name: label, exact: true });
+  await expect(item).toBeVisible();
+  await item.click();
 }
 
 async function openKanbanDeveloperTools(
@@ -1189,10 +1222,10 @@ test("team runtime controls update shared runtime badge", async ({ page }) => {
   await openTeamFromSelector(page, "runtime controls team");
   await expect(page.getByText("team running", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Stop Team", exact: true }).click();
+  await clickSelectedTeamMenuItem(page, "Stop Team");
   await expect(page.getByText("team stopped", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start Team", exact: true }).click();
+  await clickSelectedTeamMenuItem(page, "Start Team");
   await expect(page.getByText("team running", { exact: true })).toBeVisible();
 });
 
@@ -1208,7 +1241,8 @@ test("team create flow stores mission metadata before member setup", async ({ pa
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
   await expect(page.getByRole("heading", { name: "quest-team", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   const payload = fixture.getCreatePayload();
@@ -1239,7 +1273,8 @@ test("team member setup adds the first agent and appends more agents through spe
     customSkills: "custom-leader-skill",
     identity: "Principal planner and reviewer",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
 
   await createTeamMemberFromModal(page, {
     workdir: "/workspace/member-setup-worker",
@@ -1582,7 +1617,8 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: "forge-team",
     goal: "Bind leader in-place before worker setup.",
   });
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
@@ -1590,7 +1626,8 @@ test("team setup keeps add agent wording after the first member binds", async ({
     identity: "Leader bound in-place",
   });
 
-  await expect(page.getByRole("button", { name: "Add Agent", exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");
