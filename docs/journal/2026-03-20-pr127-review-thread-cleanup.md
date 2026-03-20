@@ -7,6 +7,7 @@ Cleaned up the remaining low-risk PR #127 review feedback and aligned the branch
 - Fixed `upsertAgentEventList(..., "replace")` so history preservation only applies when a concrete `sessionId` is known.
 - Simplified Team conversation merge reuse logic to rely on stable message identity/scalar fields instead of `JSON.stringify(...)` payload comparisons on every refresh.
 - Tightened Team member profile parsing so partially numeric `agent_loop_idle_seconds` values are treated as unset instead of being silently coerced.
+- Aligned Team member loop-idle draft/save validation with the backend `10..=86400` contract so out-of-range values are cleared instead of being carried through the spec/UI.
 - Updated Team task-message SSE to preserve real internal failures as `500` responses instead of collapsing them into `404 team not found`.
 - Removed the unnecessary `create_dir_all($HOME)` call from global `.agenthubmemory` gitignore setup.
 - Narrowed `dead_code` suppression on `TeamRuntimeMemberRuntimeHint` to only the currently-unused fields.

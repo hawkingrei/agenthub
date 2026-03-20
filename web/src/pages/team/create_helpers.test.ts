@@ -380,6 +380,34 @@ describe("team create helpers", () => {
     );
   });
 
+  it("drops out-of-range loop idle seconds when building a member draft from spec", () => {
+    const spec = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "Team architect",
+        model: "codex",
+        prompt: "",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "",
+      },
+      buildForgeAgent({ id: "leader-1" })
+    ) as { members: Array<Record<string, unknown>> };
+    spec.members[0] = {
+      ...spec.members[0],
+      runtime: {
+        ...(spec.members[0]?.runtime as Record<string, unknown>),
+        agent_loop_enabled: true,
+        agent_loop_idle_seconds: 5,
+        agent_loop_prompt: "Resume review synthesis after silence.",
+      },
+    };
+
+    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1");
+    expect(draft?.agent_loop_idle_seconds).toBe("");
+  });
+
   it("updates existing team member profile fields without replacing runtime hints", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
@@ -459,6 +487,46 @@ describe("team create helpers", () => {
       custom_skills: "",
       agent_loop_enabled: true,
       agent_loop_idle_seconds: "900abc",
+      agent_loop_prompt: "Resume review synthesis after silence.",
+    }) as { members: Array<Record<string, unknown>> };
+
+    expect(updated.members[0]?.runtime).toEqual({
+      name: "leader-1-name",
+      workdir: "/tmp/leader-1",
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      agent_loop_enabled: true,
+      agent_loop_idle_seconds: undefined,
+      agent_loop_prompt: "Resume review synthesis after silence.",
+    });
+  });
+
+  it("treats out-of-range agent loop idle input as unset", () => {
+    const original = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      {
+        member_id: "leader-1",
+        role: "leader",
+        description: "Team architect",
+        model: "codex",
+        prompt: "",
+        skills: ["team-deliberation-rules"],
+        custom_skills: "",
+      },
+      buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
+    );
+    const updated = updateTeamMemberProfileInSpec(original, {
+      member_id: "leader-1",
+      role: "leader",
+      description: "Review owner",
+      model: "gpt-5.4",
+      prompt: "Coordinate review and final synthesis.",
+      skills: ["team-deliberation-rules"],
+      custom_skills: "",
+      agent_loop_enabled: true,
+      agent_loop_idle_seconds: "9",
       agent_loop_prompt: "Resume review synthesis after silence.",
     }) as { members: Array<Record<string, unknown>> };
 

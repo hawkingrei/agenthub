@@ -12,6 +12,8 @@ import {
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
 
 const DEFAULT_TEAM_PLAN_STEP_KEY = "leader_plan";
+const MIN_AGENT_LOOP_IDLE_SECONDS = 10;
+const MAX_AGENT_LOOP_IDLE_SECONDS = 86_400;
 
 type TeamStepDraft = {
   step_key: string;
@@ -246,12 +248,22 @@ function readRuntimeLoopEnabled(member: Record<string, unknown>): boolean {
   return readRuntimeRecord(member)?.agent_loop_enabled === true;
 }
 
-function readRuntimeLoopIdleSeconds(member: Record<string, unknown>): string {
-  const value = readRuntimeRecord(member)?.agent_loop_idle_seconds;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return String(Math.trunc(value));
+function normalizeAgentLoopIdleSeconds(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "";
   }
-  return "";
+  const normalized = Math.trunc(value);
+  if (
+    normalized < MIN_AGENT_LOOP_IDLE_SECONDS ||
+    normalized > MAX_AGENT_LOOP_IDLE_SECONDS
+  ) {
+    return "";
+  }
+  return String(normalized);
+}
+
+function readRuntimeLoopIdleSeconds(member: Record<string, unknown>): string {
+  return normalizeAgentLoopIdleSeconds(readRuntimeRecord(member)?.agent_loop_idle_seconds);
 }
 
 function readRuntimeLoopPrompt(member: Record<string, unknown>): string {
@@ -296,7 +308,7 @@ export function buildTeamMemberDraftFromSpec(
     agent_loop_enabled: agent?.agent_loop_enabled ?? readRuntimeLoopEnabled(member),
     agent_loop_idle_seconds:
       agent?.agent_loop_idle_seconds != null
-        ? String(agent.agent_loop_idle_seconds)
+        ? normalizeAgentLoopIdleSeconds(agent.agent_loop_idle_seconds)
         : readRuntimeLoopIdleSeconds(member),
     agent_loop_prompt: agent?.agent_loop_prompt?.trim() || readRuntimeLoopPrompt(member),
   };
@@ -344,6 +356,12 @@ export function updateTeamMemberProfileInSpec(
     loopIdleRaw !== "" && /^\d+$/.test(loopIdleRaw)
       ? Number.parseInt(loopIdleRaw, 10)
       : Number.NaN;
+  const normalizedLoopIdleSeconds =
+    Number.isFinite(parsedLoopIdleSeconds) &&
+    parsedLoopIdleSeconds >= MIN_AGENT_LOOP_IDLE_SECONDS &&
+    parsedLoopIdleSeconds <= MAX_AGENT_LOOP_IDLE_SECONDS
+      ? parsedLoopIdleSeconds
+      : undefined;
   existingMembers[memberIndex] = {
     ...existing,
     member_id: memberId,
@@ -355,10 +373,7 @@ export function updateTeamMemberProfileInSpec(
     runtime: {
       ...asObjectRecord(existing.runtime),
       agent_loop_enabled: draft.agent_loop_enabled || undefined,
-      agent_loop_idle_seconds:
-        loopIdleRaw !== "" && Number.isFinite(parsedLoopIdleSeconds)
-          ? parsedLoopIdleSeconds
-          : undefined,
+      agent_loop_idle_seconds: normalizedLoopIdleSeconds,
       agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
     },
   };
