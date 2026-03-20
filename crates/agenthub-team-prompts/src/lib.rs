@@ -27,6 +27,9 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
     "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.\n",
     "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
+    "- Use `team_tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.\n",
+    "- Use `team_task_create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `team_tasks`.\n",
+    "- Use `team_task_update` when you intentionally move a Team task through lifecycle states.\n",
     "- Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.\n",
     "- Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.\n",
     "- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.\n",
@@ -84,6 +87,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Do not review your own Team ACP permission request; wait for leader review or human review in `Channel` (`all`).\n",
     "- If leader-side agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.\n",
     "- Use the runtime `team_members` tool to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
+    "- Use `team_tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.\n",
+    "- Do not call `team_task_create` or `team_task_update`; canonical Team task creation and lifecycle updates remain leader-owned.\n",
     "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
     "- Load `team-task-lifecycle` whenever you need canonical Team task state guidance.\n",
     "- Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.\n",
@@ -158,6 +163,9 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_members"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_tasks"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_task_create"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_task_update"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_time_trigger_set"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
@@ -165,6 +173,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_members"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_tasks"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_task_create"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_time_trigger_set"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));

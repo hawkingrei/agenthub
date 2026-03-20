@@ -38,6 +38,9 @@ restating the same rules.
 - Human/task boundary:
   - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
   - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
+  - `team_task_create` is the canonical MCP tool for leader-owned Team task creation
+  - `team_task_update` is the canonical MCP tool for leader-owned Team task lifecycle changes
+  - `team_tasks` is the canonical MCP tool for inspecting the current Team Kanban surface
   - leader owns canonical task creation and task lifecycle management for the team
   - channels are for communication/review; Kanban is the canonical task-tracking surface
 - Self-maintenance:

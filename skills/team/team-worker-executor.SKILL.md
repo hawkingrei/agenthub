@@ -147,9 +147,11 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Task Status Discipline
 
 - Treat the leader-owned Team task as the canonical execution unit behind your assignment.
+- Use `team_tasks` when you need to verify canonical Team task state directly.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
 - Keep the task moving with timely progress/blocker updates so the leader can maintain correct
   Kanban state.
+- Do not call `team_task_create` or `team_task_update`; raise the lifecycle change to leader.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - If review requests changes, resume execution from `in_progress` with updated acceptance notes.

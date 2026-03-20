@@ -12,13 +12,15 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
 use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
-use crate::team::TeamManager;
+use crate::team::{TEAM_TASK_STATUS_VALUES, TeamManager, TeamTaskStatus};
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 
 const JSONRPC_PARSE_ERROR: i32 = -32700;
 const JSONRPC_INVALID_REQUEST: i32 = -32600;
@@ -67,6 +69,33 @@ struct ActorSendToolArgs {
 struct TeamMembersToolArgs {
     team_id: Option<String>,
     run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTasksToolArgs {
+    team_id: Option<String>,
+    limit: Option<i64>,
+    status: Option<String>,
+    include_shared_thread: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTaskCreateToolArgs {
+    team_id: Option<String>,
+    title: String,
+    status: Option<String>,
+    topic: Option<String>,
+    context: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct TeamTaskUpdateToolArgs {
+    team_id: Option<String>,
+    task_id: String,
+    status: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -282,6 +311,50 @@ fn actor_tools() -> Vec<Value> {
                 "properties": {
                     "team_id": { "type": "string", "minLength": 1 },
                     "run_id": { "type": "string", "minLength": 1 }
+                }
+            }
+        }),
+        json!({
+            "name": "team_tasks",
+            "description": "List canonical Team Kanban tasks for the current team.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES, "default": "all" },
+                    "include_shared_thread": { "type": "boolean", "default": false }
+                }
+            }
+        }),
+        json!({
+            "name": "team_task_create",
+            "description": "Create a canonical Team task in Kanban. Leader only.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["title"],
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "title": { "type": "string", "minLength": 1 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES, "default": "open" },
+                    "topic": { "type": "string", "minLength": 1 },
+                    "context": { "type": "object" }
+                }
+            }
+        }),
+        json!({
+            "name": "team_task_update",
+            "description": "Advance or reopen a canonical Team task state. Leader only.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "status"],
+                "properties": {
+                    "team_id": { "type": "string", "minLength": 1 },
+                    "task_id": { "type": "string", "minLength": 1 },
+                    "status": { "type": "string", "enum": TEAM_TASK_STATUS_VALUES }
                 }
             }
         }),
@@ -763,6 +836,242 @@ async fn tool_team_members(
     }
 }
 
+fn parse_team_task_status_argument(raw: &str) -> Result<TeamTaskStatus, String> {
+    match raw.trim() {
+        "open" => Ok(TeamTaskStatus::Open),
+        "in_progress" => Ok(TeamTaskStatus::InProgress),
+        "in_review" => Ok(TeamTaskStatus::InReview),
+        "completed" => Ok(TeamTaskStatus::Completed),
+        "canceled" => Ok(TeamTaskStatus::Canceled),
+        other => Err(format!(
+            "invalid task status '{other}', expected one of: {}",
+            TEAM_TASK_STATUS_VALUES.join(", ")
+        )),
+    }
+}
+
+fn resolve_team_leader_member_id(spec: &Value) -> Result<String, String> {
+    if let Some(leader_member_id) = spec
+        .as_object()
+        .and_then(|obj| obj.get("leader_member_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(leader_member_id.to_string());
+    }
+
+    if let Some(members) = spec
+        .as_object()
+        .and_then(|obj| obj.get("members"))
+        .and_then(Value::as_array)
+    {
+        for member in members {
+            let Some(member_obj) = member.as_object() else {
+                continue;
+            };
+            let role = member_obj
+                .get("role")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            let member_id = member_obj
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            if role.eq_ignore_ascii_case("leader") && !member_id.is_empty() {
+                return Ok(member_id.to_string());
+            }
+        }
+    }
+
+    if let Some(entrypoint) = spec
+        .as_object()
+        .and_then(|obj| obj.get("entrypoint"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(entrypoint.to_string());
+    }
+
+    Err("team has no leader configured".to_string())
+}
+
+async fn load_team_for_context(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    explicit_team_id: Option<String>,
+) -> Result<crate::team::TeamDefinitionRecord, String> {
+    let team_id = take_optional(explicit_team_id)
+        .or_else(|| context.team_id.clone())
+        .ok_or_else(|| "team_id is required for this tool call".to_string())?;
+    let team = manager
+        .get_team(&team_id)
+        .await
+        .map_err(|err| format!("load team failed: {err}"))?;
+    if !manager
+        .team_has_member(&team.id, &context.actor_id)
+        .await
+        .map_err(|err| format!("load team members failed: {err}"))?
+    {
+        return Err("current actor is not a member of this team".to_string());
+    }
+    Ok(team)
+}
+
+async fn ensure_leader_team_access(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    explicit_team_id: Option<String>,
+) -> Result<crate::team::TeamDefinitionRecord, String> {
+    let team = load_team_for_context(manager, context, explicit_team_id).await?;
+    let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
+    if context.actor_id != leader_member_id {
+        return Err("only leader may create or update Team tasks".to_string());
+    }
+    Ok(team)
+}
+
+fn is_shared_thread_task(task: &crate::team::TeamTaskRecord) -> bool {
+    if task
+        .title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+    {
+        return true;
+    }
+    task.context
+        .as_object()
+        .and_then(|obj| obj.get("bootstrap_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
+}
+
+async fn tool_team_tasks(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTasksToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match load_team_for_context(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let status_filter = match args.status.as_deref().map(str::trim) {
+        Some("all") | None => None,
+        Some(raw) => match parse_team_task_status_argument(raw) {
+            Ok(status) => Some(status),
+            Err(err) => return tool_result_error(err, None),
+        },
+    };
+    let include_shared_thread = args.include_shared_thread.unwrap_or(false);
+    let limit = args.limit.unwrap_or(100).clamp(1, 500);
+    let mut tasks = match manager.list_tasks(&team.id, limit).await {
+        Ok(tasks) => tasks,
+        Err(err) => return tool_result_error(format!("team_tasks failed: {err}"), None),
+    };
+    if !include_shared_thread {
+        tasks.retain(|task| !is_shared_thread_task(task));
+    }
+    if let Some(status) = status_filter {
+        tasks.retain(|task| task.status == status);
+    }
+    tool_result_success(json!(tasks))
+}
+
+async fn tool_team_task_create(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTaskCreateToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match ensure_leader_team_access(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let title = args.title.trim();
+    if title.is_empty() {
+        return tool_result_error("title must be a non-empty string", None);
+    }
+    let requested_status = match args.status.as_deref() {
+        Some(raw) => match parse_team_task_status_argument(raw) {
+            Ok(status) => status,
+            Err(err) => return tool_result_error(err, None),
+        },
+        None => TeamTaskStatus::Open,
+    };
+    let topic = take_optional(args.topic);
+    let (task, conversation) = match manager
+        .create_task(
+            &team.id,
+            title,
+            &context.actor_id,
+            args.context.unwrap_or_else(|| json!({})),
+            "group_chat",
+            topic.as_deref(),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => return tool_result_error(format!("team_task_create failed: {err}"), None),
+    };
+    let task = if requested_status == TeamTaskStatus::Open {
+        task
+    } else {
+        match manager.update_task_status(&task.id, requested_status).await {
+            Ok(updated) => updated,
+            Err(err) => return tool_result_error(format!("team_task_create failed: {err}"), None),
+        }
+    };
+    tool_result_success(json!({
+        "task": task,
+        "conversation": conversation,
+    }))
+}
+
+async fn tool_team_task_update(
+    manager: &TeamManager,
+    context: &ActorMcpContext,
+    arguments: Option<&Map<String, Value>>,
+) -> Value {
+    let args = match parse_tool_args::<TeamTaskUpdateToolArgs>(arguments) {
+        Ok(args) => args,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let team = match ensure_leader_team_access(manager, context, args.team_id).await {
+        Ok(team) => team,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let task_id = args.task_id.trim();
+    if task_id.is_empty() {
+        return tool_result_error("task_id must be a non-empty string", None);
+    }
+    let status = match parse_team_task_status_argument(&args.status) {
+        Ok(status) => status,
+        Err(err) => return tool_result_error(err, None),
+    };
+    let existing = match manager.get_task(task_id).await {
+        Ok(task) => task,
+        Err(err) => return tool_result_error(format!("team_task_update failed: {err}"), None),
+    };
+    if existing.team_id != team.id {
+        return tool_result_error("task does not belong to this team", None);
+    }
+    match manager.update_task_status(task_id, status).await {
+        Ok(task) => tool_result_success(json!(task)),
+        Err(err) => tool_result_error(format!("team_task_update failed: {err}"), None),
+    }
+}
+
 async fn tool_agent_time_trigger_set(
     trigger_manager: &AgentTimeTriggerManager,
     context: &ActorMcpContext,
@@ -989,6 +1298,9 @@ async fn handle_tool_call<S: ActorMailboxService>(
             .await
         }
         "team_members" => tool_team_members(tool_context.manager, context, arguments).await,
+        "team_tasks" => tool_team_tasks(tool_context.manager, context, arguments).await,
+        "team_task_create" => tool_team_task_create(tool_context.manager, context, arguments).await,
+        "team_task_update" => tool_team_task_update(tool_context.manager, context, arguments).await,
         "agent_time_trigger_set" => {
             tool_agent_time_trigger_set(tool_context.trigger_manager, context, arguments).await
         }
@@ -1063,7 +1375,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService>(
                         "title": "AgentHub Actor Mailbox",
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, team_members for Team runtime context, and acp_permission_review_respond when a Team permission review request arrives."
+                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, team_members for Team runtime context, team_tasks / team_task_create / team_task_update for canonical Kanban task tracking, and acp_permission_review_respond when a Team permission review request arrives."
                 }),
             )
         }
@@ -1329,6 +1641,9 @@ mod tests {
                 "actor_ack",
                 "actor_send",
                 "team_members",
+                "team_tasks",
+                "team_task_create",
+                "team_task_update",
                 "agent_time_trigger_set",
                 "agent_time_trigger_list",
                 "agent_time_trigger_cancel",
@@ -1748,7 +2063,11 @@ mod tests {
             .expect("create team");
         let run = state
             .teams
-            .create_run(&team.id, Some("ctx-permission-delegate"), json!({"goal":"review"}))
+            .create_run(
+                &team.id,
+                Some("ctx-permission-delegate"),
+                json!({"goal":"review"}),
+            )
             .await
             .expect("create run");
         let now = chrono::Utc::now().timestamp();
@@ -2194,6 +2513,9 @@ mod tests {
                 "actor_ack",
                 "actor_send",
                 "team_members",
+                "team_tasks",
+                "team_task_create",
+                "team_task_update",
                 "agent_time_trigger_set",
                 "agent_time_trigger_list",
                 "agent_time_trigger_cancel",
@@ -2494,6 +2816,182 @@ mod tests {
         assert_eq!(members[1]["session_id"], "session-worker");
         assert_eq!(members[1]["session_status"], "running");
         assert_eq!(members[1]["steps"][0]["status"], "submitted");
+    }
+
+    #[tokio::test]
+    async fn team_task_tools_create_list_and_update_canonical_tasks() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-tasks-{}", Uuid::new_v4()),
+                description: Some("actor mcp team tasks".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let _shared = state
+            .teams
+            .ensure_shared_thread_target_for_team(&team.id, "leader")
+            .await
+            .expect("ensure shared thread");
+        let leader = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let worker = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "worker".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let created = tool_team_task_create(
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "title": "Investigate planner regression",
+                    "status": "in_progress",
+                    "topic": "planner regression",
+                    "context": {
+                        "source": "leader_planning",
+                        "acceptance": "Regression root cause is identified."
+                    }
+                })
+                .as_object()
+                .expect("create args"),
+            ),
+        )
+        .await;
+        assert_eq!(created["isError"], Value::Bool(false), "{created}");
+        let created_task = &created["structuredContent"]["task"];
+        assert_eq!(created_task["title"], "Investigate planner regression");
+        assert_eq!(created_task["status"], "in_progress");
+        let created_task_id = created_task["id"]
+            .as_str()
+            .expect("created task id")
+            .to_string();
+
+        let listed = tool_team_tasks(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "status": "in_progress"
+                })
+                .as_object()
+                .expect("list args"),
+            ),
+        )
+        .await;
+        assert_eq!(listed["isError"], Value::Bool(false), "{listed}");
+        let listed_tasks = listed["structuredContent"]
+            .as_array()
+            .expect("listed tasks");
+        assert_eq!(listed_tasks.len(), 1);
+        assert_eq!(listed_tasks[0]["id"], Value::from(created_task_id.clone()));
+        assert_ne!(listed_tasks[0]["title"], Value::from("all"));
+
+        let updated = tool_team_task_update(
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "task_id": created_task_id,
+                    "status": "in_review"
+                })
+                .as_object()
+                .expect("update args"),
+            ),
+        )
+        .await;
+        assert_eq!(updated["isError"], Value::Bool(false), "{updated}");
+        assert_eq!(updated["structuredContent"]["status"], "in_review");
+    }
+
+    #[tokio::test]
+    async fn worker_cannot_create_or_update_team_tasks() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-team-task-authz-{}", Uuid::new_v4()),
+                description: Some("actor mcp team task authz".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let worker = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "worker".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let create = tool_team_task_create(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "title": "Should fail"
+                })
+                .as_object()
+                .expect("create args"),
+            ),
+        )
+        .await;
+        assert_eq!(create["isError"], Value::Bool(true), "{create}");
+        assert_eq!(
+            create["content"][0]["text"],
+            "only leader may create or update Team tasks"
+        );
+
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "Leader-owned task",
+                "leader",
+                json!({}),
+                "group_chat",
+                None,
+            )
+            .await
+            .expect("create task");
+        let update = tool_team_task_update(
+            &state.teams,
+            &worker,
+            Some(
+                json!({
+                    "task_id": task.id,
+                    "status": "completed"
+                })
+                .as_object()
+                .expect("update args"),
+            ),
+        )
+        .await;
+        assert_eq!(update["isError"], Value::Bool(true), "{update}");
+        assert_eq!(
+            update["content"][0]["text"],
+            "only leader may create or update Team tasks"
+        );
     }
 
     #[tokio::test]

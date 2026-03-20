@@ -208,7 +208,10 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - Do not require humans to express requests in a task-shaped format before planning can begin.
 - Create a Team task when execution work needs explicit ownership, progress tracking, or Kanban
   visibility.
+- Use `team_task_create` to create that canonical Team task and `team_tasks` to confirm it is
+  visible in Kanban.
 - Use `team-task-lifecycle` as the canonical state-transition contract.
+- Use `team_task_update` when intentionally advancing the canonical Team task lifecycle.
 - The expected Team task path is `open -> in_progress -> in_review -> completed|canceled`.
 - Successful worker execution should normally land in `in_review`, not directly `completed`.
 - Move `in_review -> completed` only after review/acceptance is explicit.

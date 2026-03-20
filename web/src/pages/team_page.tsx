@@ -135,6 +135,7 @@ import { useTeamConversationActions } from "./team/use_team_conversation_actions
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
+import { useTeamTaskEffects } from "./team/use_team_task_effects";
 import { useTeamRuntimeEffects } from "./team/use_team_runtime_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import { useTeamStepActions } from "./team/use_team_step_actions";
@@ -2688,6 +2689,14 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeamId,
     enabled: shouldWatchSelectedTeamRuntime,
     refreshTeamRuntime,
+    onRefreshError: (err) => {
+      setError(parseErrorMessage(err));
+    },
+  });
+  useTeamTaskEffects({
+    selectedTeamId,
+    enabled: tab === "tasks",
+    refreshTasks,
     onRefreshError: (err) => {
       setError(parseErrorMessage(err));
     },

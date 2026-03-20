@@ -14,6 +14,9 @@ describe("team member prompt mirrors", () => {
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agent_time_trigger_cancel");
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agent_loop");
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team-task-lifecycle");
+    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team_tasks");
+    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team_task_create");
+    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team_task_update");
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("in_review");
   });
 
@@ -25,6 +28,8 @@ describe("team member prompt mirrors", () => {
     expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agent_loop");
     expect(DEFAULT_TEAM_WORKER_PROMPT).toContain(".agenthubmemory/TODO.md");
     expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("team-task-lifecycle");
+    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("team_tasks");
+    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("team_task_create");
     expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("in_review");
   });
 });
