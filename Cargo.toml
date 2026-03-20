@@ -40,7 +40,7 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 web-push = "0.10"
-webauthn-rs = "0.4"
+webauthn-rs = "0.5"
 url = "2"
 argon2 = "0.5"
 rand = "0.8"
