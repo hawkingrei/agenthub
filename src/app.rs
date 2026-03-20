@@ -212,7 +212,7 @@ pub async fn run() -> anyhow::Result<()> {
     let server = axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
         .with_graceful_shutdown(async move {
             if shutdown_rx.changed().await.is_err() {
-                return;
+                // Receiver dropped before shutdown signal; let graceful shutdown future end.
             }
         })
         .into_future();
