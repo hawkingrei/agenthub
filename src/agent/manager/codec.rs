@@ -158,33 +158,3 @@ fn acp_provider_for_command_with_binary(
         }
     }
 }
-
-pub(super) fn normalize_path(path: &str) -> String {
-    let mut parts = Vec::new();
-    for comp in std::path::Path::new(path).components() {
-        match comp {
-            std::path::Component::RootDir => parts.clear(),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                parts.pop();
-            }
-            std::path::Component::Normal(seg) => {
-                parts.push(seg.to_string_lossy().to_string());
-            }
-            _ => {}
-        }
-    }
-    format!("/{}", parts.join("/"))
-}
-
-pub(super) fn is_path_allowed(target: &str, allowed: &str) -> bool {
-    let target = normalize_path(target);
-    let allowed = normalize_path(allowed);
-    if target == allowed {
-        return true;
-    }
-    if !target.starts_with(&allowed) {
-        return false;
-    }
-    target.chars().nth(allowed.len()) == Some('/')
-}

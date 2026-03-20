@@ -1,5 +1,7 @@
 #![recursion_limit = "512"]
 
+#[cfg(test)]
+mod agenthub_binary;
 mod acp;
 mod actor_cli;
 mod actor_mcp;

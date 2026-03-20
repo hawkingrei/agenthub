@@ -21,10 +21,7 @@ use uuid::Uuid;
 use self::codec::acp_provider_for_agent_with_binary;
 #[cfg(test)]
 use self::codec::stream_to_str;
-use self::codec::{
-    expand_tilde, is_path_allowed, normalize_path, status_from_str, status_to_str, stream_from_str,
-    worktree_mode_from_opt, worktree_mode_to_str,
-};
+use self::codec::{status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AgentConfig, AgentEvent, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
@@ -35,6 +32,7 @@ use crate::acp::{
     normalize_actor_context, spawn_acp_session,
 };
 use crate::auth::AuthService;
+use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
