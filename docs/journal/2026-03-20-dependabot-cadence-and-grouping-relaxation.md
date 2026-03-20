@@ -17,6 +17,7 @@ This made Dependabot look inactive in day-to-day usage even though it had alread
 - Switched Dependabot schedules from weekly to daily for all configured ecosystems.
 - Removed catch-all `groups` blocks so updates are no longer collapsed into a single broad PR per ecosystem.
 - Removed explicit `open-pull-requests-limit` caps from the config and let Dependabot use its normal behavior.
+- Expanded the YAML config to plain mappings without anchors/aliases because Dependabot rejects YAML aliases during config parsing.
 
 ## Why
 

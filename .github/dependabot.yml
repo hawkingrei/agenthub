@@ -2,30 +2,36 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: &weekday_schedule
+    schedule:
       interval: "daily"
       time: "03:00"
       timezone: "UTC"
-    commit-message: &commit_message
+    commit-message:
       prefix: "chore(deps)"
 
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      <<: *weekday_schedule
+      interval: "daily"
       time: "03:15"
-    commit-message: *commit_message
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps)"
 
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
-      <<: *weekday_schedule
+      interval: "daily"
       time: "03:30"
-    commit-message: *commit_message
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps)"
 
   - package-ecosystem: "npm"
     directory: "/userdocs"
     schedule:
-      <<: *weekday_schedule
+      interval: "daily"
       time: "03:45"
-    commit-message: *commit_message
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps)"
