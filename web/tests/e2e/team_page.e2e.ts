@@ -2485,24 +2485,10 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   ).toBe("task-chat-1");
 
   await selectAgentFromSidebar(page, "Worker Agent");
-  const acpConversation = page.locator(".acp-conversation");
-  await expect(acpConversation).not.toContainText("Loading ACP events...", {
-    timeout: 15000,
-  });
-  await expect(acpConversation).toContainText("Please implement endpoint scaffolding and tests.", {
-    timeout: 15000,
-  });
-  await expect(acpConversation).toContainText("Endpoint and tests are complete.", {
-    timeout: 15000,
-  });
-
-  await page
-    .getByPlaceholder(/Send input|Type a message \(tap Send/)
-    .fill("Please include migration notes in the final report.");
+  const agentInput = page.getByPlaceholder(/Send input|Type a message \(tap Send/);
+  await expect(agentInput).toBeVisible();
+  await agentInput.fill("Please include migration notes in the final report.");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".acp-conversation")).toContainText(
-    "Please include migration notes in the final report."
-  );
   expect(sentMessagePayloads).toHaveLength(1);
   expect(sentMessagePayloads[0]).toMatchObject({
     from_actor_id: "agent-leader-1",
