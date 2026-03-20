@@ -202,6 +202,7 @@ version = "0.1.0"
 dependencies = [
  "agent-client-protocol 0.9.5",
  "agenthub-acp-core",
+ "agenthub-config",
  "agenthub-text",
  "anyhow",
  "async-trait",

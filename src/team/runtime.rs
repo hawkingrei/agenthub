@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode};
-use crate::path_utils::expand_tilde;
+use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
 
 #[derive(Debug, thiserror::Error)]
@@ -235,31 +235,11 @@ fn collect_repo_candidates(safe_paths: &[String]) -> Vec<String> {
     candidates
 }
 
-fn normalize_path_for_compare(path: &str) -> String {
-    let mut normalized = std::path::PathBuf::new();
-    for component in Path::new(path).components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                normalized.pop();
-            }
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    normalized.to_string_lossy().to_string()
-}
-
-fn path_is_allowed(target: &str, allowed: &str) -> bool {
-    let target = normalize_path_for_compare(target);
-    let allowed = normalize_path_for_compare(allowed);
-    target == allowed || target.starts_with(&(allowed + std::path::MAIN_SEPARATOR_STR))
-}
-
 fn safe_paths_allow(safe_paths: &[String], target: &str) -> bool {
     let expanded_target = expand_tilde(target);
     safe_paths.iter().any(|allowed| {
         let expanded_allowed = expand_tilde(allowed);
-        path_is_allowed(&expanded_target, &expanded_allowed)
+        is_path_allowed(&expanded_target, &expanded_allowed)
     })
 }
 
@@ -277,9 +257,9 @@ fn adjust_worker_runtime_workdir_for_safe_paths(
     }
 
     if safe_paths_allow(safe_paths, &config.workdir) {
-        let normalized_repo = normalize_path_for_compare(&expand_tilde(&config.worktree_repo));
-        let normalized_workdir = normalize_path_for_compare(&expand_tilde(&config.workdir));
-        if path_is_allowed(&normalized_workdir, &normalized_repo) {
+        let normalized_repo = normalize_path(&expand_tilde(&config.worktree_repo));
+        let normalized_workdir = normalize_path(&expand_tilde(&config.workdir));
+        if is_path_allowed(&normalized_workdir, &normalized_repo) {
             return Err(TeamRuntimeStartError::InvalidConfig(format!(
                 "legacy worker runtime workdir '{}' is inside repo '{}' and cannot derive a safe worktree root",
                 config.workdir, config.worktree_repo

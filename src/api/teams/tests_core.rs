@@ -2072,9 +2072,7 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
             );
         }
 
-        for pair in page.windows(2) {
-            let current = &pair[0];
-            let next = &pair[1];
+        for [current, next] in page.array_windows::<2>() {
             assert!(
                 current.created_at > next.created_at
                     || (current.created_at == next.created_at && current.id > next.id),
