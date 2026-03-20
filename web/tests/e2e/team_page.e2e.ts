@@ -2157,10 +2157,10 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   let activeRun: TeamRunRecord | null = null;
   let nextMessageId = 50;
   const createRunRequests: Array<{ context_id?: string; input?: unknown }> = [];
-  const sentMessagePayloads: Array<{
-    from_actor_id: string;
-    to_actor_id: string;
-    payload: unknown;
+  const sentAcpInputs: Array<{
+    agent_id: string;
+    input: string;
+    session_id?: string;
   }> = [];
   const messages: TeamActorMessageRecord[] = [
     {
@@ -2455,6 +2455,25 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     }
   );
 
+  await page.route(/\/api\/agents\/[^/]+\/input$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const match = request.url().match(/\/api\/agents\/([^/]+)\/input$/);
+    const agentId = decodeURIComponent(match?.[1] ?? "");
+    const payload = request.postDataJSON() as {
+      input: string;
+      session_id?: string;
+    };
+    sentAcpInputs.push({
+      agent_id: agentId,
+      input: payload.input,
+      session_id: payload.session_id,
+    });
+    await route.fulfill(jsonResponse({ status: "ok" }));
+  });
+
   await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
     if (request.method() !== "GET") {
       await route.fallback();
@@ -2490,12 +2509,12 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await agentInput.fill("Please include migration notes in the final report.");
   await page.getByRole("button", { name: "Send input", exact: true }).click();
   await expect
-    .poll(() => sentMessagePayloads.length, { timeout: 15_000 })
+    .poll(() => sentAcpInputs.length, { timeout: 15_000 })
     .toBe(1);
-  expect(sentMessagePayloads).toHaveLength(1);
-  expect(sentMessagePayloads[0]).toMatchObject({
-    from_actor_id: "agent-leader-1",
-    to_actor_id: "agent-worker-1",
+  expect(sentAcpInputs).toHaveLength(1);
+  expect(sentAcpInputs[0]).toMatchObject({
+    agent_id: "agent-worker-1",
+    input: "Please include migration notes in the final report.",
   });
 
   await openAdvancedView(page, "Member Console");
