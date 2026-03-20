@@ -462,6 +462,11 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Agents");
     expect(container.textContent).toContain("Channel");
     expect(container.textContent).toContain("# all");
+    const kanbanButton = findButtonByText(container, "Kanban");
+    const channelButton = findButtonByText(container, "# all");
+    expect(
+      Boolean(kanbanButton.compareDocumentPosition(channelButton) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true);
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");

@@ -484,7 +484,18 @@ export function TeamSidebar(props: TeamSidebarProps) {
       {selectedTeam && (
         <>
           <div className="mt-3 flex flex-col gap-1.5">
-            <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
+            <button
+              type="button"
+              className={
+                tab === "tasks"
+                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+              }
+              onClick={onSelectKanban}
+            >
+              <span className="text-[13px] font-semibold text-ui-text-primary">Kanban</span>
+            </button>
+            <div className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
               Channel
             </div>
             <button
@@ -497,17 +508,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectConversation}
             >
               <span className="text-[13px] font-semibold text-ui-text-primary"># all</span>
-            </button>
-            <button
-              type="button"
-              className={
-                tab === "tasks"
-                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
-              }
-              onClick={onSelectKanban}
-            >
-              <span className="text-[13px] font-semibold text-ui-text-primary">Kanban</span>
             </button>
           </div>
 
