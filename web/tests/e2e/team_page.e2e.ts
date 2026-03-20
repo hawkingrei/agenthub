@@ -2489,6 +2489,9 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await expect(agentInput).toBeVisible();
   await agentInput.fill("Please include migration notes in the final report.");
   await page.getByRole("button", { name: "Send input", exact: true }).click();
+  await expect
+    .poll(() => sentMessagePayloads.length, { timeout: 15_000 })
+    .toBe(1);
   expect(sentMessagePayloads).toHaveLength(1);
   expect(sentMessagePayloads[0]).toMatchObject({
     from_actor_id: "agent-leader-1",

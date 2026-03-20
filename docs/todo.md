@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Verify `fix/team-runtime-bugfixes` web CI stabilization after the ACP-send selector and coverage-pool change: `Web E2E` should pass with the Team ACP `Send input` selector, and `Web` should finish `npm run test:coverage` under `vitest --pool=forks --maxWorkers=1` without `ERR_WORKER_OUT_OF_MEMORY`. Record push/PR run IDs after merge (see `docs/journal/2026-03-20-team-web-ci-coverage-and-acp-e2e.md`).
+- [ ] Verify `fix/team-runtime-bugfixes` web CI stabilization after the ACP-send selector and coverage-pool split: `Web E2E` should pass with the Team ACP `Send input` selector plus async payload polling, and `Web` should finish `npm run test:coverage` with the coverage run excluding `team_page.smoke.test.tsx` while `npm run test:smoke` continues to cover that route separately. Record push/PR run IDs after merge (see `docs/journal/2026-03-20-team-web-ci-coverage-and-acp-e2e.md`).
 
 - [ ] Verify deployed Team page TDZ guard on `agenthub.hawkingrei.com`: the Team detail route should no longer blank on load after workbench badge/state refactors, and frontend CI/local lint should reject TS/TSX `use-before-define` regressions before bundling. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-page-tdz-lint-guard.md`).
 
