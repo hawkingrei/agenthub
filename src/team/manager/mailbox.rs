@@ -20,7 +20,6 @@ use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
-use super::remote_relay::shared_remote_relay_adapter;
 use super::{TeamConversationStreamEvent, TeamManager, redact_sensitive_json};
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 

@@ -2003,6 +2003,9 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: true,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
             })
             .await
             .expect_err("legacy schema should reject remote target");

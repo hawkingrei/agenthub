@@ -195,11 +195,12 @@ impl TeamManager {
 
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
         let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
+        let remote_relay_adapter = Arc::new(TeamRemoteRelayAdapter::new(db.clone()));
         Self {
             db,
             event_dbs,
             conversation_events,
-            remote_relay_adapter: Arc::new(TeamRemoteRelayAdapter::new(db.clone())),
+            remote_relay_adapter,
         }
     }
 
