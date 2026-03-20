@@ -9,6 +9,8 @@ type AgentNodeDraft = {
   defaultWorktreeRoot: string;
 };
 
+const RESERVED_AGENT_NODE_ID = "main";
+
 type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
   targetNodeId: string;
@@ -58,8 +60,18 @@ export function validateAgentNodeDraft(input: {
   nodeName: string;
   grpcTarget: string;
 }): string | null {
-  if (!input.nodeId.trim()) {
+  const nodeId = input.nodeId.trim();
+  if (!nodeId) {
     return "Node ID is required.";
+  }
+  if (nodeId === RESERVED_AGENT_NODE_ID) {
+    return `Node ID '${RESERVED_AGENT_NODE_ID}' is reserved.`;
+  }
+  if (nodeId.length > 128) {
+    return "Node ID must be at most 128 characters.";
+  }
+  if (![...nodeId].every((ch) => /[A-Za-z0-9._:-]/.test(ch))) {
+    return "Node ID may only contain ASCII letters, numbers, '.', '_', '-', or ':'.";
   }
   return validateAgentNodeMutableFields(input);
 }
@@ -97,21 +109,24 @@ export function AgentNodeSection({
     nodeName: nodeNameInput,
     grpcTarget: grpcTargetInput,
   });
-  const availableNodes =
-    nodes.length > 0
-      ? nodes
-      : [
-          {
-            id: "main",
-            name: "Main Node",
-            grpc_target: null,
-            tls_server_name: null,
-            default_worktree_root: null,
-            is_main: true,
-            created_at: 0,
-            updated_at: 0,
-          },
-        ];
+  const availableNodes = React.useMemo(
+    () =>
+      nodes.length > 0
+        ? nodes
+        : [
+            {
+              id: "main",
+              name: "Main Node",
+              grpc_target: null,
+              tls_server_name: null,
+              default_worktree_root: null,
+              is_main: true,
+              created_at: 0,
+              updated_at: 0,
+            },
+          ],
+    [nodes]
+  );
   const resolvedTargetNodeId = targetNodeId.trim() || "main";
   const selectedNode =
     availableNodes.find((node) => node.id === resolvedTargetNodeId) ??
@@ -123,7 +138,10 @@ export function AgentNodeSection({
       ? `${node.name} · local`
       : `${node.name} · ${node.grpc_target ?? "gRPC"}`,
   }));
-  const remoteNodes = availableNodes.filter((node) => !node.is_main);
+  const remoteNodes = React.useMemo(
+    () => availableNodes.filter((node) => !node.is_main),
+    [availableNodes]
+  );
   const [editDrafts, setEditDrafts] = React.useState<Record<string, AgentNodeDraft>>({});
 
   React.useEffect(() => {

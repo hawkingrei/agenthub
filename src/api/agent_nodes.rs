@@ -336,4 +336,41 @@ mod tests {
             json!("~/.agenthub/worktrees/node-east")
         );
     }
+
+    #[tokio::test]
+    async fn delete_missing_agent_node_returns_not_found() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_nodes table");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/node-missing",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("run delete missing agent node request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], json!("agent node not found"));
+    }
 }

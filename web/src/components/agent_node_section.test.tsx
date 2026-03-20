@@ -77,6 +77,20 @@ describe("AgentNodeSection", () => {
     ).toBe("gRPC target is required.");
     expect(
       validateAgentNodeDraft({
+        nodeId: "main",
+        nodeName: "Node East",
+        grpcTarget: "https://node-east.internal:50051",
+      })
+    ).toBe("Node ID 'main' is reserved.");
+    expect(
+      validateAgentNodeDraft({
+        nodeId: "node east",
+        nodeName: "Node East",
+        grpcTarget: "https://node-east.internal:50051",
+      })
+    ).toBe("Node ID may only contain ASCII letters, numbers, '.', '_', '-', or ':'.");
+    expect(
+      validateAgentNodeDraft({
         nodeId: "node-east",
         nodeName: "Node East",
         grpcTarget: "https://node-east.internal:50051",

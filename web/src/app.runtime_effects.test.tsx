@@ -85,6 +85,13 @@ describe("App runtime viewport effects", () => {
   let credentialsGetMock: ReturnType<typeof vi.fn>;
   let credentialsCreateMock: ReturnType<typeof vi.fn>;
   let originalCredentialsDescriptor: PropertyDescriptor | undefined;
+  let originalLocalStorageDescriptor: PropertyDescriptor | undefined;
+  let originalWindowMatchMediaDescriptor: PropertyDescriptor | undefined;
+  let originalGlobalMatchMediaDescriptor: PropertyDescriptor | undefined;
+  let originalWindowRequestAnimationFrameDescriptor: PropertyDescriptor | undefined;
+  let originalWindowCancelAnimationFrameDescriptor: PropertyDescriptor | undefined;
+  let originalGlobalRequestAnimationFrameDescriptor: PropertyDescriptor | undefined;
+  let originalGlobalCancelAnimationFrameDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     authStatusMock.mockReset();
@@ -107,6 +114,10 @@ describe("App runtime viewport effects", () => {
       default_worktree_root: "~/.agenthub/worktrees",
     });
     const storage = new Map<string, string>();
+    originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "localStorage"
+    );
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: {
@@ -125,6 +136,14 @@ describe("App runtime viewport effects", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    originalWindowMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "matchMedia"
+    );
+    originalGlobalMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "matchMedia"
+    );
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       writable: true,
@@ -157,6 +176,22 @@ describe("App runtime viewport effects", () => {
       configurable: true,
       value: 700,
     });
+    originalWindowRequestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "requestAnimationFrame"
+    );
+    originalWindowCancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "cancelAnimationFrame"
+    );
+    originalGlobalRequestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "requestAnimationFrame"
+    );
+    originalGlobalCancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "cancelAnimationFrame"
+    );
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: undefined,
@@ -200,6 +235,59 @@ describe("App runtime viewport effects", () => {
     document.documentElement.style.removeProperty("--agenthub-vh");
     document.documentElement.style.removeProperty("--agenthub-vw");
     document.documentElement.style.removeProperty("--agenthub-keyboard-inset");
+    if (originalLocalStorageDescriptor) {
+      Object.defineProperty(globalThis, "localStorage", originalLocalStorageDescriptor);
+    } else {
+      delete (globalThis as typeof globalThis & { localStorage?: Storage }).localStorage;
+    }
+    if (originalWindowMatchMediaDescriptor) {
+      Object.defineProperty(window, "matchMedia", originalWindowMatchMediaDescriptor);
+    } else {
+      delete (window as Window & { matchMedia?: unknown }).matchMedia;
+    }
+    if (originalGlobalMatchMediaDescriptor) {
+      Object.defineProperty(globalThis, "matchMedia", originalGlobalMatchMediaDescriptor);
+    } else {
+      delete (globalThis as typeof globalThis & { matchMedia?: unknown }).matchMedia;
+    }
+    if (originalWindowRequestAnimationFrameDescriptor) {
+      Object.defineProperty(
+        window,
+        "requestAnimationFrame",
+        originalWindowRequestAnimationFrameDescriptor
+      );
+    } else {
+      delete (window as Window & { requestAnimationFrame?: unknown }).requestAnimationFrame;
+    }
+    if (originalWindowCancelAnimationFrameDescriptor) {
+      Object.defineProperty(
+        window,
+        "cancelAnimationFrame",
+        originalWindowCancelAnimationFrameDescriptor
+      );
+    } else {
+      delete (window as Window & { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
+    }
+    if (originalGlobalRequestAnimationFrameDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "requestAnimationFrame",
+        originalGlobalRequestAnimationFrameDescriptor
+      );
+    } else {
+      delete (globalThis as typeof globalThis & { requestAnimationFrame?: unknown })
+        .requestAnimationFrame;
+    }
+    if (originalGlobalCancelAnimationFrameDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "cancelAnimationFrame",
+        originalGlobalCancelAnimationFrameDescriptor
+      );
+    } else {
+      delete (globalThis as typeof globalThis & { cancelAnimationFrame?: unknown })
+        .cancelAnimationFrame;
+    }
     if (originalCredentialsDescriptor) {
       Object.defineProperty(
         globalThis.navigator,

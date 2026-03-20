@@ -1045,7 +1045,7 @@ impl AgentManager {
                 );
             }
         }
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             DELETE FROM agent_nodes
             WHERE id = ?1
@@ -1054,6 +1054,9 @@ impl AgentManager {
         .bind(normalized)
         .execute(&self.db)
         .await?;
+        if result.rows_affected() == 0 {
+            anyhow::bail!("agent node '{}' not found", normalized);
+        }
         Ok(())
     }
 
@@ -1132,7 +1135,7 @@ impl AgentManager {
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                 "#,
             )
             .bind(&id)
@@ -1217,7 +1220,7 @@ impl AgentManager {
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                 "#,
             )
             .bind(&id)
