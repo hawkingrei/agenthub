@@ -24,7 +24,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["clock"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
