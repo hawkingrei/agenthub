@@ -11,7 +11,11 @@ import {
   Textarea,
   Tooltip,
 } from "@mantine/core";
-import { deriveConnectionBadge, getNavigatorOnline } from "../connection_status";
+import {
+  deriveConnectionBadge,
+  getNavigatorOnline,
+  type SseConnectionState,
+} from "../connection_status";
 import {
   AGENT_SOURCE_TEAM_FORGE,
   AgentDiscoveryCardRecord,
@@ -439,6 +443,7 @@ export function TeamPage(props: TeamPageProps) {
   const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
+  const [conversationSseState, setConversationSseState] = useState<SseConnectionState>("idle");
   useEffect(() => {
     document.body.classList.add("teams-page");
     return () => {
@@ -460,9 +465,20 @@ export function TeamPage(props: TeamPageProps) {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
+  const hasConversationStreamTarget = Boolean(
+    eventsAutoRefresh &&
+      tab === "conversation" &&
+      selectedTeamId &&
+      (selectedConversation?.id ?? "").trim()
+  );
   const connectionBadge = useMemo(
-    () => deriveConnectionBadge(networkOnline, false, "idle"),
-    [networkOnline]
+    () =>
+      deriveConnectionBadge(
+        networkOnline,
+        hasConversationStreamTarget,
+        conversationSseState
+      ),
+    [conversationSseState, hasConversationStreamTarget, networkOnline]
   );
   const navigateToTeamDetail = useCallback((teamId: string) => {
     navigateTeamRoute(buildTeamDetailPath(teamId));
@@ -2096,6 +2112,7 @@ export function TeamPage(props: TeamPageProps) {
     refreshTaskMessages,
     setTaskMessages,
     setConversationMailboxMessages,
+    onSseStateChange: setConversationSseState,
   });
 
   const onCreateTask = useCallback(async () => {

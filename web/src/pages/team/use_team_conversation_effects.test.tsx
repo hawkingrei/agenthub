@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SseConnectionState } from "../../connection_status";
 import { useTeamConversationEffects } from "./use_team_conversation_effects";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -55,6 +56,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     refreshTaskMessages: vi.fn().mockResolvedValue(undefined),
     setTaskMessages: vi.fn(),
     setConversationMailboxMessages: vi.fn(),
+    onSseStateChange: vi.fn<(nextState: SseConnectionState) => void>(),
     ...overrides,
   };
 }
@@ -170,7 +172,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
   });
 
-  it("skips polling while the sse connection is open", async () => {
+  it("keeps polling while the sse connection is open as a fallback", async () => {
     vi.useFakeTimers();
     const params = createParams({
       eventsAutoRefresh: true,
@@ -192,7 +194,39 @@ describe("useTeamConversationEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+  });
+
+  it("reports sse state transitions to the caller", async () => {
+    const onSseStateChange = vi.fn<(nextState: SseConnectionState) => void>();
+    const params = createParams({
+      eventsAutoRefresh: true,
+      onSseStateChange,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSseStateChange).toHaveBeenCalledWith("connecting");
+    const source = MockEventSource.instances[0];
+
+    await act(async () => {
+      source.emitOpen();
+      await Promise.resolve();
+    });
+
+    expect(onSseStateChange).toHaveBeenCalledWith("connected");
+
+    await act(async () => {
+      source.emitError();
+      await Promise.resolve();
+    });
+
+    expect(onSseStateChange).toHaveBeenCalledWith("reconnecting");
   });
 
   it("does not poll when the workspace is not on the conversation tab", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { TeamActorMessageRecord, TeamConversationMessageRecord } from "../../api";
+import type { SseConnectionState } from "../../connection_status";
 import type { TeamTab } from "./state";
 
 type UseTeamConversationEffectsOptions = {
@@ -11,6 +12,7 @@ type UseTeamConversationEffectsOptions = {
   refreshTaskMessages: (taskIdOverride?: string) => Promise<void>;
   setTaskMessages: Dispatch<SetStateAction<TeamConversationMessageRecord[]>>;
   setConversationMailboxMessages: Dispatch<SetStateAction<TeamActorMessageRecord[]>>;
+  onSseStateChange?: (nextState: SseConnectionState) => void;
 };
 
 export function useTeamConversationEffects({
@@ -22,12 +24,19 @@ export function useTeamConversationEffects({
   refreshTaskMessages,
   setTaskMessages,
   setConversationMailboxMessages,
+  onSseStateChange,
 }: UseTeamConversationEffectsOptions) {
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
   const latestSelectionRef = useRef({ teamId: "", conversationId: "" });
   const refreshTaskMessagesRef = useRef(refreshTaskMessages);
   const sseConnectedRef = useRef(false);
+  const updateSseState = useCallback(
+    (nextState: SseConnectionState) => {
+      onSseStateChange?.(nextState);
+    },
+    [onSseStateChange]
+  );
 
   useEffect(() => {
     latestSelectionRef.current = {
@@ -76,6 +85,7 @@ export function useTeamConversationEffects({
     if (!selectedTeamId || !conversationId) {
       setTaskMessages([]);
       setConversationMailboxMessages([]);
+      updateSseState("idle");
       return;
     }
     void refreshSelectedConversation();
@@ -85,6 +95,7 @@ export function useTeamConversationEffects({
     selectedTeamId,
     setConversationMailboxMessages,
     setTaskMessages,
+    updateSseState,
   ]);
 
   useEffect(() => {
@@ -98,6 +109,7 @@ export function useTeamConversationEffects({
       typeof EventSource === "undefined"
     ) {
       sseConnectedRef.current = false;
+      updateSseState("idle");
       return;
     }
     let cancelled = false;
@@ -121,6 +133,7 @@ export function useTeamConversationEffects({
     const scheduleReconnect = () => {
       if (cancelled) return;
       clearReconnectTimer();
+      updateSseState("reconnecting");
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
       reconnectTimer = window.setTimeout(() => {
@@ -131,6 +144,7 @@ export function useTeamConversationEffects({
 
     const openSource = () => {
       closeSource();
+      updateSseState(reconnectAttempt > 0 ? "reconnecting" : "connecting");
       const nextSource = new EventSource(
         `${location.origin}/sse/teams/${encodeURIComponent(
           selectedTeamId
@@ -142,6 +156,7 @@ export function useTeamConversationEffects({
       nextSource.onopen = () => {
         reconnectAttempt = 0;
         sseConnectedRef.current = true;
+        updateSseState("connected");
       };
       nextSource.onmessage = (event) => {
         if (cancelled) return;
@@ -165,14 +180,17 @@ export function useTeamConversationEffects({
       cancelled = true;
       clearReconnectTimer();
       closeSource();
+      updateSseState("idle");
     };
   }, [
     eventsAutoRefresh,
+    onSseStateChange,
     refreshSelectedConversation,
     selectedConversationId,
     selectedTeamId,
     tab,
     token,
+    updateSseState,
   ]);
 
   useEffect(() => {
@@ -187,9 +205,6 @@ export function useTeamConversationEffects({
       return;
     }
     const timer = window.setInterval(() => {
-      if (sseConnectedRef.current) {
-        return;
-      }
       void refreshSelectedConversation().catch(() => undefined);
     }, 4000);
     return () => {
