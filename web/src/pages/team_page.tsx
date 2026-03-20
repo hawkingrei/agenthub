@@ -1725,7 +1725,12 @@ export function TeamPage(props: TeamPageProps) {
     [props.token]
   );
   const applyOptimisticTeamRuntime = useCallback(
-    (teamId: string, teamName: string, runtime: Awaited<ReturnType<typeof api.startTeam>>) => {
+    (
+      teamId: string,
+      teamName: string,
+      runtime: Awaited<ReturnType<typeof api.startTeam>>,
+      memberStatuses: TeamMemberAgentStatus[]
+    ) => {
       setTeamRuntimeByTeamId((prev) => {
         const previousRuntime = prev[teamId];
         const optimisticRuntime = updateCachedTeamRuntimeStatus(
@@ -1739,7 +1744,8 @@ export function TeamPage(props: TeamPageProps) {
               return sessionStatus ?? undefined;
             }
             return "running";
-          }
+          },
+          memberStatuses
         );
         if (!optimisticRuntime) {
           return prev;
@@ -2683,7 +2689,12 @@ export function TeamPage(props: TeamPageProps) {
     setWarning(null);
     try {
       const runtime = await api.startTeam(props.token, selectedTeam.id);
-      applyOptimisticTeamRuntime(selectedTeam.id, selectedTeam.name, runtime);
+      applyOptimisticTeamRuntime(
+        selectedTeam.id,
+        selectedTeam.name,
+        runtime,
+        selectedTeamMemberStatuses
+      );
       void Promise.all([refreshTeams(), refreshAgents()]).catch((err) => {
         setError(parseErrorMessage(err));
       });
@@ -2701,6 +2712,7 @@ export function TeamPage(props: TeamPageProps) {
     refreshTeamRuntime,
     refreshTeams,
     selectedTeamHasConfiguredMembers,
+    selectedTeamMemberStatuses,
     selectedTeam,
     setBusy,
     setError,
@@ -2717,7 +2729,12 @@ export function TeamPage(props: TeamPageProps) {
     setWarning(null);
     try {
       const runtime = await api.stopTeam(props.token, selectedTeam.id);
-      applyOptimisticTeamRuntime(selectedTeam.id, selectedTeam.name, runtime);
+      applyOptimisticTeamRuntime(
+        selectedTeam.id,
+        selectedTeam.name,
+        runtime,
+        selectedTeamMemberStatuses
+      );
       void Promise.all([refreshTeams(), refreshAgents()]).catch((err) => {
         setError(parseErrorMessage(err));
       });
@@ -2734,6 +2751,7 @@ export function TeamPage(props: TeamPageProps) {
     refreshAgents,
     refreshTeamRuntime,
     refreshTeams,
+    selectedTeamMemberStatuses,
     selectedTeam,
     setBusy,
     setError,

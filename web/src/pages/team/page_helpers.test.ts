@@ -36,7 +36,11 @@ import {
   upsertRun,
 } from "./page_helpers";
 import { mergeMailboxMessages } from "./mailbox_helpers";
-import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
+import type {
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  TeamMemberLiveState,
+} from "./member_helpers";
 
 function buildRun(
   id: string,
@@ -231,6 +235,19 @@ function buildMemberLiveState(
     step_status: "working",
     pending_inbox_count: 2,
     current_work: "reviewing worker output",
+    ...overrides,
+  };
+}
+
+function buildMemberStatus(
+  overrides: Partial<TeamMemberAgentStatus> = {}
+): TeamMemberAgentStatus {
+  return {
+    member_id: "leader-agent",
+    role: "leader",
+    agent_name: "Leader Agent",
+    status: "stopped",
+    missing_agent: false,
     ...overrides,
   };
 }
@@ -604,6 +621,41 @@ describe("team page helpers", () => {
     expect(updated?.status).toBe("stopped");
     expect(updated?.members.every((member) => member.session_id == null)).toBe(true);
     expect(updated?.members.every((member) => member.session_status === "stopped")).toBe(true);
+  });
+
+  it("synthesizes optimistic runtime members when start-team has no cached runtime yet", () => {
+    const control: TeamRuntimeControlResponse["members"] = [
+      { member_id: "leader-agent", session_id: "session-leader", action: "started" },
+      { member_id: "worker-agent", session_id: "session-worker", action: "started" },
+    ];
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "running",
+      control,
+      () => "running",
+      [
+        buildMemberStatus(),
+        buildMemberStatus({
+          member_id: "worker-agent",
+          role: "worker",
+          agent_name: "Worker Agent",
+        }),
+      ]
+    );
+    expect(updated?.status).toBe("running");
+    expect(updated?.members).toHaveLength(2);
+    expect(updated?.members.map((member) => member.member_id)).toEqual([
+      "leader-agent",
+      "worker-agent",
+    ]);
+    expect(updated?.members.every((member) => member.session_status === "running")).toBe(true);
+    expect(updated?.members.every((member) => member.agent_status === "running")).toBe(true);
+    expect(updated?.members.map((member) => member.session_id)).toEqual([
+      "session-leader",
+      "session-worker",
+    ]);
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {

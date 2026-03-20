@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Verify deployed Team agent lifecycle optimistic sync on `agenthub.hawkingrei.com`: immediately after `Start Team`, Team member lifecycle badges and `Teams -> Agents -> Agent ACP` should reflect a running session even if the page had no cached Team runtime yet, instead of falling back to stale catalog `stopped` status while shared-thread `Seen by` already advances. Record visible-browser notes plus push/PR CI run IDs after merge (see `docs/journal/2026-03-20-team-agent-acp-runtime-optimistic-state.md`).
+
 - [ ] Finish Team runtime freshness tightening: `Start Team` / `Stop Team` should update the visible Team runtime state immediately from the control response before background list refreshes finish, and the selected Team runtime should self-recheck roughly every minute while configured members are active so stale status does not linger in the UI. Record web validation notes plus push/PR CI run IDs after merge.
 
 - [ ] Finish Team workspace utility-nav cleanup: move `Runs / Advanced` to the workspace top-right utility area, keep them out of the subject rail, and add regression coverage so clicking a Team agent still lands in `Agent ACP` instead of regressing to `Go to Runs` or a missing ACP pane. Record visible-browser validation notes plus push/PR CI run IDs after merge.

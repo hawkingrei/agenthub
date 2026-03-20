@@ -13,7 +13,11 @@ import type {
 import type { StatusTone } from "../../components/status_badge";
 import { mergeOutputsPreserveHistory } from "../../output_cache";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "../team_member_status_strip";
-import type { TeamMemberAgentStatusSummary, TeamMemberLiveState } from "./member_helpers";
+import type {
+  TeamMemberAgentStatus,
+  TeamMemberAgentStatusSummary,
+  TeamMemberLiveState,
+} from "./member_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
@@ -209,14 +213,46 @@ export function updateCachedTeamRuntimeStatus(
   teamName: string,
   status: TeamRuntimeRecord["status"],
   members: TeamRuntimeControlResponse["members"],
-  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null
+  nextSessionStatus: ((sessionStatus: string | null | undefined) => string | undefined) | null,
+  fallbackMemberStatuses?: TeamMemberAgentStatus[]
 ): TeamRuntimeRecord | undefined {
-  if (!previousRuntime) {
-    return undefined;
-  }
   const memberUpdates = new Map(
     members.map((member) => [member.member_id, member] as const)
   );
+  if (!previousRuntime) {
+    if (!fallbackMemberStatuses || fallbackMemberStatuses.length === 0) {
+      return undefined;
+    }
+    const stopped = status === "stopped";
+    return {
+      team_id: teamId,
+      team_name: teamName,
+      status,
+      members: fallbackMemberStatuses.map((member) => {
+        const updated = memberUpdates.get(member.member_id);
+        const sessionStatus = stopped
+          ? "stopped"
+          : nextSessionStatus
+            ? nextSessionStatus(member.status)
+            : (member.status ?? undefined);
+        return {
+          member_id: member.member_id,
+          display_name: member.agent_name?.trim() || member.member_id,
+          role: member.role,
+          description: null,
+          agent_status: sessionStatus,
+          session_id: stopped ? undefined : (updated?.session_id ?? undefined),
+          session_status: sessionStatus,
+          card: {
+            card_id: member.member_id,
+            schema_version: "1",
+            description: member.role,
+            capability_tags: [],
+          },
+        };
+      }),
+    };
+  }
   const stopped = status === "stopped";
   return {
     ...previousRuntime,
