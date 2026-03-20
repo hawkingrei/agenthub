@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use crate::agent::{AgentStatus, OutputStream, WorktreeMode};
-pub(super) use crate::path_utils::expand_tilde;
 
 use super::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentManager};
 
