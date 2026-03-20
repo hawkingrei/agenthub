@@ -2485,12 +2485,16 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   ).toBe("task-chat-1");
 
   await selectAgentFromSidebar(page, "Worker Agent");
-  await expect(page.locator(".acp-conversation")).toContainText(
-    "Please implement endpoint scaffolding and tests."
-  );
-  await expect(page.locator(".acp-conversation")).toContainText(
-    "Endpoint and tests are complete."
-  );
+  const acpConversation = page.locator(".acp-conversation");
+  await expect(acpConversation).not.toContainText("Loading ACP events...", {
+    timeout: 15000,
+  });
+  await expect(acpConversation).toContainText("Please implement endpoint scaffolding and tests.", {
+    timeout: 15000,
+  });
+  await expect(acpConversation).toContainText("Endpoint and tests are complete.", {
+    timeout: 15000,
+  });
 
   await page
     .getByPlaceholder(/Send input|Type a message \(tap Send/)

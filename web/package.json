@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint . --ext .ts,.tsx,.js",
     "test": "vitest run",
-    "test:coverage": "node --max-old-space-size=6144 ./node_modules/vitest/vitest.mjs run --pool=threads --maxWorkers=1 --coverage.enabled --coverage.provider=v8 --coverage.reporter=lcov",
+    "test:coverage": "NODE_OPTIONS=--max-old-space-size=6144 vitest run --pool=threads --maxWorkers=1 --coverage.enabled --coverage.provider=v8 --coverage.reporter=lcov",
     "e2e": "playwright test",
     "e2e:coverage": "PLAYWRIGHT_E2E_COVERAGE=1 playwright test",
     "e2e:llm-local": "PLAYWRIGHT_LOCAL_LLM_E2E=1 playwright test -g \"\\[local-llm\\]\"",
