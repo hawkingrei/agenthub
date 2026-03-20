@@ -778,7 +778,7 @@ async fn dispatch_acp_command(
         }
         AcpCommand::SetConfig { config_id, value } => {
             let request =
-                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value);
+                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value.as_str());
             if let Err(err) = conn.set_session_config_option(request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
