@@ -5,6 +5,16 @@ use super::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
 pub(crate) const AGENT_NODE_MAIN_ID: &str = "main";
 pub(crate) const AGENT_NODE_MAIN_NAME: &str = "Main Node";
 
+type ValidatedAgentNodeConfig = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
+type ValidatedAgentNodeUpdate = (String, String, Option<String>, Option<String>);
+
 pub(crate) fn build_main_agent_node_record() -> AgentNodeRecord {
     AgentNodeRecord {
         id: AGENT_NODE_MAIN_ID.to_string(),
@@ -75,7 +85,7 @@ fn validate_agent_node_grpc_target(raw: &str) -> anyhow::Result<String> {
 
 pub(crate) fn validate_agent_node_config_input(
     config: &AgentNodeConfig,
-) -> anyhow::Result<(String, String, String, Option<String>, Option<String>)> {
+) -> anyhow::Result<ValidatedAgentNodeConfig> {
     let id = validate_agent_node_id(&config.id)?;
     let name = validate_agent_node_name(&config.name)?;
     let grpc_target = validate_agent_node_grpc_target(&config.grpc_target)?;
@@ -98,7 +108,7 @@ pub(crate) fn validate_agent_node_config_input(
 
 pub(crate) fn validate_agent_node_update_input(
     config: &AgentNodeUpdate,
-) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
+) -> anyhow::Result<ValidatedAgentNodeUpdate> {
     let name = validate_agent_node_name(&config.name)?;
     let grpc_target = validate_agent_node_grpc_target(&config.grpc_target)?;
     let tls_server_name = config

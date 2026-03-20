@@ -456,6 +456,7 @@ describe("team create helpers", () => {
     expect(updated.members[0]?.runtime).toEqual({
       name: "leader-1-name",
       workdir: "/tmp/leader-1",
+      target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
       worktree_ref: null,
@@ -496,6 +497,7 @@ describe("team create helpers", () => {
     expect(updated.members[0]?.runtime).toEqual({
       name: "leader-1-name",
       workdir: "/tmp/leader-1",
+      target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
       worktree_ref: null,
@@ -536,6 +538,7 @@ describe("team create helpers", () => {
     expect(updated.members[0]?.runtime).toEqual({
       name: "leader-1-name",
       workdir: "/tmp/leader-1",
+      target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
       worktree_ref: null,
