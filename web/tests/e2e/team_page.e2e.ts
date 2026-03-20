@@ -2485,10 +2485,10 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   ).toBe("task-chat-1");
 
   await selectAgentFromSidebar(page, "Worker Agent");
-  await expect(page.locator(".teams-chat-messages")).toContainText(
+  await expect(page.locator(".acp-conversation")).toContainText(
     "Please implement endpoint scaffolding and tests."
   );
-  await expect(page.locator(".teams-chat-messages")).toContainText(
+  await expect(page.locator(".acp-conversation")).toContainText(
     "Endpoint and tests are complete."
   );
 
@@ -2496,7 +2496,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     .getByPlaceholder(/Send input|Type a message \(tap Send/)
     .fill("Please include migration notes in the final report.");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".teams-chat-messages")).toContainText(
+  await expect(page.locator(".acp-conversation")).toContainText(
     "Please include migration notes in the final report."
   );
   expect(sentMessagePayloads).toHaveLength(1);

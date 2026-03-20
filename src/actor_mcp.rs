@@ -644,8 +644,8 @@ async fn tool_actor_send<S: ActorMailboxService>(
         .await;
     match response {
         Ok(response) => {
-            if let Some(permission_id) = permission_review_request_id.as_deref() {
-                if let Err(err) = permissions
+            if let Some(permission_id) = permission_review_request_id.as_deref()
+                && let Err(err) = permissions
                     .record_review_dispatch(
                         permission_id,
                         Some(to_actor_id.as_str()),
@@ -654,15 +654,14 @@ async fn tool_actor_send<S: ActorMailboxService>(
                         Some(response.message_id),
                     )
                     .await
-                {
-                    return tool_result_error(
-                        format!("actor_send failed: {err}"),
-                        Some(json!({
-                            "permission_id": permission_id,
-                            "message_id": response.message_id,
-                        })),
-                    );
-                }
+            {
+                return tool_result_error(
+                    format!("actor_send failed: {err}"),
+                    Some(json!({
+                        "permission_id": permission_id,
+                        "message_id": response.message_id,
+                    })),
+                );
             }
             tool_result_success(json!({
                 "message_id": response.message_id,
