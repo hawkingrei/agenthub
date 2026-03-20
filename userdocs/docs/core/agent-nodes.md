@@ -20,6 +20,22 @@ Each registered node stores:
 The node registry is a control-plane view. Runtime state still lives on the
 selected execution node.
 
+## Deployment Prerequisites
+
+Before registering remote nodes in the UI, make sure the deployment baseline is
+ready:
+
+- the main control plane runs with `internal_grpc.enabled = true`
+- every remote node also runs AgentHub with internal gRPC enabled
+- the main control plane can reach each remote node over an `https://` gRPC
+  target
+- the cluster shares the same internal gRPC auth/security policy
+- each remote node exposes a filesystem layout that matches its configured
+  `Default worktree root`
+
+If these prerequisites are missing, AgentHub now rejects remote-target agent
+creation instead of creating records that cannot be controlled later.
+
 ## Register and Edit Nodes
 
 From the `Agents` page, root operators can:
@@ -54,6 +70,17 @@ layout without forcing operators to type paths for every agent.
 
 When you select a node in the create modal, the `Workdir` placeholder updates
 to reflect the effective default root for that node.
+
+## Operator Rollout Flow
+
+For a new remote node:
+
+1. Start the remote AgentHub process with internal gRPC enabled.
+2. Confirm its gRPC endpoint is reachable from the main control plane.
+3. Register the node from `Agents`.
+4. Optionally set `Default worktree root`.
+5. Create a remote-target agent and verify the card shows `node:<id>`.
+6. Start the agent and confirm output is visible in the main workbench.
 
 ## Operational Tips
 
