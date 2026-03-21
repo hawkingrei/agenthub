@@ -211,12 +211,18 @@ async fn create_agent(
     headers: HeaderMap,
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
     let source = parse_agent_source(payload.source.as_deref())?;
+    let target_node_id = normalize_target_node_id(payload.target_node_id.as_deref());
+    if target_node_id.is_some() && user.role != "root" {
+        return Err(ApiError::unauthorized(
+            "root required for remote target node",
+        ));
+    }
     let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
     let default_worktree_root = resolve_create_agent_default_worktree_root(
         &state,
-        payload.target_node_id.as_deref(),
+        target_node_id.as_deref(),
         &worktree_mode,
     )
     .await?;
@@ -231,7 +237,7 @@ async fn create_agent(
         workdir,
         command: payload.command,
         args: payload.args,
-        target_node_id: payload.target_node_id,
+        target_node_id,
         worktree_mode,
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
@@ -1603,6 +1609,29 @@ mod tests {
             .expect("create session token")
     }
 
+    async fn create_non_root_auth_token(state: &AppState) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("user-{}", Uuid::new_v4()))
+        .bind("User")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert non-root user");
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create non-root session token")
+    }
+
     fn build_json_request(
         method: Method,
         path: &str,
@@ -1812,6 +1841,58 @@ mod tests {
                 .is_some_and(|value| value.contains("internal gRPC peer config")),
             "unexpected error body: {body}"
         );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_remote_target_for_non_root_user() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+        let token = create_non_root_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-non-root",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent as non-root");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], "root required for remote target node");
     }
 
     #[tokio::test]

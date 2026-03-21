@@ -16,7 +16,12 @@ pub enum InternalGrpcSecurityMode {
 pub fn install_rustls_crypto_provider() {
     static INSTALL_RUSTLS_PROVIDER: Once = Once::new();
     INSTALL_RUSTLS_PROVIDER.call_once(|| {
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        if let Err(err) = rustls::crypto::aws_lc_rs::default_provider().install_default() {
+            tracing::warn!(
+                error = ?err,
+                "failed to install default rustls crypto provider; TLS operations may fail later"
+            );
+        }
     });
 }
 
