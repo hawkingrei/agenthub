@@ -596,7 +596,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "all"));
+    clickElement(findButtonByText(container, "# all"));
     expect(onSelectConversation).toHaveBeenCalledTimes(2);
 
     act(() => {
@@ -1640,7 +1640,7 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "Use @name for direct replies · Ctrl/Cmd + Enter to send"
+      "@name for direct replies · Ctrl/Cmd + Enter sends"
     );
     expect(container.textContent).not.toContain("worker update");
     expect(container.textContent).not.toContain("work:working");
@@ -1706,13 +1706,15 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Seen by 2 agents"));
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
-    expect(container.textContent).not.toContain("Delivery pending");
+    expect(container.textContent).not.toContain("Pending delivery");
     expect(container.textContent).toContain("You");
     expect(container.textContent).toContain("LeaderAgent");
-    expect(container.textContent).toContain("worker-agent");
+    const progressbars = Array.from(container.querySelectorAll('[role="progressbar"]'));
+    expect(progressbars).toHaveLength(1);
+    expect(progressbars[0]?.getAttribute("aria-valuenow")).toBe("2");
+    expect(progressbars[0]?.getAttribute("aria-valuemax")).toBe("2");
     const activityKinds = Array.from(
       container.querySelectorAll("[data-activity-author-kind]")
     ).map((node) => node.getAttribute("data-activity-author-kind"));
@@ -1944,6 +1946,58 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("rendered from string payload");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
     expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamTaskPanel renders markdown lists, tables, and code blocks in channel messages", () => {
+    act(() => {
+      root.render(
+        <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(12, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "chat_message",
+                text: [
+                  "- item a",
+                  "- item b",
+                  "",
+                  "| col | value |",
+                  "| --- | --- |",
+                  "| key | v1 |",
+                  "",
+                  "Inline `code` sample.",
+                  "",
+                  "```ts",
+                  "const n = 1;",
+                  "```",
+                ].join("\n"),
+              },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    });
+
+    expect(container.innerHTML).toContain("<ul>");
+    expect(container.innerHTML).toContain("<table>");
+    expect(container.innerHTML).toContain("<pre");
+    expect(container.innerHTML).toContain("<code>code</code>");
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {
@@ -2197,9 +2251,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
     expect(container.textContent).not.toContain("session=task-77");
-    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
-    clickElement(findButtonByText(container, "Refresh Thread"));
-    clickElement(findButtonByText(container, "Load Older"));
+    clickElement(findButtonByText(container, "Refresh"));
     expect(container.querySelector("h3")).toBeNull();
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
@@ -2308,11 +2360,10 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByAriaLabel(container, "Toggle thread options"));
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).not.toContain("Debug");
-    expect(container.textContent).toContain("Refresh Thread");
+    expect(container.textContent).toContain("Refresh");
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
     expect(container.textContent).not.toContain("session=task-77");
@@ -2352,6 +2403,55 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Runtime session fallback works.");
+  });
+
+  it("TeamMemberAcpPanel keeps ACP shell visible when selected member has no session yet", () => {
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={false}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={null}
+          selectedMemberRole="worker"
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("No active thread session yet");
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Plan");
+  });
+
+  it("TeamMemberAcpPanel keeps ACP shell visible when the session has no thread events yet", () => {
+    act(() => {
+      root.render(
+        <TeamMemberAcpPanel
+          developerMode={false}
+          selectedMemberId="worker-agent"
+          selectedMemberSnapshot={null}
+          selectedMemberRole="worker"
+          selectedSessionId="runtime-session-1"
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain("session runtime-session-1 · no thread events yet");
+    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Plan");
   });
 
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {

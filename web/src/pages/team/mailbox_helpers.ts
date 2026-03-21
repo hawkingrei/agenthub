@@ -1,5 +1,6 @@
 import { TeamActorMessageRecord } from "../../api";
-import { escapeHtml, renderMarkdown } from "../../markdown";
+import { escapeHtml } from "../../html_escape";
+import { renderThreadMarkdownCached } from "../../components/thread_rich_text";
 
 export type MailboxTemplateKey =
   | "leader_task_assignment"
@@ -448,7 +449,7 @@ export function renderMarkdownWithMentions(
   displayNameByActorId?: Record<string, string>
 ): string {
   const tokenized = replaceCanonicalMentionsWithTokens(text);
-  const rendered = renderMarkdown(tokenized);
+  const rendered = renderThreadMarkdownCached(tokenized);
   return renderMentionTokensIntoHtml(rendered, displayNameByActorId);
 }
 

@@ -15,9 +15,16 @@ import {
   flattenExploreGroupToolCalls,
   windowConversation,
 } from "../conversation";
-import { isNearBottom } from "../scroll";
 import type { SeqComparable } from "../seq_order";
 import { createRafThrottle } from "../raf_throttle";
+import {
+  deriveThreadJumpState,
+  deriveThreadStickToBottom,
+  nextThreadViewport,
+  normalizeThreadAvgHeightEstimate,
+  restoreThreadScrollTop,
+  type ThreadViewport,
+} from "./thread_viewport";
 
 type EventMeta = {
   oldestId: number | null;
@@ -68,11 +75,6 @@ type ConversationVirtualSlice = {
   bottomSpacer: number;
 };
 
-type ConversationViewport = {
-  top: number;
-  height: number;
-};
-
 const VIRTUALIZATION_MIN_ITEMS = 140;
 const VIRTUALIZATION_OVERSCAN = 14;
 const STICK_BOTTOM_STRICT_THRESHOLD = 4;
@@ -81,7 +83,6 @@ const TAIL_PAYLOAD_MAX_ENTRIES = 24;
 const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
-const USER_SCROLL_UP_EPSILON_PX = 24;
 const LOAD_OLDER_TRIGGER_TOP_PX = 80;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
@@ -192,19 +193,7 @@ export function shouldUseConversationVirtualization(
   return !conversationStickToBottom && sourceItemsLength >= VIRTUALIZATION_MIN_ITEMS;
 }
 
-export function nextConversationViewport(
-  prev: ConversationViewport,
-  nextTop: number,
-  nextHeight: number
-): ConversationViewport {
-  if (prev.top === nextTop && prev.height === nextHeight) {
-    return prev;
-  }
-  return {
-    top: nextTop,
-    height: nextHeight,
-  };
-}
+export { nextThreadViewport as nextConversationViewport };
 
 export function shouldAutoLoadConversationHistory(
   acpTab: "conversation" | "plan" | "debug",
@@ -219,38 +208,23 @@ export function shouldAutoLoadConversationHistory(
   return conversationMessageCount < minMessages;
 }
 
-export function normalizeConversationAvgHeightEstimate(
-  previous: number,
-  scrollHeight: number,
-  messageCount: number
-): number {
-  const count = Math.max(1, messageCount);
-  const estimate = scrollHeight / count;
-  if (!Number.isFinite(estimate) || estimate <= 0) return previous;
-  const normalized = Math.min(220, Math.max(24, estimate));
-  if (Math.abs(previous - normalized) < 1) return previous;
-  return normalized;
-}
+export { normalizeThreadAvgHeightEstimate as normalizeConversationAvgHeightEstimate };
 
-export function restoreConversationScrollTop(
-  savedTop: number,
-  scrollHeight: number,
-  clientHeight: number
-): number {
-  const maxTop = Math.max(0, scrollHeight - clientHeight);
-  return Math.min(savedTop, maxTop);
-}
+export { restoreThreadScrollTop as restoreConversationScrollTop };
 
 export function deriveConversationJumpState(
   acpTab: "conversation" | "plan" | "debug",
   conversationStickToBottom: boolean,
   conversationPendingCount: number
 ): { showConversationJump: boolean; showConversationBadge: boolean } {
-  const showConversationJump =
-    acpTab === "conversation" && !conversationStickToBottom;
+  const { showJump, showBadge } = deriveThreadJumpState({
+    active: acpTab === "conversation",
+    stickToBottom: conversationStickToBottom,
+    pendingCount: conversationPendingCount,
+  });
   return {
-    showConversationJump,
-    showConversationBadge: showConversationJump && conversationPendingCount > 0,
+    showConversationJump: showJump,
+    showConversationBadge: showBadge,
   };
 }
 
@@ -262,13 +236,14 @@ export function deriveConversationStickToBottom(
   previousScrollTop: number | null,
   threshold: number = 120
 ): boolean {
-  if (isNearBottom(scrollHeight, scrollTop, clientHeight, threshold)) {
-    return true;
-  }
-  if (!wasStickToBottom) return false;
-  if (previousScrollTop == null) return true;
-  const movedUp = scrollTop < previousScrollTop - USER_SCROLL_UP_EPSILON_PX;
-  return !movedUp;
+  return deriveThreadStickToBottom({
+    scrollHeight,
+    scrollTop,
+    clientHeight,
+    wasStickToBottom,
+    previousScrollTop,
+    threshold,
+  });
 }
 
 export function findConversationToolCallIndex(
@@ -478,7 +453,7 @@ export function useAcpConversation({
     setConversationViewport((prev) => {
       const nextTop = el.scrollTop;
       const nextHeight = el.clientHeight;
-      return nextConversationViewport(prev, nextTop, nextHeight);
+      return nextThreadViewport(prev, nextTop, nextHeight);
     });
   }, []);
 
@@ -850,7 +825,7 @@ export function useAcpConversation({
     }
     acpStickToBottomRef.current = false;
     setConversationStickToBottom(false);
-    el.scrollTop = restoreConversationScrollTop(
+    el.scrollTop = restoreThreadScrollTop(
       saved.top,
       el.scrollHeight,
       el.clientHeight
@@ -864,7 +839,7 @@ export function useAcpConversation({
     const el = acpConversationRef.current;
     if (!el) return;
     setConversationAvgHeight((prev) =>
-      normalizeConversationAvgHeightEstimate(
+      normalizeThreadAvgHeightEstimate(
         prev,
         el.scrollHeight,
         conversationMessages.length

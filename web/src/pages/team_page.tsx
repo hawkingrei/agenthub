@@ -321,9 +321,9 @@ function validateRunInputJson(raw: string): RunInputValidation {
 const panelSecondaryButtonClassName =
   "inline-flex items-center justify-center rounded-[12px] border border-ui-border bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-2 shadow-sm sm:p-2.5";
+  "min-h-0 min-w-0 rounded-[14px] border border-black/6 bg-[rgba(252,251,247,0.7)] p-2 shadow-none sm:p-2.5";
 const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] p-2.5 shadow-sm sm:p-3";
+  "min-h-0 rounded-[16px] border border-black/6 bg-[rgba(252,251,247,0.72)] p-2.5 shadow-none sm:p-3";
 const teamSectionHeadingClassName =
   "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
@@ -344,24 +344,22 @@ const teamRunMetaItemClassName =
 const workspaceToolbarClassName =
   "flex flex-wrap items-center gap-1";
 const workspaceToolbarButtonBaseClassName =
-  "inline-flex items-center gap-1 rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
+  "inline-flex items-center gap-1 rounded-[8px] border border-transparent px-2 py-1 text-[12px] font-medium transition";
 const workspaceToolbarButtonActiveClassName =
-  `${workspaceToolbarButtonBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
+  `${workspaceToolbarButtonBaseClassName} bg-[rgba(55,53,47,0.08)] text-ui-text-primary`;
 const workspaceToolbarButtonIdleClassName =
-  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
+  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:bg-[rgba(55,53,47,0.05)] hover:text-ui-text-primary`;
 const workspaceNoticeClassName =
-  "mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm";
+  "mt-1 flex flex-wrap items-center justify-between gap-2";
 const workspaceNoticeTextClassName =
-  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.1em] text-ui-text-muted";
+  "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-ui-text-muted";
 const workspaceNoticeDotBaseClassName =
-  "inline-flex h-2.5 w-2.5 shrink-0 rounded-full";
+  "inline-flex h-2 w-2 shrink-0 rounded-full";
 const teamRuntimeNoticeClassName =
   "mb-4 flex items-start justify-between gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-emerald-950 shadow-sm";
 const teamRuntimeNoticeTitleClassName =
   "text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800";
 const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-5 text-emerald-900";
-const workspaceMetaDropdownClassName =
-  "absolute right-0 top-full z-20 mt-2 flex min-w-64 flex-col gap-2 rounded-[14px] border border-ui-border bg-ui-surface p-2.5 shadow-lg";
 const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
   TeamCreateNoteTone,
   { color: "blue" | "yellow"; title: string; iconClassName: string }
@@ -404,7 +402,7 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
 });
 
 const teamWorkbenchPanelClassName =
-  "rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.96)_0%,rgba(244,241,233,0.96)_100%)] p-2.5 shadow-sm";
+  "rounded-[14px] border border-black/6 bg-[rgba(252,251,247,0.74)] p-2 shadow-none";
 const teamWorkbenchAccentButtonClassName =
   "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
 const teamWorkbenchMutedButtonClassName =
@@ -413,13 +411,17 @@ const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-3 py-2.5 shadow-sm";
+  "flex flex-wrap items-center justify-between gap-2 border-b border-black/8 bg-[rgba(252,251,247,0.84)] px-1 py-1.5 backdrop-blur-sm";
 const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-black/8 bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted shadow-sm";
+  "inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-white/72 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
+const teamWorkbenchDetailLayoutCollapsedClassName =
+  "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]";
+const teamWorkbenchDetailLayoutExpandedClassName =
+  "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(256px,312px)_minmax(0,1fr)]";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[16px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.98)_100%)] px-2.5 py-2.5 shadow-sm";
+  "rounded-[12px] border border-black/6 bg-[rgba(252,251,247,0.74)] px-2 py-1.5";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
 const teamWorkbenchInfoStripGridClassName =
@@ -892,7 +894,8 @@ export function TeamPage(props: TeamPageProps) {
     }
     return next;
   }, [teamMemberStatusByTeamId, teams]);
-  const normalizedTeamSelectorFilter = teamSelectorFilter.trim().toLowerCase();
+  const deferredTeamSelectorFilter = React.useDeferredValue(teamSelectorFilter);
+  const normalizedTeamSelectorFilter = deferredTeamSelectorFilter.trim().toLowerCase();
   const selectorVisibleTeams = useMemo(() => {
     if (!normalizedTeamSelectorFilter) {
       return teams;
@@ -2345,17 +2348,7 @@ export function TeamPage(props: TeamPageProps) {
   ).filter((item) => props.developerMode || item.value !== "debug");
   const isAdvancedWorkspace = workspaceAdvancedTabItems.some((item) => item.value === tab);
   const showRunActionsInAdvanced = Boolean(activeRunForSelectedTeam && tab !== "runs");
-  const workspaceEyebrow = !selectedTeam
-    ? "Team Workbench"
-    : isAgentWorkspace
-      ? "Agent Workspace"
-    : tab === "runs"
-      ? "Run Workspace"
-      : TEAM_PRIMARY_WORKSPACE_TABS.has(tab)
-        ? "Team Workspace"
-        : !isAgentWorkspace && tab !== "conversation"
-        ? "Team Utility"
-        : null;
+  const workspaceEyebrow = null;
   const selectedAgentFallbackName = useMemo(() => {
     const memberId = focusedAgentMemberId.trim();
     if (!memberId) {
@@ -2418,11 +2411,11 @@ export function TeamPage(props: TeamPageProps) {
   const workspaceDescription = !selectedTeam
     ? "Select a team from the left rail to start team conversations and supervise execution."
     : isAgentWorkspace
-      ? "Inspect the selected agent, its direct thread, and its current runtime state."
+      ? null
     : tab === "conversation"
-      ? "Shared planning and broadcast thread."
+      ? null
     : tab === "tasks"
-        ? "Track agent-owned tasks, linked runs, and the latest execution summaries."
+        ? null
       : tab === "mailbox"
         ? selectedMemberLiveState
           ? "Direct mailbox thread for the selected agent."
@@ -2432,6 +2425,8 @@ export function TeamPage(props: TeamPageProps) {
         : isAgentWorkspace
           ? "Direct thread for the selected agent."
           : "Operational views stay available without displacing the main thread.";
+  const showWorkspaceRuntimeBadge =
+    !isAgentWorkspace && !TEAM_PRIMARY_WORKSPACE_TABS.has(tab);
   const showDedicatedWorkspaceHeading =
     isAgentWorkspace || !selectedTeam || workspaceTitle !== selectedTeam.name;
   const workspaceMemberAvailability = useMemo(() => {
@@ -2459,15 +2454,10 @@ export function TeamPage(props: TeamPageProps) {
   }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
   const workspaceNoticeText = useMemo(() => {
     if (isAgentWorkspace) {
-      return [
-        selectedAgentLabel,
-        selectedAgentStatusView.lifecycle,
-        selectedAgentStatusView.work,
-        `inbox ${selectedAgentStatusView.inbox}`,
-        activeRunForSelectedTeam ? `run ${activeRunForSelectedTeam.status}` : "no active run",
-      ]
-        .filter((value): value is string => Boolean(value && value !== "unknown"))
-        .join(" · ");
+      return null;
+    }
+    if (tab === "conversation" || tab === "tasks") {
+      return null;
     }
     const runtimeLabel = selectedTeam ? selectedTeamRuntimeStatus.label : null;
     const runLabel = activeRunForSelectedTeam
@@ -2486,13 +2476,10 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     activeRunForSelectedTeam,
     isAgentWorkspace,
-    selectedAgentLabel,
-    selectedAgentStatusView.inbox,
-    selectedAgentStatusView.lifecycle,
-    selectedAgentStatusView.work,
     selectedTeam,
     selectedTeamMemberLiveStates.length,
     selectedTeamRuntimeStatus.label,
+    tab,
     workspaceMemberAvailability,
   ]);
   const workspaceNoticeDotClassName = useMemo(() => {
@@ -3080,7 +3067,7 @@ export function TeamPage(props: TeamPageProps) {
   const warningNotice = resolveTeamPageNotice(warning);
 
   return (
-    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-5 overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)] px-3 py-3 sm:px-4 lg:px-6 [&>*]:shrink-0">
+    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)] px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0">
       <header className={teamWorkbenchHeaderShellClassName}>
         <div className="flex min-w-0 items-center gap-3">
           {!isSelectorRoute && (
@@ -3097,17 +3084,15 @@ export function TeamPage(props: TeamPageProps) {
             </button>
           )}
           <div className="min-w-0">
-            <h1 className="text-[clamp(1.5rem,2.4vw,1.95rem)] font-semibold tracking-tight text-black">
+            <h1 className="text-[clamp(1.15rem,2vw,1.55rem)] font-semibold tracking-tight text-black">
               {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
             </h1>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-black/55">
-              {isSelectorRoute
-                ? "Choose a team before entering its workbench"
-                : "Mission-first multi-agent workbench"}
-            </p>
+            {isSelectorRoute ? (
+              <p className="mt-0.5 text-[12px] text-black/55">Choose a team</p>
+            ) : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {!isSelectorRoute && (
             <Button
               type="button"
@@ -3169,105 +3154,12 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {isSelectorRoute ? (
-        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
-          <section className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-h-0 flex-1 justify-center">
+          <section className="flex min-h-0 w-full max-w-[720px] flex-col">
+            <div className="flex items-start justify-between gap-3 px-2">
               <div className="min-w-0 flex-1">
-                <span className={teamWorkbenchBadgeClassName}>Team Directory</span>
-                <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
-                  Select a team
-                </h2>
-                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-                  Team selection lives on its own page. Enter a team to open its workspace,
-                  members, and operations.
-                </p>
+                <h2 className="text-[18px] font-semibold tracking-tight text-black">Teams</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={panelSecondaryButtonClassName}
-                  onClick={() => {
-                    void refreshTeams();
-                  }}
-                  disabled={busy === "refresh-teams"}
-                >
-                  Refresh
-                </button>
-                <Button
-                  type="button"
-                  radius="md"
-                  className={teamWorkbenchAccentButtonClassName}
-                  onClick={openCreateTeamModal}
-                >
-                  Create Team
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <TextInput
-                radius="md"
-                placeholder="Filter teams by name or id"
-                aria-label="Filter teams"
-                value={teamSelectorFilter}
-                onChange={(event) => setTeamSelectorFilter(event.target.value)}
-              />
-            </div>
-
-            <div className="mt-4 flex max-h-[55vh] flex-col gap-2 overflow-y-auto pr-1">
-              {teams.length === 0 && (
-                <p className={teamSectionBodyTextClassName}>
-                  No teams yet. Create the team first, then enter its workspace to add agents.
-                </p>
-              )}
-              {teams.length > 0 && selectorVisibleTeams.length === 0 && (
-                <p className={teamSectionBodyTextClassName}>No teams match the current filter.</p>
-              )}
-              {selectorVisibleTeams.map((team) => {
-                const summary = teamMemberSummaryByTeamId.get(team.id);
-                const summaryLabel = summary
-                  ? `${summary.total} members · ${summary.active} active${
-                      summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
-                    }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
-                  : "No agents configured yet";
-                return (
-                  <button
-                    key={team.id}
-                    type="button"
-                    className="team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-ui-border bg-ui-surface px-3 py-3 text-left shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
-                    onClick={() => navigateToTeamDetail(team.id)}
-                  >
-                    <span className="flex w-full items-start justify-between gap-3">
-                      <span className="truncate text-[15px] font-semibold text-ui-text-primary">
-                        {team.name}
-                      </span>
-                      <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted">
-                        Open
-                      </span>
-                    </span>
-                    <span className="text-[12px] leading-5 text-ui-text-secondary">
-                      {team.description?.trim() || "Open this team workspace to manage members and runs."}
-                    </span>
-                    <span className="mono text-ui-xs text-ui-text-muted">{summaryLabel}</span>
-                    {props.developerMode && (
-                      <span className="mono text-ui-xs text-ui-text-muted/90">{team.id}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
-            <span className={teamWorkbenchBadgeClassName}>Goal First</span>
-            <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
-              Create the team before you hire the agents.
-            </h2>
-            <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-              Start with the mission. A new team stays empty until you add the first agent and
-              the rest of the agents with their role, skills, and prompt profile.
-            </p>
-            <Group gap="sm" mt="md">
               <Button
                 type="button"
                 radius="md"
@@ -3276,15 +3168,85 @@ export function TeamPage(props: TeamPageProps) {
               >
                 Create Team
               </Button>
-            </Group>
+            </div>
+
+            {teams.length > 0 && (
+              <div className="mt-3 flex items-center gap-2 px-2">
+                <TextInput
+                  className="flex-1"
+                  radius="md"
+                  placeholder="Filter teams by name or id"
+                  aria-label="Filter teams"
+                  value={teamSelectorFilter}
+                  onChange={(event) => setTeamSelectorFilter(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-black/8 bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                  onClick={() => {
+                    void refreshTeams();
+                  }}
+                  disabled={busy === "refresh-teams"}
+                  aria-label="Refresh teams"
+                  title="Refresh teams"
+                >
+                  <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                </button>
+              </div>
+            )}
+
+            <div className="mt-3 flex-1 overflow-y-auto">
+              <div className="flex flex-col gap-0.5">
+                {teams.length === 0 && (
+                  <p className={`${teamSectionBodyTextClassName} px-2`}>
+                    No teams yet. Create the team first, then enter its workspace to add agents.
+                  </p>
+                )}
+                {teams.length > 0 && selectorVisibleTeams.length === 0 && (
+                  <p className={`${teamSectionBodyTextClassName} px-2`}>No teams match the current filter.</p>
+                )}
+                {selectorVisibleTeams.map((team) => {
+                  const summary = teamMemberSummaryByTeamId.get(team.id);
+                  const runtime = teamRuntimeByTeamId[team.id] ?? null;
+                  const runtimeStatus = resolveTeamRuntimeStatus(summary, runtime);
+                  return (
+                    <button
+                      key={team.id}
+                      type="button"
+                      className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
+                      onClick={() => navigateToTeamDetail(team.id)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14px] font-semibold text-ui-text-primary">
+                          {team.name}
+                        </div>
+                        <div className="mt-1 line-clamp-1 text-[12px] leading-5 text-ui-text-secondary">
+                          {team.description?.trim() || "No mission summary yet."}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-4 text-ui-text-muted">
+                          {summary
+                            ? `${summary.total} members · ${summary.active} active${
+                                summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
+                              }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
+                            : "No agents configured yet"}
+                        </div>
+                      </div>
+                      <div className="mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted">
+                        {runtimeStatus.label}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </section>
         </div>
       ) : (
         <div
           className={
             teamsSidebarCollapsed
-              ? "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]"
-              : "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]"
+              ? teamWorkbenchDetailLayoutCollapsedClassName
+              : teamWorkbenchDetailLayoutExpandedClassName
           }
         >
           {!teamsSidebarCollapsed && (
@@ -3324,7 +3286,7 @@ export function TeamPage(props: TeamPageProps) {
             />
           )}
 
-          <div className="teams-main flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
+          <div className="teams-main flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
             {!selectedTeam && (
               <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
                 <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
@@ -3364,7 +3326,9 @@ export function TeamPage(props: TeamPageProps) {
                         {workspaceTitle}
                       </h2>
                     ) : null}
-                    <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
+                    {workspaceDescription && (
+                      <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                   {isAgentWorkspace ? (
@@ -3437,7 +3401,7 @@ export function TeamPage(props: TeamPageProps) {
                           </Menu.Item>
                         </Menu.Dropdown>
                       </Menu>
-                  ) : (
+                  ) : showWorkspaceRuntimeBadge ? (
                       <Tooltip
                         label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
                         withArrow
@@ -3463,7 +3427,7 @@ export function TeamPage(props: TeamPageProps) {
                           </Badge>
                         </Group>
                       </Tooltip>
-                  )}
+                  ) : null}
                   <div className={workspaceToolbarClassName}>
                     <button
                       type="button"
@@ -3487,10 +3451,10 @@ export function TeamPage(props: TeamPageProps) {
                                 ? workspaceToolbarButtonActiveClassName
                                 : workspaceToolbarButtonIdleClassName
                             }
-                            aria-label="Open advanced views"
+                            aria-label="Open more workspace actions"
                           >
-                            <i className="bi bi-sliders2" aria-hidden="true" />
-                            <span>Advanced</span>
+                            <i className="bi bi-three-dots" aria-hidden="true" />
+                            <span>More</span>
                           </button>
                         </Menu.Target>
                         <Menu.Dropdown>
@@ -3532,46 +3496,48 @@ export function TeamPage(props: TeamPageProps) {
                               </Menu.Item>
                             </>
                           )}
+                          {props.developerMode && workspaceDetailItems.length > 0 && (
+                            <>
+                              {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
+                                <Menu.Divider />
+                              )}
+                              <Menu.Label>Workspace</Menu.Label>
+                              <Menu.Item
+                                onClick={() => setWorkspaceDetailsOpen((current) => !current)}
+                              >
+                                {workspaceDetailsOpen
+                                  ? "Hide workspace details"
+                                  : "Show workspace details"}
+                              </Menu.Item>
+                            </>
+                          )}
                         </Menu.Dropdown>
                       </Menu>
                     )}
                   </div>
                 </div>
                 </div>
-                <div className={workspaceNoticeClassName}>
-                  <div className={workspaceNoticeTextClassName}>
-                    <span className={workspaceNoticeDotClassName} aria-hidden="true" />
-                    <span className="min-w-0 flex-1 text-xs leading-5 text-ui-text-muted">
-                      {workspaceNoticeText}
-                    </span>
+                {(workspaceNoticeText || props.developerMode) && (
+                  <div className={workspaceNoticeClassName}>
+                    {workspaceNoticeText && (
+                      <div className={workspaceNoticeTextClassName}>
+                        <span className={workspaceNoticeDotClassName} aria-hidden="true" />
+                        <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted">
+                          {workspaceNoticeText}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  {props.developerMode && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
-                        onClick={() => setWorkspaceDetailsOpen((current) => !current)}
-                        aria-expanded={workspaceDetailsOpen}
-                        aria-label="Toggle workspace details"
-                        title="Workspace details"
-                      >
-                        <i className="bi bi-three-dots" aria-hidden="true" />
-                      </button>
-                      {workspaceDetailsOpen && (
-                        <div className={workspaceMetaDropdownClassName}>
-                          {workspaceDetailItems.map((item) => (
-                            <div
-                              key={item}
-                              className={teamRunMetaItemClassName}
-                            >
-                              {item}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                )}
+                {props.developerMode && workspaceDetailsOpen && workspaceDetailItems.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {workspaceDetailItems.map((item) => (
+                      <div key={item} className={teamRunMetaItemClassName}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 </div>
               </div>
 
@@ -3693,16 +3659,9 @@ export function TeamPage(props: TeamPageProps) {
               )}
 
               {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
-                <div className="flex min-w-0 flex-col gap-3">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
                   {tab === "conversation" && (
                     <>
-                      {!activeRunForSelectedTeam && (
-                        <div className={teamSectionCardClassName}>
-                          <p className={teamSectionBodyTextClassName}>
-                            The shared thread is available before execution starts.
-                          </p>
-                        </div>
-                      )}
                       {conversationPanel}
                     </>
                   )}

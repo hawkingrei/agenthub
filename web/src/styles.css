@@ -300,7 +300,7 @@ section {
 
 .workspace {
   display: grid;
-  grid-template-columns: var(--agents-panel-width, 360px) 12px minmax(0, 1fr);
+  grid-template-columns: var(--agents-panel-width, 288px) 12px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 6px;
   align-items: stretch;
@@ -576,7 +576,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -586,12 +586,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input.docked .input-editor-row .input-send-button {
-  height: 44px;
-  min-height: 44px;
-  min-width: 82px;
-  padding: 0 14px;
-  border-radius: 10px;
-  font-size: 13px;
+  height: 38px;
+  min-height: 38px;
+  min-width: 72px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 12px;
   line-height: 1.1;
   align-self: stretch;
 }
@@ -601,21 +601,21 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input.docked .input-row .input-interrupt-button {
-  height: 26px;
-  min-height: 26px;
-  padding: 3px 9px;
+  height: 24px;
+  min-height: 24px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
   line-height: 1.15;
 }
 
 .input.docked .input-row .history-toggle {
-  height: 26px;
-  padding: 3px 9px;
+  height: 24px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
-  background: #f4f6f8;
-  border: 1px solid #d9dee5;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(17, 24, 39, 0.08);
   color: #3e4954;
 }
 
@@ -628,10 +628,10 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   max-width: min(560px, calc(100vw - 32px));
   max-height: 236px;
   overflow: auto;
-  border: 1px solid #d9dee5;
+  border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 10px 24px rgba(18, 26, 35, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(18, 26, 35, 0.08);
   padding: 4px;
   display: grid;
   gap: 3px;
@@ -662,18 +662,18 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input button:not([class*="mantine-"]) {
-  height: 40px;
+  height: 36px;
 }
 
 .jump-bottom {
   position: static;
   justify-self: end;
   margin-left: auto;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
-  border: 1px solid #d0d0d0;
-  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.8);
   color: #222;
   display: inline-flex;
   align-items: center;
@@ -2538,10 +2538,10 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .input.docked .input-editor-row .input-send-button {
-    height: 40px;
-    min-height: 40px;
-    min-width: 78px;
-    padding: 0 12px;
+    height: 36px;
+    min-height: 36px;
+    min-width: 68px;
+    padding: 0 10px;
     font-size: 12px;
   }
 
@@ -2559,7 +2559,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .input.docked textarea:not([class*="mantine-"]) {
-    min-height: 70px;
+    min-height: 62px;
   }
 
   .input.docked button:not([class*="mantine-"]) {
