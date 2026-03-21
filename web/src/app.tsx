@@ -172,6 +172,27 @@ export function canManageAgentNodes(auth: AuthState | null): boolean {
   return auth?.role === "root";
 }
 
+export function upsertAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  node: AgentNodeRecord
+): AgentNodeRecord[] {
+  return [...nodes.filter((item) => item.id !== node.id), node];
+}
+
+export function replaceAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  node: AgentNodeRecord
+): AgentNodeRecord[] {
+  return nodes.map((item) => (item.id === node.id ? node : item));
+}
+
+export function removeAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  nodeId: string
+): AgentNodeRecord[] {
+  return nodes.filter((item) => item.id !== nodeId);
+}
+
 function isTeamsRoute(pathname: string): boolean {
   return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
 }
@@ -1131,6 +1152,7 @@ export function App() {
   const selectedTargetNodeDefaultWorktreeRootRef = useRef(
     selectedTargetNodeDefaultWorktreeRoot
   );
+  const agentNodesRef = useRef(agentNodes);
   const activeAgentModelLabel = useMemo(() => {
     if (!activeAgentRecord) return null;
     return formatAgentModelLabel(
@@ -1214,6 +1236,9 @@ export function App() {
     selectedTargetNodeDefaultWorktreeRootRef.current =
       selectedTargetNodeDefaultWorktreeRoot;
   }, [selectedTargetNodeDefaultWorktreeRoot]);
+  useEffect(() => {
+    agentNodesRef.current = agentNodes;
+  }, [agentNodes]);
   useEffect(() => {
     activeAgentStatusRef.current = activeAgentStatus;
   }, [activeAgentStatus]);
@@ -2242,12 +2267,8 @@ export function App() {
         tls_server_name: nodeTlsServerNameInput.trim() || null,
         default_worktree_root: nodeDefaultWorktreeRootInput.trim() || null,
       });
-      let nextNodes: AgentNodeRecord[] = [];
-      setAgentNodes((prev) => {
-        const withoutDuplicate = prev.filter((item) => item.id !== node.id);
-        nextNodes = [...withoutDuplicate, node];
-        return nextNodes;
-      });
+      const nextNodes = upsertAgentNodeRecord(agentNodesRef.current, node);
+      setAgentNodes(nextNodes);
       applyTargetNodeSelection(node.id, nextNodes);
       setNodeIdInput("");
       setNodeNameInput("");
@@ -2285,11 +2306,8 @@ export function App() {
       setUpdatingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
       try {
         const node = await api.updateAgentNode(token, nodeId, payload);
-        let nextNodes: AgentNodeRecord[] = [];
-        setAgentNodes((prev) => {
-          nextNodes = prev.map((item) => (item.id === node.id ? node : item));
-          return nextNodes;
-        });
+        const nextNodes = replaceAgentNodeRecord(agentNodesRef.current, node);
+        setAgentNodes(nextNodes);
         if (targetNodeId === nodeId) {
           applyTargetNodeSelection(nodeId, nextNodes);
         }
@@ -2314,11 +2332,8 @@ export function App() {
       setDeletingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
       try {
         await api.deleteAgentNode(token, nodeId);
-        let nextNodes: AgentNodeRecord[] = [];
-        setAgentNodes((prev) => {
-          nextNodes = prev.filter((node) => node.id !== nodeId);
-          return nextNodes;
-        });
+        const nextNodes = removeAgentNodeRecord(agentNodesRef.current, nodeId);
+        setAgentNodes(nextNodes);
         if (targetNodeId === nodeId) {
           applyTargetNodeSelection("main", nextNodes);
         }

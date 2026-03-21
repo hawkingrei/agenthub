@@ -2,12 +2,26 @@ import { describe, expect, it } from "vitest";
 
 import {
   canManageAgentNodes,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   shouldRedirectTeamsToLogin,
+  upsertAgentNodeRecord,
 } from "./app";
 
 describe("team route auth redirect", () => {
+  const makeNode = (id: string, name = id) => ({
+    id,
+    name,
+    grpc_target: `${id}.internal:50051`,
+    tls_server_name: null,
+    default_worktree_root: null,
+    is_main: id === "main",
+    created_at: 1,
+    updated_at: 1,
+  });
+
   it("redirects unauthenticated teams route to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
     expect(
@@ -101,5 +115,27 @@ describe("team route auth redirect", () => {
         role: "root",
       })
     ).toBe(true);
+  });
+
+  it("upserts agent node records without relying on state updaters", () => {
+    expect(upsertAgentNodeRecord([makeNode("node-a")], makeNode("node-b"))).toEqual([
+      makeNode("node-a"),
+      makeNode("node-b"),
+    ]);
+    expect(
+      upsertAgentNodeRecord([makeNode("node-a", "old-a")], makeNode("node-a", "new-a"))
+    ).toEqual([makeNode("node-a", "new-a")]);
+  });
+
+  it("replaces and removes agent node records deterministically", () => {
+    expect(
+      replaceAgentNodeRecord(
+        [makeNode("node-a", "old-a"), makeNode("node-b")],
+        makeNode("node-a", "new-a")
+      )
+    ).toEqual([makeNode("node-a", "new-a"), makeNode("node-b")]);
+    expect(removeAgentNodeRecord([makeNode("node-a"), makeNode("node-b")], "node-a")).toEqual([
+      makeNode("node-b"),
+    ]);
   });
 });
