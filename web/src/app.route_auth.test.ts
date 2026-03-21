@@ -11,15 +11,15 @@ import {
 } from "./app";
 
 describe("team route auth redirect", () => {
-  const makeNode = (id: string, name = id) => ({
+  const makeNode = (id: string, name = id, createdAt = 1) => ({
     id,
     name,
     grpc_target: `${id}.internal:50051`,
     tls_server_name: null,
     default_worktree_root: null,
     is_main: id === "main",
-    created_at: 1,
-    updated_at: 1,
+    created_at: createdAt,
+    updated_at: createdAt,
   });
 
   it("redirects unauthenticated teams route to login", () => {
@@ -118,13 +118,26 @@ describe("team route auth redirect", () => {
   });
 
   it("upserts agent node records without relying on state updaters", () => {
-    expect(upsertAgentNodeRecord([makeNode("node-a")], makeNode("node-b"))).toEqual([
-      makeNode("node-a"),
-      makeNode("node-b"),
+    expect(
+      upsertAgentNodeRecord(
+        [makeNode("main"), makeNode("node-a", "node-a", 10)],
+        makeNode("node-b", "node-b", 20)
+      )
+    ).toEqual([
+      makeNode("main"),
+      makeNode("node-b", "node-b", 20),
+      makeNode("node-a", "node-a", 10),
     ]);
     expect(
-      upsertAgentNodeRecord([makeNode("node-a", "old-a")], makeNode("node-a", "new-a"))
-    ).toEqual([makeNode("node-a", "new-a")]);
+      upsertAgentNodeRecord(
+        [makeNode("main"), makeNode("node-b", "node-b", 20), makeNode("node-a", "old-a", 10)],
+        makeNode("node-a", "new-a", 10)
+      )
+    ).toEqual([
+      makeNode("main"),
+      makeNode("node-b", "node-b", 20),
+      makeNode("node-a", "new-a", 10),
+    ]);
   });
 
   it("replaces and removes agent node records deterministically", () => {

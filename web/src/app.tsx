@@ -172,11 +172,27 @@ export function canManageAgentNodes(auth: AuthState | null): boolean {
   return auth?.role === "root";
 }
 
+function compareAgentNodeRecords(a: AgentNodeRecord, b: AgentNodeRecord): number {
+  if (a.is_main !== b.is_main) {
+    return a.is_main ? -1 : 1;
+  }
+  if (a.created_at !== b.created_at) {
+    return b.created_at - a.created_at;
+  }
+  return a.id.localeCompare(b.id);
+}
+
 export function upsertAgentNodeRecord(
   nodes: AgentNodeRecord[],
   node: AgentNodeRecord
 ): AgentNodeRecord[] {
-  return [...nodes.filter((item) => item.id !== node.id), node];
+  const existingIndex = nodes.findIndex((item) => item.id === node.id);
+  if (existingIndex >= 0) {
+    const next = [...nodes];
+    next[existingIndex] = node;
+    return next;
+  }
+  return [...nodes, node].sort(compareAgentNodeRecords);
 }
 
 export function replaceAgentNodeRecord(

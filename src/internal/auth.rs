@@ -277,6 +277,13 @@ impl CredentialProvider for InternalAuthz {
             .ok_or_else(|| anyhow::anyhow!("unsupported internal role '{}'", request.role))?;
         let scope = normalize_scope(request.scope, &request.permissions);
         let audience = normalize_audience(request.audience, self.expected_audience.as_deref());
+        let token_audience = self
+            .expected_audience
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| audience.first().cloned());
         let issued_at = chrono::Utc::now().timestamp();
         let expires_at = issued_at + ttl_seconds;
         let claims = Claims::with_custom_claims(
@@ -289,7 +296,7 @@ impl CredentialProvider for InternalAuthz {
                 permissions: request.permissions,
                 scope: scope.clone(),
                 issuer: self.expected_issuer.clone(),
-                audience: self.expected_audience.clone(),
+                audience: token_audience.clone(),
                 kid: Some(self.key_id.clone()),
             },
             Duration::from_secs(ttl_seconds as u64),
@@ -304,7 +311,7 @@ impl CredentialProvider for InternalAuthz {
             access_token: token,
             cluster_id: self.cluster_id.clone(),
             scope,
-            audience,
+            audience: token_audience.into_iter().collect(),
             kid: self.key_id.clone(),
             issued_at,
             expires_at,
@@ -334,9 +341,11 @@ mod tests {
     use jwt_simple::prelude::{Claims, Duration};
     use tonic::metadata::MetadataValue;
 
+    use crate::internal::p2p::CredentialProvider;
+
     use super::{
         HS256Key, InternalAccessClaims, InternalAction, InternalAuthz, InternalAuthzConfig,
-        InternalRole,
+        InternalRole, NodeCredentialRequest,
     };
     const TEST_SECRET: &str = "agenthub-internal-test-secret";
 
@@ -487,5 +496,71 @@ mod tests {
         authz
             .ensure_permission(&principal, InternalAction::MessageSend)
             .expect("send permission exists");
+    }
+
+    #[test]
+    fn issue_node_access_token_prefers_expected_audience_for_claims_and_metadata() {
+        let authz = InternalAuthz::new(InternalAuthzConfig {
+            shared_secret: TEST_SECRET.to_string(),
+            expected_issuer: Some("agenthub".to_string()),
+            expected_audience: Some("internal-grpc".to_string()),
+        });
+        let issued = authz
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: "node-a".to_string(),
+                role: InternalRole::Leader.as_str().to_string(),
+                actor_id: None,
+                run_id: None,
+                permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+                scope: Vec::new(),
+                audience: vec!["secondary-audience".to_string()],
+                ttl_seconds: 600,
+            })
+            .expect("issue node access token");
+        assert_eq!(issued.audience, vec!["internal-grpc".to_string()]);
+
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        metadata.insert(
+            "authorization",
+            MetadataValue::try_from(format!("Bearer {}", issued.access_token))
+                .expect("metadata value"),
+        );
+        let principal = authz.authenticate(&metadata).expect("authenticate");
+        assert_eq!(principal.audience.as_deref(), Some("internal-grpc"));
+    }
+
+    #[test]
+    fn issue_node_access_token_uses_primary_normalized_request_audience_without_expected() {
+        let authz = InternalAuthz::new(InternalAuthzConfig {
+            shared_secret: TEST_SECRET.to_string(),
+            expected_issuer: Some("agenthub".to_string()),
+            expected_audience: None,
+        });
+        let issued = authz
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: "node-a".to_string(),
+                role: InternalRole::Leader.as_str().to_string(),
+                actor_id: None,
+                run_id: None,
+                permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+                scope: Vec::new(),
+                audience: vec![
+                    "zeta-audience".to_string(),
+                    "alpha-audience".to_string(),
+                    "zeta-audience".to_string(),
+                ],
+                ttl_seconds: 600,
+            })
+            .expect("issue node access token");
+        assert_eq!(issued.audience, vec!["alpha-audience".to_string()]);
+
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        metadata.insert(
+            "authorization",
+            MetadataValue::try_from(format!("Bearer {}", issued.access_token))
+                .expect("metadata value"),
+        );
+        let principal = authz.authenticate(&metadata).expect("authenticate");
+        assert_eq!(principal.audience.as_deref(), Some("alpha-audience"));
     }
 }
