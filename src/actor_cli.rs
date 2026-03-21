@@ -44,13 +44,20 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nOutput:\n  Structured command results are printed as TOON on stdout.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
         ACTOR_RUNTIME_AGENT_ID_ENV,
         ACTOR_RUNTIME_CHANNEL_ENV,
     )
+}
+
+fn write_toon_output<T: serde::Serialize>(value: &T) -> anyhow::Result<()> {
+    let output = toon_format::encode_default(value)
+        .map_err(|err| anyhow::anyhow!("failed to encode TOON output: {err}"))?;
+    println!("{output}");
+    Ok(())
 }
 
 fn normalized_env_var(key: &str) -> Option<String> {
@@ -455,7 +462,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             let team_context = manager
                 .describe_team_context(team_id.as_deref(), run_id.as_deref())
                 .await?;
-            println!("{}", serde_json::to_string(&team_context)?);
+            write_toon_output(&team_context)?;
         }
         ActorCommand::Inbox {
             run_id,
@@ -490,7 +497,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             .map_err(|err| {
                 anyhow::anyhow!("actor inbox failed ({:?}): {}", err.code, err.message)
             })?;
-            println!("{}", serde_json::to_string(&inbox.messages)?);
+            write_toon_output(&inbox.messages)?;
         }
         ActorCommand::Ack {
             run_id,
@@ -502,7 +509,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             let message = manager
                 .ack_actor_message(&run_id, &actor_id, message_id)
                 .await?;
-            println!("{}", serde_json::to_string(&message)?);
+            write_toon_output(&message)?;
         }
         ActorCommand::Send {
             run_id,
@@ -534,7 +541,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
                     idempotency_key: idempotency_key.as_deref(),
                 })
                 .await?;
-            println!("{}", serde_json::to_string(&message)?);
+            write_toon_output(&message)?;
         }
     }
     Ok(())
