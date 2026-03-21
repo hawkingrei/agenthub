@@ -1565,6 +1565,7 @@ async fn teams_router_orchestrator_marks_input_required_when_team_runtime_is_sto
             workdir: workdir_str.clone(),
             command: "/usr/bin/env".to_string(),
             args: vec![],
+            target_node_id: None,
             worktree_mode: crate::agent::WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,

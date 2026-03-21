@@ -17,6 +17,7 @@ use sqlx::{Row, SqlitePool};
 use tower::util::ServiceExt;
 use uuid::Uuid;
 
+use crate::agenthub_binary::resolve_agenthub_binary_path;
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
@@ -87,31 +88,11 @@ fn team_member_actor_context_matches(
 fn resolve_test_agenthub_binary_path() -> String {
     TEST_AGENTHUB_BIN
         .get_or_init(|| {
-            if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthub") {
-                return std::fs::canonicalize(path)
-                    .expect("canonicalize cargo-provided agenthub binary path")
-                    .to_string_lossy()
-                    .to_string();
+            if let Some(path) = resolve_agenthub_binary_path() {
+                return path.to_string_lossy().to_string();
             }
 
             let current = std::env::current_exe().expect("resolve current test executable path");
-            let sibling = current
-                .parent()
-                .and_then(|parent| parent.parent())
-                .map(|dir| dir.join(format!("agenthub{}", std::env::consts::EXE_SUFFIX)))
-                .expect("resolve target dir for agenthub binary");
-            if sibling.exists() {
-                return std::fs::canonicalize(&sibling)
-                    .unwrap_or_else(|err| {
-                        panic!(
-                            "canonicalize derived agenthub binary path {}: {err}",
-                            sibling.display()
-                        )
-                    })
-                    .to_string_lossy()
-                    .to_string();
-            }
-
             panic!(
                 "resolve real agenthub binary path for tests from {}",
                 current.display()
@@ -928,6 +909,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
                 "-c".to_string(),
                 "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
             ],
+            target_node_id: None,
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,

@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Once;
 
 use anyhow::Context;
 use base64::URL_SAFE_NO_PAD;
@@ -10,6 +11,18 @@ pub enum InternalGrpcSecurityMode {
     Disabled,
     Tls,
     Mtls,
+}
+
+pub fn install_rustls_crypto_provider() {
+    static INSTALL_RUSTLS_PROVIDER: Once = Once::new();
+    INSTALL_RUSTLS_PROVIDER.call_once(|| {
+        if let Err(err) = rustls::crypto::aws_lc_rs::default_provider().install_default() {
+            tracing::warn!(
+                error = ?err,
+                "failed to install default rustls crypto provider; TLS operations may fail later"
+            );
+        }
+    });
 }
 
 impl InternalGrpcSecurityMode {

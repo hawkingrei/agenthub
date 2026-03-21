@@ -24,12 +24,12 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["clock"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "0.9"
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
 thiserror = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "signal", "sync", "time", "io-util", "io-std"] }
@@ -41,7 +41,7 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 web-push = "0.10"
-webauthn-rs = "0.4"
+webauthn-rs = "0.5"
 url = "2"
 argon2 = "0.5"
 rand = "0.8"
@@ -62,11 +62,12 @@ agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
-agent-client-protocol = { version = "0.9.4", features = ["unstable"] }
+agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
 rcgen = "0.13"
+rustls = "0.23"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

@@ -9,13 +9,20 @@ use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
 use crate::team::{TeamStepRecord, TeamStepStatus};
+use crate::{acp::AcpActorSkillContext, agent::AgentConfig};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
+use super::p2p::{CredentialProvider, NodeCredentialRequest};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::proto::agenthub::internal::v1::{
-    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, IssueNodeCredentialRequest,
-    IssueNodeCredentialResponse, ListActorInboxRequest, ListActorInboxResponse,
-    SendActorMessageRequest, SendActorMessageResponse, TransitionStepRequest,
+    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
+    DeleteManagedAgentRequest, DeleteManagedAgentResponse, EnsureAgentRecordRequest,
+    EnsureAgentRecordResponse, GetAgentRecordRequest, GetAgentRecordResponse,
+    IssueNodeCredentialRequest, IssueNodeCredentialResponse, ListActorInboxRequest,
+    ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
+    SendActorMessageRequest, SendActorMessageResponse, SendAgentInputRequest,
+    SendAgentInputResponse, StartManagedAgentRequest, StartManagedAgentResponse,
+    StopManagedAgentRequest, StopManagedAgentResponse, TransitionStepRequest,
     TransitionStepResponse,
 };
 use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
@@ -92,6 +99,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let route = optional_json_object(optional_trimmed(&payload.route_json), "route_json")?;
         let payload_json = parse_json_required(&payload.payload_json, "payload_json")?;
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
+        let from_peer_id = optional_trimmed(&payload.from_peer_id);
+        let to_peer_id = optional_trimmed(&payload.to_peer_id);
 
         let message = self
             .state
@@ -100,9 +109,9 @@ impl TeamInternalControl for TeamInternalControlService {
             .actor_send(ActorSendRequest {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
-                from_peer_id: None,
+                from_peer_id: from_peer_id.map(str::to_string),
                 to_actor_id: to_actor_id.to_string(),
-                to_peer_id: None,
+                to_peer_id: to_peer_id.map(str::to_string),
                 channel: Some(channel.to_string()),
                 transport: Some(transport),
                 route,
@@ -185,6 +194,8 @@ impl TeamInternalControl for TeamInternalControlService {
                 created_at: message.created_at,
                 delivered_at: message.delivered_at.unwrap_or_default(),
                 idempotency_key: String::new(),
+                from_peer_id: message.from_peer_id,
+                to_peer_id: message.to_peer_id,
             })
             .collect::<Vec<_>>();
 
@@ -240,6 +251,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let run_id = acked_message.run_id;
         let from_actor_id = acked_message.from_actor_id;
         let to_actor_id = acked_message.to_actor_id;
+        let from_peer_id = acked_message.from_peer_id;
+        let to_peer_id = acked_message.to_peer_id;
         let channel = acked_message.channel;
         let transport = acked_message.transport.as_str().to_string();
 
@@ -257,6 +270,8 @@ impl TeamInternalControl for TeamInternalControlService {
                 created_at,
                 delivered_at,
                 idempotency_key: String::new(),
+                from_peer_id,
+                to_peer_id,
             }),
         }))
     }
@@ -390,9 +405,18 @@ impl TeamInternalControl for TeamInternalControlService {
         } else {
             DEFAULT_TOKEN_TTL_SECONDS
         };
-        let (access_token, expires_at) = self
+        let issued = self
             .authz
-            .issue_access_token(role, actor_id, run_id, permissions, ttl_seconds)
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: node_id.to_string(),
+                role: role.as_str().to_string(),
+                actor_id: actor_id.map(str::to_string),
+                run_id: run_id.map(str::to_string),
+                permissions,
+                scope: Vec::new(),
+                audience: Vec::new(),
+                ttl_seconds,
+            })
             .map_err(|err| Status::internal(err.to_string()))?;
 
         let (cert_pem, key_pem, ca_cert_pem) =
@@ -411,12 +435,177 @@ impl TeamInternalControl for TeamInternalControlService {
         Ok(Response::new(IssueNodeCredentialResponse {
             node_id: node_id.to_string(),
             role: role.as_str().to_string(),
-            access_token,
-            expires_at,
+            access_token: issued.access_token,
+            expires_at: issued.expires_at,
             cert_pem,
             key_pem,
             ca_cert_pem,
             security_mode: security_mode_to_str(self.security_mode).to_string(),
+            cluster_id: issued.cluster_id,
+            scope: issued.scope,
+            audience: issued.audience,
+            kid: issued.kid,
+            issued_at: issued.issued_at,
+            source_node_id: issued.source_node_id,
+        }))
+    }
+
+    async fn ensure_agent_record(
+        &self,
+        request: Request<EnsureAgentRecordRequest>,
+    ) -> Result<Response<EnsureAgentRecordResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let config = parse_json_as::<AgentConfig>(&payload.config_json, "config_json")?;
+        let source = optional_trimmed(&payload.source).unwrap_or("manual");
+        let agent = self
+            .state
+            .agents
+            .ensure_remote_managed_agent(agent_id, config, source)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(EnsureAgentRecordResponse {
+            agent_json: serde_json::to_string(&agent)
+                .map_err(|err| Status::internal(err.to_string()))?,
+        }))
+    }
+
+    async fn get_agent_record(
+        &self,
+        request: Request<GetAgentRecordRequest>,
+    ) -> Result<Response<GetAgentRecordResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let agent = self
+            .state
+            .agents
+            .get_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(GetAgentRecordResponse {
+            agent_json: serde_json::to_string(&agent)
+                .map_err(|err| Status::internal(err.to_string()))?,
+        }))
+    }
+
+    async fn start_managed_agent(
+        &self,
+        request: Request<StartManagedAgentRequest>,
+    ) -> Result<Response<StartManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let actor_context = optional_trimmed(&payload.actor_context_json)
+            .map(|raw| parse_json_str_as::<AcpActorSkillContext>(raw, "actor_context_json"))
+            .transpose()?;
+        let session_id = self
+            .state
+            .agents
+            .start_agent_with_actor_context(agent_id, actor_context)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(StartManagedAgentResponse { session_id }))
+    }
+
+    async fn stop_managed_agent(
+        &self,
+        request: Request<StopManagedAgentRequest>,
+    ) -> Result<Response<StopManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        self.state
+            .agents
+            .stop_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(StopManagedAgentResponse {}))
+    }
+
+    async fn delete_managed_agent(
+        &self,
+        request: Request<DeleteManagedAgentRequest>,
+    ) -> Result<Response<DeleteManagedAgentResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let _ = self.state.agents.stop_agent(agent_id).await;
+        self.state
+            .agents
+            .delete_agent(agent_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(DeleteManagedAgentResponse {}))
+    }
+
+    async fn send_agent_input(
+        &self,
+        request: Request<SendAgentInputRequest>,
+    ) -> Result<Response<SendAgentInputResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let input = required_field(&payload.input, "input")?;
+        self.state
+            .agents
+            .send_input(
+                agent_id,
+                input,
+                optional_trimmed(&payload.message_id),
+                optional_trimmed(&payload.session_id),
+            )
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(SendAgentInputResponse {}))
+    }
+
+    async fn list_agent_events(
+        &self,
+        request: Request<ListAgentEventsRequest>,
+    ) -> Result<Response<ListAgentEventsResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+
+        let agent_id = required_field(&payload.agent_id, "agent_id")?;
+        let limit = payload.limit.clamp(1, 1000);
+        let before_event_id = (payload.before_event_id > 0).then_some(payload.before_event_id);
+        let session_id = optional_trimmed(&payload.session_id);
+        let events = if let Some(session_id) = session_id {
+            self.state
+                .agents
+                .list_events_for_session(agent_id, session_id, limit, before_event_id)
+                .await
+        } else {
+            self.state
+                .agents
+                .list_events(agent_id, limit, before_event_id)
+                .await
+        }
+        .map_err(map_manager_error)?;
+        Ok(Response::new(ListAgentEventsResponse {
+            events: events.into_iter().map(agent_event_record).collect(),
         }))
     }
 }
@@ -463,6 +652,22 @@ fn parse_json_required(raw: &str, field: &str) -> Result<Value, Status> {
         .map_err(|err| Status::invalid_argument(format!("{field} must be valid JSON: {err}")))
 }
 
+fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let raw = required_field(raw, field)?;
+    parse_json_str_as(raw, field)
+}
+
+fn parse_json_str_as<T>(raw: &str, field: &str) -> Result<T, Status>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_str(raw)
+        .map_err(|err| Status::invalid_argument(format!("{field} must be valid JSON: {err}")))
+}
+
 fn optional_json_object(raw: Option<&str>, field: &str) -> Result<Option<Value>, Status> {
     let Some(raw) = raw else {
         return Ok(None);
@@ -485,6 +690,27 @@ fn map_manager_error(err: anyhow::Error) -> Status {
         return Status::not_found("target record not found");
     }
     Status::internal(err.to_string())
+}
+
+fn agent_event_record(event: crate::agent::AgentEvent) -> AgentEventRecord {
+    AgentEventRecord {
+        event_id: event.event_id,
+        agent_id: event.agent_id,
+        session_id: event.session_id,
+        seq: event.seq,
+        ts: event.ts,
+        stream: agent_output_stream_to_str(&event.stream).to_string(),
+        message: event.message,
+    }
+}
+
+fn agent_output_stream_to_str(stream: &crate::agent::OutputStream) -> &'static str {
+    match stream {
+        crate::agent::OutputStream::Stdout => "stdout",
+        crate::agent::OutputStream::Stderr => "stderr",
+        crate::agent::OutputStream::System => "system",
+        crate::agent::OutputStream::Acp => "acp",
+    }
 }
 
 fn map_actor_service_status(err: ActorServiceError) -> Status {
@@ -571,9 +797,10 @@ mod tests {
     use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
     use super::super::proto::agenthub::internal::v1::{
-        AckActorMessageRequest, ListActorInboxRequest, SendActorMessageRequest,
+        AckActorMessageRequest, IssueNodeCredentialRequest, ListActorInboxRequest,
+        SendActorMessageRequest,
     };
-    use super::{TeamInternalControlService, map_actor_service_status};
+    use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
 
@@ -663,6 +890,8 @@ mod tests {
                     route_json: r#"{"topic":"review"}"#.to_string(),
                     payload_json: r#"{"text":"please review"}"#.to_string(),
                     idempotency_key: "internal-grpc-msg-1".to_string(),
+                    from_peer_id: "node-a".to_string(),
+                    to_peer_id: "main".to_string(),
                 },
                 &token,
             ),
@@ -701,6 +930,8 @@ mod tests {
         assert_eq!(pending.route_json, r#"{"topic":"review"}"#);
         assert_eq!(pending.payload_json, r#"{"text":"please review"}"#);
         assert_eq!(pending.status, "pending");
+        assert_eq!(pending.from_peer_id, "node-a");
+        assert_eq!(pending.to_peer_id, "main");
 
         let acked = TeamInternalControl::ack_actor_message(
             &service,
@@ -720,6 +951,8 @@ mod tests {
         assert_eq!(acked_message.message_id, send.message_id);
         assert_eq!(acked_message.status, "delivered");
         assert!(acked_message.delivered_at >= acked_message.created_at);
+        assert_eq!(acked_message.from_peer_id, "node-a");
+        assert_eq!(acked_message.to_peer_id, "main");
 
         let pending_after_ack = TeamInternalControl::list_actor_inbox(
             &service,
@@ -757,6 +990,132 @@ mod tests {
         .into_inner();
         assert_eq!(inbox_with_delivered.messages.len(), 1);
         assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    }
+
+    #[tokio::test]
+    async fn issue_node_credential_returns_phase0_metadata() {
+        let state = build_test_state().await;
+        let authz = build_authz();
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let mut request = Request::new(IssueNodeCredentialRequest {
+            node_id: "node-a".to_string(),
+            role: "leader".to_string(),
+            actor_id: String::new(),
+            run_id: String::new(),
+            permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+            ttl_seconds: 600,
+        });
+        request.metadata_mut().insert(
+            BOOTSTRAP_TOKEN_HEADER,
+            MetadataValue::try_from("bootstrap-token").expect("bootstrap metadata"),
+        );
+
+        let response = TeamInternalControl::issue_node_credential(&service, request)
+            .await
+            .expect("issue node credential")
+            .into_inner();
+        assert_eq!(response.node_id, "node-a");
+        assert_eq!(response.source_node_id, "node-a");
+        assert_eq!(response.cluster_id, "agenthub");
+        assert_eq!(response.scope, vec!["agent:manage", "node:p2p"]);
+        assert_eq!(response.audience, vec!["agenthub-internal"]);
+        assert!(response.kid.starts_with("shared-hs256-"));
+        assert!(response.issued_at > 0);
+        assert!(response.expires_at > response.issued_at);
+    }
+
+    #[tokio::test]
+    async fn issue_node_credential_rejects_bootstrap_token_mismatch() {
+        let state = build_test_state().await;
+        let authz = build_authz();
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let mut request = Request::new(IssueNodeCredentialRequest {
+            node_id: "node-a".to_string(),
+            role: "leader".to_string(),
+            actor_id: String::new(),
+            run_id: String::new(),
+            permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+            ttl_seconds: 600,
+        });
+        request.metadata_mut().insert(
+            BOOTSTRAP_TOKEN_HEADER,
+            MetadataValue::try_from("wrong-token").expect("bootstrap metadata"),
+        );
+
+        let err = TeamInternalControl::issue_node_credential(&service, request)
+            .await
+            .expect_err("mismatched bootstrap token should fail");
+        assert_eq!(err.code(), Code::PermissionDenied);
+        assert_eq!(err.message(), "bootstrap token mismatch");
+    }
+
+    #[tokio::test]
+    async fn issue_node_credential_requires_worker_actor_and_run() {
+        let state = build_test_state().await;
+        let authz = build_authz();
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let mut missing_actor_request = Request::new(IssueNodeCredentialRequest {
+            node_id: "node-a".to_string(),
+            role: "worker".to_string(),
+            actor_id: String::new(),
+            run_id: "run-1".to_string(),
+            permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+            ttl_seconds: 600,
+        });
+        missing_actor_request.metadata_mut().insert(
+            BOOTSTRAP_TOKEN_HEADER,
+            MetadataValue::try_from("bootstrap-token").expect("bootstrap metadata"),
+        );
+        let missing_actor_err =
+            TeamInternalControl::issue_node_credential(&service, missing_actor_request)
+                .await
+                .expect_err("worker bootstrap should require actor_id");
+        assert_eq!(missing_actor_err.code(), Code::InvalidArgument);
+        assert_eq!(
+            missing_actor_err.message(),
+            "worker bootstrap requires actor_id"
+        );
+
+        let mut missing_run_request = Request::new(IssueNodeCredentialRequest {
+            node_id: "node-a".to_string(),
+            role: "worker".to_string(),
+            actor_id: "worker-a".to_string(),
+            run_id: String::new(),
+            permissions: vec![InternalAction::AgentManage.as_str().to_string()],
+            ttl_seconds: 600,
+        });
+        missing_run_request.metadata_mut().insert(
+            BOOTSTRAP_TOKEN_HEADER,
+            MetadataValue::try_from("bootstrap-token").expect("bootstrap metadata"),
+        );
+        let missing_run_err =
+            TeamInternalControl::issue_node_credential(&service, missing_run_request)
+                .await
+                .expect_err("worker bootstrap should require run_id");
+        assert_eq!(missing_run_err.code(), Code::InvalidArgument);
+        assert_eq!(
+            missing_run_err.message(),
+            "worker bootstrap requires run_id"
+        );
     }
 
     #[tokio::test]

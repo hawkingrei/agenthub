@@ -26,7 +26,7 @@ struct WsServerMessage {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/agents/:id", get(ws_agent))
+        .route("/agents/{id}", get(ws_agent))
         .with_state(state)
 }
 

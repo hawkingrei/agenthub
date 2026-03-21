@@ -21,6 +21,7 @@ rust_library(
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-acp-core:agenthub_acp_core",
+        "//crates/agenthub-config:agenthub_config",
         "//crates/agenthub-text:agenthub_text",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),

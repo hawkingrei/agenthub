@@ -2,31 +2,16 @@ use super::codec::is_acp_message;
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
     OutputStream, WorktreeMode, acp_provider_for_agent_with_binary, build_runtime_start_policy,
-    ensure_team_leader_workdir_exists, expand_tilde, is_path_allowed, normalize_path,
-    status_from_str, status_to_str, stream_from_str, stream_to_str,
+    ensure_team_leader_workdir_exists, status_from_str, status_to_str, stream_from_str,
+    stream_to_str,
 };
 use crate::acp::AcpActorSkillContext;
 use crate::acp::default_actor_cli_path;
+use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
 use uuid::Uuid;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-#[test]
-fn normalize_path_resolves_dot_and_parent() {
-    assert_eq!(normalize_path("/a/b/./c"), "/a/b/c");
-    assert_eq!(normalize_path("/a/b/../c"), "/a/c");
-    assert_eq!(normalize_path("/a/./b/../c/."), "/a/c");
-}
-
-#[test]
-fn is_path_allowed_matches_exact_or_child() {
-    assert!(is_path_allowed("/home/foo", "/home/foo"));
-    assert!(is_path_allowed("/home/foo/bar", "/home/foo"));
-    assert!(is_path_allowed("/home/foo/bar/baz", "/home/foo/bar"));
-    assert!(!is_path_allowed("/home/foobar", "/home/foo"));
-    assert!(!is_path_allowed("/home/foo/../bar", "/home/foo"));
-}
 
 #[test]
 fn expand_tilde_uses_home() {
@@ -154,6 +139,7 @@ fn build_agent_record_for_policy(
         workdir: workdir.to_string(),
         command: "env".to_string(),
         args: vec![],
+        target_node_id: None,
         worktree_mode,
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,

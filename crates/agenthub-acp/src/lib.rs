@@ -19,6 +19,7 @@ use agent_client_protocol::{
     ToolCallUpdateFields,
 };
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
@@ -32,6 +33,7 @@ use agenthub_acp_core::{
     AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
     filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
+use agenthub_config::path_utils::{is_path_allowed, normalize_path};
 use team_role_skills::{
     build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
 };
@@ -47,7 +49,7 @@ const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
     pub source_run_id: String,
@@ -56,7 +58,7 @@ pub struct AcpActorContinuityEnvelope {
     pub history_window: Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorSkillContext {
     pub team_id: Option<String>,
     pub current_run_id: Option<String>,
@@ -192,36 +194,6 @@ fn mcp_config_path() -> PathBuf {
 fn skills_config_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     Path::new(&home).join(SKILLS_CONFIG_FILE)
-}
-
-fn normalize_path(path: &str) -> String {
-    let mut parts = Vec::new();
-    for comp in std::path::Path::new(path).components() {
-        match comp {
-            std::path::Component::RootDir => parts.clear(),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                parts.pop();
-            }
-            std::path::Component::Normal(seg) => {
-                parts.push(seg.to_string_lossy().to_string());
-            }
-            _ => {}
-        }
-    }
-    format!("/{}", parts.join("/"))
-}
-
-fn is_path_allowed(target: &str, allowed: &str) -> bool {
-    let target = normalize_path(target);
-    let allowed = normalize_path(allowed);
-    if target == allowed {
-        return true;
-    }
-    if !target.starts_with(&allowed) {
-        return false;
-    }
-    target.chars().nth(allowed.len()) == Some('/')
 }
 
 pub async fn load_safe_paths(db: &SqlitePool) -> anyhow::Result<Vec<String>> {
@@ -807,7 +779,7 @@ async fn dispatch_acp_command(
         }
         AcpCommand::SetConfig { config_id, value } => {
             let request =
-                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value);
+                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value.as_str());
             if let Err(err) = conn.set_session_config_option(request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))

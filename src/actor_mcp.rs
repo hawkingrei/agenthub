@@ -2,7 +2,7 @@ use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome}
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
-    ActorServiceError, actor_inbox_with_auto_ack, build_default_actor_message_idempotency_key,
+    ActorServiceError, ActorServiceErrorCode, build_default_actor_message_idempotency_key,
     parse_actor_transport,
 };
 use serde::Deserialize;
@@ -12,6 +12,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
 use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
+use crate::internal::client::{
+    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
+};
 use crate::team::{TEAM_TASK_STATUS_VALUES, TeamManager, TeamTaskStatus};
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
@@ -21,6 +24,13 @@ const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV: &str = "AGENTHUB_INTERNAL_GRPC_TARGET";
+const ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV: &str = "AGENTHUB_INTERNAL_GRPC_TOKEN";
+const ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CA_CERT_PATH";
+const ACTOR_RUNTIME_INTERNAL_GRPC_TLS_SERVER_NAME_ENV: &str =
+    "AGENTHUB_INTERNAL_GRPC_TLS_SERVER_NAME";
+const ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CLIENT_CERT_PATH";
+const ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CLIENT_KEY_PATH";
 
 const JSONRPC_PARSE_ERROR: i32 = -32700;
 const JSONRPC_INVALID_REQUEST: i32 = -32600;
@@ -556,7 +566,7 @@ fn resolve_idempotency_key(
     })))
 }
 
-async fn tool_actor_inbox<S: ActorMailboxService>(
+async fn tool_actor_inbox<S: ActorMailboxService + ?Sized>(
     service: &S,
     context: &ActorMcpContext,
     arguments: Option<&Map<String, Value>>,
@@ -578,16 +588,42 @@ async fn tool_actor_inbox<S: ActorMailboxService>(
     } else {
         Some(vec![ActorMessageStatus::Pending])
     };
-    let response = actor_inbox_with_auto_ack(
-        service,
-        ActorInboxRequest {
-            run_id,
-            actor_id: context.actor_id.clone(),
-            cursor: args.cursor,
-            limit: Some(limit),
-            states,
-        },
-    )
+    let response = async {
+        let inbox = service
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: context.actor_id.clone(),
+                cursor: args.cursor,
+                limit: Some(limit),
+                states,
+            })
+            .await?;
+        let mut messages = Vec::with_capacity(inbox.messages.len());
+        for message in inbox.messages {
+            if message.status != ActorMessageStatus::Pending {
+                messages.push(message);
+                continue;
+            }
+            match service
+                .actor_ack(ActorAckRequest {
+                    run_id: run_id.clone(),
+                    actor_id: message.to_actor_id.clone(),
+                    message_id: message.message_id,
+                    ack_token: None,
+                    result: None,
+                })
+                .await
+            {
+                Ok(acked) => messages.push(acked.message),
+                Err(err) if err.code == ActorServiceErrorCode::NotFound => messages.push(message),
+                Err(err) => return Err(err),
+            }
+        }
+        Ok::<_, ActorServiceError>(agenthub_team_actor::ActorInboxResponse {
+            messages,
+            next_cursor: inbox.next_cursor,
+        })
+    }
     .await;
     match response {
         Ok(response) => tool_result_success(json!({
@@ -598,7 +634,7 @@ async fn tool_actor_inbox<S: ActorMailboxService>(
     }
 }
 
-async fn tool_actor_ack<S: ActorMailboxService>(
+async fn tool_actor_ack<S: ActorMailboxService + ?Sized>(
     service: &S,
     context: &ActorMcpContext,
     arguments: Option<&Map<String, Value>>,
@@ -631,7 +667,7 @@ async fn tool_actor_ack<S: ActorMailboxService>(
     }
 }
 
-async fn tool_actor_send<S: ActorMailboxService>(
+async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
     service: &S,
     manager: &TeamManager,
     permissions: &AcpPermissionService,
@@ -1262,7 +1298,7 @@ async fn tool_acp_permission_review_respond(
     }))
 }
 
-async fn handle_tool_call<S: ActorMailboxService>(
+async fn handle_tool_call<S: ActorMailboxService + ?Sized>(
     tool_context: &ActorToolContext<'_, S>,
     context: &ActorMcpContext,
     params: Option<&Value>,
@@ -1324,14 +1360,14 @@ async fn handle_tool_call<S: ActorMailboxService>(
     Ok(result)
 }
 
-struct ActorToolContext<'a, S: ActorMailboxService> {
+struct ActorToolContext<'a, S: ActorMailboxService + ?Sized> {
     service: &'a S,
     manager: &'a TeamManager,
     trigger_manager: &'a AgentTimeTriggerManager,
     permissions: &'a AcpPermissionService,
 }
 
-async fn handle_jsonrpc_request<S: ActorMailboxService>(
+async fn handle_jsonrpc_request<S: ActorMailboxService + ?Sized>(
     tool_context: &ActorToolContext<'_, S>,
     context: &ActorMcpContext,
     initialized: &mut bool,
@@ -1408,19 +1444,61 @@ fn handle_jsonrpc_notification(initialized: &mut bool, method: &str) {
     }
 }
 
+async fn maybe_remote_mailbox_service() -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+    let Some(target) = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV) else {
+        return Ok(None);
+    };
+    let access_token =
+        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok_or_else(|| {
+            anyhow::anyhow!(
+                "{} is required when {} is set",
+                ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+                ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV
+            )
+        })?;
+    let ca_cert_path = normalize_existing_path(
+        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV).as_deref(),
+        ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV,
+    )?;
+    let client_cert_path = normalize_existing_path(
+        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV).as_deref(),
+        ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV,
+    )?;
+    let client_key_path = normalize_existing_path(
+        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV).as_deref(),
+        ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV,
+    )?;
+    let tls_server_name = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TLS_SERVER_NAME_ENV);
+    let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
+        target,
+        access_token,
+        ca_cert_path,
+        tls_server_name,
+        client_cert_path,
+        client_key_path,
+    })
+    .await?;
+    Ok(Some(client))
+}
+
 async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {
     let db = agenthub_db::init_db().await?;
     let trigger_manager = AgentTimeTriggerManager::new(db.clone());
     let permissions = AcpPermissionService::new(db.clone());
     let manager = TeamManager::new(db);
-    let service = manager.actor_mailbox_service();
+    let local_service = manager.actor_mailbox_service();
+    let remote_service = maybe_remote_mailbox_service().await?;
+    let service: std::sync::Arc<dyn ActorMailboxService> = match remote_service {
+        Some(client) => std::sync::Arc::new(client),
+        None => std::sync::Arc::new(local_service),
+    };
 
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin).lines();
     let mut stdout = tokio::io::stdout();
     let mut initialized = false;
     let tool_context = ActorToolContext {
-        service: &service,
+        service: service.as_ref(),
         manager: &manager,
         trigger_manager: &trigger_manager,
         permissions: &permissions,
@@ -2337,7 +2415,11 @@ mod tests {
 
     #[test]
     fn resolve_idempotency_key_generates_stable_default_key() {
-        let route = json!({"endpoint":"https://node-a"});
+        let route = json!({
+            "kind": "grpc",
+            "grpc_target": "https://node-a.internal:50051",
+            "access_token": "relay-token"
+        });
         let payload = json!({"task":"x"});
         let first = resolve_idempotency_key(ResolveIdempotencyKeyInput {
             run_id: "run-1",

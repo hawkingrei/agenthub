@@ -3,6 +3,7 @@ use axum::Router;
 use crate::state::AppState;
 
 mod admin;
+mod agent_nodes;
 mod agents;
 mod auth;
 mod authz;
@@ -21,6 +22,7 @@ pub(crate) use self::teams::tests as team_tests;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/agents", agents::router(state.clone()))
+        .nest("/agent_nodes", agent_nodes::router(state.clone()))
         .nest("/teams", teams::router(state.clone()))
         .nest("/admin", admin::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))

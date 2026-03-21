@@ -3,10 +3,12 @@ import {
   isDefaultWorkdirValue,
   normalizeRuntimeWorktreeRoot,
   normalizeWorkdirInput,
+  resolveDefaultWorktreeRootForTargetNode,
   resolveWorkdirForCreateModal,
   resolveWorkdirForModalOpen,
   resolveWorkdirForModeChange,
   resolveWorkdirForRuntimeDefaults,
+  resolveWorkdirForTargetNodeChange,
   shouldApplyDefaultWorkdir,
 } from "./worktree_defaults";
 
@@ -111,6 +113,55 @@ describe("worktree defaults helpers", () => {
         "",
         "reuse_worktree",
         "/srv/default-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("");
+  });
+
+  it("resolves selected target node default worktree root", () => {
+    const nodes = [
+      { id: "node-east", default_worktree_root: "/srv/node-east-worktrees" },
+      { id: "node-west", default_worktree_root: null },
+    ];
+    expect(
+      resolveDefaultWorktreeRootForTargetNode("node-east", nodes, "/srv/local-worktrees", DEFAULT_ROOT)
+    ).toBe("/srv/node-east-worktrees");
+    expect(
+      resolveDefaultWorktreeRootForTargetNode("node-west", nodes, "/srv/local-worktrees", DEFAULT_ROOT)
+    ).toBe("/srv/local-worktrees");
+    expect(
+      resolveDefaultWorktreeRootForTargetNode("main", nodes, "/srv/local-worktrees", DEFAULT_ROOT)
+    ).toBe("/srv/local-worktrees");
+  });
+
+  it("replaces default-like workdir when target node default root changes", () => {
+    expect(
+      resolveWorkdirForTargetNodeChange(
+        "/srv/local-worktrees",
+        "create_worktree",
+        "/srv/local-worktrees",
+        "/srv/node-east-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("/srv/node-east-worktrees");
+    expect(
+      resolveWorkdirForTargetNodeChange(
+        "/tmp/custom",
+        "create_worktree",
+        "/srv/local-worktrees",
+        "/srv/node-east-worktrees",
+        DEFAULT_ROOT
+      )
+    ).toBe("/tmp/custom");
+  });
+
+  it("clears default-like workdir when leaving create_worktree target defaults", () => {
+    expect(
+      resolveWorkdirForTargetNodeChange(
+        "/srv/node-east-worktrees",
+        "use_existing",
+        "/srv/node-east-worktrees",
+        "/srv/local-worktrees",
         DEFAULT_ROOT
       )
     ).toBe("");

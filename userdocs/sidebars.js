@@ -17,6 +17,7 @@ const sidebars = {
       label: 'Core Workflow',
       items: [
         'core/create-agent',
+        'core/agent-nodes',
         'core/workdir-worktree-strategy',
         'core/run-and-interact',
         'core/view-output',

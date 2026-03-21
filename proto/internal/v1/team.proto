@@ -12,6 +12,13 @@ service TeamInternalControl {
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
   rpc TransitionStep(TransitionStepRequest) returns (TransitionStepResponse);
   rpc IssueNodeCredential(IssueNodeCredentialRequest) returns (IssueNodeCredentialResponse);
+  rpc EnsureAgentRecord(EnsureAgentRecordRequest) returns (EnsureAgentRecordResponse);
+  rpc GetAgentRecord(GetAgentRecordRequest) returns (GetAgentRecordResponse);
+  rpc StartManagedAgent(StartManagedAgentRequest) returns (StartManagedAgentResponse);
+  rpc StopManagedAgent(StopManagedAgentRequest) returns (StopManagedAgentResponse);
+  rpc DeleteManagedAgent(DeleteManagedAgentRequest) returns (DeleteManagedAgentResponse);
+  rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
+  rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
 }
 
 message SendActorMessageRequest {
@@ -23,6 +30,8 @@ message SendActorMessageRequest {
   string route_json = 6;
   string payload_json = 7;
   string idempotency_key = 8;
+  string from_peer_id = 9;
+  string to_peer_id = 10;
 }
 
 message SendActorMessageResponse {
@@ -66,6 +75,8 @@ message ActorMessage {
   int64 created_at = 10;
   int64 delivered_at = 11;
   string idempotency_key = 12;
+  string from_peer_id = 13;
+  string to_peer_id = 14;
 }
 
 message TransitionStepRequest {
@@ -107,4 +118,79 @@ message IssueNodeCredentialResponse {
   string key_pem = 6;
   string ca_cert_pem = 7;
   string security_mode = 8;
+  string cluster_id = 9;
+  repeated string scope = 10;
+  repeated string audience = 11;
+  string kid = 12;
+  int64 issued_at = 13;
+  string source_node_id = 14;
+}
+
+message EnsureAgentRecordRequest {
+  string agent_id = 1;
+  string config_json = 2;
+  string source = 3;
+}
+
+message EnsureAgentRecordResponse {
+  string agent_json = 1;
+}
+
+message GetAgentRecordRequest {
+  string agent_id = 1;
+}
+
+message GetAgentRecordResponse {
+  string agent_json = 1;
+}
+
+message StartManagedAgentRequest {
+  string agent_id = 1;
+  string actor_context_json = 2;
+}
+
+message StartManagedAgentResponse {
+  string session_id = 1;
+}
+
+message StopManagedAgentRequest {
+  string agent_id = 1;
+}
+
+message StopManagedAgentResponse {}
+
+message DeleteManagedAgentRequest {
+  string agent_id = 1;
+}
+
+message DeleteManagedAgentResponse {}
+
+message SendAgentInputRequest {
+  string agent_id = 1;
+  string input = 2;
+  string message_id = 3;
+  string session_id = 4;
+}
+
+message SendAgentInputResponse {}
+
+message ListAgentEventsRequest {
+  string agent_id = 1;
+  int64 limit = 2;
+  int64 before_event_id = 3;
+  string session_id = 4;
+}
+
+message AgentEventRecord {
+  int64 event_id = 1;
+  string agent_id = 2;
+  string session_id = 3;
+  string seq = 4;
+  int64 ts = 5;
+  string stream = 6;
+  string message = 7;
+}
+
+message ListAgentEventsResponse {
+  repeated AgentEventRecord events = 1;
 }
