@@ -601,8 +601,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input.docked .input-row .input-interrupt-button {
-  height: 24px;
-  min-height: 24px;
+  height: 26px;
+  min-height: 26px;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
@@ -610,7 +610,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .input.docked .input-row .history-toggle {
-  height: 24px;
+  height: 26px;
+  min-height: 26px;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
@@ -2546,6 +2547,13 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 
   .input.docked .input-row .input-interrupt-button {
+    height: 24px;
+    min-height: 24px;
+    padding: 2px 7px;
+    font-size: 10px;
+  }
+
+  .input.docked .input-row .history-toggle {
     height: 24px;
     min-height: 24px;
     padding: 2px 7px;

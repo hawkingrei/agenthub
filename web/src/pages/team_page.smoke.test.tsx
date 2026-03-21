@@ -173,7 +173,7 @@ describe("TeamPage smoke render", () => {
       );
 
     expect(markup).toContain("Team Selector");
-    expect(markup).toContain("Select a team");
+    expect(markup).toContain("Choose a team");
     expect(markup).toContain("No teams yet.");
     expect(markup).not.toContain("Workspace Flow");
     expect(markup).not.toContain("Mission before staffing");

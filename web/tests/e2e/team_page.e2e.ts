@@ -301,8 +301,15 @@ async function selectAgentFromSidebar(
   await expect(agentItem).toBeVisible();
   await agentItem.click();
   const teamsMain = page.locator(".teams-main");
+  await expect(teamsMain.locator(".acp-conversation").first()).toBeVisible();
+}
+
+async function expectTeamRuntimeBadge(
+  page: import("@playwright/test").Page,
+  label: string
+): Promise<void> {
   await expect(
-    teamsMain.getByRole("tab", { name: "Conversation", exact: true }).first()
+    page.locator('[role="status"]').filter({ hasText: label }).first()
   ).toBeVisible();
 }
 
@@ -1209,13 +1216,13 @@ test("team runtime controls update shared runtime badge", async ({ page }) => {
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "runtime controls team");
-  await expect(page.getByText("team running", { exact: true })).toBeVisible();
+  await expectTeamRuntimeBadge(page, "team running");
 
   await clickSelectedTeamMenuItem(page, "Stop Team");
-  await expect(page.getByText("team stopped", { exact: true })).toBeVisible();
+  await expectTeamRuntimeBadge(page, "team stopped");
 
   await clickSelectedTeamMenuItem(page, "Start Team");
-  await expect(page.getByText("team running", { exact: true })).toBeVisible();
+  await expectTeamRuntimeBadge(page, "team running");
 });
 
 test("team create flow stores mission metadata before member setup", async ({ page }) => {

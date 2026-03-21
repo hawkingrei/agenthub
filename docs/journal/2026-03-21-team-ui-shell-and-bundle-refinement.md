@@ -39,10 +39,14 @@
 - added a shared `preloadThreadMarkdownAssets()` test hook so static ACP render tests can warm the lazy markdown renderer without pulling `vendor-markdown` back into the entry bundle
 - rendered lazy fold bodies during server-side/static test markup so ACP SSR snapshots can still assert nested payload structure while browser behavior stays collapsed-by-default
 - updated ACP and app helper tests to match the new agents sidebar width policy and the slimmer tail-window defaults for long payload previews
+- aligned Team smoke/E2E checks with the slimmer selector copy and ACP shell readiness signal, so CI no longer waits on the old `Conversation` tab before considering Team ACP ready
+- restored tablet-sized input history/interrupt chips to a 26px minimum while keeping the mobile override at 24px, matching the dock layout Playwright checks without bringing back the thicker desktop shell
 
 ## Validation
 
 - `make build-web`
 - `cd web && npx vitest run src/app.permission_scope.test.ts src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
+- `cd web && npx vitest run src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run lint -- src/components/thread_rich_text.tsx src/components/acp_conversation.tsx src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/app.permission_scope.test.ts`
+- `cd web && npm run lint -- src/pages/team_page.smoke.test.tsx tests/e2e/team_page.e2e.ts`
 - inspected `web/dist/index.html` to confirm the initial preload set no longer includes `route-auth`, `route-teams`, or `vendor-markdown`
