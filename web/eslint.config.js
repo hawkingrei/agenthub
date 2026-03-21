@@ -5,6 +5,13 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
+// Keep the project hook lint contract stable across plugin upgrades.
+// New compiler-oriented rules should be adopted intentionally in follow-up changes.
+const stableReactHookRules = {
+  "react-hooks/rules-of-hooks": "error",
+  "react-hooks/exhaustive-deps": "warn",
+};
+
 const baseLanguageOptions = {
   ecmaVersion: "latest",
   sourceType: "module",
@@ -44,7 +51,7 @@ export default [
     },
     rules: {
       ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      ...stableReactHookRules,
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
     },
