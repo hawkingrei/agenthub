@@ -7,7 +7,8 @@ name: team-actor-mailbox
 Use this skill for Team mailbox communication. It is the protocol reference for
 `actor inbox`, `actor send`, and `actor ack`.
 
-For Team runtime/roster context, use the single `team_members` tool. Do not
+For Team runtime/roster context, use the single `team_members` tool. It exposes
+runtime summary, roster/card data, and per-member `pending_inbox_count`. Do not
 invent a second Team context query path.
 Shared routing, mention, and human-visible reply policy remain canonical in
 `skills/team/AGENTS.md`; this skill only defines mailbox transport behavior.
@@ -50,12 +51,15 @@ Recommended fields:
 2. Parse message payload and validate required fields before acting.
 3. Acknowledge each consumed message exactly once:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
-4. For internal execution coordination, send deterministic reply payloads with explicit status/evidence:
+4. For human-readable coordination, prefer markdown text and preserve it verbatim:
+   `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
+5. Use structured payloads only when the receiver truly needs machine-readable fields:
    `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
 
 ## Reply Modes
 
 - Internal execution coordination (`leader <-> worker`, worker status/evidence, blocker escalation):
+  - prefer plain markdown text for task briefs, review notes, and discussion so formatting survives mailbox transport
   - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
   - include phase metadata only when it helps internal coordination
 - Human-facing team conversation replies:

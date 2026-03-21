@@ -129,7 +129,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status and evidence:
-   `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --payload-json "$PAYLOAD_JSON"`
+   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: done|blocked\n- result: ...\n- evidence:\n  - ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 6. Proactively advance the assigned task:

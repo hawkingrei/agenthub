@@ -3923,6 +3923,22 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         .await
         .expect("start leader step");
 
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "leader",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!("## Review request\n\nPlease inspect the patch."),
+            idempotency_key: Some("ctx-unread-worker"),
+        })
+        .await
+        .expect("send unread worker message");
+
     let team_context = manager
         .describe_team_context(Some(&team.id), Some(&run.id))
         .await
@@ -3944,7 +3960,9 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
     );
     assert_eq!(team_context.members.len(), 2);
     assert_eq!(team_context.members[0].display_name, "Leader Agent");
+    assert_eq!(team_context.members[0].pending_inbox_count, 0);
     assert_eq!(team_context.members[0].steps.len(), 1);
+    assert_eq!(team_context.members[1].pending_inbox_count, 1);
 
     let runtime_only_context = manager
         .describe_team_context(Some(&team.id), None)
@@ -3957,5 +3975,7 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
     );
     assert!(runtime_only_context.run.is_none());
     assert_eq!(runtime_only_context.members.len(), 2);
+    assert_eq!(runtime_only_context.members[0].pending_inbox_count, 0);
+    assert_eq!(runtime_only_context.members[1].pending_inbox_count, 0);
     assert!(runtime_only_context.members[0].steps.is_empty());
 }
