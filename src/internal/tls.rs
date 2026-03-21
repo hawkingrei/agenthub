@@ -4,7 +4,9 @@ use std::sync::Once;
 use anyhow::Context;
 use base64::URL_SAFE_NO_PAD;
 use rand::RngCore;
-use rcgen::{BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair};
+use rcgen::{
+    BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InternalGrpcSecurityMode {
@@ -179,6 +181,7 @@ fn generate_tls_material(paths: &TlsPaths) -> anyhow::Result<()> {
     let ca_cert = ca_params
         .self_signed(&ca_key)
         .context("generate internal grpc ca cert")?;
+    let ca_issuer = Issuer::from_params(&ca_params, &ca_key);
 
     let mut server_params =
         CertificateParams::new(vec!["localhost".to_string(), "127.0.0.1".to_string()])?;
@@ -190,7 +193,7 @@ fn generate_tls_material(paths: &TlsPaths) -> anyhow::Result<()> {
         .push(ExtendedKeyUsagePurpose::ServerAuth);
     let server_key = KeyPair::generate().context("generate internal grpc server key")?;
     let server_cert = server_params
-        .signed_by(&server_key, &ca_cert, &ca_key)
+        .signed_by(&server_key, &ca_issuer)
         .context("sign internal grpc server cert")?;
 
     let mut client_params = CertificateParams::new(vec!["agenthub-internal-client".to_string()])?;
@@ -202,7 +205,7 @@ fn generate_tls_material(paths: &TlsPaths) -> anyhow::Result<()> {
         .push(ExtendedKeyUsagePurpose::ClientAuth);
     let client_key = KeyPair::generate().context("generate internal grpc client key")?;
     let client_cert = client_params
-        .signed_by(&client_key, &ca_cert, &ca_key)
+        .signed_by(&client_key, &ca_issuer)
         .context("sign internal grpc client cert")?;
 
     std::fs::write(&paths.ca_cert_path, ca_cert.pem()).with_context(|| {
