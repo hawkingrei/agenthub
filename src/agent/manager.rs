@@ -1,4 +1,6 @@
+mod acp_provider;
 mod codec;
+mod executor;
 mod runtime;
 
 #[cfg(test)]
@@ -6,7 +8,6 @@ mod tests;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::Duration;
 
@@ -18,13 +19,17 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use uuid::Uuid;
 
+use self::acp_provider::AcpDefaultModeBehavior;
 #[cfg(test)]
-use self::codec::acp_provider_for_agent_with_binary;
+use self::acp_provider::acp_provider_for_agent_with_binary;
+#[cfg(test)]
+use self::acp_provider::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI};
 #[cfg(test)]
 use self::codec::stream_to_str;
 use self::codec::{
     status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str,
 };
+use self::executor::{AgentExecutor, LocalExecutionRequest, LocalExecutor};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
@@ -33,8 +38,8 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
-    AcpPromptDeliveryPolicy, AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths,
-    normalize_actor_context, spawn_acp_session,
+    AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context,
+    spawn_acp_session,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -51,7 +56,7 @@ pub struct AgentManager {
     idle_gc: Option<AgentEventIdleGc>,
     push: Arc<PushService>,
     auth: Arc<AuthService>,
-    proxy_env: Vec<(String, String)>,
+    local_executor: Arc<dyn AgentExecutor>,
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
@@ -61,9 +66,6 @@ pub struct AgentManager {
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
-const ACP_PROVIDER_CODEX: &str = "codex";
-const ACP_PROVIDER_GEMINI: &str = "gemini";
-const ACP_PROVIDER_KIMI: &str = "kimi";
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
@@ -85,14 +87,6 @@ fn decode_target_node_id(row: &SqliteRow) -> Option<String> {
             .as_deref(),
     )
 }
-
-fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
-    match provider {
-        ACP_PROVIDER_CODEX => AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
-        _ => AcpPromptDeliveryPolicy::StrictFifo,
-    }
-}
-
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
@@ -135,6 +129,23 @@ struct RuntimeStartPolicy {
     worktree_mode: WorktreeMode,
     worktree_ref: Option<String>,
     worker_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProxyPolicy {
+    env_pairs: Vec<(String, String)>,
+}
+
+impl ProxyPolicy {
+    fn new(env_pairs: Vec<(String, String)>) -> Self {
+        Self { env_pairs }
+    }
+
+    fn apply_to_command(&self, command: &mut Command) {
+        for (key, value) in &self.env_pairs {
+            command.env(key, value);
+        }
+    }
 }
 
 fn is_empty_or_missing_dir(path: &str) -> anyhow::Result<bool> {
@@ -553,7 +564,7 @@ impl AgentManager {
             idle_gc,
             push,
             auth,
-            proxy_env,
+            local_executor: Arc::new(LocalExecutor::new(ProxyPolicy::new(proxy_env))),
             codex_acp_binary,
             acp_default_mode,
             permissions,
@@ -2384,43 +2395,21 @@ impl AgentManager {
             return Err(err);
         }
 
-        let acp_provider = self.acp_provider_for_agent(&agent.command, &agent.args);
+        let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
         let is_acp = acp_provider.is_some();
         let command_path = self.resolve_command_path(&agent.command, acp_provider);
-        let mut command = Command::new(&command_path);
-        command
-            .current_dir(&start_policy.workdir)
-            .args(&agent.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (key, value) in &self.proxy_env {
-            command.env(key, value);
-        }
-        if let Some(context) = actor_context.as_ref() {
-            command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
-            command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
-            command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
-            if let Some(team_id) = context
-                .team_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                command.env(ACTOR_RUNTIME_TEAM_ID_ENV, team_id);
-            }
-            if let Some(run_id) = context
-                .current_run_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                command.env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, run_id);
-            }
-        }
-
-        let mut child = match command.spawn() {
-            Ok(child) => child,
+        let local_execution_request = LocalExecutionRequest {
+            command_path: command_path.clone(),
+            args: agent.args.clone(),
+            workdir: start_policy.workdir.clone(),
+            actor_context: actor_context.clone(),
+        };
+        let local_execution = match self
+            .local_executor
+            .spawn_process(local_execution_request.clone())
+            .await
+        {
+            Ok(execution) => execution,
             Err(err) => {
                 if let Err(record_err) = self
                     .record_failed_session(&agent.id, &session_id, &err.to_string())
@@ -2446,20 +2435,21 @@ impl AgentManager {
                 }
                 tracing::error!(
                     "spawn failed: command={} workdir={} args={:?} error={}",
-                    command_path,
-                    start_policy.workdir,
-                    agent.args,
+                    local_execution_request.command_path,
+                    local_execution_request.workdir,
+                    local_execution_request.args,
                     err
                 );
                 return Err(anyhow::anyhow!(
                     "spawn failed: command={} workdir={} args={:?} error={}",
-                    command_path,
-                    start_policy.workdir,
-                    agent.args,
+                    local_execution_request.command_path,
+                    local_execution_request.workdir,
+                    local_execution_request.args,
                     err
                 ));
             }
         };
+        let mut child = local_execution.child;
         let mut stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let stdin = child.stdin.take();
@@ -2518,7 +2508,7 @@ impl AgentManager {
 
         let mut loop_controller = None;
         let input = if let Some(provider) = acp_provider {
-            let resume_session_id = self.get_persistent_session(&agent.id, provider).await?;
+            let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -2608,7 +2598,8 @@ impl AgentManager {
                 stdin,
                 safe_paths,
                 actor_context: actor_context.clone(),
-                prompt_delivery_policy: acp_prompt_delivery_policy(provider),
+                prompt_delivery_policy: provider.prompt_delivery_policy,
+                runtime_location: local_execution.runtime_location,
             })
             .await
             {
@@ -2640,12 +2631,12 @@ impl AgentManager {
                 }
             };
             if let Err(err) = self
-                .set_persistent_session(&agent.id, provider, &handle.session_id)
+                .set_persistent_session(&agent.id, provider.id, &handle.session_id)
                 .await
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            if provider == ACP_PROVIDER_CODEX {
+            if provider.uses_default_mode_config() {
                 if let Some(mode_id) = self.acp_default_mode.as_deref()
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
@@ -2656,10 +2647,14 @@ impl AgentManager {
                         err
                     );
                 }
-            } else if self.acp_default_mode.is_some() {
+            } else if matches!(
+                provider.default_mode_behavior,
+                AcpDefaultModeBehavior::IgnoreConfigured
+            ) && self.acp_default_mode.is_some()
+            {
                 tracing::debug!(
                     "acp default mode ignored for provider {} (agent_id={})",
-                    provider,
+                    provider.id,
                     agent.id
                 );
             }

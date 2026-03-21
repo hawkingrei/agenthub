@@ -110,6 +110,7 @@ pub struct SpawnAcpSessionRequest {
     pub safe_paths: Vec<String>,
     pub actor_context: Option<AcpActorSkillContext>,
     pub prompt_delivery_policy: AcpPromptDeliveryPolicy,
+    pub runtime_location: AcpRuntimeLocation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +123,17 @@ pub enum AcpStream {
 pub enum AcpPromptDeliveryPolicy {
     StrictFifo,
     AllowConcurrentPrompts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpRuntimeLocation {
+    LocalProcess,
+}
+
+impl Default for AcpRuntimeLocation {
+    fn default() -> Self {
+        Self::LocalProcess
+    }
 }
 
 #[async_trait::async_trait]
@@ -778,8 +790,11 @@ async fn dispatch_acp_command(
             }
         }
         AcpCommand::SetConfig { config_id, value } => {
-            let request =
-                SetSessionConfigOptionRequest::new(session_id.to_string(), config_id, value.as_str());
+            let request = SetSessionConfigOptionRequest::new(
+                session_id.to_string(),
+                config_id,
+                value.as_str(),
+            );
             if let Err(err) = conn.set_session_config_option(request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
@@ -812,11 +827,15 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         safe_paths,
         actor_context,
         prompt_delivery_policy,
+        runtime_location,
     } = request;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
     std::thread::spawn(move || {
+        match runtime_location {
+            AcpRuntimeLocation::LocalProcess => {}
+        }
         let mcp_servers = load_mcp_servers(actor_context.as_ref());
         let mut skills = load_skills(&safe_paths);
         skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
@@ -1645,9 +1664,9 @@ fn parse_permission_record_row(
 mod tests {
     use super::{
         ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle,
-        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy, AcpSendError,
-        build_actor_mailbox_mcp_server, load_mcp_servers_from_path,
-        should_queue_while_prompts_active,
+        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
+        AcpRuntimeLocation, AcpSendError, build_actor_mailbox_mcp_server,
+        load_mcp_servers_from_path, should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
@@ -1812,6 +1831,14 @@ mod tests {
             false,
             &AcpCommand::Prompt("hello".to_string())
         ));
+    }
+
+    #[test]
+    fn acp_runtime_location_defaults_to_local_process() {
+        assert_eq!(
+            AcpRuntimeLocation::default(),
+            AcpRuntimeLocation::LocalProcess
+        );
     }
 
     #[test]

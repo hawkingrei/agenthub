@@ -1,3 +1,4 @@
+use super::acp_provider::{AcpDefaultModeBehavior, acp_provider_spec_for_agent_with_binary};
 use super::codec::is_acp_message;
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
@@ -5,8 +6,9 @@ use super::{
     ensure_team_leader_workdir_exists, status_from_str, status_to_str, stream_from_str,
     stream_to_str,
 };
-use crate::acp::AcpActorSkillContext;
-use crate::acp::default_actor_cli_path;
+use crate::acp::{
+    AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation, default_actor_cli_path,
+};
 use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -94,6 +96,54 @@ fn acp_provider_for_agent_requires_expected_args() {
     assert_eq!(
         acp_provider_for_agent_with_binary(codex_bin, codex_bin, &[]),
         Some(ACP_PROVIDER_CODEX)
+    );
+
+    let gemini = acp_provider_spec_for_agent_with_binary(
+        codex_bin,
+        "gemini",
+        &["--experimental-acp".to_string()],
+    )
+    .expect("resolve gemini acp provider");
+    assert_eq!(gemini.id, ACP_PROVIDER_GEMINI);
+    assert_eq!(
+        gemini.prompt_delivery_policy,
+        AcpPromptDeliveryPolicy::StrictFifo
+    );
+    assert_eq!(
+        gemini.default_mode_behavior,
+        AcpDefaultModeBehavior::IgnoreConfigured
+    );
+
+    let kimi = acp_provider_spec_for_agent_with_binary(codex_bin, "kimi", &["acp".to_string()])
+        .expect("resolve kimi acp provider");
+    assert_eq!(kimi.id, ACP_PROVIDER_KIMI);
+    assert_eq!(
+        kimi.prompt_delivery_policy,
+        AcpPromptDeliveryPolicy::StrictFifo
+    );
+    assert_eq!(
+        kimi.default_mode_behavior,
+        AcpDefaultModeBehavior::IgnoreConfigured
+    );
+
+    let codex = acp_provider_spec_for_agent_with_binary(codex_bin, codex_bin, &[])
+        .expect("resolve codex acp provider");
+    assert_eq!(codex.id, ACP_PROVIDER_CODEX);
+    assert_eq!(
+        codex.prompt_delivery_policy,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    );
+    assert_eq!(
+        codex.default_mode_behavior,
+        AcpDefaultModeBehavior::ApplyWhenConfigured
+    );
+}
+
+#[test]
+fn runtime_location_defaults_to_local_process() {
+    assert_eq!(
+        AcpRuntimeLocation::default(),
+        AcpRuntimeLocation::LocalProcess
     );
 }
 

@@ -2,8 +2,6 @@ use std::path::Path;
 
 use crate::agent::{AgentStatus, OutputStream, WorktreeMode};
 
-use super::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentManager};
-
 pub(super) fn status_to_str(status: &AgentStatus) -> &'static str {
     match status {
         AgentStatus::Created => "created",
@@ -82,78 +80,4 @@ pub(super) fn is_acp_message(line: &str) -> bool {
         .and_then(|v| v.as_str())
         .map(|ty| !ty.trim().is_empty())
         .unwrap_or(false)
-}
-
-impl AgentManager {
-    pub fn acp_provider_for_agent(&self, command: &str, args: &[String]) -> Option<&'static str> {
-        acp_provider_for_agent_with_binary(&self.codex_acp_binary, command, args)
-    }
-
-    pub(super) fn resolve_command_path(&self, command: &str, provider: Option<&str>) -> String {
-        if provider != Some(ACP_PROVIDER_CODEX) {
-            return command.to_string();
-        }
-        let configured = &self.codex_acp_binary;
-        if configured == command {
-            return command.to_string();
-        }
-        let configured_path = Path::new(configured);
-        if configured_path.is_absolute() || configured_path.exists() {
-            return configured.to_string();
-        }
-        command.to_string()
-    }
-}
-
-pub(super) fn acp_provider_for_agent_with_binary(
-    codex_acp_binary: &str,
-    command: &str,
-    args: &[String],
-) -> Option<&'static str> {
-    let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
-    match provider {
-        ACP_PROVIDER_GEMINI => {
-            let has_flag = args
-                .iter()
-                .any(|arg| arg == "--experimental-acp" || arg.starts_with("--experimental-acp="));
-            if has_flag {
-                Some(ACP_PROVIDER_GEMINI)
-            } else {
-                None
-            }
-        }
-        ACP_PROVIDER_KIMI => {
-            if args.iter().any(|arg| arg == "acp") {
-                Some(ACP_PROVIDER_KIMI)
-            } else {
-                None
-            }
-        }
-        _ => Some(ACP_PROVIDER_CODEX),
-    }
-}
-
-fn acp_provider_for_command_with_binary(
-    codex_acp_binary: &str,
-    command: &str,
-) -> Option<&'static str> {
-    if command == codex_acp_binary {
-        return Some(ACP_PROVIDER_CODEX);
-    }
-    let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
-    match command_name {
-        "gemini" => Some(ACP_PROVIDER_GEMINI),
-        "kimi" => Some(ACP_PROVIDER_KIMI),
-        "agenthub-codex-acp" | "codex-acp" => Some(ACP_PROVIDER_CODEX),
-        name => {
-            let target_name = Path::new(codex_acp_binary)
-                .file_name()
-                .and_then(|n| n.to_str());
-            if target_name == Some(name) {
-                Some(ACP_PROVIDER_CODEX)
-            } else {
-                None
-            }
-        }
-    }
 }

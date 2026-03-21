@@ -94,7 +94,8 @@
 
 - [ ] Implement P2P remote node and remote ACP execution pre-requisites:
     - [ ] Refactor `spawn_acp_session` to use generic `AsyncRead`/`AsyncWrite` instead of `ChildStdin`/`ChildStdout` to support remote/tunneled streams.
-    - [ ] Introduce `AgentExecutor` trait and move current subprocess spawning into `LocalExecutor` implementation to decouple agent management from local process execution.
+    - [x] Introduce `AgentExecutor` trait and move current subprocess spawning into `LocalExecutor` implementation to decouple agent management from local process execution (see `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`).
+    - [ ] Extend explicit ACP runtime placement beyond `LocalProcess` with a remote-node connector while keeping provider adapters (`codex` / `gemini` / `kimi`) and proxy policy provider-agnostic (see `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`).
     - [ ] Add `target_node_id` to `AgentConfig` and `AgentRecord` to support directing agents to specific P2P nodes.
     - [ ] Add P2P/Cluster configuration section to `agenthub-config` for node IDs, listen addresses, and bootstrap peers.
     - [ ] Enhance `ActorMessageTransport` metadata to propagate peer/routing info required for P2P execution coordination.
