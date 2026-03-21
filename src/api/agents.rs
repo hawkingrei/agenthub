@@ -159,31 +159,31 @@ pub struct PermissionResponseRequest {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent).get(list_agents))
-        .route("/:id", get(get_agent))
-        .route("/:id/.well-known/agent-card", get(get_agent_discovery_card))
-        .route("/:id/start", post(start_agent))
-        .route("/:id/stop", post(stop_agent))
-        .route("/:id/input", post(send_input))
+        .route("/{id}", get(get_agent))
+        .route("/{id}/.well-known/agent-card", get(get_agent_discovery_card))
+        .route("/{id}/start", post(start_agent))
+        .route("/{id}/stop", post(stop_agent))
+        .route("/{id}/input", post(send_input))
         .route(
-            "/:id/triggers",
+            "/{id}/triggers",
             post(create_agent_time_trigger).get(list_agent_time_triggers),
         )
         .route(
-            "/:id/triggers/:trigger_id/cancel",
+            "/{id}/triggers/{trigger_id}/cancel",
             post(cancel_agent_time_trigger),
         )
-        .route("/:id", delete(delete_agent))
-        .route("/:id/events", get(list_events))
-        .route("/:id/code_mode", post(set_code_mode))
-        .route("/:id/agent_loop", post(set_agent_loop))
-        .route("/:id/acp/session/clear", post(clear_acp_session))
-        .route("/:id/acp/mode", post(set_acp_mode))
-        .route("/:id/acp/model", post(set_acp_model))
-        .route("/:id/acp/config", post(set_acp_config))
-        .route("/:id/acp/cancel", post(cancel_acp))
-        .route("/:id/permissions", get(list_permissions))
+        .route("/{id}", delete(delete_agent))
+        .route("/{id}/events", get(list_events))
+        .route("/{id}/code_mode", post(set_code_mode))
+        .route("/{id}/agent_loop", post(set_agent_loop))
+        .route("/{id}/acp/session/clear", post(clear_acp_session))
+        .route("/{id}/acp/mode", post(set_acp_mode))
+        .route("/{id}/acp/model", post(set_acp_model))
+        .route("/{id}/acp/config", post(set_acp_config))
+        .route("/{id}/acp/cancel", post(cancel_acp))
+        .route("/{id}/permissions", get(list_permissions))
         .route(
-            "/:id/permissions/:permission_id/respond",
+            "/{id}/permissions/{permission_id}/respond",
             post(respond_permission),
         )
         .with_state(state)
