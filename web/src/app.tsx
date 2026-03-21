@@ -150,7 +150,7 @@ const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_pa
 const LazyAdminPage = React.lazy(async () => {
   const load = routePageLoaders["./pages/admin_page.tsx"];
   if (!load) {
-    throw new Error("admin page loader missing");
+    throw new Error("LazyAdminPage loader missing");
   }
   const module = (await load()) as typeof import("./pages/admin_page");
   return { default: module.AdminPage };
@@ -159,7 +159,7 @@ const LazyAdminPage = React.lazy(async () => {
 const LazyJoinPage = React.lazy(async () => {
   const load = routePageLoaders["./pages/join_page.tsx"];
   if (!load) {
-    throw new Error("join page loader missing");
+    throw new Error("LazyJoinPage loader missing");
   }
   const module = (await load()) as typeof import("./pages/join_page");
   return { default: module.JoinPage };
@@ -168,7 +168,7 @@ const LazyJoinPage = React.lazy(async () => {
 const LazyTeamPage = React.lazy(async () => {
   const load = routePageLoaders["./pages/team_page.tsx"];
   if (!load) {
-    throw new Error("team page loader missing");
+    throw new Error("LazyTeamPage loader missing");
   }
   const module = (await load()) as typeof import("./pages/team_page");
   return { default: module.TeamPage };
@@ -3442,6 +3442,7 @@ export function App() {
           {canManageAgentNodes(auth) && (
             <AgentNodeSection
               nodes={agentNodes}
+              agents={agents}
               targetNodeId={targetNodeId}
               onTargetNodeIdChange={applyTargetNodeSelection}
               nodeIdInput={nodeIdInput}

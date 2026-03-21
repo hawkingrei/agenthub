@@ -17,13 +17,13 @@ import {
 } from "../conversation";
 import type { SeqComparable } from "../seq_order";
 import { createRafThrottle } from "../raf_throttle";
+import { isNearBottom } from "../scroll";
 import {
   deriveThreadJumpState,
   deriveThreadStickToBottom,
   nextThreadViewport,
   normalizeThreadAvgHeightEstimate,
   restoreThreadScrollTop,
-  type ThreadViewport,
 } from "./thread_viewport";
 
 type EventMeta = {

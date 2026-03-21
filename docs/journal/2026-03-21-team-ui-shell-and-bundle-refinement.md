@@ -29,6 +29,14 @@
 - moved highlight.js theme CSS out of the entry bundle
 - changed Vite preload filtering so `route-auth`, `route-teams`, and `vendor-markdown` are no longer preloaded from `index.html`
 
+### Review and CI follow-ups
+
+- made lazy-route loader errors name the missing loader explicitly to improve production debugging
+- hardened `thread_rich_text` fallback behavior by catching lazy markdown asset load failures, refreshing cache recency on hit, and splitting plain-text paragraphs on blank lines
+- kept Team ACP refresh visible even before a member session exists so operators can poll for newly-started sessions
+- restored input dock send-button tap targets to the sizes enforced by the web asset and Playwright layout checks while keeping the surrounding shell visually thin
+- updated Team E2E helpers to follow the slimmer ACP shell and renamed `More` workspace actions entry
+
 ## Validation
 
 - `make build-web`

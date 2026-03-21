@@ -315,8 +315,9 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     }
     return `session ${selectedSessionId}`;
   }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
+  const hasSelectedMember = Boolean(selectedMemberId.trim());
   const canShowThreadOptions =
-    Boolean(selectedSessionId) || memberEventsLoading || memberEvents.length > 0;
+    hasSelectedMember || memberEventsLoading || memberEvents.length > 0;
   const acpPanelProps = React.useMemo(
     () => ({
       acpView,
@@ -410,8 +411,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
               onClick={() => {
                 void onRefresh();
               }}
-              disabled={selectedMemberId.trim() && selectedSessionId ? memberEventsLoading : eventsLoading}
-              className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} !rounded-[10px]`}
+              disabled={hasSelectedMember && selectedSessionId ? memberEventsLoading : eventsLoading}
+              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
               title="Refresh thread"
               aria-label="Refresh thread"
             >
@@ -424,7 +425,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
                   void onLoadOlder();
                 }}
                 disabled={!canLoadOlder}
-                className={`${TEAM_PANEL_SECONDARY_BUTTON_CLASS} !rounded-[10px]`}
+                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
               >
                 Load Older
               </button>
@@ -432,13 +433,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
           </div>
           {developerMode && (
             <div className="mono flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-              <div className="rounded-[10px] border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
                 member={selectedMemberId || "-"}
               </div>
-              <div className="rounded-[10px] border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
                 role={selectedMemberSnapshot?.role ?? selectedMemberRole ?? "-"}
               </div>
-              <div className="rounded-[10px] border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
                 session={selectedSessionId ?? "-"}
               </div>
             </div>

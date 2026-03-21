@@ -25,6 +25,7 @@ const baseNodes: AgentNodeRecord[] = [
 
 const baseProps: ComponentProps<typeof AgentNodeSection> = {
   nodes: baseNodes,
+  agents: [],
   targetNodeId: "main",
   onTargetNodeIdChange: () => {},
   nodeIdInput: "",

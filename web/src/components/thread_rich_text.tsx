@@ -51,6 +51,7 @@ export function renderThreadMarkdownCached(text: string): string {
   const cached = markdownHtmlCache.get(text);
   if (cached != null) {
     markdownCacheHitCount += 1;
+    refreshCacheRecency(markdownHtmlCache, markdownHtmlCacheSize, text);
     return cached;
   }
   markdownCacheMissCount += 1;
@@ -81,24 +82,30 @@ export function ThreadRichText({
   className?: string;
   renderHtml?: (text: string) => string;
 }) {
-  const [assetsReady, setAssetsReady] = React.useState(markdownRenderer != null);
+  const [, setRenderVersion] = React.useState(0);
 
   React.useEffect(() => {
     if (markdownRenderer) {
       return;
     }
     let cancelled = false;
-    void ensureThreadMarkdownAssets().then(() => {
-      if (!cancelled) {
-        setAssetsReady(true);
-      }
-    });
+    void ensureThreadMarkdownAssets()
+      .then(() => {
+        if (!cancelled) {
+          setRenderVersion((current) => current + 1);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRenderVersion((current) => current + 1);
+        }
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const html = React.useMemo(() => renderHtml(text), [assetsReady, renderHtml, text]);
+  const html = renderHtml(text);
   return (
     <div
       className={`acp-text text-sm leading-6 ${className ?? ""}`.trim()}
@@ -115,18 +122,26 @@ async function ensureThreadMarkdownAssets(): Promise<void> {
     markdownAssetsPromise = Promise.all([
       import("../markdown"),
       import("highlight.js/styles/github-dark.css"),
-    ]).then(([markdownModule]) => {
-      markdownRenderer = {
-        renderMarkdown: markdownModule.renderMarkdown,
-      };
-    });
+    ])
+      .then(([markdownModule]) => {
+        markdownRenderer = {
+          renderMarkdown: markdownModule.renderMarkdown,
+        };
+      })
+      .catch((error) => {
+        markdownAssetsPromise = null;
+        throw error;
+      });
   }
   await markdownAssetsPromise;
 }
 
 function renderPlainRichText(text: string): string {
-  const escaped = escapeHtml(text).replace(/\n/g, "<br/>");
-  return `<p>${escaped}</p>`;
+  const normalized = text.replace(/\r\n?/g, "\n");
+  return normalized
+    .split(/\n\s*\n/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`)
+    .join("");
 }
 
 function normalizeSkillBlocksForMarkdown(text: string): string {
@@ -208,6 +223,24 @@ function cacheWithLruBudget<K, V>(
     break;
   }
   return value;
+}
+
+function refreshCacheRecency<K, V>(
+  cache: Map<K, V>,
+  sizes: Map<K, number>,
+  key: K
+): void {
+  const value = cache.get(key);
+  if (value == null) {
+    return;
+  }
+  const size = sizes.get(key);
+  cache.delete(key);
+  cache.set(key, value);
+  if (size != null) {
+    sizes.delete(key);
+    sizes.set(key, size);
+  }
 }
 
 function estimateStringBytes(text: string): number {

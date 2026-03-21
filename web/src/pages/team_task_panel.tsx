@@ -20,7 +20,6 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -493,7 +492,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 {shouldShowSeenMeta && (
                   <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
                     <HoverCard
-                      withinPortal={false}
                       openDelay={120}
                       closeDelay={80}
                       position="top-end"

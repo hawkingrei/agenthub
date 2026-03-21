@@ -301,22 +301,8 @@ async function selectAgentFromSidebar(
   await expect(agentItem).toBeVisible();
   await agentItem.click();
   const teamsMain = page.locator(".teams-main");
-  const agentAcpReady = teamsMain
-    .getByRole("tab", { name: "Conversation", exact: true })
-    .first();
-  if ((await agentAcpReady.count()) > 0) {
-    await expect(agentAcpReady).toBeVisible();
-    return;
-  }
-  const noEvents = teamsMain.getByText("No thread events found in this agent session.", {
-    exact: true,
-  });
-  if ((await noEvents.count()) > 0) {
-    await expect(noEvents).toBeVisible();
-    return;
-  }
   await expect(
-    teamsMain.getByText("Selected agent has no thread session yet.", { exact: true })
+    teamsMain.getByRole("tab", { name: "Conversation", exact: true }).first()
   ).toBeVisible();
 }
 
@@ -388,7 +374,10 @@ async function openAdvancedView(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  await page.getByRole("button", { name: "Open advanced views" }).click();
+  const trigger =
+    page.getByRole("button", { name: "Open more workspace actions" }).first();
+  await expect(trigger).toBeVisible();
+  await trigger.click();
   const menuItem = page.getByRole("menuitem", { name: label, exact: true });
   await expect(menuItem).toBeVisible();
   await menuItem.click();

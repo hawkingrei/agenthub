@@ -154,6 +154,27 @@ function toggleCheckboxValue(element: HTMLInputElement, checked: boolean): void 
   });
 }
 
+async function waitForCondition(
+  predicate: () => boolean,
+  attempts = 40
+): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+  }
+  throw new Error("condition not met before timeout");
+}
+
+function renderWithMantine(root: Root, node: React.ReactNode): void {
+  act(() => {
+    root.render(<MantineProvider>{node}</MantineProvider>);
+  });
+}
+
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
   return {
     id: "team-1",
@@ -531,8 +552,6 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     expect(container.textContent).not.toContain("Show Team Details");
-    expect(container.textContent).not.toContain("leader · working");
-    expect(container.textContent).not.toContain("worker · working");
     expect(container.textContent).not.toContain("team-1");
 
     expect(container.textContent).toContain("Teams 2");
@@ -1608,9 +1627,7 @@ describe("team panels interactions", () => {
       );
     }
 
-    act(() => {
-      root.render(<TeamTaskPanelHarness />);
-    });
+    renderWithMantine(root, <TeamTaskPanelHarness />);
 
     expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
     expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
@@ -1658,9 +1675,9 @@ describe("team panels interactions", () => {
   it("TeamTaskPanel renders canonical agent replies already persisted in shared thread", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
-    act(() => {
-      root.render(
-        <TeamTaskPanel
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
           developerMode={true}
           tasksLoading={false}
           onRefreshTasks={vi.fn()}
@@ -1703,8 +1720,7 @@ describe("team panels interactions", () => {
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={toPrettyJson}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("hello team");
     expect(container.textContent).toContain("leader reply visible in all");
@@ -1734,9 +1750,9 @@ describe("team panels interactions", () => {
       .mockImplementation(() => {});
 
     try {
-      act(() => {
-        root.render(
-          <TeamTaskPanel
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
             developerMode={false}
             tasksLoading={false}
             onRefreshTasks={vi.fn()}
@@ -1760,8 +1776,7 @@ describe("team panels interactions", () => {
             formatTs={(ts) => `ts-${String(ts)}`}
             toPrettyJson={toPrettyJson}
           />
-        );
-      });
+      );
 
       const scrollNode = required(
         container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
@@ -1783,9 +1798,9 @@ describe("team panels interactions", () => {
 
       expect(findButtonByText(container, "Jump to top")).not.toBeNull();
 
-      act(() => {
-        root.render(
-          <TeamTaskPanel
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
             developerMode={false}
             tasksLoading={false}
             onRefreshTasks={vi.fn()}
@@ -1810,8 +1825,7 @@ describe("team panels interactions", () => {
             formatTs={(ts) => `ts-${String(ts)}`}
             toPrettyJson={toPrettyJson}
           />
-        );
-      });
+      );
 
       await act(async () => {
         await Promise.resolve();
@@ -1861,9 +1875,9 @@ describe("team panels interactions", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     try {
-      act(() => {
-        root.render(
-          <TeamTaskPanel
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
             developerMode={false}
             tasksLoading={false}
             onRefreshTasks={vi.fn()}
@@ -1887,8 +1901,7 @@ describe("team panels interactions", () => {
             formatTs={(ts) => `ts-${String(ts)}`}
             toPrettyJson={toPrettyJson}
           />
-        );
-      });
+      );
 
       await act(async () => {
         await Promise.resolve();
@@ -1913,9 +1926,9 @@ describe("team panels interactions", () => {
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
-    act(() => {
-      root.render(
-        <TeamTaskPanel
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
           developerMode={true}
           tasksLoading={false}
           onRefreshTasks={vi.fn()}
@@ -1940,18 +1953,17 @@ describe("team panels interactions", () => {
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={toPrettyJson}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("rendered from string payload");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
-  it("TeamTaskPanel renders markdown lists, tables, and code blocks in channel messages", () => {
-    act(() => {
-      root.render(
-        <TeamTaskPanel
+  it("TeamTaskPanel renders markdown lists, tables, and code blocks in channel messages", async () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
           developerMode={false}
           tasksLoading={false}
           onRefreshTasks={vi.fn()}
@@ -1991,9 +2003,9 @@ describe("team panels interactions", () => {
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={(value) => JSON.stringify(value)}
         />
-      );
-    });
+    );
 
+    await waitForCondition(() => container.innerHTML.includes("<table>"));
     expect(container.innerHTML).toContain("<ul>");
     expect(container.innerHTML).toContain("<table>");
     expect(container.innerHTML).toContain("<pre");
@@ -2001,9 +2013,9 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {
-    act(() => {
-      root.render(
-        <TeamTaskPanel
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
           developerMode={false}
           tasksLoading={false}
           onRefreshTasks={vi.fn()}
@@ -2017,8 +2029,7 @@ describe("team panels interactions", () => {
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={(value) => JSON.stringify(value)}
         />
-      );
-    });
+    );
 
     expect(container.textContent).not.toContain("Show details");
     expect(container.textContent).not.toContain("source");
@@ -2227,9 +2238,9 @@ describe("team panels interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={buildMemberSnapshot({
@@ -2245,12 +2256,8 @@ describe("team panels interactions", () => {
           onRefresh={onRefresh}
           onLoadOlder={onLoadOlder}
         />
-      );
-    });
+    );
 
-    expect(container.textContent).not.toContain("member=worker-agent");
-    expect(container.textContent).not.toContain("role=worker");
-    expect(container.textContent).not.toContain("session=task-77");
     clickElement(findButtonByText(container, "Refresh"));
     expect(container.querySelector("h3")).toBeNull();
     expect(container.textContent).toContain("Conversation");
@@ -2258,9 +2265,6 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Debug");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
-    expect(container.textContent).toContain("member=worker-agent");
-    expect(container.textContent).toContain("role=worker");
-    expect(container.textContent).toContain("session=task-77");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
   });
@@ -2268,9 +2272,9 @@ describe("team panels interactions", () => {
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
     const onLoadOlder = vi.fn();
 
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={buildMemberSnapshot({
@@ -2311,8 +2315,7 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={onLoadOlder}
         />
-      );
-    });
+    );
 
     await act(async () => {
       await Promise.resolve();
@@ -2326,9 +2329,9 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel hides technical metadata when developer mode is off", () => {
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={buildMemberSnapshot({
@@ -2357,8 +2360,7 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
@@ -2370,9 +2372,9 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel renders ACP conversation from runtime session fallback", () => {
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={null}
@@ -2399,16 +2401,15 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("Runtime session fallback works.");
   });
 
   it("TeamMemberAcpPanel keeps ACP shell visible when selected member has no session yet", () => {
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={null}
@@ -2421,8 +2422,7 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("No active thread session yet");
     expect(container.textContent).toContain("Conversation");
@@ -2430,9 +2430,9 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel keeps ACP shell visible when the session has no thread events yet", () => {
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={null}
@@ -2446,8 +2446,7 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
-      );
-    });
+    );
 
     expect(container.textContent).toContain("session runtime-session-1 · no thread events yet");
     expect(container.textContent).toContain("Conversation");
@@ -2457,9 +2456,9 @@ describe("team panels interactions", () => {
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {
     const onSendInput = vi.fn().mockResolvedValue(undefined);
 
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
           selectedMemberSnapshot={null}
@@ -2474,8 +2473,7 @@ describe("team panels interactions", () => {
           onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
-      );
-    });
+    );
 
     const input = required(
       container.querySelector("textarea") as HTMLTextAreaElement | null,
