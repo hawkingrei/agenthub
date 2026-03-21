@@ -2,6 +2,7 @@ use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMessageStatus,
     actor_inbox_with_auto_ack, build_default_actor_message_idempotency_key, parse_actor_transport,
 };
+use anyhow::Context;
 use serde_json::Value;
 
 use crate::team::{SendActorMessageInput, TeamActorMessageTransport, TeamManager};
@@ -11,6 +12,24 @@ const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorOutputMode {
+    Default,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorOutputPreference {
+    ToonPreferred,
+    JsonPreferred,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorOutputFormat {
+    Toon,
+    Json,
+}
 
 enum ActorCommand {
     Help,
@@ -44,7 +63,7 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nOutput:\n  Structured command results are printed as TOON on stdout.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nOutput:\n  Read-heavy results (`team-members`, `inbox`) default to TOON on stdout.\n  Confirmation results (`ack`, `send`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
@@ -53,9 +72,44 @@ fn actor_usage() -> String {
     )
 }
 
-fn write_toon_output<T: serde::Serialize>(value: &T) -> anyhow::Result<()> {
-    let output = toon_format::encode_default(value)
-        .map_err(|err| anyhow::anyhow!("failed to encode TOON output: {err}"))?;
+fn resolve_actor_output_format(
+    mode: ActorOutputMode,
+    preference: ActorOutputPreference,
+) -> ActorOutputFormat {
+    match mode {
+        ActorOutputMode::Json => ActorOutputFormat::Json,
+        ActorOutputMode::Default => match preference {
+            ActorOutputPreference::ToonPreferred => ActorOutputFormat::Toon,
+            ActorOutputPreference::JsonPreferred => ActorOutputFormat::Json,
+        },
+    }
+}
+
+fn encode_toon_output<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
+    toon_format::encode_default(value).context("failed to encode TOON output")
+}
+
+fn encode_json_output<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
+    serde_json::to_string(value).context("failed to encode JSON output")
+}
+
+fn encode_actor_output<T: serde::Serialize>(
+    value: &T,
+    mode: ActorOutputMode,
+    preference: ActorOutputPreference,
+) -> anyhow::Result<String> {
+    match resolve_actor_output_format(mode, preference) {
+        ActorOutputFormat::Toon => encode_toon_output(value),
+        ActorOutputFormat::Json => encode_json_output(value),
+    }
+}
+
+fn write_actor_output<T: serde::Serialize>(
+    value: &T,
+    mode: ActorOutputMode,
+    preference: ActorOutputPreference,
+) -> anyhow::Result<()> {
+    let output = encode_actor_output(value, mode, preference)?;
     println!("{output}");
     Ok(())
 }
@@ -110,7 +164,32 @@ fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
     take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id")
 }
 
-fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
+struct ParsedActorCommand {
+    output_mode: ActorOutputMode,
+    command: ActorCommand,
+}
+
+fn parse_actor_args(args: &[String]) -> anyhow::Result<ParsedActorCommand> {
+    let mut output_mode = ActorOutputMode::Default;
+    let mut command_start = 0usize;
+    while let Some(arg) = args.get(command_start) {
+        if arg != "--json" {
+            break;
+        }
+        output_mode = ActorOutputMode::Json;
+        command_start += 1;
+    }
+    let command = parse_actor_command(&args[command_start..], &mut output_mode)?;
+    Ok(ParsedActorCommand {
+        output_mode,
+        command,
+    })
+}
+
+fn parse_actor_command(
+    args: &[String],
+    output_mode: &mut ActorOutputMode,
+) -> anyhow::Result<ActorCommand> {
     let sub = args
         .first()
         .ok_or_else(|| anyhow::anyhow!("missing actor subcommand\n{}", actor_usage()))?;
@@ -121,6 +200,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--json" => {
+                        *output_mode = ActorOutputMode::Json;
+                    }
                     "--team-id" => {
                         idx += 1;
                         team_id = Some(
@@ -173,6 +255,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--json" => {
+                        *output_mode = ActorOutputMode::Json;
+                    }
                     "--run-id" => {
                         idx += 1;
                         run_id = Some(
@@ -231,6 +316,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--json" => {
+                        *output_mode = ActorOutputMode::Json;
+                    }
                     "--run-id" => {
                         idx += 1;
                         run_id = Some(
@@ -281,6 +369,9 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--json" => {
+                        *output_mode = ActorOutputMode::Json;
+                    }
                     "--run-id" => {
                         idx += 1;
                         run_id = Some(
@@ -451,7 +542,10 @@ fn parse_actor_command(args: &[String]) -> anyhow::Result<ActorCommand> {
     }
 }
 
-async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
+async fn run_actor_command(
+    command: ActorCommand,
+    output_mode: ActorOutputMode,
+) -> anyhow::Result<()> {
     match command {
         ActorCommand::Help => {
             println!("{}", actor_usage());
@@ -462,7 +556,11 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             let team_context = manager
                 .describe_team_context(team_id.as_deref(), run_id.as_deref())
                 .await?;
-            write_toon_output(&team_context)?;
+            write_actor_output(
+                &team_context,
+                output_mode,
+                ActorOutputPreference::ToonPreferred,
+            )?;
         }
         ActorCommand::Inbox {
             run_id,
@@ -497,7 +595,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             .map_err(|err| {
                 anyhow::anyhow!("actor inbox failed ({:?}): {}", err.code, err.message)
             })?;
-            write_toon_output(&inbox.messages)?;
+            write_actor_output(&inbox, output_mode, ActorOutputPreference::ToonPreferred)?;
         }
         ActorCommand::Ack {
             run_id,
@@ -509,7 +607,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
             let message = manager
                 .ack_actor_message(&run_id, &actor_id, message_id)
                 .await?;
-            write_toon_output(&message)?;
+            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
         }
         ActorCommand::Send {
             run_id,
@@ -541,7 +639,7 @@ async fn run_actor_command(command: ActorCommand) -> anyhow::Result<()> {
                     idempotency_key: idempotency_key.as_deref(),
                 })
                 .await?;
-            write_toon_output(&message)?;
+            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
         }
     }
     Ok(())
@@ -552,9 +650,9 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
     if args.first().map(String::as_str) != Some("actor") {
         return None;
     }
-    let parsed = parse_actor_command(&args[1..]);
+    let parsed = parse_actor_args(&args[1..]);
     Some(match parsed {
-        Ok(command) => run_actor_command(command).await,
+        Ok(parsed) => run_actor_command(parsed.command, parsed.output_mode).await,
         Err(err) => Err(err),
     })
 }
@@ -562,6 +660,8 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agenthub_team_actor::ActorInboxResponse;
+    use serde::Serialize;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -588,7 +688,8 @@ mod tests {
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec!["inbox".to_string(), "--limit".to_string(), "5".to_string()];
-        let parsed = parse_actor_command(&args).expect("parse inbox");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
         match parsed {
             ActorCommand::Inbox {
                 run_id,
@@ -609,6 +710,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_actor_args_accepts_json_flag_before_subcommand() {
+        let args = vec![
+            "--json".to_string(),
+            "inbox".to_string(),
+            "--run-id".to_string(),
+            "run-x".to_string(),
+            "--actor-id".to_string(),
+            "planner".to_string(),
+        ];
+        let parsed = parse_actor_args(&args).expect("parse actor args");
+        assert_eq!(parsed.output_mode, ActorOutputMode::Json);
+        assert!(matches!(
+            parsed.command,
+            ActorCommand::Inbox { ref run_id, ref actor_id, .. }
+                if run_id == "run-x" && actor_id == "planner"
+        ));
+    }
+
+    #[test]
+    fn parse_actor_args_accepts_json_flag_after_subcommand() {
+        let args = vec![
+            "inbox".to_string(),
+            "--json".to_string(),
+            "--run-id".to_string(),
+            "run-y".to_string(),
+            "--actor-id".to_string(),
+            "planner".to_string(),
+        ];
+        let parsed = parse_actor_args(&args).expect("parse actor args");
+        assert_eq!(parsed.output_mode, ActorOutputMode::Json);
+        assert!(matches!(
+            parsed.command,
+            ActorCommand::Inbox { ref run_id, ref actor_id, .. }
+                if run_id == "run-y" && actor_id == "planner"
+        ));
+    }
+
+    #[test]
     fn parse_team_members_uses_env_fallback() {
         let _guard = ENV_LOCK.lock().expect("lock env");
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
@@ -618,7 +757,8 @@ mod tests {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-team-members");
         }
         let args = vec!["team-members".to_string()];
-        let parsed = parse_actor_command(&args).expect("parse team-members");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
             ActorCommand::TeamMembers { team_id, run_id } => {
                 assert_eq!(team_id.as_deref(), Some("team-members-team"));
@@ -647,7 +787,8 @@ mod tests {
             "--run-id".to_string(),
             "run-explicit".to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse team-members");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
             ActorCommand::TeamMembers { team_id, run_id } => {
                 assert!(team_id.is_none());
@@ -673,7 +814,8 @@ mod tests {
             "--team-id".to_string(),
             "team-explicit".to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse team-members");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
             ActorCommand::TeamMembers { team_id, run_id } => {
                 assert_eq!(team_id.as_deref(), Some("team-explicit"));
@@ -696,7 +838,7 @@ mod tests {
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
         }
         let args = vec!["inbox".to_string()];
-        let err = match parse_actor_command(&args) {
+        let err = match parse_actor_command(&args, &mut ActorOutputMode::Default) {
             Ok(_) => panic!("legacy run env alias should be ignored"),
             Err(err) => err,
         };
@@ -732,7 +874,7 @@ mod tests {
             r#"{"text":"hi"}"#.to_string(),
         ];
         assert!(
-            parse_actor_command(&args).is_err(),
+            parse_actor_command(&args, &mut ActorOutputMode::Default).is_err(),
             "remote transport must require route-json"
         );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
@@ -758,7 +900,7 @@ mod tests {
             "--payload-json".to_string(),
             r#"{"text":"hello"}"#.to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse send");
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
             ActorCommand::Send {
                 idempotency_key, ..
@@ -792,7 +934,7 @@ mod tests {
             r#"{"text":"hello"}"#.to_string(),
             "--allow-duplicate".to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse send");
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
             ActorCommand::Send {
                 idempotency_key, ..
@@ -831,7 +973,7 @@ mod tests {
             "--allow-duplicate".to_string(),
         ];
         assert!(
-            parse_actor_command(&args).is_err(),
+            parse_actor_command(&args, &mut ActorOutputMode::Default).is_err(),
             "allow duplicate and idempotency key should conflict"
         );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
@@ -855,7 +997,8 @@ mod tests {
             "--agent-id".to_string(),
             "planner-agent".to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse inbox");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
         match parsed {
             ActorCommand::Inbox { actor_id, .. } => {
                 assert_eq!(actor_id, "planner-agent");
@@ -879,7 +1022,8 @@ mod tests {
             std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "planner-agent");
         }
         let args = vec!["inbox".to_string()];
-        let parsed = parse_actor_command(&args).expect("parse inbox");
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
         match parsed {
             ActorCommand::Inbox { actor_id, .. } => {
                 assert_eq!(actor_id, "planner-agent");
@@ -911,7 +1055,7 @@ mod tests {
             "--payload-json".to_string(),
             r#"{"text":"hello"}"#.to_string(),
         ];
-        let parsed = parse_actor_command(&args).expect("parse send");
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
             ActorCommand::Send {
                 from_actor_id,
@@ -932,8 +1076,73 @@ mod tests {
     fn parse_help_command_is_supported() {
         for arg in ["help", "--help", "-h"] {
             let args = vec![arg.to_string()];
-            let parsed = parse_actor_command(&args).expect("parse help");
+            let parsed =
+                parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse help");
             assert!(matches!(parsed, ActorCommand::Help));
         }
+    }
+
+    #[derive(Serialize)]
+    struct OutputFixture {
+        name: &'static str,
+        count: i32,
+    }
+
+    #[test]
+    fn encode_actor_output_defaults_read_results_to_toon() {
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Default,
+            ActorOutputPreference::ToonPreferred,
+        )
+        .expect("encode toon output");
+        assert!(output.contains("name: alpha"));
+        assert!(output.contains("count: 2"));
+        assert!(!output.starts_with('{'));
+    }
+
+    #[test]
+    fn encode_actor_output_defaults_confirmation_results_to_json() {
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Default,
+            ActorOutputPreference::JsonPreferred,
+        )
+        .expect("encode json output");
+        assert_eq!(output, r#"{"name":"alpha","count":2}"#);
+    }
+
+    #[test]
+    fn encode_actor_output_json_flag_forces_json() {
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Json,
+            ActorOutputPreference::ToonPreferred,
+        )
+        .expect("encode forced json output");
+        assert_eq!(output, r#"{"name":"alpha","count":2}"#);
+    }
+
+    #[test]
+    fn encode_actor_output_keeps_inbox_cursor_visible() {
+        let output = encode_actor_output(
+            &ActorInboxResponse {
+                messages: Vec::new(),
+                next_cursor: Some(42),
+            },
+            ActorOutputMode::Default,
+            ActorOutputPreference::ToonPreferred,
+        )
+        .expect("encode inbox response");
+        assert!(output.contains("next_cursor: 42"));
     }
 }
