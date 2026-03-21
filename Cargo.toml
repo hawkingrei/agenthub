@@ -24,7 +24,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["clock"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -34,6 +34,7 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uu
 thiserror = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "signal", "sync", "time", "io-util", "io-std"] }
 tokio-util = { version = "0.7", features = ["compat"] }
+toon-format = { version = "0.4.4", default-features = false }
 tower-http = { version = "0.5", features = ["fs", "trace", "cors", "compression-gzip"] }
 tracing = "0.1"
 tracing-appender = "0.2"
@@ -65,7 +66,8 @@ agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
-rcgen = "0.13"
+rcgen = "0.14"
+rustls = "0.23"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

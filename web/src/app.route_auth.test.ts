@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canManageAgentNodes,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   shouldRedirectTeamsToLogin,
+  upsertAgentNodeRecord,
 } from "./app";
 
 describe("team route auth redirect", () => {
+  const makeNode = (id: string, name = id, createdAt = 1) => ({
+    id,
+    name,
+    grpc_target: `${id}.internal:50051`,
+    tls_server_name: null,
+    default_worktree_root: null,
+    is_main: id === "main",
+    created_at: createdAt,
+    updated_at: createdAt,
+  });
+
   it("redirects unauthenticated teams route to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
     expect(
@@ -80,5 +95,60 @@ describe("team route auth redirect", () => {
         null
       )
     ).toBeNull();
+  });
+
+  it("restricts agent-node admin surfaces to root users", () => {
+    expect(canManageAgentNodes(null)).toBe(false);
+    expect(
+      canManageAgentNodes({
+        token: "token-1",
+        userId: "user-1",
+        username: "worker",
+        role: "user",
+      })
+    ).toBe(false);
+    expect(
+      canManageAgentNodes({
+        token: "token-1",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    ).toBe(true);
+  });
+
+  it("upserts agent node records without relying on state updaters", () => {
+    expect(
+      upsertAgentNodeRecord(
+        [makeNode("main"), makeNode("node-a", "node-a", 10)],
+        makeNode("node-b", "node-b", 20)
+      )
+    ).toEqual([
+      makeNode("main"),
+      makeNode("node-b", "node-b", 20),
+      makeNode("node-a", "node-a", 10),
+    ]);
+    expect(
+      upsertAgentNodeRecord(
+        [makeNode("main"), makeNode("node-b", "node-b", 20), makeNode("node-a", "old-a", 10)],
+        makeNode("node-a", "new-a", 10)
+      )
+    ).toEqual([
+      makeNode("main"),
+      makeNode("node-b", "node-b", 20),
+      makeNode("node-a", "new-a", 10),
+    ]);
+  });
+
+  it("replaces and removes agent node records deterministically", () => {
+    expect(
+      replaceAgentNodeRecord(
+        [makeNode("node-a", "old-a"), makeNode("node-b")],
+        makeNode("node-a", "new-a")
+      )
+    ).toEqual([makeNode("node-a", "new-a"), makeNode("node-b")]);
+    expect(removeAgentNodeRecord([makeNode("node-a"), makeNode("node-b")], "node-a")).toEqual([
+      makeNode("node-b"),
+    ]);
   });
 });

@@ -1,12 +1,14 @@
 mod codec;
 mod mailbox;
+mod remote_relay;
 
 #[cfg(test)]
 mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 pub use agenthub_team_domain::TeamRunResumeError;
@@ -26,6 +28,7 @@ use self::codec::{
     parse_team_run_row, parse_team_step_row, parse_team_task_row, team_run_status_to_str,
     team_step_status_to_str, team_task_status_to_str,
 };
+use self::remote_relay::{GrpcRelayTlsDefaults, TeamRemoteRelayAdapter};
 use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
     TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
@@ -33,6 +36,7 @@ use super::{
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
+use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
 use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
 
@@ -41,6 +45,7 @@ pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
+    remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
 }
 
 const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
@@ -190,10 +195,12 @@ impl TeamManager {
 
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
         let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
+        let remote_relay_adapter = Arc::new(TeamRemoteRelayAdapter::new(db.clone()));
         Self {
             db,
             event_dbs,
             conversation_events,
+            remote_relay_adapter,
         }
     }
 
@@ -201,6 +208,11 @@ impl TeamManager {
         &self,
     ) -> broadcast::Receiver<TeamConversationStreamEvent> {
         self.conversation_events.subscribe()
+    }
+
+    pub fn configure_internal_grpc_relay(&self, cert_dir: &Path, mode: InternalGrpcSecurityMode) {
+        self.remote_relay_adapter
+            .configure_grpc_tls_defaults(Some(GrpcRelayTlsDefaults::from_cert_dir(cert_dir, mode)));
     }
 
     #[cfg(test)]

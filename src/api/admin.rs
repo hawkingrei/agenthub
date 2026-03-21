@@ -49,7 +49,7 @@ pub fn router(state: AppState) -> Router {
         .route("/safe_paths", get(list_safe_paths).post(add_safe_path))
         .route("/safe_paths", delete(delete_safe_path))
         .route("/devices", get(list_devices))
-        .route("/devices/:id/revoke", post(revoke_device))
+        .route("/devices/{id}/revoke", post(revoke_device))
         .route("/audits", get(list_audits))
         .route("/join/start", post(join_start))
         .with_state(state)

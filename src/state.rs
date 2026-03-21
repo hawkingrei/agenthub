@@ -6,9 +6,12 @@ use uuid::Uuid;
 
 use crate::acp::AcpPermissionService;
 use crate::agent::{
-    AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+    AGENT_NODE_MAIN_ID, AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker,
+    AgentTimeTriggerWorkerSettings,
 };
 use crate::auth::AuthService;
+use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::push::PushService;
 use crate::team::{
     TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
@@ -91,6 +94,27 @@ impl AppState {
         Arc<AuthService>,
         Arc<AcpPermissionService>,
     )> {
+        let internal_peer_client = if config.internal_grpc_enabled() {
+            let internal_grpc_cert_dir = std::path::PathBuf::from(config.internal_grpc_cert_dir());
+            let internal_grpc_security_mode =
+                InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
+            let internal_shared_secret = ensure_shared_secret(
+                &internal_grpc_cert_dir,
+                config.internal_grpc_auth_shared_secret(),
+            )?;
+            let _ = ensure_tls_material(&internal_grpc_cert_dir, internal_grpc_security_mode)?;
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: internal_shared_secret,
+                expected_issuer: config.internal_grpc_auth_issuer(),
+                expected_audience: config.internal_grpc_auth_audience(),
+                source_node_id: AGENT_NODE_MAIN_ID.to_string(),
+                cert_dir: internal_grpc_cert_dir.to_string_lossy().to_string(),
+                security_mode: internal_grpc_security_mode,
+            })
+        } else {
+            None
+        };
+
         let idle_gc = config.history_event_retention_days().map(|retention_days| {
             let vacuum_on_cleanup = config.history_vacuum_on_cleanup();
             let delete_batch_size = config.history_delete_batch_size();
@@ -113,7 +137,7 @@ impl AppState {
         let push = Arc::new(PushService::new(db.clone(), config)?);
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), config).await?);
-        let agents = Arc::new(AgentManager::new(
+        let agents = Arc::new(AgentManager::new_with_internal_grpc(
             db.clone(),
             event_dbs.clone(),
             idle_gc,
@@ -123,12 +147,19 @@ impl AppState {
             config.codex_acp_default_mode(),
             acp_permissions.clone(),
             auth.clone(),
+            internal_peer_client.clone(),
         ));
 
         let teams = Arc::new(TeamManager::new_with_event_dbs(
             db.clone(),
             event_dbs.clone(),
         ));
+        if let Some(peer_client) = internal_peer_client.as_ref() {
+            teams.configure_internal_grpc_relay(
+                std::path::Path::new(&peer_client.cert_dir),
+                peer_client.security_mode,
+            );
+        }
         teams
             .clone()
             .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
@@ -263,7 +294,10 @@ mod tests {
         AppState, DEFAULT_GIT_IGNORE_SUBPATH, GLOBAL_GITIGNORE_ENTRY, GLOBAL_GITIGNORE_FILENAME,
         append_gitignore_entry, resolve_global_gitignore_paths,
     };
-    use agenthub_config::AppConfig;
+    use agenthub_config::{
+        AppConfig, InternalGrpcConfig, InternalGrpcSecurityConfig, PushConfig, WebConfig,
+    };
+    use agenthub_db::AgentEventDbRouter;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::ffi::OsString;
@@ -498,5 +532,52 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_home);
         let _ = std::fs::remove_dir_all(&temp_xdg);
+    }
+
+    #[tokio::test]
+    async fn initialize_services_skips_internal_grpc_material_when_disabled() {
+        let db = test_db().await;
+        let cert_dir =
+            std::env::temp_dir().join(format!("agenthub-state-internal-grpc-{}", Uuid::new_v4()));
+        let keys_dir =
+            std::env::temp_dir().join(format!("agenthub-state-push-keys-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&keys_dir).expect("create keys dir");
+        let keys_path = keys_dir.join("vapid.json");
+        let config = AppConfig {
+            web: Some(WebConfig {
+                rp_id: Some("localhost".to_string()),
+                rp_origin: Some("http://localhost:8080".to_string()),
+                rp_name: Some("AgentHub Test".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some(keys_path.to_string_lossy().to_string()),
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(false),
+                listen: None,
+                security: Some(InternalGrpcSecurityConfig {
+                    mode: Some("mtls".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+
+        let services =
+            AppState::initialize_services(&config, db, AgentEventDbRouter::with_default_base_dir())
+                .await;
+        assert!(
+            services.is_ok(),
+            "initialize services should succeed when internal grpc is disabled"
+        );
+        assert!(
+            !cert_dir.exists(),
+            "disabled internal grpc should not create cert dir {}",
+            cert_dir.display()
+        );
+        let _ = std::fs::remove_dir_all(&keys_dir);
     }
 }

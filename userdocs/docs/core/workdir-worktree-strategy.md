@@ -11,6 +11,9 @@ Choosing the right run location is the biggest lever for stable agent behavior.
 - `use_existing`: run directly in an existing directory
 - `create_worktree`: create an isolated worktree under your configured root
 
+For remote execution, the selected Agent Node may override the effective
+default root with its own node-specific `Default worktree root`.
+
 ## How to Choose
 
 Use `use_existing` when:
@@ -43,8 +46,10 @@ All run paths must be under configured `safe_paths`.
 If creation fails with path-related errors:
 
 1. Confirm base path is allowed
-2. Avoid symlink-heavy paths at first
-3. Retry with a shorter explicit directory path
+2. Confirm the selected remote node has a valid default root if you are leaving
+   `Workdir` blank in `create_worktree` mode
+3. Avoid symlink-heavy paths at first
+4. Retry with a shorter explicit directory path
 
 ## Cleanup Practice
 

@@ -19,6 +19,7 @@ use agent_client_protocol::{
     ToolCallUpdateFields,
 };
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
@@ -48,7 +49,7 @@ const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
     pub source_run_id: String,
@@ -57,7 +58,7 @@ pub struct AcpActorContinuityEnvelope {
     pub history_window: Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorSkillContext {
     pub team_id: Option<String>,
     pub current_run_id: Option<String>,

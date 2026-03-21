@@ -14,7 +14,7 @@ use crate::acp::{
 };
 use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
-    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode,
+    AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode, normalize_target_node_id,
 };
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
@@ -29,6 +29,7 @@ pub struct CreateAgentRequest {
     pub workdir: String,
     pub command: String,
     pub args: Vec<String>,
+    pub target_node_id: Option<String>,
     pub source: Option<String>,
     pub worktree_mode: Option<String>,
     pub worktree_repo: Option<String>,
@@ -67,6 +68,7 @@ pub struct AgentDiscoveryRuntime {
     pub code_mode: bool,
     pub agent_loop_enabled: bool,
     pub agent_loop_idle_seconds: Option<i64>,
+    pub target_node_id: Option<String>,
     pub worktree_mode: WorktreeMode,
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
@@ -159,34 +161,49 @@ pub struct PermissionResponseRequest {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent).get(list_agents))
-        .route("/:id", get(get_agent))
-        .route("/:id/.well-known/agent-card", get(get_agent_discovery_card))
-        .route("/:id/start", post(start_agent))
-        .route("/:id/stop", post(stop_agent))
-        .route("/:id/input", post(send_input))
+        .route("/{id}", get(get_agent))
+        .route("/{id}/.well-known/agent-card", get(get_agent_discovery_card))
+        .route("/{id}/start", post(start_agent))
+        .route("/{id}/stop", post(stop_agent))
+        .route("/{id}/input", post(send_input))
         .route(
-            "/:id/triggers",
+            "/{id}/triggers",
             post(create_agent_time_trigger).get(list_agent_time_triggers),
         )
         .route(
-            "/:id/triggers/:trigger_id/cancel",
+            "/{id}/triggers/{trigger_id}/cancel",
             post(cancel_agent_time_trigger),
         )
-        .route("/:id", delete(delete_agent))
-        .route("/:id/events", get(list_events))
-        .route("/:id/code_mode", post(set_code_mode))
-        .route("/:id/agent_loop", post(set_agent_loop))
-        .route("/:id/acp/session/clear", post(clear_acp_session))
-        .route("/:id/acp/mode", post(set_acp_mode))
-        .route("/:id/acp/model", post(set_acp_model))
-        .route("/:id/acp/config", post(set_acp_config))
-        .route("/:id/acp/cancel", post(cancel_acp))
-        .route("/:id/permissions", get(list_permissions))
+        .route("/{id}", delete(delete_agent))
+        .route("/{id}/events", get(list_events))
+        .route("/{id}/code_mode", post(set_code_mode))
+        .route("/{id}/agent_loop", post(set_agent_loop))
+        .route("/{id}/acp/session/clear", post(clear_acp_session))
+        .route("/{id}/acp/mode", post(set_acp_mode))
+        .route("/{id}/acp/model", post(set_acp_model))
+        .route("/{id}/acp/config", post(set_acp_config))
+        .route("/{id}/acp/cancel", post(cancel_acp))
+        .route("/{id}/permissions", get(list_permissions))
         .route(
-            "/:id/permissions/:permission_id/respond",
+            "/{id}/permissions/{permission_id}/respond",
             post(respond_permission),
         )
         .with_state(state)
+}
+
+fn map_create_agent_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    if message.contains("not found")
+        || message.contains("required")
+        || message.contains("must ")
+        || message.contains("invalid ")
+        || message.contains("reserved")
+        || message.contains("legacy schema")
+        || message.contains("internal gRPC peer config")
+    {
+        return ApiError::bad_request(&message);
+    }
+    ApiError::from(err)
 }
 
 async fn create_agent(
@@ -194,20 +211,33 @@ async fn create_agent(
     headers: HeaderMap,
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let user = require_user(&headers, &state).await?;
     let source = parse_agent_source(payload.source.as_deref())?;
+    let target_node_id = normalize_target_node_id(payload.target_node_id.as_deref());
+    if target_node_id.is_some() && user.role != "root" {
+        return Err(ApiError::unauthorized(
+            "root required for remote target node",
+        ));
+    }
     let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
+    let default_worktree_root = resolve_create_agent_default_worktree_root(
+        &state,
+        target_node_id.as_deref(),
+        &worktree_mode,
+    )
+    .await?;
     let workdir = resolve_create_agent_workdir(
         &payload.workdir,
         &payload.name,
         &worktree_mode,
-        &state.default_worktree_root,
+        default_worktree_root.as_deref(),
     )?;
     let config = AgentConfig {
         name: payload.name,
         workdir,
         command: payload.command,
         args: payload.args,
+        target_node_id,
         worktree_mode,
         worktree_repo: payload.worktree_repo,
         worktree_ref: payload.worktree_ref,
@@ -217,12 +247,17 @@ async fn create_agent(
         agent_loop_prompt: payload.agent_loop_prompt,
     };
     let agent = if source == AGENT_SOURCE_MANUAL {
-        state.agents.create_agent(config).await?
+        state
+            .agents
+            .create_agent(config)
+            .await
+            .map_err(map_create_agent_error)?
     } else {
         state
             .agents
             .create_agent_with_source(config, source)
-            .await?
+            .await
+            .map_err(map_create_agent_error)?
     };
     Ok(Json(agent))
 }
@@ -647,11 +682,30 @@ fn parse_agent_source(value: Option<&str>) -> Result<&'static str, ApiError> {
     }
 }
 
+async fn resolve_create_agent_default_worktree_root(
+    state: &AppState,
+    target_node_id: Option<&str>,
+    worktree_mode: &WorktreeMode,
+) -> Result<Option<String>, ApiError> {
+    if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
+        return Ok(None);
+    }
+    let Some(target_node_id) = normalize_target_node_id(target_node_id) else {
+        return Ok(Some(state.default_worktree_root.clone()));
+    };
+    let node = state
+        .agents
+        .get_agent_node(&target_node_id)
+        .await
+        .map_err(map_create_agent_error)?;
+    Ok(node.default_worktree_root)
+}
+
 fn resolve_create_agent_workdir(
     requested_workdir: &str,
     agent_name: &str,
     worktree_mode: &WorktreeMode,
-    default_worktree_root: &str,
+    default_worktree_root: Option<&str>,
 ) -> Result<String, ApiError> {
     let trimmed = requested_workdir.trim();
     if !trimmed.is_empty() {
@@ -660,6 +714,14 @@ fn resolve_create_agent_workdir(
     if !matches!(worktree_mode, WorktreeMode::CreateWorktree) {
         return Err(ApiError::bad_request("workdir is required"));
     }
+    let Some(default_worktree_root) = default_worktree_root
+        .map(str::trim)
+        .filter(|root| !root.is_empty())
+    else {
+        return Err(ApiError::bad_request(
+            "workdir is required for remote-target agents unless the selected node defines default_worktree_root",
+        ));
+    };
     Ok(default_worktree_path(agent_name, default_worktree_root))
 }
 
@@ -750,6 +812,7 @@ fn build_agent_discovery_card(
             code_mode: agent.code_mode,
             agent_loop_enabled: agent.agent_loop_enabled,
             agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
+            target_node_id: agent.target_node_id.clone(),
             worktree_mode: agent.worktree_mode.clone(),
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
@@ -886,6 +949,8 @@ mod tests {
     use crate::acp::default_actor_cli_path;
     use crate::agent::AgentManager;
     use crate::auth::AuthService;
+    use crate::internal::client::InternalGrpcPeerClientConfig;
+    use crate::internal::tls::InternalGrpcSecurityMode;
     use crate::push::PushService;
     use crate::state::AppState;
     use crate::team::TeamManager;
@@ -893,9 +958,9 @@ mod tests {
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
-        parse_agent_source, parse_start_actor_runtime_context, parse_worktree_mode,
-        resolve_create_agent_workdir, resolve_member_description_from_spec, router,
-        sanitize_worktree_segment,
+        map_create_agent_error, parse_agent_source, parse_start_actor_runtime_context,
+        parse_worktree_mode, resolve_create_agent_workdir, resolve_member_description_from_spec,
+        router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -940,6 +1005,7 @@ mod tests {
             workdir: "/tmp/agent-1".to_string(),
             command: "agenthub-codex-acp".to_string(),
             args: vec![],
+            target_node_id: None,
             worktree_mode: WorktreeMode::CreateWorktree,
             worktree_repo: Some("/tmp/repo".to_string()),
             worktree_ref: Some("main".to_string()),
@@ -987,6 +1053,7 @@ mod tests {
             workdir: "/tmp/agent-2".to_string(),
             command: "agenthub-codex-acp".to_string(),
             args: vec![],
+            target_node_id: None,
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,
@@ -1030,7 +1097,7 @@ mod tests {
             " /tmp/work ",
             "planner",
             &WorktreeMode::CreateWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect("resolve workdir");
         assert_eq!(resolved, "/tmp/work");
@@ -1042,7 +1109,7 @@ mod tests {
             "",
             "Team Planner",
             &WorktreeMode::CreateWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect("resolve default workdir");
         assert!(resolved.starts_with("~/.agenthub/worktrees/team-planner-"));
@@ -1054,10 +1121,29 @@ mod tests {
             "",
             "planner",
             &WorktreeMode::ReuseWorktree,
-            "~/.agenthub/worktrees",
+            Some("~/.agenthub/worktrees"),
         )
         .expect_err("blank workdir should be rejected");
         let _ = err;
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_rejects_blank_remote_target_defaults() {
+        let err = resolve_create_agent_workdir("", "planner", &WorktreeMode::CreateWorktree, None)
+            .expect_err("blank remote-target workdir should be rejected");
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn resolve_create_agent_workdir_uses_remote_target_default_root() {
+        let resolved = resolve_create_agent_workdir(
+            "",
+            "planner",
+            &WorktreeMode::CreateWorktree,
+            Some("~/.agenthub/worktrees/node-east"),
+        )
+        .expect("remote target default workdir");
+        assert!(resolved.starts_with("~/.agenthub/worktrees/node-east/planner-"));
     }
 
     #[test]
@@ -1404,7 +1490,10 @@ mod tests {
         .expect("create acp_permission_requests");
     }
 
-    async fn build_test_state_with_db(db: SqlitePool) -> AppState {
+    async fn build_test_state_with_db_and_internal_peer(
+        db: SqlitePool,
+        internal_peer_client: Option<InternalGrpcPeerClientConfig>,
+    ) -> AppState {
         let keys_dir = std::env::temp_dir().join(format!("agenthub-api-agents-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&keys_dir).expect("create keys dir");
         let keys_path = keys_dir.join("vapid.json");
@@ -1431,7 +1520,7 @@ mod tests {
         let event_dbs = agenthub_db::AgentEventDbRouter::new(
             std::env::temp_dir().join(format!("agenthub-api-agents-eventdb-{}", Uuid::new_v4())),
         );
-        let agents = Arc::new(AgentManager::new(
+        let agents = Arc::new(AgentManager::new_with_internal_grpc(
             db.clone(),
             event_dbs.clone(),
             None,
@@ -1441,6 +1530,7 @@ mod tests {
             None,
             permissions.clone(),
             auth.clone(),
+            internal_peer_client,
         ));
         let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
         AppState {
@@ -1452,6 +1542,10 @@ mod tests {
             acp_permissions: permissions,
             default_worktree_root: config.default_worktree_root(),
         }
+    }
+
+    async fn build_test_state_with_db(db: SqlitePool) -> AppState {
+        build_test_state_with_db_and_internal_peer(db, None).await
     }
 
     async fn build_test_state() -> AppState {
@@ -1467,6 +1561,29 @@ mod tests {
                 path.display()
             );
         }
+    }
+
+    async fn add_agent_node_support(db: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create agent_nodes table");
+        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+            .execute(db)
+            .await
+            .expect("add target_node_id column");
     }
 
     async fn create_auth_token(state: &AppState) -> String {
@@ -1490,6 +1607,29 @@ mod tests {
             .create_session(&user_id)
             .await
             .expect("create session token")
+    }
+
+    async fn create_non_root_auth_token(state: &AppState) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("user-{}", Uuid::new_v4()))
+        .bind("User")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert non-root user");
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create non-root session token")
     }
 
     fn build_json_request(
@@ -1655,6 +1795,365 @@ mod tests {
         assert_eq!(stop_second.status(), StatusCode::OK);
 
         remove_dir_best_effort(&base);
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_remote_target_without_internal_peer_client() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db(db).await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-no-peer-config",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("internal gRPC peer config")),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_remote_target_for_non_root_user() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+        let token = create_non_root_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-non-root",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent as non-root");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], "root required for remote target node");
+    }
+
+    #[tokio::test]
+    async fn create_agent_treats_main_target_node_as_local() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db(db).await;
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/main-target-normalizes-local")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let agent = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "main-target-normalizes-local".to_string(),
+                workdir: "/tmp/main-target-normalizes-local".to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: Some("main".to_string()),
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: true,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
+            })
+            .await
+            .expect("main target should normalize to local agent");
+
+        assert!(
+            agent.target_node_id.is_none(),
+            "main should be stored as local target"
+        );
+        let reloaded = state
+            .agents
+            .get_agent(&agent.id)
+            .await
+            .expect("reload created agent");
+        assert!(
+            reloaded.target_node_id.is_none(),
+            "reloaded agent should remain local"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_uses_remote_node_default_worktree_root_when_blank() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: Some("~/.agenthub/worktrees/node-east".to_string()),
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "remote-default-worktree",
+                    "workdir": "",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "worktree_mode": "create_worktree",
+                    "worktree_repo": "/tmp/repo",
+                    "worktree_ref": "HEAD",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target agent with node default root");
+        let status = response.status();
+        let body = decode_json_body(response).await;
+        assert_eq!(status, StatusCode::OK, "unexpected response body: {body}");
+        assert!(
+            body["workdir"].as_str().is_some_and(|value| value
+                .starts_with("~/.agenthub/worktrees/node-east/remote-default-worktree-")),
+            "unexpected response body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_team_forge_agent_route_rejects_remote_target_on_legacy_schema() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent_nodes table");
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "legacy-team-forge-remote",
+                    "workdir": "/remote/workdir",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "target_node_id": "node-east",
+                    "source": "team_forge",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create remote-target team_forge agent");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("agents.target_node_id column")),
+            "unexpected error body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_rejects_remote_target_on_legacy_schema() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent_nodes table");
+        let state = build_test_state_with_db_and_internal_peer(
+            db,
+            Some(InternalGrpcPeerClientConfig {
+                shared_secret: "phase1-shared-secret".to_string(),
+                expected_issuer: Some("agenthub".to_string()),
+                expected_audience: Some("agenthub-internal".to_string()),
+                source_node_id: "main".to_string(),
+                cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+                security_mode: InternalGrpcSecurityMode::Tls,
+            }),
+        )
+        .await;
+        state
+            .agents
+            .create_agent_node(crate::agent::AgentNodeConfig {
+                id: "node-east".to_string(),
+                name: "Node East".to_string(),
+                grpc_target: "https://node-east.internal:50051".to_string(),
+                tls_server_name: Some("node-east.internal".to_string()),
+                default_worktree_root: None,
+            })
+            .await
+            .expect("create agent node");
+
+        let err = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "legacy-remote-target".to_string(),
+                workdir: "/remote/workdir".to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: Some("node-east".to_string()),
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: true,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
+            })
+            .await
+            .expect_err("legacy schema should reject remote target");
+        assert!(
+            err.to_string().contains("agents.target_node_id column"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn map_create_agent_error_classifies_validation_messages() {
+        let bad_request = map_create_agent_error(anyhow::anyhow!(
+            "remote-target agents require agents.target_node_id column on a legacy schema"
+        ))
+        .into_response();
+        assert_eq!(bad_request.status(), StatusCode::BAD_REQUEST);
+
+        let internal = map_create_agent_error(anyhow::anyhow!("sqlite busy")).into_response();
+        assert_eq!(internal.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
@@ -2387,6 +2886,7 @@ mod tests {
                 workdir: workdir.to_string_lossy().to_string(),
                 command: "/bin/sh".to_string(),
                 args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: None,
                 worktree_mode: crate::agent::WorktreeMode::UseExisting,
                 worktree_repo: None,
                 worktree_ref: None,
@@ -2405,6 +2905,7 @@ mod tests {
                 workdir: workdir.to_string_lossy().to_string(),
                 command: "/bin/sh".to_string(),
                 args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: None,
                 worktree_mode: crate::agent::WorktreeMode::UseExisting,
                 worktree_repo: None,
                 worktree_ref: None,
@@ -2565,6 +3066,7 @@ mod tests {
                 workdir: workdir.to_string_lossy().to_string(),
                 command: "/bin/sh".to_string(),
                 args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: None,
                 worktree_mode: crate::agent::WorktreeMode::UseExisting,
                 worktree_repo: None,
                 worktree_ref: None,
@@ -2584,6 +3086,7 @@ mod tests {
                     workdir: workdir.to_string_lossy().to_string(),
                     command: "/bin/sh".to_string(),
                     args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                    target_node_id: None,
                     worktree_mode: crate::agent::WorktreeMode::UseExisting,
                     worktree_repo: None,
                     worktree_ref: None,
