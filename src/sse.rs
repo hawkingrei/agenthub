@@ -34,9 +34,9 @@ struct SseAgentsQuery {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/agents", get(sse_agents))
-        .route("/agents/:id", get(sse_agent))
+        .route("/agents/{id}", get(sse_agent))
         .route(
-            "/teams/:team_id/tasks/:task_id/messages",
+            "/teams/{team_id}/tasks/{task_id}/messages",
             get(sse_team_task_messages),
         )
         .with_state(state)

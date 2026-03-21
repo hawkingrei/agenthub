@@ -382,60 +382,60 @@ pub type TeamRuntimeControlResponse = crate::team::TeamRuntimeControlRecord;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
-        .route("/:id", get(get_team).delete(delete_team))
-        .route("/:id/spec", put(update_team_spec))
-        .route("/:id/runtime", get(get_team_runtime))
-        .route("/:id/start", post(start_team))
-        .route("/:id/stop", post(stop_team))
-        .route("/:id/tasks", post(create_team_task).get(list_team_tasks))
+        .route("/{id}", get(get_team).delete(delete_team))
+        .route("/{id}/spec", put(update_team_spec))
+        .route("/{id}/runtime", get(get_team_runtime))
+        .route("/{id}/start", post(start_team))
+        .route("/{id}/stop", post(stop_team))
+        .route("/{id}/tasks", post(create_team_task).get(list_team_tasks))
         .route(
-            "/:id/tasks/:task_id",
+            "/{id}/tasks/{task_id}",
             get(get_team_task).patch(update_team_task),
         )
         .route(
-            "/:id/tasks/:task_id/messages",
+            "/{id}/tasks/{task_id}/messages",
             post(send_team_task_message).get(list_team_task_messages),
         )
         .route(
-            "/:id/tasks/:task_id/compile_run_preview",
+            "/{id}/tasks/{task_id}/compile_run_preview",
             post(compile_team_task_run_preview),
         )
-        .route("/:id/runs", post(create_team_run).get(list_team_runs))
-        .route("/runs/:run_id", get(get_team_run))
-        .route("/runs/:run_id/cancel", post(cancel_team_run))
-        .route("/runs/:run_id/resume", post(resume_team_run))
-        .route("/runs/:run_id/restart", post(restart_team_run))
-        .route("/runs/:run_id/snapshot", get(get_team_run_snapshot))
-        .route("/runs/:run_id/events", get(list_team_run_events))
-        .route("/runs/:run_id/context/flush", post(flush_team_run_context))
+        .route("/{id}/runs", post(create_team_run).get(list_team_runs))
+        .route("/runs/{run_id}", get(get_team_run))
+        .route("/runs/{run_id}/cancel", post(cancel_team_run))
+        .route("/runs/{run_id}/resume", post(resume_team_run))
+        .route("/runs/{run_id}/restart", post(restart_team_run))
+        .route("/runs/{run_id}/snapshot", get(get_team_run_snapshot))
+        .route("/runs/{run_id}/events", get(list_team_run_events))
+        .route("/runs/{run_id}/context/flush", post(flush_team_run_context))
         .route(
-            "/runs/:run_id/steps",
+            "/runs/{run_id}/steps",
             post(submit_team_run_step).get(list_team_run_steps),
         )
         .route(
-            "/runs/:run_id/steps/:step_id/start",
+            "/runs/{run_id}/steps/{step_id}/start",
             post(start_team_run_step),
         )
         .route(
-            "/runs/:run_id/steps/:step_id/complete",
+            "/runs/{run_id}/steps/{step_id}/complete",
             post(complete_team_run_step),
         )
         .route(
-            "/runs/:run_id/steps/:step_id/fail",
+            "/runs/{run_id}/steps/{step_id}/fail",
             post(fail_team_run_step),
         )
         .route(
-            "/runs/:run_id/steps/:step_id/input_required",
+            "/runs/{run_id}/steps/{step_id}/input_required",
             post(set_team_run_step_input_required),
         )
         .route(
-            "/runs/:run_id/steps/:step_id/resume",
+            "/runs/{run_id}/steps/{step_id}/resume",
             post(resume_team_run_step),
         )
-        .route("/runs/:run_id/messages/send", post(send_team_run_message))
-        .route("/runs/:run_id/messages/inbox", get(list_team_run_inbox))
+        .route("/runs/{run_id}/messages/send", post(send_team_run_message))
+        .route("/runs/{run_id}/messages/inbox", get(list_team_run_inbox))
         .route(
-            "/runs/:run_id/messages/:message_id/ack",
+            "/runs/{run_id}/messages/{message_id}/ack",
             post(ack_team_run_message),
         )
         .with_state(state)
