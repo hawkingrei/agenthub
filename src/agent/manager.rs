@@ -22,7 +22,9 @@ use uuid::Uuid;
 use self::codec::acp_provider_for_agent_with_binary;
 #[cfg(test)]
 use self::codec::stream_to_str;
-use self::codec::{status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str};
+use self::codec::{
+    status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str,
+};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
@@ -35,9 +37,9 @@ use crate::acp::{
     normalize_actor_context, spawn_acp_session,
 };
 use crate::auth::AuthService;
-use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::internal::p2p::{MembershipView, ResolvedNodeEndpoint, derive_cluster_id};
+use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
 use agent_client_protocol::Implementation;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -1664,13 +1666,17 @@ impl AgentManager {
             let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
             let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
             let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
+            let target_node_id = normalize_target_node_id(
+                row.try_get::<Option<String>, _>("target_node_id")?
+                    .as_deref(),
+            );
             agents.push(AgentRecord {
                 id: agent_id,
                 name: row.get("name"),
                 workdir: row.get("workdir"),
                 command: row.get("command"),
                 args,
-                target_node_id: row.try_get("target_node_id").ok(),
+                target_node_id,
                 worktree_mode,
                 worktree_repo: row.try_get("worktree_repo").ok(),
                 worktree_ref: row.try_get("worktree_ref").ok(),
@@ -1868,13 +1874,17 @@ impl AgentManager {
         let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
         let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
         let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
+        let target_node_id = normalize_target_node_id(
+            row.try_get::<Option<String>, _>("target_node_id")?
+                .as_deref(),
+        );
         Ok(AgentRecord {
             id: row.get("id"),
             name: row.get("name"),
             workdir: row.get("workdir"),
             command: row.get("command"),
             args,
-            target_node_id: row.try_get("target_node_id").ok(),
+            target_node_id,
             worktree_mode,
             worktree_repo: row.try_get("worktree_repo").ok(),
             worktree_ref: row.try_get("worktree_ref").ok(),

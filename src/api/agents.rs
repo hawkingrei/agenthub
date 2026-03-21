@@ -1815,6 +1815,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_agent_treats_main_target_node_as_local() {
+        let db = create_test_db().await;
+        init_test_schema(&db).await;
+        add_agent_node_support(&db).await;
+        let state = build_test_state_with_db(db).await;
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/main-target-normalizes-local")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let agent = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "main-target-normalizes-local".to_string(),
+                workdir: "/tmp/main-target-normalizes-local".to_string(),
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: Some("main".to_string()),
+                worktree_mode: crate::agent::WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: true,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
+            })
+            .await
+            .expect("main target should normalize to local agent");
+
+        assert!(
+            agent.target_node_id.is_none(),
+            "main should be stored as local target"
+        );
+        let reloaded = state
+            .agents
+            .get_agent(&agent.id)
+            .await
+            .expect("reload created agent");
+        assert!(
+            reloaded.target_node_id.is_none(),
+            "reloaded agent should remain local"
+        );
+    }
+
+    #[tokio::test]
     async fn create_agent_route_uses_remote_node_default_worktree_root_when_blank() {
         let db = create_test_db().await;
         init_test_schema(&db).await;

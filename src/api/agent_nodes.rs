@@ -373,4 +373,29 @@ mod tests {
         let body = decode_json_body(response).await;
         assert_eq!(body["error"], json!("agent node not found"));
     }
+
+    #[tokio::test]
+    async fn delete_main_agent_node_returns_bad_request() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/main",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("run delete main agent node request");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("reserved")),
+            "unexpected error body: {body}"
+        );
+    }
 }
