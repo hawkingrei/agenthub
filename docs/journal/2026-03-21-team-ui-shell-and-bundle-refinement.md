@@ -36,8 +36,13 @@
 - kept Team ACP refresh visible even before a member session exists so operators can poll for newly-started sessions
 - restored input dock send-button tap targets to the sizes enforced by the web asset and Playwright layout checks while keeping the surrounding shell visually thin
 - updated Team E2E helpers to follow the slimmer ACP shell and renamed `More` workspace actions entry
+- added a shared `preloadThreadMarkdownAssets()` test hook so static ACP render tests can warm the lazy markdown renderer without pulling `vendor-markdown` back into the entry bundle
+- rendered lazy fold bodies during server-side/static test markup so ACP SSR snapshots can still assert nested payload structure while browser behavior stays collapsed-by-default
+- updated ACP and app helper tests to match the new agents sidebar width policy and the slimmer tail-window defaults for long payload previews
 
 ## Validation
 
 - `make build-web`
+- `cd web && npx vitest run src/app.permission_scope.test.ts src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
+- `cd web && npm run lint -- src/components/thread_rich_text.tsx src/components/acp_conversation.tsx src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/app.permission_scope.test.ts`
 - inspected `web/dist/index.html` to confirm the initial preload set no longer includes `route-auth`, `route-teams`, or `vendor-markdown`

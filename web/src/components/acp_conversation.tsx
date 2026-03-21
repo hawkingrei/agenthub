@@ -973,7 +973,7 @@ function FoldSection({
     }
   }, [parentOpen]);
 
-  const shouldRenderBody = !lazyRender || open;
+  const shouldRenderBody = !lazyRender || open || typeof window === "undefined";
   return (
     <details
       className="acp-subfold"

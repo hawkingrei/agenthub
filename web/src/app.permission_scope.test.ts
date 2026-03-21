@@ -121,26 +121,26 @@ describe("filterPermissionsForAgent", () => {
 
 describe("app helper decisions", () => {
   it("clamps persisted agents panel widths within the supported desktop bounds", () => {
-    expect(clampAgentsPanelWidth(Number.NaN)).toBe(360);
-    expect(clampAgentsPanelWidth(160)).toBe(320);
-    expect(clampAgentsPanelWidth(512)).toBe(512);
-    expect(clampAgentsPanelWidth(800)).toBe(640);
-    expect(clampAgentsPanelWidth(620, 540)).toBe(540);
+    expect(clampAgentsPanelWidth(Number.NaN)).toBe(288);
+    expect(clampAgentsPanelWidth(160)).toBe(256);
+    expect(clampAgentsPanelWidth(320)).toBe(320);
+    expect(clampAgentsPanelWidth(800)).toBe(352);
+    expect(clampAgentsPanelWidth(620, 300)).toBe(300);
   });
 
   it("derives the maximum agents panel width from workspace width", () => {
-    expect(resolveAgentsPanelMaxWidth(Number.NaN)).toBe(640);
-    expect(resolveAgentsPanelMaxWidth(1200)).toBe(640);
-    expect(resolveAgentsPanelMaxWidth(980)).toBe(448);
-    expect(resolveAgentsPanelMaxWidth(720)).toBe(320);
+    expect(resolveAgentsPanelMaxWidth(Number.NaN)).toBe(352);
+    expect(resolveAgentsPanelMaxWidth(1200)).toBe(352);
+    expect(resolveAgentsPanelMaxWidth(980)).toBe(256);
+    expect(resolveAgentsPanelMaxWidth(720)).toBe(256);
   });
 
   it("loads the saved agents panel width preference with clamp + fallback behavior", () => {
-    expect(loadAgentsPanelWidthPreference("512")).toBe(512);
-    expect(loadAgentsPanelWidthPreference("120")).toBe(320);
-    expect(loadAgentsPanelWidthPreference("999")).toBe(640);
-    expect(loadAgentsPanelWidthPreference("bad")).toBe(360);
-    expect(loadAgentsPanelWidthPreference(null)).toBe(360);
+    expect(loadAgentsPanelWidthPreference("320")).toBe(320);
+    expect(loadAgentsPanelWidthPreference("120")).toBe(256);
+    expect(loadAgentsPanelWidthPreference("999")).toBe(352);
+    expect(loadAgentsPanelWidthPreference("bad")).toBe(288);
+    expect(loadAgentsPanelWidthPreference(null)).toBe(288);
   });
 
   it("parses permission poll agent ids from stable key", () => {

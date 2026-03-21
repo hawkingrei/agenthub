@@ -127,6 +127,14 @@ describe("AcpConversation fold interactions", () => {
       );
     });
 
+    const contentFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+      const firstSpan = node.querySelector("summary span");
+      return firstSpan?.textContent?.trim() === "Content";
+    }) as HTMLDetailsElement | undefined;
+    expect(contentFold).not.toBeUndefined();
+    if (!contentFold) return;
+    setDetailsOpen(contentFold, true);
+
     const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
     expect(beforePre).not.toBeNull();
     const preTextBeforeExpand = beforePre?.textContent ?? "";
@@ -146,8 +154,9 @@ describe("AcpConversation fold interactions", () => {
     const afterPre = container.querySelector("pre.acp-content.acp-payload-text");
     expect(afterPre).not.toBeNull();
     const preTextAfterExpand = afterPre?.textContent ?? "";
-    expect(preTextAfterExpand).toContain("line-0");
+    expect(preTextAfterExpand).toContain("line-104");
     expect(preTextAfterExpand).toContain("line-259");
+    expect(preTextAfterExpand).not.toContain("line-0");
   });
 
   it("keeps Detailed collapsed by default after output fold disappears on rerender", () => {

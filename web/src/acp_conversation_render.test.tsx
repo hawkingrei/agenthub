@@ -1,7 +1,8 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
+import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
 import { ConversationItem } from "./conversation";
 
 function renderConversation(
@@ -30,6 +31,10 @@ function renderConversation(
 }
 
 describe("AcpConversation rendering", () => {
+  beforeAll(async () => {
+    await preloadThreadMarkdownAssets();
+  });
+
   it("renders live tool calls expanded and terminal output through ansi renderer", () => {
     const html = renderConversation([
       {
@@ -361,9 +366,9 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Show more");
     expect(html).toContain("more lines");
-    expect(html).toContain('<pre class="acp-content acp-payload-text">line-280');
+    expect(html).toContain('<pre class="acp-content acp-payload-text">line-364');
     expect(html).toContain("line-399");
-    expect(html).not.toContain('<pre class="acp-content acp-payload-text">line-0');
+    expect(html).not.toContain('<pre class="acp-content acp-payload-text">line-363');
   });
 
   it("renders aggregated_output in tail-first mode and keeps older lines behind Show more", () => {
@@ -382,9 +387,9 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("<dt>aggregated_output</dt>");
     expect(html).toContain("Show more");
-    expect(html).toContain('<pre class="acp-content acp-payload-text">agg-280');
+    expect(html).toContain('<pre class="acp-content acp-payload-text">agg-364');
     expect(html).toContain("agg-399");
-    expect(html).not.toContain('<pre class="acp-content acp-payload-text">agg-0');
+    expect(html).not.toContain('<pre class="acp-content acp-payload-text">agg-363');
   });
 
   it("renders aggregated_output as plain terminal block even when text looks like markdown", () => {
@@ -757,7 +762,7 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("process_id");
     expect(html).not.toContain("source");
     expect(html).not.toContain("t-3");
-    expect(html).not.toContain("p-2");
+    expect(html).not.toMatch(/>p-2</);
   });
 
   it("renders thinking inside collapsed folds while preserving the first-line title", () => {

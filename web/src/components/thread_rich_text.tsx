@@ -114,6 +114,10 @@ export function ThreadRichText({
   );
 }
 
+export async function preloadThreadMarkdownAssets(): Promise<void> {
+  await ensureThreadMarkdownAssets();
+}
+
 async function ensureThreadMarkdownAssets(): Promise<void> {
   if (markdownRenderer) {
     return;
