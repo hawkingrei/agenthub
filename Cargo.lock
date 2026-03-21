@@ -142,6 +142,7 @@ dependencies = [
  "rcgen 0.13.2",
  "reqwest",
  "rust-embed",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",

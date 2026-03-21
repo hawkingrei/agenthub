@@ -21,3 +21,11 @@ pub async fn require_user(headers: &HeaderMap, state: &AppState) -> Result<UserR
         .map_err(|_| ApiError::unauthorized("invalid token"))?;
     Ok(user)
 }
+
+pub async fn require_root(headers: &HeaderMap, state: &AppState) -> Result<UserRecord, ApiError> {
+    let user = require_user(headers, state).await?;
+    if user.role != "root" {
+        return Err(ApiError::unauthorized("root required"));
+    }
+    Ok(user)
+}

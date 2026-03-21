@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
-use crate::agent::{AgentManager, AgentRecord, WorktreeMode};
+use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
 
@@ -46,6 +46,7 @@ struct TeamRuntimeMemberSpec {
 struct TeamRuntimeMemberRuntimeHint {
     #[allow(dead_code)]
     name: Option<String>,
+    target_node_id: Option<String>,
     workdir: Option<String>,
     worktree_repo: Option<String>,
     worktree_ref: Option<String>,
@@ -356,6 +357,22 @@ async fn reconcile_team_member_runtime(
                 member.member_id
             ))
         })?;
+    if let Some(runtime) = member.runtime.as_ref()
+        && runtime_target_node_hint_is_present(runtime.target_node_id.as_deref())
+    {
+        let expected_target_node_id = normalize_target_node_id(runtime.target_node_id.as_deref());
+        let actual_target_node_id = normalize_target_node_id(agent.target_node_id.as_deref());
+        if actual_target_node_id != expected_target_node_id {
+            return Err(TeamRuntimeStartError::InvalidConfig(format!(
+                "team member '{}' expects target_node_id '{}' but agent '{}' is bound to '{}'",
+                member.member_id,
+                expected_target_node_id.as_deref().unwrap_or("main"),
+                agent.id,
+                actual_target_node_id.as_deref().unwrap_or("main")
+            ))
+            .into());
+        }
+    }
     if member.role != "worker" || worker_runtime_is_valid(&agent) {
         return Ok(());
     }
@@ -379,6 +396,10 @@ async fn reconcile_team_member_runtime(
         .await
         .with_context(|| format!("repair worker runtime config for '{}'", member.member_id))?;
     Ok(())
+}
+
+fn runtime_target_node_hint_is_present(raw: Option<&str>) -> bool {
+    trimmed_opt(raw).is_some()
 }
 
 pub async fn ensure_team_runtime_started(
@@ -489,7 +510,7 @@ pub async fn stop_team_runtime(
 mod tests {
     use super::{
         TeamRuntimeStartError, WorkerRuntimeRepairConfig,
-        adjust_worker_runtime_workdir_for_safe_paths,
+        adjust_worker_runtime_workdir_for_safe_paths, runtime_target_node_hint_is_present,
     };
     use crate::path_utils::expand_tilde;
 
@@ -520,5 +541,13 @@ mod tests {
             .downcast_ref::<TeamRuntimeStartError>()
             .expect("typed runtime error");
         assert!(matches!(typed, TeamRuntimeStartError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn runtime_target_node_hint_presence_distinguishes_empty_and_main() {
+        assert!(!runtime_target_node_hint_is_present(None));
+        assert!(!runtime_target_node_hint_is_present(Some("  ")));
+        assert!(runtime_target_node_hint_is_present(Some("main")));
+        assert!(runtime_target_node_hint_is_present(Some("node-east")));
     }
 }

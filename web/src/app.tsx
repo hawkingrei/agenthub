@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   api,
   AgentRecord,
+  AgentNodeRecord,
   AgentEvent,
   AuditRecord,
   AcpPermissionRecord,
@@ -63,6 +64,7 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "./agent_presets";
+import { AgentNodeSection, validateAgentNodeDraft } from "./components/agent_node_section";
 import { AgentsPanel } from "./components/agents_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
 import { InputDock } from "./components/input_dock";
@@ -100,9 +102,11 @@ import {
 import { AuthState } from "./types";
 import {
   normalizeRuntimeWorktreeRoot,
+  resolveDefaultWorktreeRootForTargetNode,
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
   resolveWorkdirForModalOpen,
+  resolveWorkdirForTargetNodeChange,
 } from "./worktree_defaults";
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 import {
@@ -162,6 +166,47 @@ export function shouldRedirectTeamsToLogin(
   token: string | null
 ): boolean {
   return isTeamsRoute(pathname) && (!auth || !token);
+}
+
+export function canManageAgentNodes(auth: AuthState | null): boolean {
+  return auth?.role === "root";
+}
+
+function compareAgentNodeRecords(a: AgentNodeRecord, b: AgentNodeRecord): number {
+  if (a.is_main !== b.is_main) {
+    return a.is_main ? -1 : 1;
+  }
+  if (a.created_at !== b.created_at) {
+    return b.created_at - a.created_at;
+  }
+  return a.id.localeCompare(b.id);
+}
+
+export function upsertAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  node: AgentNodeRecord
+): AgentNodeRecord[] {
+  const existingIndex = nodes.findIndex((item) => item.id === node.id);
+  if (existingIndex >= 0) {
+    const next = [...nodes];
+    next[existingIndex] = node;
+    return next;
+  }
+  return [...nodes, node].sort(compareAgentNodeRecords);
+}
+
+export function replaceAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  node: AgentNodeRecord
+): AgentNodeRecord[] {
+  return nodes.map((item) => (item.id === node.id ? node : item));
+}
+
+export function removeAgentNodeRecord(
+  nodes: AgentNodeRecord[],
+  nodeId: string
+): AgentNodeRecord[] {
+  return nodes.filter((item) => item.id !== nodeId);
 }
 
 function isTeamsRoute(pathname: string): boolean {
@@ -720,6 +765,7 @@ export function App() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
   const [safePaths, setSafePaths] = useState<SafePath[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [audits, setAudits] = useState<AuditRecord[]>([]);
@@ -777,6 +823,19 @@ export function App() {
   const loadSeq = useRef(0);
   const isComposingRef = useRef(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
+  const [targetNodeId, setTargetNodeId] = useState("main");
+  const [nodeIdInput, setNodeIdInput] = useState("");
+  const [nodeNameInput, setNodeNameInput] = useState("");
+  const [nodeGrpcTargetInput, setNodeGrpcTargetInput] = useState("");
+  const [nodeTlsServerNameInput, setNodeTlsServerNameInput] = useState("");
+  const [nodeDefaultWorktreeRootInput, setNodeDefaultWorktreeRootInput] = useState("");
+  const [createAgentNodeBusy, setCreateAgentNodeBusy] = useState(false);
+  const [updatingAgentNodeIds, setUpdatingAgentNodeIds] = useState<
+    Record<string, boolean>
+  >({});
+  const [deletingAgentNodeIds, setDeletingAgentNodeIds] = useState<
+    Record<string, boolean>
+  >({});
   const [acpPermissions, setAcpPermissions] = useState<AcpPermissionRecord[]>(
     []
   );
@@ -1096,6 +1155,20 @@ export function App() {
     () => agents.find((agent) => agent.id === activeAgent) ?? null,
     [agents, activeAgent]
   );
+  const selectedTargetNodeDefaultWorktreeRoot = useMemo(
+    () =>
+      resolveDefaultWorktreeRootForTargetNode(
+        targetNodeId,
+        agentNodes,
+        defaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      ),
+    [agentNodes, defaultWorktreeRoot, targetNodeId]
+  );
+  const selectedTargetNodeDefaultWorktreeRootRef = useRef(
+    selectedTargetNodeDefaultWorktreeRoot
+  );
+  const agentNodesRef = useRef(agentNodes);
   const activeAgentModelLabel = useMemo(() => {
     if (!activeAgentRecord) return null;
     return formatAgentModelLabel(
@@ -1176,6 +1249,13 @@ export function App() {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
   useEffect(() => {
+    selectedTargetNodeDefaultWorktreeRootRef.current =
+      selectedTargetNodeDefaultWorktreeRoot;
+  }, [selectedTargetNodeDefaultWorktreeRoot]);
+  useEffect(() => {
+    agentNodesRef.current = agentNodes;
+  }, [agentNodes]);
+  useEffect(() => {
     activeAgentStatusRef.current = activeAgentStatus;
   }, [activeAgentStatus]);
   useEffect(() => {
@@ -1217,10 +1297,39 @@ export function App() {
     [token]
   );
 
+  const refreshAgentNodes = useCallback(
+    async (opts?: { silent?: boolean }): Promise<AgentNodeRecord[] | null> => {
+      if (!token || !canManageAgentNodes(auth)) {
+        setAgentNodes([]);
+        return null;
+      }
+      const silent = opts?.silent === true;
+      try {
+        const items = await api.listAgentNodes(token);
+        setAgentNodes(items);
+        return items;
+      } catch (err) {
+        if (!silent) {
+          setError(parseApiErrorMessage(err) ?? String(err));
+        }
+        return null;
+      }
+    },
+    [auth, token]
+  );
+
   useEffect(() => {
     if (!token) return;
     void refreshAgents();
   }, [token, refreshAgents]);
+
+  useEffect(() => {
+    if (!token || !canManageAgentNodes(auth)) {
+      setAgentNodes([]);
+      return;
+    }
+    void refreshAgentNodes();
+  }, [auth, token, refreshAgentNodes]);
 
   useEffect(() => {
     if (!token) return;
@@ -1570,25 +1679,40 @@ export function App() {
         resolveWorkdirForModeChange(
           prev,
           nextMode,
-          defaultWorktreeRoot,
+          selectedTargetNodeDefaultWorktreeRoot,
           DEFAULT_WORKTREE_ROOT
         )
       );
     },
-    [defaultWorktreeRoot]
+    [selectedTargetNodeDefaultWorktreeRoot]
   );
 
   const openCreateAgentModal = useCallback(() => {
+    const mainDefaultRoot = resolveDefaultWorktreeRootForTargetNode(
+      "main",
+      agentNodes,
+      defaultWorktreeRoot,
+      DEFAULT_WORKTREE_ROOT
+    );
     setAgentWorkdir((prev) =>
-      resolveWorkdirForModalOpen(
-        prev,
+      resolveWorkdirForTargetNodeChange(
+        resolveWorkdirForModalOpen(
+          prev,
+          worktreeMode,
+          mainDefaultRoot,
+          DEFAULT_WORKTREE_ROOT
+        ),
         worktreeMode,
-        defaultWorktreeRoot,
+        selectedTargetNodeDefaultWorktreeRootRef.current,
+        mainDefaultRoot,
         DEFAULT_WORKTREE_ROOT
       )
     );
+    selectedTargetNodeDefaultWorktreeRootRef.current = mainDefaultRoot;
+    setTargetNodeId("main");
     setShowCreateAgent(true);
-  }, [defaultWorktreeRoot, worktreeMode]);
+    void refreshAgentNodes({ silent: true });
+  }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
 
   useEffect(() => {
     if (!token || auth?.role !== "root") return;
@@ -2081,6 +2205,7 @@ export function App() {
     removeLocalStorageItemSafe("agenthub_auth");
     setAuth(null);
     setAgents([]);
+    setAgentNodes([]);
     setActiveAgent(null);
     setOutputs([]);
     setAcpOutputs([]);
@@ -2092,7 +2217,155 @@ export function App() {
     setWorktreeError(null);
     setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
     setAgentWorkdir("");
+    setTargetNodeId("main");
+    setNodeIdInput("");
+    setNodeNameInput("");
+    setNodeGrpcTargetInput("");
+    setNodeTlsServerNameInput("");
+    setNodeDefaultWorktreeRootInput("");
+    setCreateAgentNodeBusy(false);
+    setUpdatingAgentNodeIds({});
+    setDeletingAgentNodeIds({});
   };
+
+  const applyTargetNodeSelection = useCallback(
+    (nextTargetNodeId: string, nextNodes: AgentNodeRecord[] = agentNodes) => {
+      const resolvedTargetNodeId = nextTargetNodeId.trim() || "main";
+      const nextDefaultRoot = resolveDefaultWorktreeRootForTargetNode(
+        resolvedTargetNodeId,
+        nextNodes,
+        defaultWorktreeRoot,
+        DEFAULT_WORKTREE_ROOT
+      );
+      setAgentWorkdir((prev) =>
+        resolveWorkdirForTargetNodeChange(
+          prev,
+          worktreeMode,
+          selectedTargetNodeDefaultWorktreeRootRef.current,
+          nextDefaultRoot,
+          DEFAULT_WORKTREE_ROOT
+        )
+      );
+      selectedTargetNodeDefaultWorktreeRootRef.current = nextDefaultRoot;
+      setTargetNodeId(resolvedTargetNodeId);
+    },
+    [agentNodes, defaultWorktreeRoot, worktreeMode]
+  );
+
+  useEffect(() => {
+    if (targetNodeId === "main") {
+      return;
+    }
+    if (agentNodes.some((node) => node.id === targetNodeId)) {
+      return;
+    }
+    applyTargetNodeSelection("main");
+  }, [agentNodes, applyTargetNodeSelection, targetNodeId]);
+
+  const onCreateAgentNode = useCallback(async () => {
+    if (!token || createAgentNodeBusy) return;
+    const draftError = validateAgentNodeDraft({
+      nodeId: nodeIdInput,
+      nodeName: nodeNameInput,
+      grpcTarget: nodeGrpcTargetInput,
+    });
+    if (draftError) {
+      setError(draftError);
+      return;
+    }
+    setError(null);
+    setCreateAgentNodeBusy(true);
+    try {
+      const node = await api.createAgentNode(token, {
+        id: nodeIdInput.trim(),
+        name: nodeNameInput.trim(),
+        grpc_target: nodeGrpcTargetInput.trim(),
+        tls_server_name: nodeTlsServerNameInput.trim() || null,
+        default_worktree_root: nodeDefaultWorktreeRootInput.trim() || null,
+      });
+      const nextNodes = upsertAgentNodeRecord(agentNodesRef.current, node);
+      setAgentNodes(nextNodes);
+      applyTargetNodeSelection(node.id, nextNodes);
+      setNodeIdInput("");
+      setNodeNameInput("");
+      setNodeGrpcTargetInput("");
+      setNodeTlsServerNameInput("");
+      setNodeDefaultWorktreeRootInput("");
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    } finally {
+      setCreateAgentNodeBusy(false);
+    }
+  }, [
+    applyTargetNodeSelection,
+    createAgentNodeBusy,
+    nodeGrpcTargetInput,
+    nodeDefaultWorktreeRootInput,
+    nodeIdInput,
+    nodeNameInput,
+    nodeTlsServerNameInput,
+    token,
+  ]);
+
+  const onUpdateAgentNode = useCallback(
+    async (
+      nodeId: string,
+      payload: {
+        name: string;
+        grpc_target: string;
+        tls_server_name?: string | null;
+        default_worktree_root?: string | null;
+      }
+    ) => {
+      if (!token || nodeId === "main") return;
+      setError(null);
+      setUpdatingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
+      try {
+        const node = await api.updateAgentNode(token, nodeId, payload);
+        const nextNodes = replaceAgentNodeRecord(agentNodesRef.current, node);
+        setAgentNodes(nextNodes);
+        if (targetNodeId === nodeId) {
+          applyTargetNodeSelection(nodeId, nextNodes);
+        }
+      } catch (err) {
+        setError(parseApiErrorMessage(err) ?? String(err));
+      } finally {
+        setUpdatingAgentNodeIds((prev) => {
+          if (!prev[nodeId]) return prev;
+          const next = { ...prev };
+          delete next[nodeId];
+          return next;
+        });
+      }
+    },
+    [applyTargetNodeSelection, targetNodeId, token]
+  );
+
+  const onDeleteAgentNode = useCallback(
+    async (nodeId: string) => {
+      if (!token || nodeId === "main") return;
+      setError(null);
+      setDeletingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
+      try {
+        await api.deleteAgentNode(token, nodeId);
+        const nextNodes = removeAgentNodeRecord(agentNodesRef.current, nodeId);
+        setAgentNodes(nextNodes);
+        if (targetNodeId === nodeId) {
+          applyTargetNodeSelection("main", nextNodes);
+        }
+      } catch (err) {
+        setError(parseApiErrorMessage(err) ?? String(err));
+      } finally {
+        setDeletingAgentNodeIds((prev) => {
+          if (!prev[nodeId]) return prev;
+          const next = { ...prev };
+          delete next[nodeId];
+          return next;
+        });
+      }
+    },
+    [applyTargetNodeSelection, targetNodeId, token]
+  );
 
   const onCreateAgent = async () => {
     if (!token) return;
@@ -2102,9 +2375,15 @@ export function App() {
     setError(null);
     setWorktreeError(null);
     try {
+      const normalizedTargetNodeId =
+        targetNodeId.trim() && targetNodeId.trim() !== "main"
+          ? targetNodeId.trim()
+          : null;
       const name = agentName.trim() || "agent";
       const workdir = normalizeWorkdirInput(agentWorkdir);
-      const normalizedRoot = normalizeWorkdirInput(defaultWorktreeRoot);
+      const normalizedRoot = normalizeWorkdirInput(
+        selectedTargetNodeDefaultWorktreeRoot
+      );
       const workdirPayload =
         worktreeMode === "create_worktree" &&
         normalizedRoot &&
@@ -2127,17 +2406,18 @@ export function App() {
         workdir: workdirPayload,
         command,
         args,
+        target_node_id: normalizedTargetNodeId,
         worktree_mode: worktreeMode,
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
         code_mode: codeMode,
       });
       setAgents((prev) => [agent, ...prev]);
+      setActiveAgent(agent.id);
       try {
         const res = await api.startAgent(token, agent.id);
         setActiveSessionId(res.session_id);
         setAgentSessions((prev) => ({ ...prev, [agent.id]: res.session_id }));
-        setActiveAgent(agent.id);
         await refreshAgents();
       } catch (err) {
         const msg = parseApiErrorMessage(err) ?? String(err);
@@ -2150,6 +2430,7 @@ export function App() {
       setWorktreeRepo("");
       setWorktreeRef("");
       setCodeMode(true);
+      applyTargetNodeSelection("main");
       setShowCreateAgent(false);
     } catch (err) {
       const hint = formatWorktreeError(err);
@@ -3114,10 +3395,34 @@ export function App() {
           setCodeMode={setCodeMode}
           worktreeError={worktreeError}
           createBusy={createAgentBusy}
-          workdirPlaceholder={defaultWorktreeRoot}
+          workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
           onCreateAgent={onCreateAgent}
           onClose={() => setShowCreateAgent(false)}
-        />
+        >
+          {canManageAgentNodes(auth) && (
+            <AgentNodeSection
+              nodes={agentNodes}
+              targetNodeId={targetNodeId}
+              onTargetNodeIdChange={applyTargetNodeSelection}
+              nodeIdInput={nodeIdInput}
+              onNodeIdInputChange={setNodeIdInput}
+              nodeNameInput={nodeNameInput}
+              onNodeNameInputChange={setNodeNameInput}
+              grpcTargetInput={nodeGrpcTargetInput}
+              onGrpcTargetInputChange={setNodeGrpcTargetInput}
+              tlsServerNameInput={nodeTlsServerNameInput}
+              onTlsServerNameInputChange={setNodeTlsServerNameInput}
+              defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
+              onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
+              createBusy={createAgentNodeBusy}
+              updatingNodeIds={updatingAgentNodeIds}
+              deletingNodeIds={deletingAgentNodeIds}
+              onCreateNode={onCreateAgentNode}
+              onUpdateNode={onUpdateAgentNode}
+              onDeleteNode={onDeleteAgentNode}
+            />
+          )}
+        </CreateAgentModal>
       )}
 
       {auth && activeAgent && scopedAcpPermissions.length > 0 && (

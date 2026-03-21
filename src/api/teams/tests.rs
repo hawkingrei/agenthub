@@ -909,6 +909,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
                 "-c".to_string(),
                 "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
             ],
+            target_node_id: None,
             worktree_mode: WorktreeMode::UseExisting,
             worktree_repo: None,
             worktree_ref: None,

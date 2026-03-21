@@ -138,6 +138,8 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               <div className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
+                  const isRemoteTarget = Boolean(agent.target_node_id);
+                  const isActive = isAgentActiveStatus(agent.status);
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
@@ -145,6 +147,20 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                     agent.command,
                     agent.args
                   );
+                  const startButtonTitle = isStarting
+                    ? "Starting..."
+                    : isActive
+                      ? "Already running"
+                      : isRemoteTarget
+                        ? `Start on node ${agent.target_node_id}`
+                        : "Start";
+                  const startButtonAriaLabel = isStarting
+                    ? "Starting"
+                    : isActive
+                      ? "Already running"
+                      : isRemoteTarget
+                        ? `Start agent on node ${agent.target_node_id}`
+                        : "Start";
                   return (
                     <div
                       key={agent.id}
@@ -164,7 +180,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           onSelectAgent(agent.id);
                         }
                       }}
-                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}`}
+                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
                       <div className="agents-workbench-row-head">
                         <div className="agents-workbench-row-title">
@@ -180,6 +196,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           {modelLabel ? (
                             <span className="agents-workbench-tag hidden sm:inline-flex">
                               {modelLabel}
+                            </span>
+                          ) : null}
+                          {isRemoteTarget ? (
+                            <span className="agents-workbench-tag hidden sm:inline-flex">
+                              node:{agent.target_node_id}
                             </span>
                           ) : null}
                         </div>
@@ -216,21 +237,15 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           />
                           <button
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
-                            disabled={isAgentActiveStatus(agent.status) || isStarting}
+                            disabled={isActive || isStarting}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isAgentActiveStatus(agent.status) && !isStarting) {
+                              if (!isActive && !isStarting) {
                                 onStartAgent(agent.id);
                               }
                             }}
-                            title={
-                              isAgentActiveStatus(agent.status)
-                                ? "Already running"
-                                : isStarting
-                                  ? "Starting..."
-                                  : "Start"
-                            }
-                            aria-label={isStarting ? "Starting" : "Start"}
+                            title={startButtonTitle}
+                            aria-label={startButtonAriaLabel}
                           >
                             <i
                               className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}

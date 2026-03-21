@@ -9,6 +9,9 @@ function buildAgent(overrides: Partial<AgentRecord>): AgentRecord {
     workdir: "/tmp",
     command: "codex",
     args: [],
+    target_node_id: null,
+    worktree_repo: null,
+    worktree_ref: null,
     worktree_mode: "use_existing",
     code_mode: true,
     status: "running",
@@ -25,6 +28,7 @@ describe("sse target agent ids", () => {
       buildAgent({ id: "agent-b", status: "idle" }),
       buildAgent({ id: "agent-a", status: "running" }),
       buildAgent({ id: "agent-c", status: "failed" }),
+      buildAgent({ id: "agent-remote", status: "running", target_node_id: "node-east" }),
     ]);
     expect(ids).toEqual(["agent-a", "agent-b"]);
   });

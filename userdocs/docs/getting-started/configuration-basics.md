@@ -33,6 +33,29 @@ default_root = "/home/you/.agenthub/worktrees"
 If these are missing or incorrect, users will usually see login/start/path
 errors.
 
+## Optional Distributed Node Settings
+
+If you plan to use remote Agent Nodes, add an internal gRPC block as well:
+
+```toml
+[internal_grpc]
+enabled = true
+listen = "127.0.0.1:50051"
+
+[internal_grpc.security]
+mode = "tls"
+cert_dir = "~/.agenthub/internal-grpc"
+
+[internal_grpc.auth]
+issuer = "agenthub"
+audience = "agenthub-internal"
+# optional: persisted to auth_secret.txt when omitted
+shared_secret = "replace-me"
+```
+
+This is optional for single-node deployments. It becomes required when you want
+the main control plane to register and control remote-target agents.
+
 ## Safe Paths Guidance
 
 - Keep `safe_paths` as short as possible
