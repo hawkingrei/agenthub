@@ -31,11 +31,18 @@ pub(super) async fn repo_find_worktree_entry(
         }
         anyhow::bail!("git worktree list failed: {reason}");
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let workdir = workdir.to_string();
+    tokio::task::spawn_blocking(move || Ok(find_matching_worktree_entry(&stdout, &workdir)))
+        .await
+        .map_err(|err| anyhow::anyhow!("git worktree path normalization task failed: {err}"))?
+}
+
+fn find_matching_worktree_entry(stdout: &str, workdir: &str) -> Option<GitWorktreeEntry> {
     let target = normalize_worktree_path(workdir);
-    Ok(parse_worktree_list(&stdout)
+    parse_worktree_list(stdout)
         .into_iter()
-        .find(|entry| normalize_worktree_path(&entry.path) == target))
+        .find(|entry| normalize_worktree_path(&entry.path) == target)
 }
 
 pub(super) fn parse_worktree_list(stdout: &str) -> Vec<GitWorktreeEntry> {

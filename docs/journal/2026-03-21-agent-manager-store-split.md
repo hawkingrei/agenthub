@@ -30,6 +30,8 @@ which made the orchestration flow hard to read and increased the cost of future 
   and running-session reconciliation.
 - Moved process/output lifecycle into `src/agent/manager/process.rs`, including:
   output stream persistence/classification, exit watching, and finalized process-exit bookkeeping.
+- Moved blocking worktree path normalization out of the async start path by evaluating it inside
+  `spawn_blocking` when matching existing worktree entries.
 
 ## Result
 
