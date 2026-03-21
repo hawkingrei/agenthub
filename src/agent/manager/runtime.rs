@@ -937,11 +937,30 @@ impl AgentManager {
         if let Ok(agent) = self.get_agent(agent_id).await
             && let Some(target_node_id) = agent.target_node_id.as_deref()
         {
-            let client = self
+            match self
                 .remote_control_client_for_target_node(target_node_id)
-                .await?;
-            let _ = client.stop_managed_agent(agent_id).await;
-            client.delete_managed_agent(agent_id).await?;
+                .await
+            {
+                Ok(client) => {
+                    let _ = client.stop_managed_agent(agent_id).await;
+                    if let Err(err) = client.delete_managed_agent(agent_id).await {
+                        tracing::warn!(
+                            error = %err,
+                            %agent_id,
+                            %target_node_id,
+                            "remote delete_managed_agent failed during delete_agent; proceeding with local cleanup",
+                        );
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        %agent_id,
+                        %target_node_id,
+                        "failed to create remote control client during delete_agent; proceeding with local cleanup",
+                    );
+                }
+            }
         }
         let mut guard = self.inner.write().await;
         guard.remove(agent_id);
@@ -1527,6 +1546,46 @@ branch refs/heads/agent-a
             !event_db_path.exists(),
             "agent event db should be deleted for removed agent"
         );
+    }
+
+    #[tokio::test]
+    async fn delete_agent_keeps_local_cleanup_when_remote_client_is_unavailable() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, _) = insert_agent_and_session(&state.db, "delete-agent-remote").await;
+
+        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+            .execute(&state.db)
+            .await
+            .expect("add target_node_id column");
+        sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
+            .bind("node-east")
+            .bind(&agent_id)
+            .execute(&state.db)
+            .await
+            .expect("mark agent as remote-target");
+
+        state
+            .agents
+            .delete_agent(&agent_id)
+            .await
+            .expect("delete agent should still clean up local rows");
+
+        let remaining_agents: i64 = sqlx::query("SELECT COUNT(*) AS cnt FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count remaining agents")
+            .get("cnt");
+        let remaining_sessions: i64 =
+            sqlx::query("SELECT COUNT(*) AS cnt FROM agent_sessions WHERE agent_id = ?1")
+                .bind(&agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("count remaining sessions")
+                .get("cnt");
+
+        assert_eq!(remaining_agents, 0);
+        assert_eq!(remaining_sessions, 0);
     }
 
     #[tokio::test]
