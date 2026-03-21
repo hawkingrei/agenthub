@@ -77,6 +77,15 @@ const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
 
+fn decode_target_node_id(row: &SqliteRow) -> Option<String> {
+    normalize_target_node_id(
+        row.try_get::<Option<String>, _>("target_node_id")
+            .ok()
+            .flatten()
+            .as_deref(),
+    )
+}
+
 fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
     match provider {
         ACP_PROVIDER_CODEX => AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
@@ -1666,10 +1675,7 @@ impl AgentManager {
             let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
             let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
             let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
-            let target_node_id = normalize_target_node_id(
-                row.try_get::<Option<String>, _>("target_node_id")?
-                    .as_deref(),
-            );
+            let target_node_id = decode_target_node_id(&row);
             agents.push(AgentRecord {
                 id: agent_id,
                 name: row.get("name"),
@@ -1874,10 +1880,7 @@ impl AgentManager {
         let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
         let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
         let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
-        let target_node_id = normalize_target_node_id(
-            row.try_get::<Option<String>, _>("target_node_id")?
-                .as_deref(),
-        );
+        let target_node_id = decode_target_node_id(&row);
         Ok(AgentRecord {
             id: row.get("id"),
             name: row.get("name"),
