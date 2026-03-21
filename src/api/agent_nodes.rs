@@ -14,7 +14,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent_node).get(list_agent_nodes))
         .route(
-            "/:id",
+            "/{id}",
             get(get_agent_node)
                 .patch(update_agent_node)
                 .delete(delete_agent_node),
