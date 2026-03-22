@@ -22,3 +22,7 @@ timely way, and leaders actively supervise worker output and publish integrated 
 - Developer/code tasks now use `merge-ready against latest main` as the default completion bar.
 - Task delegation is now tied explicitly to worker identity cards so leader assignment and
   collaboration planning stay capability-aware.
+- Channel status updates now assume the underlying state has already been recorded in docs/tasks, so
+  chat stays a summary layer instead of becoming the only durable execution record.
+- Channel status updates are also expected to `@` the relevant agents/people so ownership and
+  follow-up responsibility stay explicit.

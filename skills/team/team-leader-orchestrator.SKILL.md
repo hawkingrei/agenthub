@@ -214,6 +214,10 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
   log or project memory when they can help later tasks.
 - Send integrated progress updates to the human or shared channel whenever plan shape changes,
   major findings emerge, blockers threaten delivery, or milestones complete.
+- Before posting channel-level progress, make sure the underlying state is already reflected in the
+  relevant task/doc artifact so the channel message is a summary, not the only durable record.
+- In shared-channel progress updates, explicitly `@` the responsible workers, reviewers, and
+  affected stakeholders instead of posting anonymous team-wide status text.
 
 ## Collaboration Planning Contract
 
@@ -232,6 +236,8 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - Assignment, ownership transfer, dependency requests, and review requests must mention the exact target members.
 - For cross-worker dependencies, mention both sides in the same message to reduce relay delay.
 - Use broadcast (no `@`) only for team-wide checkpoints or final integrated updates.
+- Even for team-wide checkpoints, include direct `@member_id` mentions for owners or blockers when
+  a follow-up action is expected from specific people.
 
 ## Task Status Discipline
 

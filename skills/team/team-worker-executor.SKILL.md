@@ -134,12 +134,20 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Send blocker updates immediately with a concrete `next_action`.
 - Send completion updates with evidence plus any findings or reusable lessons discovered along the
   way.
+- If the update should persist beyond chat, write it into the relevant TODO, journal, note, or
+  Team task evidence first; then send the channel/leader status message.
 - Report to `@leader` by default; additionally notify impacted peers or the shared channel when the
   discovery affects shared plans, dependencies, or future debugging work.
+- When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
+  or human stakeholder so the update has clear recipients.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
   summarize them back to leader so the rest of the team can use them.
 - If the task-to-card fit is poor, report that mismatch early instead of silently continuing with an
   inefficient ownership split.
+- Do not let a channel update become the only record of execution state; durable state belongs in
+  docs/tasks first.
+- Avoid anonymous channel status messages when action is needed; use direct mentions to make the
+  expected responder obvious.
 
 ## Worker Loop
 
