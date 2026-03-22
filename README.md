@@ -1,82 +1,76 @@
 # AgentHub
 
-AgentHub is a single-binary service for managing and interacting with remote AI agents.
-It provides a Rust backend, an embedded React web UI, ACP-based structured output rendering,
-and SQLite-backed persistent sessions.
+AgentHub is a single-binary control plane for long-lived AI agents.
+It combines a Rust backend, an embedded React web UI, ACP-based structured
+output rendering, SQLite-backed persistence, multi-agent team orchestration,
+and optional remote execution nodes.
+
+Quick links: [Why AgentHub](#why-agenthub) · [Quick Start](#quick-start) ·
+[Remote Agent Nodes](#remote-agent-nodes-optional) ·
+[Architecture At A Glance](#architecture-at-a-glance) ·
+[Documentation Map](#documentation-map) · [Development](#development)
+
+## Why AgentHub
+
+Most agent tools are optimized for a single terminal session. AgentHub is built
+for the operational side of agent workflows:
+
+- Keep agent sessions alive after the browser tab closes
+- Inspect structured ACP timelines instead of raw terminal scrollback
+- Run leader/worker Team workflows with shared coordination primitives
+- Route execution to remote Agent Nodes over internal gRPC when one machine is
+  not enough
+- Keep audit history, runtime state, and operator control in one place
 
 ## What You Can Do
 
-- Create, start, stop, and delete agents
-- Run long-lived tasks that continue after the browser tab closes
-- Inspect ACP events (messages, plans, tool calls, command output, debug stream)
-- Run multi-agent workflows with A2A team orchestration
+- Create, start, stop, reconnect, and delete agents
+- View ACP events such as messages, plans, tool calls, command output, and
+  debug streams
+- Run multi-agent Team workflows with leader/worker coordination
+- Register remote execution nodes and start agents on those nodes
+- Persist session history and operational records in SQLite
 - Receive completion notifications in the web UI
-- Keep operational history with auditable logs and persisted session state
 
-## Documentation Map
+## Quick Start
 
-- End-user docs site: `userdocs/`
-- Internal engineering notes: `docs/features/`
-- Internal backlog / follow-ups: `docs/todo.md`
-- API payload naming conventions: `docs/api_naming.md`
-- Project charter and engineering constraints: `AGENTS.md`
-
-For user-facing documentation preview/build:
-
-```bash
-cd userdocs
-npm ci
-npm run start   # local preview
-npm run build   # static output at userdocs/build
-```
-
-## CI Pipelines
-
-GitHub Actions workflows are split by concern:
-
-- `Rust`: cargo check + coverage (`rust-cargo.lcov`) + Codecov upload (`rust-cargo`)
-- `Clippy`: `cargo clippy --workspace --all-targets -- -D warnings`
-- `Web`: lint + unit coverage + build + Codecov upload (`web`)
-- `Web E2E`: Playwright coverage + Codecov upload (`web-e2e`)
-- `Bazel`: `bazel build //...` and `bazel test //...`
-- `User Docs`: Docusaurus build validation
-
-## Requirements
+### Requirements
 
 - Rust (stable)
-- Node.js 20+ (for web and userdocs build)
+- Node.js 20+
 - Bazel / Bazelisk (optional, for Bazel-driven checks)
 
-## Quick Start (Local)
+### Start Locally
 
 ```bash
-# 1) Build web assets
-cd web
-npm ci
-npm run build
+# 1) Build the web UI
+npm --prefix web ci
+npm --prefix web run build
 
-# 2) Run AgentHub server
-cd ..
+# 2) Start AgentHub
 make run
 ```
 
-Default UI address: `http://localhost:8080`.
+Open `http://localhost:8080`.
 
-AgentHub stays single-binary. Runtime subcommands such as actor CLI and actor
-MCP are invoked from the same binary, for example:
+AgentHub stays single-binary. Runtime helpers such as the actor CLI are
+subcommands of the same binary:
 
 ```bash
 cargo run -- actor --help
-cargo run -- actor-mcp --help
+cargo run -- actor team-members --help
 ```
 
-## Configuration
+## Minimal Configuration
 
-AgentHub reads config from `config.toml`.
+AgentHub reads config from `~/.agenthub/config.toml`.
 
 ```toml
 [server]
 listen = "0.0.0.0:8080"
+
+[worktree]
+default_root = "~/.agenthub/worktrees"
 
 safe_paths = [
   "/home/foo",
@@ -88,21 +82,106 @@ event_retention_days = 5
 vacuum_on_cleanup = false
 ```
 
-Runtime state (database, local artifacts) defaults to `~/.agenthub/`.
+Runtime state defaults to `~/.agenthub/`.
 
-## Common Development Commands
+## Remote Agent Nodes (Optional)
+
+If you want remote execution, run the same `agenthub` binary on the remote
+machine and enable internal gRPC on both the main node and the remote node.
+
+```toml
+[internal_grpc]
+enabled = true
+listen = "0.0.0.0:50051"
+
+[internal_grpc.security]
+mode = "mtls" # mtls | tls | disabled
+cert_dir = "~/.agenthub/internal-grpc"
+
+[internal_grpc.auth]
+shared_secret = "replace-me"
+issuer = "agenthub"
+audience = "agenthub-internal"
+```
+
+Then register the remote node from the `Agents` page or `agent_nodes` API with:
+
+- `id`
+- `grpc_target`
+- `tls_server_name`
+- `default_worktree_root` (optional)
+
+See [docs/features/agent-nodes.md](docs/features/agent-nodes.md) for the
+current contract and rollout model.
+
+## Architecture At A Glance
+
+- **AgentHub server**
+  - Rust backend serving the API, embedded web UI, and runtime control plane
+- **ACP runtime**
+  - Structured event model for plans, tools, output, and history replay
+- **Teams runtime**
+  - Leader/worker orchestration, Team tasks, mailbox coordination, and shared
+    conversation flow
+- **Actor CLI**
+  - Canonical runtime coordination interface for actor mailbox and Team control
+    actions
+- **Agent Nodes**
+  - Optional internal gRPC control and relay path for remote execution
+- **Persistence**
+  - SQLite for sessions, agent config, audit records, and Team state
+
+## Documentation Map
+
+- User documentation site: [userdocs/](userdocs/)
+- Project charter and engineering constraints: [AGENTS.md](AGENTS.md)
+- Agent and Team architecture: [docs/features/agents-teams.md](docs/features/agents-teams.md)
+- Actor runtime and mailbox model: [docs/features/actor-foundation.md](docs/features/actor-foundation.md)
+- Remote execution nodes: [docs/features/agent-nodes.md](docs/features/agent-nodes.md)
+- Distributed node architecture: [docs/features/distributed-node-architecture.md](docs/features/distributed-node-architecture.md)
+- Internal engineering notes: [docs/features/](docs/features/)
+- Active follow-up backlog: [docs/todo.md](docs/todo.md)
+- API payload naming rules: [docs/api_naming.md](docs/api_naming.md)
+
+For user-facing documentation preview/build:
+
+```bash
+cd userdocs
+npm ci
+npm run start
+npm run build
+```
+
+## Repository Layout
+
+```text
+agenthub/
+  src/                    # Rust server and runtime wiring
+  crates/                 # Rust domain crates
+  web/                    # Vite + React frontend
+  userdocs/               # Docusaurus user documentation site
+  proto/                  # Protobuf schema
+  tests/                  # Integration and blackbox tests
+  docs/                   # Internal engineering docs and journals
+  skills/                 # Team/agent runtime skill definitions
+  agenthub-codex-acp/     # Codex ACP integration workspace member
+```
+
+## Development
+
+### Common Commands
 
 ```bash
 # Run AgentHub server
 make run
 
-# Run Rust tests
+# Rust tests
 cargo test
 
-# Run frontend unit tests
-npm --prefix web test
+# Frontend unit tests
+npm --prefix web run test
 
-# Lint frontend
+# Frontend lint
 npm --prefix web run lint
 
 # Frontend build
@@ -111,12 +190,12 @@ npm --prefix web run build
 # Playwright E2E
 npm --prefix web run e2e
 
-# Bazel checks (optional)
+# Bazel checks
 bazel build //...
 bazel test //...
 ```
 
-## Recommended Pre-PR Checks
+### Recommended Pre-PR Checks
 
 ```bash
 # Rust + proto guard
@@ -131,33 +210,14 @@ npm --prefix web run test:coverage
 npm --prefix web run e2e -- tests/e2e/app.e2e.ts --project=chromium
 ```
 
-## Internal Proto Codegen Guard
+### CI Pipelines
 
-`proto/internal/v1/team.proto` is compiled by `build.rs` (`tonic-build`) to produce
-a fresh reference output in `OUT_DIR` for drift checking.
-Application/runtime compilation uses the tracked generated file
-`src/internal/proto/agenthub.internal.v1.rs`, which must stay in sync with schema
-and generator output.
-
-```bash
-# regenerate tracked proto file from latest codegen output
-make proto-gen
-
-# verify codegen consistency with tracked generated file
-make proto-check
-```
-
-## Repository Layout
-
-```text
-agenthub/
-  src/                # Rust server
-  web/                # Vite + React frontend
-  userdocs/           # Docusaurus user documentation site
-  agenthub-codex-acp/ # ACP adapter workspace member
-  docs/               # Internal engineering docs and change notes
-  migrations/         # SQLite migrations
-```
+- `Rust`: cargo check + coverage (`rust-cargo.lcov`) + Codecov upload
+- `Clippy`: `cargo clippy --workspace --all-targets -- -D warnings`
+- `Web`: lint + unit coverage + build + Codecov upload
+- `Web E2E`: Playwright coverage + Codecov upload
+- `Bazel`: `bazel build //...` and `bazel test //...`
+- `User Docs`: Docusaurus build validation
 
 ## License
 
