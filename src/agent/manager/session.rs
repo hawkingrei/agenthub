@@ -1,18 +1,16 @@
-use std::process::Stdio;
 use std::sync::Arc;
 
 use chrono::Utc;
 use sqlx::Row;
-use tokio::process::Command;
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
+use super::acp_provider::AcpDefaultModeBehavior;
+use super::executor::LocalExecutionRequest;
+use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
-    ACP_PROVIDER_CODEX, ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
-    ACTOR_RUNTIME_CLI_ENV, ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV,
-    AGENT_STOP_WAIT_TIMEOUT, AgentHandle, AgentInput, AgentManager, acp_prompt_delivery_policy,
-    build_runtime_start_policy, ensure_team_leader_workdir_exists, normalize_agent_loop_config,
-    spawn_agent_loop_controller,
+    AGENT_STOP_WAIT_TIMEOUT, AgentHandle, AgentInput, AgentManager, build_runtime_start_policy,
+    ensure_team_leader_workdir_exists, normalize_agent_loop_config, spawn_agent_loop_controller,
 };
 use crate::acp::{
     AcpActorSkillContext, AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths,
@@ -188,40 +186,43 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
-        if let Some(target_node_id) = agent.target_node_id.as_deref() {
-            self.reserve_agent_start(agent_id).await?;
-            let result = self
-                .start_remote_agent(&agent, target_node_id, actor_context.as_ref())
-                .await;
-            self.release_agent_start(agent_id).await;
-            return result;
-        }
-        if let Some(session_id) = self.get_running_session_id(agent_id).await {
-            if actor_context.is_some() {
-                return Err(anyhow::anyhow!(
-                    "agent already running with session '{}'; cannot start with new actor context",
-                    session_id
-                ));
+        let running_session_id = self.get_running_session_id(agent_id).await;
+        match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
+            AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
+            AgentStartPlan::StartLocal {
+                agent,
+                actor_context,
+            } => {
+                self.reserve_agent_start(agent_id).await?;
+                let result = self.start_local_agent(agent, actor_context).await;
+                self.release_agent_start(agent_id).await;
+                result
             }
-            return Ok(session_id);
+            AgentStartPlan::StartRemote {
+                agent,
+                target_node_id,
+                actor_context,
+            } => {
+                self.reserve_agent_start(agent_id).await?;
+                let result = self
+                    .start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
+                    .await;
+                self.release_agent_start(agent_id).await;
+                result
+            }
         }
-        self.reserve_agent_start(agent_id).await?;
-        let result = self.start_agent_inner(agent_id, actor_context).await;
-        self.release_agent_start(agent_id).await;
-        result
     }
 
     #[tracing::instrument(
-        skip(self, actor_context),
-        fields(agent_id = %agent_id),
+        skip(self, agent, actor_context),
+        fields(agent_id = %agent.id),
         err
     )]
-    async fn start_agent_inner(
+    async fn start_local_agent(
         &self,
-        agent_id: &str,
+        agent: crate::agent::AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
-        let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = super::expand_tilde(&agent.workdir);
@@ -360,43 +361,25 @@ impl AgentManager {
             return Err(err);
         }
 
-        let acp_provider = self.acp_provider_for_agent(&agent.command, &agent.args);
+        let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
         let is_acp = acp_provider.is_some();
         let command_path = self.resolve_command_path(&agent.command, acp_provider);
-        let mut command = Command::new(&command_path);
-        command
-            .current_dir(&start_policy.workdir)
-            .args(&agent.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (key, value) in &self.proxy_env {
-            command.env(key, value);
-        }
-        if let Some(context) = actor_context.as_ref() {
-            command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
-            command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
-            command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
-            if let Some(team_id) = context
-                .team_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                command.env(ACTOR_RUNTIME_TEAM_ID_ENV, team_id);
-            }
-            if let Some(run_id) = context
-                .current_run_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                command.env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, run_id);
-            }
-        }
-
-        let mut child = match command.spawn() {
-            Ok(child) => child,
+        let spawn_summary = format!(
+            "command={} workdir={} args={:?}",
+            command_path, start_policy.workdir, agent.args
+        );
+        let local_execution_request = LocalExecutionRequest {
+            command_path: command_path.clone(),
+            args: agent.args.clone(),
+            workdir: start_policy.workdir.clone(),
+            actor_context: actor_context.clone(),
+        };
+        let local_execution = match self
+            .local_executor
+            .spawn_process(local_execution_request)
+            .await
+        {
+            Ok(execution) => execution,
             Err(err) => {
                 if let Err(record_err) = self
                     .record_failed_session(&agent.id, &session_id, &err.to_string())
@@ -420,22 +403,15 @@ impl AgentManager {
                         "failed to update agent status after spawn failure"
                     );
                 }
-                tracing::error!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    command_path,
-                    start_policy.workdir,
-                    agent.args,
-                    err
-                );
+                tracing::error!("spawn failed: {} error={}", spawn_summary, err);
                 return Err(anyhow::anyhow!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    command_path,
-                    start_policy.workdir,
-                    agent.args,
+                    "spawn failed: {} error={}",
+                    spawn_summary,
                     err
                 ));
             }
         };
+        let mut child = local_execution.child;
         let mut stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let stdin = child.stdin.take();
@@ -494,7 +470,7 @@ impl AgentManager {
 
         let mut loop_controller = None;
         let input = if let Some(provider) = acp_provider {
-            let resume_session_id = self.get_persistent_session(&agent.id, provider).await?;
+            let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -584,7 +560,8 @@ impl AgentManager {
                 stdin,
                 safe_paths,
                 actor_context: actor_context.clone(),
-                prompt_delivery_policy: acp_prompt_delivery_policy(provider),
+                prompt_delivery_policy: provider.prompt_delivery_policy,
+                runtime_location: local_execution.runtime_location,
             })
             .await
             {
@@ -616,12 +593,12 @@ impl AgentManager {
                 }
             };
             if let Err(err) = self
-                .set_persistent_session(&agent.id, provider, &handle.session_id)
+                .set_persistent_session(&agent.id, provider.id, &handle.session_id)
                 .await
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
-            if provider == ACP_PROVIDER_CODEX {
+            if provider.uses_default_mode_config() {
                 if let Some(mode_id) = self.acp_default_mode.as_deref()
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
@@ -632,10 +609,14 @@ impl AgentManager {
                         err
                     );
                 }
-            } else if self.acp_default_mode.is_some() {
+            } else if matches!(
+                provider.default_mode_behavior,
+                AcpDefaultModeBehavior::IgnoreConfigured
+            ) && self.acp_default_mode.is_some()
+            {
                 tracing::debug!(
                     "acp default mode ignored for provider {} (agent_id={})",
-                    provider,
+                    provider.id,
                     agent.id
                 );
             }

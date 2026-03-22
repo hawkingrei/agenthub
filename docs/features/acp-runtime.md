@@ -32,14 +32,32 @@ ACP runtime is managed as a package-style module with clear boundaries:
 
 Service bootstrap remains thin and keeps ACP contracts stable to callers.
 
-### 2) End-to-End Event Path
+### 2) Provider / Placement / Proxy Layering
+
+ACP runtime concerns should stay split across three orthogonal layers:
+
+- Provider adapter layer:
+  - Detects whether a command speaks ACP.
+  - Owns provider-specific defaults and prompt-delivery semantics.
+  - Examples today: Codex, Gemini, Kimi.
+- Runtime placement layer:
+  - Decides where the ACP runtime executes and how AgentHub connects to it.
+  - The current baseline is explicit local-process execution.
+  - Startup planning should stay explicit so "reuse running session", "start local", and "start remote" remain a named boundary instead of an inlined branch chain.
+  - Local subprocess launch should stay behind an executor seam so AgentHub can add remote placements without re-expanding manager logic.
+  - Future remote-node/P2P support must extend this axis instead of adding provider-specific transport stacks.
+- Proxy policy layer:
+  - Applies egress policy (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`) to a chosen runtime placement.
+  - Must stay provider-agnostic so local and remote runtimes reuse the same policy model.
+
+### 3) End-to-End Event Path
 
 1. ACP provider emits runtime events/tool-call outputs.
 2. Backend event sink normalizes and persists stream artifacts.
 3. Frontend ACP conversation/debug surfaces consume ordered events.
 4. UI applies rendering policies (group/fold/humanized payloads/permission linking).
 
-### 3) Conversation/Debug Surfaces
+### 4) Conversation/Debug Surfaces
 
 - Conversation is the primary event timeline with ordered render.
 - Debug provides advanced state/introspection:
@@ -47,7 +65,7 @@ Service bootstrap remains thin and keeps ACP contracts stable to callers.
   - runtime metrics
   - raw events and jump/copy operations
 
-### 4) Transport Model
+### 5) Transport Model
 
 - Streaming path uses SSE for near-real-time updates.
 - Polling/history paths provide fallback/replay continuity.
@@ -56,7 +74,7 @@ Service bootstrap remains thin and keeps ACP contracts stable to callers.
   backend transport paths should reconcile stale state to `exited` instead of letting SSE retry indefinitely
   against a non-existent runtime.
 
-### 5) Permission Workflow
+### 6) Permission Workflow
 
 ACP permission requests are first-class runtime records:
 
@@ -101,6 +119,12 @@ ACP permission requests are first-class runtime records:
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
 - Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 
+### 7) Placement And Proxy Contract
+
+- Provider identity and runtime placement must stay independent axes.
+- Introducing remote-node/P2P execution must not require duplicating Codex/Gemini/Kimi adapter logic.
+- Proxy handling must remain a provider-agnostic launch policy that can be applied to both local and future remote runtimes.
+
 ## Validation Matrix
 
 - `pnpm -C web run lint`
@@ -115,6 +139,7 @@ ACP permission requests are first-class runtime records:
 - Prefer additive compatibility changes when protocol evolves.
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
+- Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
 
 ## Open Risks
 
@@ -131,3 +156,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
+- `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`

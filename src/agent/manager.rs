@@ -1,8 +1,11 @@
+mod acp_provider;
 mod codec;
+mod executor;
 mod nodes;
 mod process;
 mod runtime;
 mod session;
+mod start_plan;
 mod store;
 mod worktree;
 
@@ -22,13 +25,8 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use uuid::Uuid;
 
-#[cfg(test)]
-use self::codec::acp_provider_for_agent_with_binary;
-#[cfg(test)]
-use self::codec::status_from_str;
-#[cfg(test)]
-use self::codec::stream_to_str;
 use self::codec::{status_to_str, stream_from_str, worktree_mode_to_str};
+use self::executor::{AgentExecutor, LocalExecutor};
 use self::nodes::{
     AgentNodeInsertRecord, AgentNodeSchemaCaps, AgentNodeUpdateRecord, decode_agent_node_record,
     delete_agent_node_record, get_agent_node_row, insert_agent_node_record, list_agent_node_rows,
@@ -46,7 +44,7 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
-    AcpPromptDeliveryPolicy, load_safe_paths,
+    load_safe_paths,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -62,7 +60,7 @@ pub struct AgentManager {
     idle_gc: Option<AgentEventIdleGc>,
     push: Arc<PushService>,
     auth: Arc<AuthService>,
-    proxy_env: Vec<(String, String)>,
+    local_executor: Arc<dyn AgentExecutor>,
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     permissions: Arc<AcpPermissionService>,
@@ -72,9 +70,6 @@ pub struct AgentManager {
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
-const ACP_PROVIDER_CODEX: &str = "codex";
-const ACP_PROVIDER_GEMINI: &str = "gemini";
-const ACP_PROVIDER_KIMI: &str = "kimi";
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
@@ -87,14 +82,6 @@ const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
-
-fn acp_prompt_delivery_policy(provider: &str) -> AcpPromptDeliveryPolicy {
-    match provider {
-        ACP_PROVIDER_CODEX => AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
-        _ => AcpPromptDeliveryPolicy::StrictFifo,
-    }
-}
-
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
@@ -137,6 +124,23 @@ struct RuntimeStartPolicy {
     worktree_mode: WorktreeMode,
     worktree_ref: Option<String>,
     worker_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProxyPolicy {
+    env_pairs: Vec<(String, String)>,
+}
+
+impl ProxyPolicy {
+    fn new(env_pairs: Vec<(String, String)>) -> Self {
+        Self { env_pairs }
+    }
+
+    fn apply_to_command(&self, command: &mut Command) {
+        for (key, value) in &self.env_pairs {
+            command.env(key, value);
+        }
+    }
 }
 
 fn is_empty_or_missing_dir(path: &str) -> anyhow::Result<bool> {
@@ -555,7 +559,7 @@ impl AgentManager {
             idle_gc,
             push,
             auth,
-            proxy_env,
+            local_executor: Arc::new(LocalExecutor::new(ProxyPolicy::new(proxy_env))),
             codex_acp_binary,
             acp_default_mode,
             permissions,
