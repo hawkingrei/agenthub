@@ -30,6 +30,8 @@ findings.
   advance assigned tasks instead of inventing parallel task records.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
+- Treat your own identity card as the default boundary for accepted work; escalate to leader when the
+  assigned task is materially outside your card or would be better owned by another worker card.
 - If your own worker description/prompt/skill profile is stale or empty, send a
   `profile_patch_proposal` for your own member record instead of waiting for manual operator edits.
 - Use `target="team"` for durable identity-card changes and `target="run"` for temporary
@@ -136,6 +138,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   discovery affects shared plans, dependencies, or future debugging work.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
   summarize them back to leader so the rest of the team can use them.
+- If the task-to-card fit is poor, report that mismatch early instead of silently continuing with an
+  inefficient ownership split.
 
 ## Worker Loop
 

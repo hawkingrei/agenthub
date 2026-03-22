@@ -84,6 +84,8 @@ restating the same rules.
   update instead of waiting for the final result.
 - Leader owns integrated progress updates to the human/channel and must ensure each active
   assignment has a next checkpoint and fresh evidence.
+- Task assignment should align with the assignee's identity card and current specialization; do not
+  dispatch work that is unrelated to the worker's card unless the reassignment is explicit and justified.
 - For developer/code tasks, `completed` means the change is merge-ready against the latest `main`,
   not merely that a local patch exists.
 
