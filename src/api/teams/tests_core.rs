@@ -5054,5 +5054,6 @@ fn mailbox_type_hint_helpers_build_prompt_contains_context() {
     let prompt = super::build_actor_mailbox_type_hint_prompt("run-42", "chat_message");
     assert!(prompt.contains("run-42"));
     assert!(prompt.contains("chat_message"));
-    assert!(prompt.contains("actor_inbox"));
+    assert!(prompt.contains("AGENTHUB_ACTOR_CLI"));
+    assert!(prompt.contains("actor inbox"));
 }

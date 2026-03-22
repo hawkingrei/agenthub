@@ -16,11 +16,15 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, maybe_remote_mailbox_service,
     normalized_env_var,
 };
-use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::agent::AGENT_NODE_MAIN_ID;
-use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
+use crate::internal::auth::InternalAction;
+use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
-use crate::team::{TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager, TeamTaskStatus};
+use crate::team::{
+    ActorMailboxTypeHintPlan, TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager,
+    TeamTaskStatus, plan_actor_mailbox_type_hint,
+};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
@@ -191,24 +195,96 @@ fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
 
 fn configure_actor_cli_internal_grpc(
     manager: &TeamManager,
+    peer_client: Option<InternalGrpcPeerClientConfig>,
+) {
+    if let Some(peer_client) = peer_client {
+        manager.configure_internal_grpc_relay(
+            PathBuf::from(&peer_client.cert_dir).as_path(),
+            peer_client.security_mode,
+        );
+        manager.configure_internal_grpc_peer_client(Some(peer_client));
+    }
+}
+
+fn build_actor_cli_internal_grpc_peer_client(
     config: &agenthub_config::AppConfig,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<InternalGrpcPeerClientConfig>> {
     if !config.internal_grpc_enabled() {
-        return Ok(());
+        return Ok(None);
     }
     let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
     let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
     let shared_secret = ensure_shared_secret(&cert_dir, config.internal_grpc_auth_shared_secret())?;
     let _ = ensure_tls_material(&cert_dir, security_mode)?;
-    manager.configure_internal_grpc_relay(&cert_dir, security_mode);
-    manager.configure_internal_grpc_peer_client(Some(InternalGrpcPeerClientConfig {
+    Ok(Some(InternalGrpcPeerClientConfig {
         shared_secret,
         expected_issuer: config.internal_grpc_auth_issuer(),
         expected_audience: config.internal_grpc_auth_audience(),
         source_node_id: AGENT_NODE_MAIN_ID.to_string(),
         cert_dir: cert_dir.to_string_lossy().to_string(),
         security_mode,
-    }));
+    }))
+}
+
+async fn init_actor_mailbox_hint_client() -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+    if let Some(client) = maybe_remote_mailbox_service().await? {
+        return Ok(Some(client));
+    }
+    let (config, _) = agenthub_config::AppConfig::load_with_info()?;
+    let Some(peer_client) = build_actor_cli_internal_grpc_peer_client(&config)? else {
+        return Ok(None);
+    };
+    let target = format!("https://{}", config.internal_grpc_listen_addr());
+    let client = InternalGrpcMailboxClient::connect_peer(
+        &peer_client,
+        &target,
+        Some("localhost"),
+        vec![InternalAction::AgentManage.as_str().to_string()],
+    )
+    .await?;
+    Ok(Some(client))
+}
+
+async fn maybe_notify_actor_new_mailbox_message_type_from_cli(
+    manager: &TeamManager,
+    send_result: &agenthub_team_actor::ActorSendResponse,
+) -> anyhow::Result<()> {
+    let Some(plan) =
+        plan_actor_mailbox_type_hint(manager, send_result.message.run_id.as_str(), send_result)
+            .await?
+    else {
+        return Ok(());
+    };
+    let ActorMailboxTypeHintPlan::Notify {
+        to_actor_id,
+        payload_type,
+        prompt,
+        ..
+    } = plan
+    else {
+        return Ok(());
+    };
+    let Some(client) = init_actor_mailbox_hint_client().await? else {
+        tracing::debug!(
+            run_id = %send_result.message.run_id,
+            actor_id = %to_actor_id,
+            payload_type = %payload_type,
+            "skip mailbox type hint push because no agent input channel is available"
+        );
+        return Ok(());
+    };
+    if let Err(err) = client
+        .send_agent_input(&to_actor_id, &prompt, None, None)
+        .await
+    {
+        tracing::debug!(
+            run_id = %send_result.message.run_id,
+            actor_id = %to_actor_id,
+            payload_type = %payload_type,
+            "skip mailbox type hint push because agent input is unavailable: {}",
+            err
+        );
+    }
     Ok(())
 }
 
@@ -216,7 +292,8 @@ async fn init_team_manager() -> anyhow::Result<TeamManager> {
     let db = agenthub_db::init_db().await?;
     let manager = TeamManager::new(db);
     let (config, _) = agenthub_config::AppConfig::load_with_info()?;
-    configure_actor_cli_internal_grpc(&manager, &config)?;
+    let peer_client = build_actor_cli_internal_grpc_peer_client(&config)?;
+    configure_actor_cli_internal_grpc(&manager, peer_client);
     Ok(manager)
 }
 
@@ -413,7 +490,11 @@ async fn ensure_leader_team_access(
 }
 
 fn is_shared_thread_task(task: &crate::team::TeamTaskRecord) -> bool {
-    if task.title.trim().eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+    if task
+        .title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+    {
         return true;
     }
     task.context
@@ -627,13 +708,15 @@ fn parse_actor_command(
                         context = Some(parse_json(raw, "context_json")?);
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for team-task-create: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-create: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
             }
-            let title = take_optional(title)
-                .ok_or_else(|| anyhow::anyhow!("title is required"))?;
+            let title = take_optional(title).ok_or_else(|| anyhow::anyhow!("title is required"))?;
             Ok(ActorCommand::TeamTaskCreate {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
@@ -686,7 +769,10 @@ fn parse_actor_command(
                         status = Some(parse_team_task_status_argument(raw)?);
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for team-task-update: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-update: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1045,7 +1131,10 @@ fn parse_actor_command(
                         );
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for time-trigger-set: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for time-trigger-set: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1083,7 +1172,10 @@ fn parse_actor_command(
                         limit = parse_i64(raw, "limit")?;
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for time-trigger-list: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for time-trigger-list: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1163,11 +1255,10 @@ fn parse_actor_command(
                     }
                     "--permission-id" => {
                         idx += 1;
-                        permission_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--permission-id requires a value"))?,
-                        );
+                        permission_id =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--permission-id requires a value")
+                            })?);
                     }
                     "--option-id" => {
                         idx += 1;
@@ -1268,7 +1359,14 @@ async fn run_actor_command(
             let manager = TeamManager::new(db);
             let _team = ensure_leader_team_access(&manager, &team_id, &actor_id).await?;
             let (task, conversation) = manager
-                .create_task(&team_id, &title, &actor_id, context, "group_chat", topic.as_deref())
+                .create_task(
+                    &team_id,
+                    &title,
+                    &actor_id,
+                    context,
+                    "group_chat",
+                    topic.as_deref(),
+                )
                 .await?;
             let task = if status == TeamTaskStatus::Open {
                 task
@@ -1386,6 +1484,16 @@ async fn run_actor_command(
                 })
                 .await
                 .map_err(|err| map_actor_service_error("actor send", err))?;
+            if let Err(err) =
+                maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &message).await
+            {
+                tracing::warn!(
+                    run_id = %message.message.run_id,
+                    message_id = message.message.message_id,
+                    "failed to process actor mailbox type hint: {}",
+                    err
+                );
+            }
             if payload_source == ActorSendPayloadSource::Payload {
                 eprintln!(
                     "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
@@ -1419,7 +1527,9 @@ async fn run_actor_command(
         ActorCommand::TimeTriggerList { actor_id, limit } => {
             let db = agenthub_db::init_db().await?;
             let manager = AgentTimeTriggerManager::new(db);
-            let records = manager.list_triggers_for_agent(actor_id.as_str(), limit).await?;
+            let records = manager
+                .list_triggers_for_agent(actor_id.as_str(), limit)
+                .await?;
             write_actor_output(&records, output_mode, ActorOutputPreference::ToonPreferred)?;
         }
         ActorCommand::TimeTriggerCancel {
@@ -1497,15 +1607,14 @@ async fn run_actor_command(
             }
 
             let response_outcome = if let Some(option_id) = option_id.as_ref() {
-                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id.clone()))
+                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                    option_id.clone(),
+                ))
             } else {
                 match outcome.as_deref() {
                     Some("cancelled") | None => RequestPermissionOutcome::Cancelled,
                     Some(other) => {
-                        anyhow::bail!(
-                            "unsupported outcome '{}', expected 'cancelled'",
-                            other
-                        );
+                        anyhow::bail!("unsupported outcome '{}', expected 'cancelled'", other);
                     }
                 }
             };
@@ -1562,6 +1671,7 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ASYNC_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     fn restore_env(key: &str, value: Option<String>) {
         if let Some(value) = value {
@@ -2106,6 +2216,57 @@ mod tests {
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
+    #[tokio::test]
+    async fn actor_send_type_hint_is_best_effort_without_internal_grpc_client() {
+        let _guard = ASYNC_ENV_LOCK.lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
+        }
+        let manager = init_team_manager().await.expect("init team manager");
+        let send_result = agenthub_team_actor::ActorSendResponse {
+            message_id: 42,
+            state: agenthub_team_actor::ActorMessageStatus::Pending,
+            deduped: false,
+            created_at: 1_700_000_000,
+            message: agenthub_team_actor::ActorMessageRecord {
+                message_id: 42,
+                run_id: "run-cli-hint".to_string(),
+                from_actor_id: "leader".to_string(),
+                from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                from_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+                to_actor_id: "worker".to_string(),
+                to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                to_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+                channel: "default".to_string(),
+                transport: agenthub_team_actor::ActorMessageTransport::Local,
+                route: None,
+                payload: serde_json::json!({
+                    "type": "worker_status",
+                    "status": "ready"
+                }),
+                status: agenthub_team_actor::ActorMessageStatus::Pending,
+                created_at: 1_700_000_000,
+                delivered_at: None,
+            },
+        };
+        maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &send_result)
+            .await
+            .expect("best-effort mailbox hint should not fail");
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
     #[test]
     fn parse_send_rejects_conflicting_actor_and_channel_targets() {
         let _guard = ENV_LOCK.lock().expect("lock env");
@@ -2263,7 +2424,10 @@ mod tests {
 
     #[test]
     fn compute_time_trigger_fire_at_adds_future_safety_margin() {
-        assert_eq!(compute_time_trigger_fire_at(1_700_000_000, 1), 1_700_000_002);
+        assert_eq!(
+            compute_time_trigger_fire_at(1_700_000_000, 1),
+            1_700_000_002
+        );
         assert_eq!(
             compute_time_trigger_fire_at(1_700_000_000, MAX_TIME_TRIGGER_DELAY_SECONDS),
             1_700_000_000
