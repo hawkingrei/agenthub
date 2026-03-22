@@ -64,8 +64,9 @@ restating the same rules.
   - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
 - ACP permission review:
   - worker-originated ACP permission requests should route to leader first
-  - leader may review directly or manually delegate review to another worker through normal Team coordination
-  - only leader or the worker currently delegated by leader should use `acp_permission_review_respond`
+  - leader-originated ACP permission requests should route to an automatically selected subordinate worker reviewer
+  - the Team runtime assigns the current reviewer automatically; requester must never review its own request
+  - treat approval/rejection as ACP runtime control flow, not as a normal Team mailbox task
   - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
   - human review remains valid and should not block the original Team workflow
 

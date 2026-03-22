@@ -106,9 +106,9 @@ terminology and operating expectations drift.
   - enabling/disabling or updating loop settings must not block normal Team profile/task flows
 - Team ACP permission review is mailbox-first:
   - worker-originated ACP permission requests route to leader first
-  - leader may review directly or delegate the request through normal Team coordination
-  - only leader or the current leader-delegated reviewer may resolve the request through
-    `acp_permission_review_respond`
+  - leader-originated ACP permission requests route to an automatically selected subordinate worker reviewer
+  - requester must never review its own request; only the current automatically assigned reviewer should see the approval action
+  - approval/rejection should be treated as ACP-side review control flow rather than normal peer mailbox work
   - if agent review is unavailable or times out, the system posts a human-review request into
     `Conversation` (`all`)
   - human review stays valid in parallel and must not block the original Team workflow
@@ -190,8 +190,9 @@ Constraint:
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
-- Team ACP permission review requests should escalate through leader first and fall back to human
-  review in `Conversation` (`all`) when agent review cannot complete.
+- Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
+  `leader -> subordinate worker`) and fall back to human review in `Conversation` (`all`) when
+  agent review cannot complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Human-facing conversation remains group-visible even when `@mention` is used.

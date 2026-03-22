@@ -266,8 +266,8 @@ fn parse_actor_mcp_context(args: &[String]) -> anyhow::Result<ActorMcpContext> {
     parse_actor_mcp_context_with_env(args, normalized_env_var)
 }
 
-fn actor_tools() -> Vec<Value> {
-    vec![
+fn actor_tools(include_permission_review: bool) -> Vec<Value> {
+    let mut tools = vec![
         json!({
             "name": "actor_inbox",
             "description": "List messages for current actor mailbox.",
@@ -417,7 +417,9 @@ fn actor_tools() -> Vec<Value> {
                 }
             }
         }),
-        json!({
+    ];
+    if include_permission_review {
+        tools.push(json!({
             "name": "acp_permission_review_respond",
             "description": "Approve or cancel a pending ACP permission request for your Team.",
             "inputSchema": {
@@ -430,8 +432,22 @@ fn actor_tools() -> Vec<Value> {
                     "outcome": { "type": "string", "enum": ["cancelled"] }
                 }
             }
-        }),
-    ]
+        }));
+    }
+    tools
+}
+
+async fn should_expose_permission_review_tool(
+    permissions: &AcpPermissionService,
+    context: &ActorMcpContext,
+) -> bool {
+    let Some(team_id) = context.team_id.as_deref() else {
+        return false;
+    };
+    permissions
+        .has_pending_review_for_actor(team_id, context.actor_id.as_str())
+        .await
+        .unwrap_or(false)
 }
 
 fn jsonrpc_response(id: Value, result: Value) -> Value {
@@ -719,8 +735,6 @@ async fn tool_actor_ack<S: ActorMailboxService + ?Sized>(
 
 async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
     service: &S,
-    manager: &TeamManager,
-    permissions: &AcpPermissionService,
     context: &ActorMcpContext,
     arguments: Option<&Map<String, Value>>,
 ) -> Value {
@@ -739,10 +753,13 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
             return tool_result_error("to_actor_id or channel_id is required", None);
         }
     }
-    let (mut payload, payload_source) = match resolve_actor_send_payload(args.text, args.payload) {
+    let (payload, payload_source) = match resolve_actor_send_payload(args.text, args.payload) {
         Ok(payload) => payload,
         Err(err) => return tool_result_error(err, None),
     };
+    if let Err(err) = reject_reserved_actor_send_payload(&payload) {
+        return tool_result_error(err, None);
+    }
     let transport = match parse_actor_transport(args.transport.as_deref()) {
         Ok(transport) => transport,
         Err(err) => return tool_result_error(err.to_string(), None),
@@ -761,22 +778,6 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
     let channel =
         take_optional(args.channel).unwrap_or_else(|| context.default_channel.to_string());
     let allow_duplicate = args.allow_duplicate.unwrap_or(false);
-    let permission_review_request_id = if let Some(to_actor_id) = to_actor_id.as_deref() {
-        match maybe_prepare_permission_review_delegation(
-            manager,
-            permissions,
-            context,
-            to_actor_id,
-            &mut payload,
-        )
-        .await
-        {
-            Ok(request_id) => request_id,
-            Err(err) => return tool_result_error(format!("actor_send failed: {err}"), None),
-        }
-    } else {
-        None
-    };
     let to_peer_id = if transport == ActorMessageTransport::Remote {
         ACTOR_NODE_PEER_ID
     } else {
@@ -829,94 +830,23 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
                         .to_string(),
                 );
             }
-            if let Some(permission_id) = permission_review_request_id.as_deref()
-                && let Err(err) = permissions
-                    .record_review_dispatch(
-                        permission_id,
-                        to_actor_id.as_deref(),
-                        "leader_delegated",
-                        Some(run_id.as_str()),
-                        Some(response.message_id),
-                    )
-                    .await
-            {
-                return tool_result_error(
-                    format!("actor_send failed: {err}"),
-                    Some(json!({
-                        "permission_id": permission_id,
-                        "message_id": response.message_id,
-                    })),
-                );
-            }
             tool_result_success(structured)
         }
         Err(err) => tool_result_actor_service_error(err),
     }
 }
 
-async fn maybe_prepare_permission_review_delegation(
-    manager: &TeamManager,
-    permissions: &AcpPermissionService,
-    context: &ActorMcpContext,
-    to_actor_id: &str,
-    payload: &mut Value,
-) -> Result<Option<String>, String> {
-    let Some(payload_obj) = payload.as_object_mut() else {
-        return Ok(None);
+fn reject_reserved_actor_send_payload(payload: &Value) -> Result<(), String> {
+    let Some(payload_obj) = payload.as_object() else {
+        return Ok(());
     };
-    if payload_obj.get("type").and_then(Value::as_str) != Some("permission_review_request") {
-        return Ok(None);
+    if payload_obj.get("type").and_then(Value::as_str) == Some("permission_review_request") {
+        return Err(
+            "permission_review_request payload is system-managed and cannot be forwarded manually"
+                .to_string(),
+        );
     }
-    let permission_id = payload_obj
-        .get("permission_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "permission_review_request payload requires permission_id".to_string())?;
-    let Some(team_id) = context.team_id.as_deref() else {
-        return Err("team_id is required to delegate permission review".to_string());
-    };
-    let team = manager
-        .get_team(team_id)
-        .await
-        .map_err(|err| format!("load team failed: {err}"))?;
-    let leader_member_id = team
-        .spec
-        .get("leader_member_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "team has no leader configured".to_string())?;
-    if context.actor_id != leader_member_id {
-        return Err("only leader may delegate permission review requests".to_string());
-    }
-    let record = permissions
-        .get(&permission_id)
-        .await
-        .map_err(|err| format!("load permission request failed: {err}"))?
-        .ok_or_else(|| "permission request not found".to_string())?;
-    if record.team_id.as_deref() != Some(team_id) {
-        return Err("permission request does not belong to this team".to_string());
-    }
-    if record.status != "pending" {
-        return Err("permission request is already resolved".to_string());
-    }
-    if !manager
-        .team_has_member(team_id, to_actor_id)
-        .await
-        .map_err(|err| format!("load team members failed: {err}"))?
-    {
-        return Err("delegated reviewer is not a member of this team".to_string());
-    }
-    if record.requester_actor_id.as_deref() == Some(to_actor_id) {
-        return Err("requester cannot review its own permission request".to_string());
-    }
-    payload_obj.insert(
-        "review_target_actor_id".to_string(),
-        Value::String(to_actor_id.to_string()),
-    );
-    Ok(Some(permission_id))
+    Ok(())
 }
 
 async fn tool_team_members(
@@ -1303,11 +1233,27 @@ async fn tool_acp_permission_review_respond(
     if record.requester_actor_id.as_deref() == Some(context.actor_id.as_str()) {
         return tool_result_error("requester cannot review its own permission request", None);
     }
-    let authorized_actor = leader_member_id == Some(context.actor_id.as_str())
-        || record.review_target_actor_id.as_deref() == Some(context.actor_id.as_str());
+    let worker_originated_request = record
+        .requester_role
+        .as_deref()
+        .is_some_and(|role| role.eq_ignore_ascii_case("worker"));
+    let active_reviewer =
+        record
+            .review_target_actor_id
+            .as_deref()
+            .or(if worker_originated_request {
+                leader_member_id
+            } else {
+                None
+            });
+    let authorized_actor = active_reviewer == Some(context.actor_id.as_str());
     if !authorized_actor {
         return tool_result_error(
-            "current actor is not the active reviewer for this permission request",
+            if worker_originated_request {
+                "leader is the only reviewer for worker-originated permission requests"
+            } else {
+                "current actor is not the active reviewer for this permission request"
+            },
             None,
         );
     }
@@ -1393,16 +1339,7 @@ async fn handle_tool_call<S: ActorMailboxService + ?Sized>(
     let result = match name {
         "actor_inbox" => tool_actor_inbox(tool_context.service, context, arguments).await,
         "actor_ack" => tool_actor_ack(tool_context.service, context, arguments).await,
-        "actor_send" => {
-            tool_actor_send(
-                tool_context.service,
-                tool_context.manager,
-                tool_context.permissions,
-                context,
-                arguments,
-            )
-            .await
-        }
+        "actor_send" => tool_actor_send(tool_context.service, context, arguments).await,
         "team_members" => tool_team_members(tool_context.manager, context, arguments).await,
         "team_tasks" => tool_team_tasks(tool_context.manager, context, arguments).await,
         "team_task_create" => tool_team_task_create(tool_context.manager, context, arguments).await,
@@ -1481,7 +1418,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService + ?Sized>(
                         "title": "AgentHub Actor Mailbox",
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, team_members for Team runtime context, team_tasks / team_task_create / team_task_update for canonical Kanban task tracking, and acp_permission_review_respond when a Team permission review request arrives."
+                    "instructions": "Use actor_inbox / actor_ack / actor_send for Team mailbox coordination, team_members for Team runtime context, team_tasks / team_task_create / team_task_update for canonical Kanban task tracking, and the ACP review action only when a Team permission request is currently assigned to you."
                 }),
             )
         }
@@ -1489,7 +1426,7 @@ async fn handle_jsonrpc_request<S: ActorMailboxService + ?Sized>(
         "tools/list" => jsonrpc_response(
             id,
             json!({
-                "tools": actor_tools()
+                "tools": actor_tools(should_expose_permission_review_tool(tool_context.permissions, context).await)
             }),
         ),
         "tools/call" => match handle_tool_call(tool_context, context, params).await {
@@ -1777,7 +1714,7 @@ mod tests {
 
     #[test]
     fn actor_tools_exposes_expected_tool_names() {
-        let tools = actor_tools();
+        let tools = actor_tools(true);
         let names = tools
             .iter()
             .filter_map(|tool| tool.get("name").and_then(Value::as_str))
@@ -2189,13 +2126,167 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn leader_delegation_updates_active_reviewer_and_blocks_other_members() {
+    async fn leader_permission_review_is_owned_by_assigned_worker_reviewer() {
         let state = build_test_state().await;
         let team = state
             .teams
             .create_team(TeamDefinitionConfig {
-                name: format!("actor-mcp-permission-delegate-{}", Uuid::new_v4()),
-                description: Some("actor mcp permission delegation".to_string()),
+                name: format!("actor-mcp-permission-worker-review-{}", Uuid::new_v4()),
+                description: Some("actor mcp leader permission worker review".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"observer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("leader-agent-review")
+        .bind("leader-agent-review")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert leader agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("leader-session-review")
+        .bind("leader-agent-review")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert leader session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                review_target_actor_id,
+                review_dispatch_status,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13)
+            "#,
+        )
+        .bind("perm-review-leader-owned")
+        .bind("leader-agent-review")
+        .bind("leader-session-review")
+        .bind("acp-session-leader-owned")
+        .bind(&team.id)
+        .bind("leader")
+        .bind("leader")
+        .bind("reviewer")
+        .bind("worker_dispatched")
+        .bind("tool-call-leader-owned")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let leader = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "leader".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+        let reviewer = ActorMcpContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: None,
+            actor_id: "reviewer".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+        };
+
+        let leader_blocked = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "permission_id": "perm-review-leader-owned",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("leader args"),
+            ),
+        )
+        .await;
+        assert_eq!(
+            leader_blocked["isError"],
+            Value::Bool(true),
+            "{leader_blocked}"
+        );
+        assert_eq!(
+            leader_blocked["content"][0]["text"],
+            "requester cannot review its own permission request"
+        );
+
+        let approved = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &reviewer,
+            Some(
+                json!({
+                    "permission_id": "perm-review-leader-owned",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("reviewer args"),
+            ),
+        )
+        .await;
+        assert_eq!(approved["isError"], Value::Bool(false), "{approved}");
+    }
+
+    #[tokio::test]
+    async fn worker_permission_review_is_leader_only_and_cannot_be_forwarded() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-permission-leader-only-{}", Uuid::new_v4()),
+                description: Some("actor mcp permission leader only".to_string()),
                 spec: json!({
                     "entrypoint":"leader",
                     "leader_member_id":"leader",
@@ -2213,7 +2304,7 @@ mod tests {
             .teams
             .create_run(
                 &team.id,
-                Some("ctx-permission-delegate"),
+                Some("ctx-permission-leader-only"),
                 json!({"goal":"review"}),
             )
             .await
@@ -2320,10 +2411,8 @@ mod tests {
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
         };
 
-        let delegated = tool_actor_send(
+        let forwarded = tool_actor_send(
             &service,
-            &state.teams,
-            &permissions,
             &leader,
             Some(
                 json!({
@@ -2335,49 +2424,17 @@ mod tests {
                     }
                 })
                 .as_object()
-                .expect("delegate args"),
+                .expect("forward args"),
             ),
         )
         .await;
-        assert_eq!(delegated["isError"], Value::Bool(false), "{delegated}");
-
-        let delegated_row = sqlx::query(
-            "SELECT review_target_actor_id, review_dispatch_status FROM acp_permission_requests WHERE id = ?1",
-        )
-        .bind("perm-review-delegate")
-        .fetch_one(&state.db)
-        .await
-        .expect("load delegated permission");
+        assert_eq!(forwarded["isError"], Value::Bool(true), "{forwarded}");
         assert_eq!(
-            delegated_row.get::<String, _>("review_target_actor_id"),
-            "reviewer"
-        );
-        assert_eq!(
-            delegated_row.get::<String, _>("review_dispatch_status"),
-            "leader_delegated"
+            forwarded["content"][0]["text"],
+            "permission_review_request payload is system-managed and cannot be forwarded manually"
         );
 
-        let blocked = tool_acp_permission_review_respond(
-            &permissions,
-            &state.teams,
-            &observer,
-            Some(
-                json!({
-                    "permission_id": "perm-review-delegate",
-                    "option_id": "allow"
-                })
-                .as_object()
-                .expect("observer args"),
-            ),
-        )
-        .await;
-        assert_eq!(blocked["isError"], Value::Bool(true), "{blocked}");
-        assert_eq!(
-            blocked["content"][0]["text"],
-            "current actor is not the active reviewer for this permission request"
-        );
-
-        let approved = tool_acp_permission_review_respond(
+        let reviewer_blocked = tool_acp_permission_review_respond(
             &permissions,
             &state.teams,
             &reviewer,
@@ -2391,7 +2448,221 @@ mod tests {
             ),
         )
         .await;
+        assert_eq!(
+            reviewer_blocked["isError"],
+            Value::Bool(true),
+            "{reviewer_blocked}"
+        );
+        assert_eq!(
+            reviewer_blocked["content"][0]["text"],
+            "leader is the only reviewer for worker-originated permission requests"
+        );
+
+        let observer_blocked = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &observer,
+            Some(
+                json!({
+                    "permission_id": "perm-review-delegate",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("observer args"),
+            ),
+        )
+        .await;
+        assert_eq!(
+            observer_blocked["isError"],
+            Value::Bool(true),
+            "{observer_blocked}"
+        );
+        assert_eq!(
+            observer_blocked["content"][0]["text"],
+            "leader is the only reviewer for worker-originated permission requests"
+        );
+
+        let approved = tool_acp_permission_review_respond(
+            &permissions,
+            &state.teams,
+            &leader,
+            Some(
+                json!({
+                    "permission_id": "perm-review-delegate",
+                    "option_id": "allow"
+                })
+                .as_object()
+                .expect("leader args"),
+            ),
+        )
+        .await;
         assert_eq!(approved["isError"], Value::Bool(false), "{approved}");
+    }
+
+    #[tokio::test]
+    async fn jsonrpc_tools_list_exposes_permission_review_only_to_current_reviewer() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-jsonrpc-review-tools-{}", Uuid::new_v4()),
+                description: Some("actor mcp jsonrpc review tools".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"worker","role":"worker"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"observer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-review-tools"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES
+            (?1, ?1, '/tmp', 'agenthub-codex-acp', '[]', 'use_existing', NULL, NULL, 1, 'running', ?3, ?3),
+            (?2, ?2, '/tmp', 'agenthub-codex-acp', '[]', 'use_existing', NULL, NULL, 1, 'running', ?3, ?3)
+            "#,
+        )
+        .bind("worker-agent")
+        .bind("leader-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review agents");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES
+            (?1, ?2, 'running', ?5, NULL),
+            (?3, ?4, 'running', ?5, NULL)
+            "#,
+        )
+        .bind("worker-session")
+        .bind("worker-agent")
+        .bind("leader-session")
+        .bind("leader-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review sessions");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                review_target_actor_id,
+                review_dispatch_status,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES
+            (?1, 'worker-agent', 'worker-session', 'acp-session-worker', ?2, 'worker', 'worker', 'leader', 'leader_dispatched', 'tool-call-worker', ?3, ?4, 'pending', ?5),
+            (?6, 'leader-agent', 'leader-session', 'acp-session-leader', ?2, 'leader', 'leader', 'reviewer', 'worker_dispatched', 'tool-call-leader', ?3, ?7, 'pending', ?5)
+            "#,
+        )
+        .bind("perm-review-worker")
+        .bind(&team.id)
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .bind("perm-review-leader")
+        .bind(json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+        .execute(&state.db)
+        .await
+        .expect("insert permission requests");
+
+        let service = state.teams.actor_mailbox_service();
+        let trigger_manager = AgentTimeTriggerManager::new(state.db.clone());
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let tool_context = ActorToolContext {
+            service: &service,
+            manager: &state.teams,
+            trigger_manager: &trigger_manager,
+            permissions: &permissions,
+        };
+
+        async fn list_tool_names<S: ActorMailboxService + ?Sized>(
+            tool_context: &ActorToolContext<'_, S>,
+            team_id: &str,
+            run_id: &str,
+            actor_id: &str,
+        ) -> Vec<String> {
+            let mut initialized = false;
+            let context = ActorMcpContext {
+                team_id: Some(team_id.to_string()),
+                current_run_id: Some(run_id.to_string()),
+                actor_id: actor_id.to_string(),
+                default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+            };
+            let _ = handle_jsonrpc_request(
+                tool_context,
+                &context,
+                &mut initialized,
+                "initialize",
+                json!(1),
+                Some(&json!({"protocolVersion":"2025-03-26"})),
+            )
+            .await;
+            let response = handle_jsonrpc_request(
+                tool_context,
+                &context,
+                &mut initialized,
+                "tools/list",
+                json!(2),
+                None,
+            )
+            .await;
+            response["result"]["tools"]
+                .as_array()
+                .expect("tool array")
+                .iter()
+                .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        }
+
+        let leader_tools = list_tool_names(&tool_context, &team.id, &run.id, "leader").await;
+        assert!(leader_tools.contains(&"acp_permission_review_respond".to_string()));
+
+        let reviewer_tools = list_tool_names(&tool_context, &team.id, &run.id, "reviewer").await;
+        assert!(reviewer_tools.contains(&"acp_permission_review_respond".to_string()));
+
+        let observer_tools = list_tool_names(&tool_context, &team.id, &run.id, "observer").await;
+        assert!(!observer_tools.contains(&"acp_permission_review_respond".to_string()));
     }
 
     #[test]
@@ -2700,7 +2971,6 @@ mod tests {
                 "agent_time_trigger_set",
                 "agent_time_trigger_list",
                 "agent_time_trigger_cancel",
-                "acp_permission_review_respond",
             ]
         );
 
@@ -2833,7 +3103,6 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
-        let permissions = AcpPermissionService::new(state.db.clone());
         let context = ActorMcpContext {
             team_id: Some(team.id),
             current_run_id: Some(run.id),
@@ -2843,8 +3112,6 @@ mod tests {
 
         let response = tool_actor_send(
             &service,
-            &state.teams,
-            &permissions,
             &context,
             Some(
                 json!({
@@ -2894,7 +3161,6 @@ mod tests {
             .await
             .expect("create run");
         let service = state.teams.actor_mailbox_service();
-        let permissions = AcpPermissionService::new(state.db.clone());
         let team_id = team.id.clone();
         let context = ActorMcpContext {
             team_id: Some(team_id.clone()),
@@ -2905,8 +3171,6 @@ mod tests {
 
         let response = tool_actor_send(
             &service,
-            &state.teams,
-            &permissions,
             &context,
             Some(
                 json!({
