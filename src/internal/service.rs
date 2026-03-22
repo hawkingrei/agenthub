@@ -5,6 +5,7 @@ use agenthub_team_actor::{
     ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
 };
 use serde_json::Value;
+use sqlx::Row;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
@@ -30,6 +31,15 @@ use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 const BOOTSTRAP_TOKEN_HEADER: &str = "x-agenthub-bootstrap-token";
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
+
+#[derive(Debug, Clone)]
+struct ChannelReplicaRequest {
+    authority_message_id: i64,
+    team_id: String,
+    conversation_id: String,
+    task_id: String,
+    channel_id: String,
+}
 
 #[derive(Clone)]
 pub struct TeamInternalControlService {
@@ -72,6 +82,59 @@ impl TeamInternalControlService {
         }
         Ok(())
     }
+
+    async fn validate_channel_replica_request(
+        &self,
+        run_id: &str,
+        replica: &ChannelReplicaRequest,
+    ) -> Result<(), Status> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                tr.team_id AS run_team_id,
+                tt.team_id AS task_team_id,
+                tc.task_id AS conversation_task_id,
+                tc.mode AS conversation_mode
+            FROM team_runs tr
+            LEFT JOIN team_tasks tt ON tt.id = ?2
+            LEFT JOIN team_conversations tc ON tc.id = ?3
+            WHERE tr.id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .bind(&replica.task_id)
+        .bind(&replica.conversation_id)
+        .fetch_optional(&self.state.db)
+        .await
+        .map_err(|err| map_manager_error(err.into()))?
+        .ok_or_else(|| Status::not_found("run not found"))?;
+
+        let run_team_id = row.get::<String, _>("run_team_id");
+        let task_team_id = row
+            .try_get::<Option<String>, _>("task_team_id")
+            .ok()
+            .flatten();
+        let conversation_task_id = row
+            .try_get::<Option<String>, _>("conversation_task_id")
+            .ok()
+            .flatten();
+        let conversation_mode = row
+            .try_get::<Option<String>, _>("conversation_mode")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
+        if replica.team_id != run_team_id
+            || task_team_id.as_deref() != Some(replica.team_id.as_str())
+            || conversation_task_id.as_deref() != Some(replica.task_id.as_str())
+            || conversation_mode.trim() != "group_chat"
+        {
+            return Err(Status::invalid_argument(
+                "channel replica payload does not match run/team context",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -92,15 +155,22 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, from_actor_id, "from_actor_id")?;
 
-        let to_actor_id = required_field(&payload.to_actor_id, "to_actor_id")?;
+        let to_actor_id = optional_trimmed(&payload.to_actor_id);
+        let channel_id = optional_trimmed(&payload.channel_id);
         let channel = optional_trimmed(&payload.channel).unwrap_or("default");
         let transport = parse_actor_transport(optional_trimmed(&payload.transport))
             .map_err(|err| Status::invalid_argument(err.to_string()))?;
         let route = optional_json_object(optional_trimmed(&payload.route_json), "route_json")?;
         let payload_json = parse_json_required(&payload.payload_json, "payload_json")?;
+        let channel_replica = resolve_channel_replica_request(&payload_json);
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
         let from_peer_id = optional_trimmed(&payload.from_peer_id);
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
+
+        if let Some(replica) = channel_replica.as_ref() {
+            self.validate_channel_replica_request(run_id, replica)
+                .await?;
+        }
 
         let message = self
             .state
@@ -110,21 +180,43 @@ impl TeamInternalControl for TeamInternalControlService {
                 run_id: run_id.to_string(),
                 from_actor_id: from_actor_id.to_string(),
                 from_peer_id: from_peer_id.map(str::to_string),
-                to_actor_id: to_actor_id.to_string(),
+                to_actor_id: to_actor_id.map(str::to_string),
+                channel_id: channel_id.map(str::to_string),
                 to_peer_id: to_peer_id.map(str::to_string),
                 channel: Some(channel.to_string()),
                 transport: Some(transport),
                 route,
-                payload: payload_json,
+                payload: payload_json.clone(),
                 idempotency_key: idempotency_key.map(str::to_string),
             })
             .await
             .map_err(map_actor_service_status)?;
 
+        if let (Some(replica), Some(source_node_id)) =
+            (channel_replica, principal.source_node_id.as_deref())
+        {
+            self.state
+                .teams
+                .append_channel_replica_message(
+                    replica.authority_message_id,
+                    run_id,
+                    &replica.team_id,
+                    &replica.conversation_id,
+                    &replica.task_id,
+                    &replica.channel_id,
+                    from_actor_id,
+                    source_node_id,
+                    &payload_json,
+                )
+                .await
+                .map_err(map_manager_error)?;
+        }
+
         Ok(Response::new(SendActorMessageResponse {
             message_id: message.message_id,
             status: message.state.as_str().to_string(),
             idempotency_key: idempotency_key.unwrap_or("").to_string(),
+            message_json: serde_json::to_string(&message.message).unwrap_or_default(),
         }))
     }
 
@@ -652,6 +744,36 @@ fn parse_json_required(raw: &str, field: &str) -> Result<Value, Status> {
         .map_err(|err| Status::invalid_argument(format!("{field} must be valid JSON: {err}")))
 }
 
+fn resolve_channel_replica_request(payload: &Value) -> Option<ChannelReplicaRequest> {
+    let payload_obj = payload.as_object()?;
+    let delivery_scope = payload_obj.get("delivery_scope")?.as_str()?.trim();
+    if delivery_scope != "channel_broadcast" {
+        return None;
+    }
+    let authority_message_id = payload_obj.get("authority_message_id")?.as_i64()?;
+    if authority_message_id <= 0 {
+        return None;
+    }
+    let team_id = payload_obj.get("team_id")?.as_str()?.trim();
+    let conversation_id = payload_obj.get("channel_conversation_id")?.as_str()?.trim();
+    let task_id = payload_obj.get("task_id")?.as_str()?.trim();
+    let channel_id = payload_obj.get("channel_id")?.as_str()?.trim();
+    if team_id.is_empty()
+        || conversation_id.is_empty()
+        || task_id.is_empty()
+        || channel_id.is_empty()
+    {
+        return None;
+    }
+    Some(ChannelReplicaRequest {
+        authority_message_id,
+        team_id: team_id.to_string(),
+        conversation_id: conversation_id.to_string(),
+        task_id: task_id.to_string(),
+        channel_id: channel_id.to_string(),
+    })
+}
+
 fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
 where
     T: serde::de::DeserializeOwned,
@@ -791,6 +913,7 @@ fn security_mode_to_str(mode: InternalGrpcSecurityMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use sqlx::Row;
     use tonic::{Code, Request, metadata::MetadataValue};
     use uuid::Uuid;
 
@@ -803,6 +926,7 @@ mod tests {
     use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
+    use agenthub_team_actor::ActorMessageStatus;
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";
 
@@ -892,6 +1016,7 @@ mod tests {
                     idempotency_key: "internal-grpc-msg-1".to_string(),
                     from_peer_id: "node-a".to_string(),
                     to_peer_id: "main".to_string(),
+                    channel_id: String::new(),
                 },
                 &token,
             ),
@@ -902,6 +1027,11 @@ mod tests {
         assert!(send.message_id > 0);
         assert_eq!(send.status, "pending");
         assert_eq!(send.idempotency_key, "internal-grpc-msg-1");
+        let sent_message: crate::team::TeamActorMessageRecord =
+            serde_json::from_str(&send.message_json).expect("decode sent message_json");
+        assert_eq!(sent_message.message_id, send.message_id);
+        assert_eq!(sent_message.to_actor_id, "reviewer");
+        assert_eq!(sent_message.status, ActorMessageStatus::Pending);
 
         let pending_inbox = TeamInternalControl::list_actor_inbox(
             &service,
@@ -990,6 +1120,141 @@ mod tests {
         .into_inner();
         assert_eq!(inbox_with_delivered.messages.len(), 1);
         assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let (task_id, conversation_id) = state
+            .teams
+            .ensure_shared_thread_target_for_team(&run.team_id, "planner")
+            .await
+            .expect("ensure shared thread target");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let authority_message_id = 4242_i64;
+        let send = TeamInternalControl::send_actor_message(
+            &service,
+            authenticated_request(
+                SendActorMessageRequest {
+                    run_id: run.id.clone(),
+                    from_actor_id: "planner".to_string(),
+                    to_actor_id: "reviewer".to_string(),
+                    channel: "coordination".to_string(),
+                    transport: "local".to_string(),
+                    route_json: String::new(),
+                    payload_json: json!({
+                        "type": "chat_message",
+                        "text": "@reviewer please inspect p2p relay",
+                        "delivery_scope": "channel_broadcast",
+                        "authority_message_id": authority_message_id,
+                        "team_id": run.team_id,
+                        "channel_conversation_id": conversation_id,
+                        "task_id": task_id,
+                        "channel_id": "all",
+                        "mention_actor_ids": ["reviewer"],
+                        "mentioned_actor_ids": ["reviewer"]
+                    })
+                    .to_string(),
+                    idempotency_key: "internal-grpc-channel-replica-1".to_string(),
+                    from_peer_id: "main".to_string(),
+                    to_peer_id: "main".to_string(),
+                    channel_id: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("send actor channel replica message")
+        .into_inner();
+        assert!(send.message_id > 0);
+
+        let replica = sqlx::query(
+            r#"
+            SELECT authority_message_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json
+            FROM team_channel_message_replicas
+            WHERE authority_message_id = ?1
+            "#,
+        )
+        .bind(authority_message_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load channel replica row");
+        assert_eq!(
+            replica.get::<i64, _>("authority_message_id"),
+            authority_message_id
+        );
+        assert_eq!(replica.get::<String, _>("run_id"), run.id);
+        assert_eq!(replica.get::<String, _>("channel_id"), "all");
+        assert_eq!(replica.get::<String, _>("from_actor_id"), "planner");
+        assert_eq!(replica.get::<String, _>("source_node_id"), "main");
+        let payload: serde_json::Value =
+            serde_json::from_str(replica.get::<String, _>("payload_json").as_str())
+                .expect("decode replica payload");
+        assert_eq!(payload["delivery_scope"], json!("channel_broadcast"));
+        assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let err = TeamInternalControl::send_actor_message(
+            &service,
+            authenticated_request(
+                SendActorMessageRequest {
+                    run_id: run.id,
+                    from_actor_id: "planner".to_string(),
+                    to_actor_id: "reviewer".to_string(),
+                    channel: "coordination".to_string(),
+                    transport: "local".to_string(),
+                    route_json: String::new(),
+                    payload_json: json!({
+                        "type": "chat_message",
+                        "text": "@reviewer please inspect p2p relay",
+                        "delivery_scope": "channel_broadcast",
+                        "authority_message_id": 999_i64,
+                        "team_id": "wrong-team",
+                        "channel_conversation_id": "conversation-all",
+                        "task_id": "task-all",
+                        "channel_id": "all"
+                    })
+                    .to_string(),
+                    idempotency_key: "internal-grpc-channel-replica-bad-1".to_string(),
+                    from_peer_id: "main".to_string(),
+                    to_peer_id: "main".to_string(),
+                    channel_id: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("mismatched replica payload should fail");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message()
+                .contains("channel replica payload does not match run/team context"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]

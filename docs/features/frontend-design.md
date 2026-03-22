@@ -34,7 +34,7 @@ state labels, and panel behaviors diverged.
 - `Conversation` remains available even when no active run exists.
 - Conversation uses one shared group stream (human + leader + workers); no per-recipient split view on the human surface.
 - Default response routing is team-wide when no `@mention` is provided, with leader-first speaking priority.
-- `@member_id` allows direct worker/human interaction in the same stream; multiple mentions should be supported.
+- `@member_id` marks people in the same shared stream and should be surfaced back to agents/UI as mention metadata, without changing group-chat fan-out.
 - `Runs` is the dedicated run-entry tab (run browser + `Start Team` + run selection).
 - Internal execution controls (`Run Ops`, `Step Ops`, raw mailbox tools) remain in Debug sections.
 - `Start Team` stays visible as explicit operator action.

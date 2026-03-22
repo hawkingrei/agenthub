@@ -40,6 +40,8 @@ Phase rules:
 6. During `Consensus formation`, summarize accepted and rejected options with reasons.
 7. During `Result integration`, ensure output is unified and non-contradictory before sending to human actor.
 8. Keep `AGENTS.md` as index-level communication; attach deep implementation guidance in relevant skills/docs.
+9. Keep `current_phase`, structured evidence fields, and transport metadata inside mailbox/artifact
+   updates; shared-channel text should stay concise and human-readable.
 
 ## Conflict Resolution
 

@@ -1434,6 +1434,38 @@ impl AcpPermissionService {
         row.map(parse_permission_record_row).transpose()
     }
 
+    pub async fn has_pending_review_for_actor(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+    ) -> anyhow::Result<bool> {
+        let db = self.db.clone();
+        let team_id = team_id.to_string();
+        let actor_id = actor_id.to_string();
+        let row = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT COUNT(*)
+                    FROM acp_permission_requests
+                    WHERE team_id = ?1
+                      AND review_target_actor_id = ?2
+                      AND status = 'pending'
+                    "#,
+                )
+                .bind(team_id)
+                .bind(actor_id)
+                .fetch_one(&db)
+                .await
+            })
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("acp permission reviewer lookup join failed: {err}")
+            })??;
+        Ok(row > 0)
+    }
+
     pub async fn record_review_dispatch(
         &self,
         request_id: &str,

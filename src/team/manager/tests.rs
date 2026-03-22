@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
 use super::{TeamManager, TeamRunResumeError};
+use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
     TeamRunStatus, TeamStepStatus, TeamTaskStatus,
@@ -18,10 +20,12 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::routing::any;
 use axum::{Router, serve};
+use chrono::Utc;
 use serde_json::{Value, json};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 async fn setup_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
@@ -198,6 +202,28 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_channel_message_replicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            authority_message_id INTEGER NOT NULL,
+            run_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            source_node_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            stored_at INTEGER NOT NULL,
+            UNIQUE(authority_message_id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_channel_message_replicas");
 
     sqlx::query(
         r#"
@@ -1939,7 +1965,8 @@ async fn actor_mailbox_service_returns_contract_responses() {
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "reviewer".to_string(),
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -1957,7 +1984,8 @@ async fn actor_mailbox_service_returns_contract_responses() {
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "reviewer".to_string(),
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -1996,6 +2024,448 @@ async fn actor_mailbox_service_returns_contract_responses() {
         .expect("actor ack");
     assert_eq!(acked.message_id, sent.message_id);
     assert_eq!(acked.state, TeamActorMessageStatus::Delivered);
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-channel-team".to_string(),
+            description: Some("team for channel mailbox broadcast".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-channel-mailbox"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: None,
+            channel_id: Some("all".to_string()),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"@reviewer please validate api contract"
+            }),
+            idempotency_key: Some("msg-channel-mailbox-1".to_string()),
+        })
+        .await
+        .expect("send channel mailbox message");
+    assert_eq!(sent.state, TeamActorMessageStatus::Pending);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&db)
+    .await
+    .expect("load channel mailbox rows");
+    assert_eq!(rows.len(), 2);
+    let recipients = rows
+        .iter()
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recipients,
+        vec!["reviewer".to_string(), "worker".to_string()]
+    );
+    for row in &rows {
+        let payload: Value = serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+            .expect("decode forwarded channel payload");
+        assert_eq!(payload["delivery_scope"], json!("channel_broadcast"));
+        assert_eq!(payload["channel_id"], json!("all"));
+        assert_eq!(payload["team_id"], json!(team.id));
+        assert!(
+            payload["authority_message_id"]
+                .as_i64()
+                .is_some_and(|value| value > 0),
+            "missing authority_message_id: {payload}"
+        );
+        assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
+        assert_eq!(payload["mentioned_actor_ids"], json!(["reviewer"]));
+        assert_eq!(
+            payload["text"],
+            json!("@reviewer please validate api contract")
+        );
+    }
+
+    let shared_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread messages");
+    assert_eq!(shared_count, 1);
+
+    let replica_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_channel_message_replicas")
+            .fetch_one(&db)
+            .await
+            .expect("count channel replica rows");
+    assert_eq!(replica_count, 0);
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_channel_send_reuses_canonical_message_on_idempotent_retry() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-channel-idempotent-team".to_string(),
+            description: Some("team for channel mailbox idempotency".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-channel-mailbox-idempotent"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    for _ in 0..2 {
+        service
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: None,
+                to_actor_id: None,
+                channel_id: Some("all".to_string()),
+                to_peer_id: None,
+                channel: Some("coordination".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"@reviewer please validate retry behavior"
+                }),
+                idempotency_key: Some("msg-channel-mailbox-idempotent-1".to_string()),
+            })
+            .await
+            .expect("send channel mailbox message");
+    }
+
+    let shared_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread messages");
+    assert_eq!(shared_count, 1);
+
+    let mailbox_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_one(&db)
+    .await
+    .expect("count mailbox rows");
+    assert_eq!(mailbox_count, 2);
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p2p() {
+    let db = setup_test_db().await;
+    sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+        .execute(&db)
+        .await
+        .expect("add target_node_id");
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&db)
+    .await
+    .expect("create agent_nodes");
+
+    let manager = TeamManager::new(db.clone());
+    manager.configure_internal_grpc_peer_client(Some(InternalGrpcPeerClientConfig {
+        shared_secret: "team-channel-p2p-secret".to_string(),
+        expected_issuer: Some("agenthub".to_string()),
+        expected_audience: Some("agenthub-internal".to_string()),
+        source_node_id: "main".to_string(),
+        cert_dir: std::env::temp_dir()
+            .join(format!("team-channel-p2p-{}", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string(),
+        security_mode: InternalGrpcSecurityMode::Mtls,
+    }));
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-channel-p2p-team".to_string(),
+            description: Some("team for channel mailbox p2p broadcast".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-channel-mailbox-p2p"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let now = Utc::now().timestamp();
+    for (agent_id, target_node_id) in [
+        ("planner", None),
+        ("reviewer", None),
+        ("worker", Some("node-east")),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id,
+                name,
+                workdir,
+                command,
+                args,
+                worktree_mode,
+                code_mode,
+                agent_loop_enabled,
+                source,
+                status,
+                created_at,
+                updated_at,
+                target_node_id
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 'manual', 'running', ?7, ?8, ?9)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(format!("Agent {agent_id}"))
+        .bind(format!("/tmp/{agent_id}"))
+        .bind("agenthub")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .bind(target_node_id)
+        .execute(&db)
+        .await
+        .expect("insert agent");
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO agent_nodes (id, name, grpc_target, tls_server_name, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("node-east")
+    .bind("Node East")
+    .bind("https://node-east.internal:50051")
+    .bind("node-east.internal")
+    .bind(now)
+    .bind(now)
+    .execute(&db)
+    .await
+    .expect("insert remote node");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: None,
+            channel_id: Some("all".to_string()),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"@worker please validate remote relay"
+            }),
+            idempotency_key: Some("msg-channel-mailbox-p2p-1".to_string()),
+        })
+        .await
+        .expect("send p2p channel mailbox message");
+    assert_eq!(sent.state, TeamActorMessageStatus::Pending);
+
+    let canonical_row = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, route, payload_json
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("load canonical channel conversation message");
+    let canonical_payload: Value =
+        serde_json::from_str(canonical_row.get::<String, _>("payload_json").as_str())
+            .expect("decode canonical channel payload");
+    assert_eq!(canonical_row.get::<String, _>("from_actor_id"), "planner");
+    assert!(
+        canonical_row
+            .try_get::<Option<String>, _>("to_actor_id")
+            .ok()
+            .flatten()
+            .is_none()
+    );
+    assert_eq!(canonical_row.get::<String, _>("route"), "group_chat");
+    assert_eq!(
+        canonical_payload["text"],
+        json!("@worker please validate remote relay")
+    );
+
+    let rows = sqlx::query(
+        r#"
+        SELECT to_actor_id, to_peer_id, transport, route_json, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY to_actor_id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&db)
+    .await
+    .expect("load p2p mailbox rows");
+    assert_eq!(rows.len(), 2);
+
+    let reviewer = rows
+        .iter()
+        .find(|row| row.get::<String, _>("to_actor_id") == "reviewer")
+        .expect("reviewer row");
+    assert_eq!(reviewer.get::<String, _>("to_peer_id"), ACTOR_MAIN_PEER_ID);
+    assert_eq!(reviewer.get::<String, _>("transport"), "local");
+    assert!(
+        reviewer
+            .try_get::<Option<String>, _>("route_json")
+            .ok()
+            .flatten()
+            .is_none()
+    );
+
+    let worker = rows
+        .iter()
+        .find(|row| row.get::<String, _>("to_actor_id") == "worker")
+        .expect("worker row");
+    assert_eq!(worker.get::<String, _>("to_peer_id"), ACTOR_NODE_PEER_ID);
+    assert_eq!(worker.get::<String, _>("transport"), "remote");
+    let route: Value =
+        serde_json::from_str(worker.get::<String, _>("route_json").as_str()).expect("route");
+    assert_eq!(route["kind"], json!("grpc"));
+    assert_eq!(
+        route["grpc_target"],
+        json!("https://node-east.internal:50051")
+    );
+    assert_eq!(route["tls_server_name"], json!("node-east.internal"));
+    assert_eq!(route["target_node_id"], json!("node-east"));
+    assert!(
+        route.get("access_token").is_none(),
+        "persisted route should stay stable and omit access_token: {route}"
+    );
+    assert!(
+        route.get("issued_at").is_none() && route.get("expires_at").is_none(),
+        "persisted route should omit transient credential metadata: {route}"
+    );
+
+    let worker_payload: Value =
+        serde_json::from_str(worker.get::<String, _>("payload_json").as_str())
+            .expect("worker payload");
+    assert_eq!(worker_payload["delivery_scope"], json!("channel_broadcast"));
+    assert_eq!(worker_payload["team_id"], json!(team.id));
+    assert!(
+        worker_payload["authority_message_id"]
+            .as_i64()
+            .is_some_and(|value| value > 0),
+        "missing authority_message_id: {worker_payload}"
+    );
+    assert_eq!(worker_payload["mention_actor_ids"], json!(["worker"]));
+    assert_eq!(worker_payload["mentioned_actor_ids"], json!(["worker"]));
 }
 
 #[tokio::test]
@@ -2039,7 +2509,8 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2149,7 +2620,8 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2164,7 +2636,8 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2226,7 +2699,8 @@ async fn actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "reviewer".to_string(),
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2295,7 +2769,8 @@ async fn actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2378,7 +2853,8 @@ async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply
             run_id: run.id.clone(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -2438,7 +2914,8 @@ async fn actor_mailbox_service_validates_required_fields() {
             run_id: " ".to_string(),
             from_actor_id: "planner".to_string(),
             from_peer_id: None,
-            to_actor_id: "reviewer".to_string(),
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: None,
             transport: Some(TeamActorMessageTransport::Local),

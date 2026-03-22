@@ -410,9 +410,11 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
     ) -> Result<ActorSendResponse, ActorServiceError> {
         let from_actor_kind =
             agenthub_team_actor::infer_actor_identity_kind(&request.from_actor_id);
-        let to_actor_kind = agenthub_team_actor::infer_actor_identity_kind(&request.to_actor_id);
+        let to_actor_id = request.to_actor_id.clone().unwrap_or_default();
+        let to_actor_kind = agenthub_team_actor::infer_actor_identity_kind(&to_actor_id);
         let request_channel = request.channel.clone();
         let request_transport = request.transport.clone();
+        let request_channel_id = request.channel_id.clone();
         let grpc_channel = request_channel
             .clone()
             .unwrap_or_else(|| "default".to_string());
@@ -444,7 +446,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             .send_actor_message(self.request(GrpcSendActorMessageRequest {
                 run_id: request.run_id.clone(),
                 from_actor_id: request.from_actor_id.clone(),
-                to_actor_id: request.to_actor_id.clone(),
+                to_actor_id: to_actor_id.clone(),
                 channel: grpc_channel,
                 transport: grpc_transport,
                 route_json,
@@ -452,22 +454,19 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 idempotency_key: request.idempotency_key.unwrap_or_default(),
                 from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
                 to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
+                channel_id: request_channel_id.unwrap_or_default(),
             })?)
             .await
             .map_err(map_grpc_status)?
             .into_inner();
-        Ok(ActorSendResponse {
-            message_id: response.message_id,
-            state: parse_status(&response.status),
-            deduped: false,
-            created_at: 0,
-            message: ActorMessageRecord {
+        let message = if response.message_json.trim().is_empty() {
+            ActorMessageRecord {
                 message_id: response.message_id,
                 run_id: request.run_id,
                 from_actor_id: request.from_actor_id,
                 from_peer_id: request.from_peer_id.unwrap_or_else(|| "main".to_string()),
                 from_actor_kind,
-                to_actor_id: request.to_actor_id,
+                to_actor_id,
                 to_peer_id: request.to_peer_id.unwrap_or_else(|| "main".to_string()),
                 to_actor_kind,
                 channel: request_channel.unwrap_or_else(|| "default".to_string()),
@@ -477,7 +476,22 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 status: parse_status(&response.status),
                 created_at: 0,
                 delivered_at: None,
-            },
+            }
+        } else {
+            serde_json::from_str(&response.message_json).map_err(|err| {
+                ActorServiceError::new(
+                    ActorServiceErrorCode::Internal,
+                    format!("decode send_actor_message response: {}", err),
+                )
+            })?
+        };
+        let state = message.status.clone();
+        Ok(ActorSendResponse {
+            message_id: response.message_id,
+            state,
+            deduped: false,
+            created_at: message.created_at,
+            message,
         })
     }
 
@@ -588,7 +602,7 @@ mod tests {
     use crate::agent::{AgentConfig, AgentNodeConfig, WorktreeMode};
     use agenthub_team_actor::{
         ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMailboxService,
-        ActorMessageStatus, ActorMessageTransport,
+        ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
     };
     use serde_json::{Value, json};
     use tonic::transport::{Certificate, Identity, ServerTlsConfig};
@@ -976,6 +990,65 @@ mod tests {
         assert_eq!(
             delivered_inbox.messages[0].status,
             ActorMessageStatus::Delivered
+        );
+
+        server.handle.abort();
+    }
+
+    #[tokio::test]
+    async fn grpc_actor_send_returns_server_message_for_channel_targets() {
+        install_rustls_crypto_provider();
+        let state = build_test_state().await;
+        let team_id = format!("team-{}", Uuid::new_v4());
+        let team_name = format!("grpc-channel-team-{}", Uuid::new_v4());
+        let run_id = format!("run-{}", Uuid::new_v4());
+        seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+        let cert_dir = test_cert_dir("grpc-channel-send");
+        ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+            .expect("generate tls material")
+            .expect("tls material");
+        let authz = build_authz();
+        let server =
+            spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+        let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+            server.addr,
+            issue_mailbox_token(&authz, &run_id),
+            &cert_dir,
+        ))
+        .await
+        .expect("connect grpc mailbox client");
+
+        let sent = client
+            .actor_send(ActorSendRequest {
+                run_id: run_id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                to_actor_id: None,
+                channel_id: Some("all".to_string()),
+                to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                channel: Some("coordination".to_string()),
+                transport: Some(ActorMessageTransport::Local),
+                route: None,
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"@reviewer please inspect"
+                }),
+                idempotency_key: Some("grpc-channel-send-1".to_string()),
+            })
+            .await
+            .expect("send channel message over grpc");
+        assert_eq!(sent.state, ActorMessageStatus::Pending);
+        assert_eq!(sent.message.to_actor_id, "reviewer");
+        assert_eq!(sent.message.channel, "coordination");
+        assert_eq!(sent.message.transport, ActorMessageTransport::Local);
+        assert_eq!(
+            sent.message.payload["delivery_scope"],
+            json!("channel_broadcast")
+        );
+        assert_eq!(
+            sent.message.payload["mention_actor_ids"],
+            json!(["reviewer"])
         );
 
         server.handle.abort();

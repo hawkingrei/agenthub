@@ -8,7 +8,7 @@ mod tests;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 pub use agenthub_team_domain::TeamRunResumeError;
@@ -36,6 +36,7 @@ use super::{
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
+use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
 use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
@@ -46,6 +47,7 @@ pub struct TeamManager {
     event_dbs: AgentEventDbRouter,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
+    agents_target_node_id_column: Arc<Mutex<Option<bool>>>,
 }
 
 const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
@@ -198,11 +200,13 @@ impl TeamManager {
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
         let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
         let remote_relay_adapter = Arc::new(TeamRemoteRelayAdapter::new(db.clone()));
+        let agents_target_node_id_column = Arc::new(Mutex::new(None));
         Self {
             db,
             event_dbs,
             conversation_events,
             remote_relay_adapter,
+            agents_target_node_id_column,
         }
     }
 
@@ -215,6 +219,13 @@ impl TeamManager {
     pub fn configure_internal_grpc_relay(&self, cert_dir: &Path, mode: InternalGrpcSecurityMode) {
         self.remote_relay_adapter
             .configure_grpc_tls_defaults(Some(GrpcRelayTlsDefaults::from_cert_dir(cert_dir, mode)));
+    }
+
+    pub fn configure_internal_grpc_peer_client(
+        &self,
+        config: Option<InternalGrpcPeerClientConfig>,
+    ) {
+        self.remote_relay_adapter.configure_grpc_peer_client(config);
     }
 
     #[cfg(test)]
@@ -643,6 +654,53 @@ impl TeamManager {
             payload: redacted_payload,
             created_at: now,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn append_channel_replica_message(
+        &self,
+        authority_message_id: i64,
+        run_id: &str,
+        team_id: &str,
+        conversation_id: &str,
+        task_id: &str,
+        channel_id: &str,
+        from_actor_id: &str,
+        source_node_id: &str,
+        payload: &Value,
+    ) -> anyhow::Result<bool> {
+        let stored_at = Utc::now().timestamp();
+        let payload_json = redact_sensitive_json(payload).to_string();
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO team_channel_message_replicas (
+                authority_message_id,
+                run_id,
+                team_id,
+                conversation_id,
+                task_id,
+                channel_id,
+                from_actor_id,
+                source_node_id,
+                payload_json,
+                stored_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+        )
+        .bind(authority_message_id)
+        .bind(run_id)
+        .bind(team_id)
+        .bind(conversation_id)
+        .bind(task_id)
+        .bind(channel_id)
+        .bind(from_actor_id)
+        .bind(source_node_id)
+        .bind(payload_json)
+        .bind(stored_at)
+        .execute(&self.db)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn list_task_conversation_messages(

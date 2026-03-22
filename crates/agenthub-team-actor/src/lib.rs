@@ -11,7 +11,9 @@ pub use contract::{
     actor_inbox_with_auto_ack,
 };
 pub use idempotency::{
-    actor_message_fingerprint, build_default_actor_message_idempotency_key, canonical_json,
+    actor_message_fingerprint, build_actor_channel_fanout_idempotency_key,
+    build_default_actor_channel_idempotency_key, build_default_actor_message_idempotency_key,
+    canonical_json,
 };
 pub use mailbox::{
     AckActorMessageCommand, AckActorMessageResult, ActorMailbox, ActorMailboxError,

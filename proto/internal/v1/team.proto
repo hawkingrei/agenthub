@@ -32,12 +32,14 @@ message SendActorMessageRequest {
   string idempotency_key = 8;
   string from_peer_id = 9;
   string to_peer_id = 10;
+  string channel_id = 11;
 }
 
 message SendActorMessageResponse {
   int64 message_id = 1;
   string status = 2;
   string idempotency_key = 3;
+  string message_json = 4;
 }
 
 message ListActorInboxRequest {

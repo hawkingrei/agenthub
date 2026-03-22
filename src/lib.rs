@@ -1,11 +1,11 @@
 #![recursion_limit = "512"]
 
-#[cfg(test)]
-mod agenthub_binary;
 mod acp;
 mod actor_cli;
 mod actor_mcp;
 mod agent;
+#[cfg(test)]
+mod agenthub_binary;
 mod api;
 mod app;
 mod auth;

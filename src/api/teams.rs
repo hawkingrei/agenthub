@@ -1335,7 +1335,8 @@ async fn send_team_run_message(
             run_id: run.id.clone(),
             from_actor_id: from_actor_id.clone(),
             from_peer_id: Some(from_peer_id.clone()),
-            to_actor_id: to_actor_id.clone(),
+            to_actor_id: Some(to_actor_id.clone()),
+            channel_id: None,
             to_peer_id: Some(to_peer_id.clone()),
             channel: Some(channel),
             transport: Some(transport),
@@ -2365,8 +2366,11 @@ async fn maybe_forward_task_message_to_mailbox(
     };
     let mention_ids =
         extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids);
-    let (recipient_ids, delivery_scope) =
-        resolve_task_mailbox_recipient_ids(actor_scope, mention_ids.as_slice());
+    let (recipient_ids, delivery_scope) = resolve_task_mailbox_recipient_ids(
+        actor_scope,
+        message.route.as_str(),
+        message.to_actor_id.as_deref(),
+    );
     if recipient_ids.is_empty() {
         return Ok(());
     }
@@ -2379,7 +2383,7 @@ async fn maybe_forward_task_message_to_mailbox(
         let forwarded_payload = build_task_mailbox_forward_payload(
             &message.payload,
             message,
-            to_actor_id.as_str(),
+            mention_ids.as_slice(),
             delivery_scope,
         );
         let send_result = state
@@ -2389,7 +2393,8 @@ async fn maybe_forward_task_message_to_mailbox(
                 run_id: run.id.clone(),
                 from_actor_id: mailbox_sender.clone(),
                 from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-                to_actor_id: to_actor_id.clone(),
+                to_actor_id: Some(to_actor_id.clone()),
+                channel_id: None,
                 to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
                 channel: Some("default".to_string()),
                 transport: Some(TeamActorMessageTransport::Local),
@@ -2484,22 +2489,28 @@ fn resolve_task_mailbox_sender(actor_scope: &TaskActorScope) -> Option<String> {
 
 fn resolve_task_mailbox_recipient_ids(
     actor_scope: &TaskActorScope,
-    mention_ids: &[String],
+    route: &str,
+    to_actor_id: Option<&str>,
 ) -> (Vec<String>, &'static str) {
-    if !mention_ids.is_empty() {
-        return (mention_ids.to_vec(), "mention");
-    }
-    let Some(sender) = resolve_task_mailbox_sender(actor_scope) else {
-        return (Vec::new(), "broadcast");
-    };
-    let mut recipient_ids = Vec::new();
-    recipient_ids.push(sender.clone());
-    for member_id in &actor_scope.member_order {
-        if member_id != &sender {
-            recipient_ids.push(member_id.clone());
+    match route {
+        "group_chat" => {
+            let Some(sender) = resolve_task_mailbox_sender(actor_scope) else {
+                return (Vec::new(), "broadcast");
+            };
+            let mut recipient_ids = Vec::new();
+            recipient_ids.push(sender.clone());
+            for member_id in &actor_scope.member_order {
+                if member_id != &sender {
+                    recipient_ids.push(member_id.clone());
+                }
+            }
+            (recipient_ids, "broadcast")
         }
+        "to_member" | "to_leader" => to_actor_id
+            .map(|target| (vec![target.to_string()], "direct"))
+            .unwrap_or_else(|| (Vec::new(), "direct")),
+        _ => (Vec::new(), "broadcast"),
     }
-    (recipient_ids, "broadcast")
 }
 
 fn extract_task_message_mention_actor_ids(
@@ -2592,58 +2603,29 @@ fn is_email_local_char(raw: u8) -> bool {
     )
 }
 
-fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, usize)> {
-    let needle = format!("@{actor_id}");
-    let bytes = text.as_bytes();
-    let mut cursor = 0usize;
-    while let Some(found) = text[cursor..].find(needle.as_str()) {
-        let start = cursor + found;
-        let end = start + needle.len();
-        let left_ok = start == 0 || !is_email_local_char(bytes[start - 1]);
-        let right_ok = end >= bytes.len() || !is_valid_mention_char(bytes[end]);
-        if left_ok && right_ok {
-            return Some((start, end));
-        }
-        cursor = end;
-    }
-    None
-}
-
 fn build_task_mailbox_forward_payload(
     source_payload: &Value,
     message: &TeamConversationMessageRecord,
-    to_actor_id: &str,
+    mention_actor_ids: &[String],
     delivery_scope: &str,
 ) -> Value {
     let mut payload_obj = match source_payload {
         Value::Object(map) => map.clone(),
         _ => Map::new(),
     };
+    let mention_values = mention_actor_ids
+        .iter()
+        .cloned()
+        .map(Value::String)
+        .collect::<Vec<_>>();
     payload_obj.insert(
         "mention_actor_ids".to_string(),
-        Value::Array(vec![Value::String(to_actor_id.to_string())]),
+        Value::Array(mention_values.clone()),
     );
-    if let Some(text) = payload_obj
-        .get("text")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let mention_tag = format!("<at>{to_actor_id}</at>");
-        if !text.contains(mention_tag.as_str()) {
-            let normalized_text =
-                if let Some((start, end)) = find_raw_actor_mention_range(text, to_actor_id) {
-                    format!(
-                        "{prefix}{mention_tag}{suffix}",
-                        prefix = &text[..start],
-                        suffix = &text[end..]
-                    )
-                } else {
-                    format!("{mention_tag} {text}")
-                };
-            payload_obj.insert("text".to_string(), Value::String(normalized_text));
-        }
-    }
+    payload_obj.insert(
+        "mentioned_actor_ids".to_string(),
+        Value::Array(mention_values),
+    );
     payload_obj.insert(
         "human_actor_id".to_string(),
         Value::String(TEAM_SPECIAL_USER_ACTOR_ALIAS.to_string()),

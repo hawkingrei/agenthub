@@ -51,19 +51,13 @@ impl TeamPermissionReviewDispatcher {
         }
     }
 
-    async fn dispatch_to_leader(&self, request: &AcpPermissionReviewRequest) -> anyhow::Result<()> {
+    async fn dispatch_to_review_target(
+        &self,
+        request: &AcpPermissionReviewRequest,
+    ) -> anyhow::Result<()> {
         let Some(team_id) = request.routing.team_id.as_deref() else {
             return Ok(());
         };
-        let requester_role = request
-            .routing
-            .requester_role
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("");
-        if !requester_role.eq_ignore_ascii_case("worker") {
-            return Ok(());
-        }
         let requester_actor_id = request
             .routing
             .requester_actor_id
@@ -71,17 +65,15 @@ impl TeamPermissionReviewDispatcher {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| anyhow::anyhow!("permission review routing requires requester actor"))?;
-        let team = self.teams.get_team(team_id).await?;
-        let leader_member_id = team
-            .spec
-            .get("leader_member_id")
-            .and_then(Value::as_str)
+        let requester_role = request
+            .routing
+            .requester_role
+            .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
-        if leader_member_id == requester_actor_id {
-            return Ok(());
-        }
+            .unwrap_or("");
+        let team = self.teams.get_team(team_id).await?;
+        let (review_target_actor_id, dispatch_status) =
+            resolve_review_target(&team.spec, requester_actor_id, requester_role)?;
 
         let (task_id, conversation_id) = self
             .teams
@@ -100,7 +92,7 @@ impl TeamPermissionReviewDispatcher {
                 .await?
                 .id
         };
-        let payload = build_permission_review_payload(request, leader_member_id);
+        let payload = build_permission_review_payload(request, review_target_actor_id.as_str());
         let response = self
             .teams
             .actor_mailbox_service()
@@ -108,7 +100,8 @@ impl TeamPermissionReviewDispatcher {
                 run_id: run_id.clone(),
                 from_actor_id: requester_actor_id.to_string(),
                 from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-                to_actor_id: leader_member_id.to_string(),
+                to_actor_id: Some(review_target_actor_id.clone()),
+                channel_id: None,
                 to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
                 channel: Some("default".to_string()),
                 transport: Some(ActorMessageTransport::Local),
@@ -116,27 +109,27 @@ impl TeamPermissionReviewDispatcher {
                 payload,
                 idempotency_key: Some(format!(
                     "permission-review:{}:{}",
-                    request.request_id, leader_member_id
+                    request.request_id, review_target_actor_id
                 )),
             })
             .await
             .map_err(|err| {
                 anyhow::anyhow!(
-                    "dispatch permission review to leader failed: {}",
+                    "dispatch permission review to reviewer failed: {}",
                     err.message
                 )
             })?;
         self.permissions
             .record_review_dispatch(
                 &request.request_id,
-                Some(leader_member_id),
-                "leader_dispatched",
+                Some(review_target_actor_id.as_str()),
+                dispatch_status,
                 Some(run_id.as_str()),
                 Some(response.message_id),
             )
             .await?;
         self.nudge_actor(
-            leader_member_id,
+            review_target_actor_id.as_str(),
             &run_id,
             TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE,
         )
@@ -229,7 +222,7 @@ impl TeamPermissionReviewDispatcher {
 #[async_trait::async_trait]
 impl AcpPermissionReviewDispatcher for TeamPermissionReviewDispatcher {
     async fn dispatch_review(&self, request: AcpPermissionReviewRequest) -> anyhow::Result<()> {
-        if let Err(err) = self.dispatch_to_leader(&request).await {
+        if let Err(err) = self.dispatch_to_review_target(&request).await {
             tracing::warn!(
                 permission_id = %request.request_id,
                 error = %err,
@@ -240,13 +233,13 @@ impl AcpPermissionReviewDispatcher for TeamPermissionReviewDispatcher {
                 .record_review_dispatch(
                     &request.request_id,
                     None,
-                    "leader_dispatch_failed",
+                    "review_dispatch_failed",
                     None,
                     None,
                 )
                 .await;
             let _ = self
-                .notify_human_review_if_pending(&request, "leader_dispatch_failed")
+                .notify_human_review_if_pending(&request, "review_dispatch_failed")
                 .await;
         }
         Ok(())
@@ -255,20 +248,117 @@ impl AcpPermissionReviewDispatcher for TeamPermissionReviewDispatcher {
 
 fn build_permission_review_payload(
     request: &AcpPermissionReviewRequest,
-    leader_member_id: &str,
+    review_target_actor_id: &str,
 ) -> Value {
     json!({
         "type": TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE,
         "permission_id": request.request_id,
         "requester_actor_id": request.routing.requester_actor_id,
         "requester_role": request.routing.requester_role,
-        "review_target_actor_id": leader_member_id,
+        "review_target_actor_id": review_target_actor_id,
         "tool_call_id": request.tool_call_id,
         "tool_call": request.tool_call,
         "options": request.options,
         "summary": build_permission_review_summary(request),
-        "instruction": "Review the request and use acp_permission_review_respond to approve or cancel. If another worker should review it, forward this payload through actor_send.",
+        "instruction": "Review the request through the ACP permission approval flow. The reviewer is assigned automatically by the Team runtime.",
     })
+}
+
+fn resolve_review_target(
+    spec: &Value,
+    requester_actor_id: &str,
+    requester_role: &str,
+) -> anyhow::Result<(String, &'static str)> {
+    let leader_member_id = team_leader_member_id(spec)
+        .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
+    let requester_is_leader =
+        requester_actor_id == leader_member_id || requester_role.eq_ignore_ascii_case("leader");
+    if requester_is_leader {
+        let reviewer = select_subordinate_reviewer(spec, leader_member_id, requester_actor_id)
+            .ok_or_else(|| anyhow::anyhow!("team has no subordinate reviewer configured"))?;
+        return Ok((reviewer.to_string(), "worker_dispatched"));
+    }
+    Ok((leader_member_id.to_string(), "leader_dispatched"))
+}
+
+fn team_leader_member_id(spec: &Value) -> Option<&str> {
+    let spec_obj = spec.as_object()?;
+    let members = spec_obj.get("members")?.as_array()?;
+    let member_ids = members
+        .iter()
+        .filter_map(member_id_from_spec)
+        .collect::<Vec<_>>();
+    spec_obj
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && member_ids.contains(value))
+        .or_else(|| {
+            members
+                .iter()
+                .filter(|member| {
+                    member
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .is_some_and(|role| role.trim().eq_ignore_ascii_case("leader"))
+                })
+                .find_map(member_id_from_spec)
+        })
+        .or_else(|| {
+            spec_obj
+                .get("entrypoint")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty() && member_ids.contains(value))
+        })
+        .or_else(|| member_ids.first().copied())
+}
+
+fn select_subordinate_reviewer<'a>(
+    spec: &'a Value,
+    leader_member_id: &str,
+    requester_actor_id: &str,
+) -> Option<&'a str> {
+    let members = spec.get("members")?.as_array()?;
+    members
+        .iter()
+        .filter_map(|member| {
+            let member_id = member_id_from_spec(member)?;
+            let role = member
+                .get("role")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase);
+            Some((member_id, role))
+        })
+        .find_map(|(member_id, role)| {
+            if member_id == requester_actor_id {
+                return None;
+            }
+            if role.as_deref() == Some("worker") {
+                return Some(member_id);
+            }
+            None
+        })
+        .or_else(|| {
+            members.iter().find_map(|member| {
+                let member_id = member_id_from_spec(member)?;
+                if member_id == requester_actor_id || member_id == leader_member_id {
+                    return None;
+                }
+                Some(member_id)
+            })
+        })
+}
+
+fn member_id_from_spec(member: &Value) -> Option<&str> {
+    member
+        .as_object()?
+        .get("member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn build_permission_review_summary(request: &AcpPermissionReviewRequest) -> String {
@@ -302,7 +392,7 @@ fn build_human_review_message(request: &AcpPermissionReviewRequest, reason: &str
         .unwrap_or("an ACP tool call");
     let reason_text = match reason {
         "review_timeout" => "Agent review timed out",
-        "leader_dispatch_failed" => "Agent review dispatch failed",
+        "review_dispatch_failed" | "leader_dispatch_failed" => "Agent review dispatch failed",
         other => other,
     };
     format!(
@@ -561,5 +651,169 @@ mod tests {
             Some("review_timeout")
         );
         assert!(record_after_timeout.human_review_notified_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn dispatches_leader_permission_to_subordinate_worker() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("permission-review-leader-{}", Uuid::new_v4()),
+                description: Some("leader permission review dispatch".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("leader-agent")
+        .bind("leader-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert leader agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("leader-session")
+        .bind("leader-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert leader session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-review-leader")
+        .bind("leader-agent")
+        .bind("leader-session")
+        .bind("acp-session-leader")
+        .bind(&team.id)
+        .bind("leader")
+        .bind("leader")
+        .bind("tool-call-leader")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert leader permission request");
+
+        let dispatcher = TeamPermissionReviewDispatcher::new(
+            state.teams.clone(),
+            state.agents.clone(),
+            Arc::new(AcpPermissionService::new(state.db.clone())),
+            TeamPermissionReviewDispatcherSettings {
+                human_fallback_delay: Duration::from_millis(10),
+            },
+        );
+        let request = AcpPermissionReviewRequest {
+            request_id: "perm-review-leader".to_string(),
+            agent_id: "leader-agent".to_string(),
+            agent_session_id: "leader-session".to_string(),
+            acp_session_id: "acp-session-leader".to_string(),
+            tool_call_id: Some("tool-call-leader".to_string()),
+            options: vec![agenthub_acp::AcpPermissionOption {
+                option_id: "allow".to_string(),
+                name: "Allow once".to_string(),
+                kind: agent_client_protocol::PermissionOptionKind::AllowOnce,
+            }],
+            tool_call: Some(json!({"tool":{"name":"mcp__fs__write"}})),
+            current_run_id: None,
+            routing: AcpPermissionRoutingMetadata {
+                team_id: Some(team.id.clone()),
+                requester_actor_id: Some("leader".to_string()),
+                requester_role: Some("leader".to_string()),
+            },
+        };
+
+        dispatcher
+            .dispatch_review(request)
+            .await
+            .expect("dispatch leader permission review");
+
+        let record = state
+            .acp_permissions
+            .get("perm-review-leader")
+            .await
+            .expect("load permission record")
+            .expect("permission record");
+        assert_eq!(record.review_target_actor_id.as_deref(), Some("reviewer"));
+        assert_eq!(
+            record.review_dispatch_status.as_deref(),
+            Some("worker_dispatched")
+        );
+        let run_id = record
+            .review_delivery_run_id
+            .as_deref()
+            .expect("review run id")
+            .to_string();
+
+        let inbox = state
+            .teams
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id,
+                actor_id: "reviewer".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("load reviewer inbox");
+        assert_eq!(inbox.messages.len(), 1);
+        assert_eq!(
+            inbox.messages[0].payload["review_target_actor_id"],
+            Value::from("reviewer")
+        );
     }
 }

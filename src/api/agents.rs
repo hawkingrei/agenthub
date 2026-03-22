@@ -162,7 +162,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent).get(list_agents))
         .route("/{id}", get(get_agent))
-        .route("/{id}/.well-known/agent-card", get(get_agent_discovery_card))
+        .route(
+            "/{id}/.well-known/agent-card",
+            get(get_agent_discovery_card),
+        )
         .route("/{id}/start", post(start_agent))
         .route("/{id}/stop", post(stop_agent))
         .route("/{id}/input", post(send_input))

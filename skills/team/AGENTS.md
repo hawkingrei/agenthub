@@ -23,11 +23,17 @@ restating the same rules.
 - Conversation delivery:
   - persist each message once in conversation history
   - forward via actor mailbox transport
+- Routing surfaces:
+  - `leader-mailbox`: default route for worker status, blocker escalation, and execution evidence to leader
+  - `peer-mailbox`: direct single-peer coordination when only one specific teammate needs the update
+  - `shared-channel`: team-wide/human-visible status broadcast through `channel_id` (for example `all`)
+  - `human-notification`: urgent operator-facing mailbox notification (`to_actor_id = user` / `user:<id>`)
+  - combined delivery should be expressed as a primary route plus optional extra notification, not as a new route name
 - Mention routing:
-  - `@member_id` = directed recipients only
-  - no `@` = broadcast to all team members
-  - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context
-  - prefer directed `@member_id` over broadcast for execution collaboration
+  - group chat / channel messages always broadcast to all relevant team members
+  - `@member_id` inside a channel message does not narrow mailbox fan-out; it annotates mention metadata for receivers
+  - direct mailbox sends still use explicit `to_actor_id`
+  - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context when a direct message is surfaced back into chat
   - leader should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
   - workers should actively mention leader plus impacted peers when reporting blockers, dependency changes, or evidence handoff
 - Human-facing reply contract:
@@ -58,8 +64,9 @@ restating the same rules.
   - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
 - ACP permission review:
   - worker-originated ACP permission requests should route to leader first
-  - leader may review directly or manually delegate review to another worker through normal Team coordination
-  - only leader or the worker currently delegated by leader should use `acp_permission_review_respond`
+  - leader-originated ACP permission requests should route to an automatically selected subordinate worker reviewer
+  - the Team runtime assigns the current reviewer automatically; requester must never review its own request
+  - treat approval/rejection as ACP runtime control flow, not as a normal Team mailbox task
   - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
   - human review remains valid and should not block the original Team workflow
 
@@ -76,9 +83,13 @@ restating the same rules.
 
 - Non-trivial assignments must be reported when work starts, when meaningful progress happens,
   when blockers appear, and when work completes.
-- Default route: report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
-  additionally report to the relevant channel or impacted peers when the update changes shared
-  plans, dependencies, or human-visible progress.
+- Default route: `leader-mailbox`.
+- Use `peer-mailbox` for routine single-peer clarification, dependency handoff, or review nudges
+  that do not need team-wide visibility.
+- Use `shared-channel` when the update changes shared plans, dependencies, review status, or
+  human-visible progress.
+- Use `human-notification` only for urgent operator-facing escalation that cannot wait for normal
+  channel review.
 - Internal discussion, clarification, dependency negotiation, and other routine coordination may go
   directly through mailbox without first updating channel.
 - When an update needs durable traceability:

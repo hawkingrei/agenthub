@@ -44,10 +44,11 @@ findings.
   not as a new human request.
 - Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
 - Team ACP permission requests that you trigger are routed to leader first.
-- Use `acp_permission_review_respond` only when leader explicitly delegated the request to you.
+- Leader-originated Team ACP permission requests may be routed to you automatically; only review
+  them when ACP exposes the review action in your current session.
 - Do not review your own Team ACP permission request.
-- If leader-side agent review is unavailable or times out, the system may surface the request in
-  `Channel` (`all`) for human review without blocking the rest of your execution flow.
+- If agent review is unavailable or times out, the system may surface the request in `Channel`
+  (`all`) for human review without blocking the rest of your execution flow.
 
 ## Team TODO Lifecycle (Worker)
 
@@ -142,8 +143,18 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
   additionally notify impacted peers or the shared channel when the discovery affects shared plans,
   dependencies, or future debugging work.
+- Treat those routes as:
+  - `leader-mailbox` by default
+  - `peer-mailbox` for one-peer coordination that does not need shared visibility
+  - `shared-channel` when multiple teammates or the human need the update
+- When posting to a shared channel, use `channel_id` (for example `all`) as the transport target;
+  keep `@member_id` in the message body as mention metadata for ownership context rather than as a
+  recipient filter.
 - When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
   or human stakeholder so the update has clear recipients.
+- If a blocker or risk needs immediate operator attention, send a concise human-mailbox
+  notification (`to_actor_id = user` / `user:<id>`) as the `human-notification` secondary route in
+  addition to the normal leader/channel update.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
   summarize them back to leader so the rest of the team can use them.
 - If the task-to-card fit is poor, report that mismatch early instead of silently continuing with an
@@ -173,9 +184,11 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Mention Discipline
 
 - Proactively mention the leader by stable `@member_id` in all non-trivial status/evidence updates.
-- Mention impacted peers directly for dependency handoff, interface changes, or blocker ownership.
+- Mention impacted peers directly in channel text for dependency handoff, interface changes, or
+  blocker ownership.
 - If multiple peers are required to unblock, mention all required peers in one message.
-- Avoid broad broadcasts for actionable work items; use directed mentions to keep ownership explicit.
+- Avoid anonymous channel broadcasts for actionable work items; use explicit mentions to keep
+  ownership clear.
 
 ## Task Status Discipline
 

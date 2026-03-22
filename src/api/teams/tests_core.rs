@@ -100,13 +100,9 @@ async fn teams_api_allows_creating_team_without_members() {
     assert!(created.spec.get("leader_member_id").is_none());
     assert!(created.spec.get("steps").is_none());
 
-    let Json(runtime) = get_team_runtime(
-        State(state),
-        headers,
-        Path(created.id.clone()),
-    )
-    .await
-    .expect("describe empty team runtime");
+    let Json(runtime) = get_team_runtime(State(state), headers, Path(created.id.clone()))
+        .await
+        .expect("describe empty team runtime");
     assert_eq!(runtime.team_id, created.id);
     assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Stopped);
     assert!(runtime.members.is_empty());
@@ -156,14 +152,13 @@ async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
 
     assert_eq!(updated.spec["leader_member_id"], Value::from("planner"));
     assert_eq!(updated.spec["entrypoint"], Value::from("leader_plan"));
-    assert_eq!(updated.spec["steps"][0]["member_id"], Value::from("planner"));
-    let Json(runtime) = get_team_runtime(
-        State(state),
-        headers,
-        Path(updated.id.clone()),
-    )
-    .await
-    .expect("describe updated team runtime");
+    assert_eq!(
+        updated.spec["steps"][0]["member_id"],
+        Value::from("planner")
+    );
+    let Json(runtime) = get_team_runtime(State(state), headers, Path(updated.id.clone()))
+        .await
+        .expect("describe updated team runtime");
     assert_eq!(runtime.team_id, updated.id);
     assert_eq!(runtime.members.len(), 1);
     assert_eq!(runtime.members[0].member_id, "planner");
@@ -189,15 +184,14 @@ async fn teams_api_rejects_execution_until_team_has_members() {
     .await
     .expect("create empty execution team");
 
-    let start_err = start_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect_err("start should fail without members");
+    let start_err = start_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect_err("start should fail without members");
     let start_body = decode_json_body(start_err.into_response()).await;
-    assert_eq!(start_body["error"], Value::from("team has no members configured; add at least one agent first"));
+    assert_eq!(
+        start_body["error"],
+        Value::from("team has no members configured; add at least one agent first")
+    );
 
     let run_err = create_team_run(
         State(state.clone()),
@@ -211,7 +205,10 @@ async fn teams_api_rejects_execution_until_team_has_members() {
     .await
     .expect_err("run creation should fail without members");
     let run_body = decode_json_body(run_err.into_response()).await;
-    assert_eq!(run_body["error"], Value::from("team has no members configured; add at least one agent first"));
+    assert_eq!(
+        run_body["error"],
+        Value::from("team has no members configured; add at least one agent first")
+    );
 
     let Json(task_detail) = create_team_task(
         State(state.clone()),
@@ -239,7 +236,10 @@ async fn teams_api_rejects_execution_until_team_has_members() {
     .await
     .expect_err("compile preview should fail without members");
     let compile_body = decode_json_body(compile_err.into_response()).await;
-    assert_eq!(compile_body["error"], Value::from("team has no members configured; add at least one agent first"));
+    assert_eq!(
+        compile_body["error"],
+        Value::from("team has no members configured; add at least one agent first")
+    );
 }
 
 #[tokio::test]
@@ -576,11 +576,12 @@ async fn teams_api_create_team_auto_starts_member_runtime() {
     .expect("count auto-started member sessions");
     assert_eq!(session_count, 2);
 
-    let failed_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM agents WHERE id IN ('planner', 'reviewer') AND status = 'failed'")
-            .fetch_one(&state.db)
-            .await
-            .expect("count failed member agents");
+    let failed_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agents WHERE id IN ('planner', 'reviewer') AND status = 'failed'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("count failed member agents");
     assert_eq!(failed_count, 0);
 
     let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
@@ -664,13 +665,9 @@ async fn teams_api_start_and_stop_team_runtime() {
     .await
     .expect("create team");
 
-    let Json(stopped) = stop_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("stop team");
+    let Json(stopped) = stop_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("stop team");
     assert_eq!(stopped.team_id, team.id);
     assert_eq!(stopped.status, crate::team::TeamRuntimeStatus::Stopped);
     assert!(
@@ -688,13 +685,9 @@ async fn teams_api_start_and_stop_team_runtime() {
             .is_none()
     );
 
-    let Json(started) = start_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("start team");
+    let Json(started) = start_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("start team");
     assert_eq!(started.team_id, team.id);
     assert_eq!(started.status, crate::team::TeamRuntimeStatus::Running);
     assert_eq!(started.members.len(), 2);
@@ -712,13 +705,10 @@ async fn teams_api_start_and_stop_team_runtime() {
     .expect("count restarted member sessions");
     assert!(restarted_session_count >= 4);
 
-    let Json(stopped_again) = stop_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-        .await
-        .expect("stop team again");
+    let Json(stopped_again) =
+        stop_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("stop team again");
     assert_eq!(
         stopped_again.status,
         crate::team::TeamRuntimeStatus::Stopped
@@ -732,7 +722,8 @@ async fn teams_api_start_and_stop_team_runtime() {
 }
 
 #[tokio::test]
-async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_validation_is_allowed() {
+async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_validation_is_allowed()
+{
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     let now = Utc::now().timestamp();
@@ -869,8 +860,14 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         continuity: None,
     };
 
-    assert!(!team_member_actor_context_matches(Some(&mismatched), &expected));
-    assert!(team_member_actor_context_matches(Some(&expected), &expected));
+    assert!(!team_member_actor_context_matches(
+        Some(&mismatched),
+        &expected
+    ));
+    assert!(team_member_actor_context_matches(
+        Some(&expected),
+        &expected
+    ));
     assert!(!team_member_actor_context_matches(None, &expected));
 }
 
@@ -1719,22 +1716,16 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         StatusCode::NOT_FOUND
     );
 
-    let Json(deleted_team) = delete_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("delete runs-list team");
+    let Json(deleted_team) =
+        delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("delete runs-list team");
     assert_eq!(deleted_team.id, team.id);
 
-    let Json(deleted_other_team) = delete_team(
-        State(state.clone()),
-        headers,
-        Path(other_team.id.clone()),
-    )
-    .await
-    .expect("delete runs-list other team");
+    let Json(deleted_other_team) =
+        delete_team(State(state.clone()), headers, Path(other_team.id.clone()))
+            .await
+            .expect("delete runs-list other team");
     assert_eq!(deleted_other_team.id, other_team.id);
 }
 
@@ -3272,7 +3263,9 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
         .iter()
         .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
         .expect("second chat hint event");
-    let second_status = second_hint.payload["status"].as_str().expect("second status");
+    let second_status = second_hint.payload["status"]
+        .as_str()
+        .expect("second status");
     assert_ne!(second_status, "suppressed");
     assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
 
@@ -3293,7 +3286,10 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
         .iter()
         .find(|event| event.payload["message_id"] == json!(worker_status_repeat.message_id))
         .expect("repeated worker status hint event");
-    assert_eq!(repeated_worker_status_hint.payload["status"], json!("suppressed"));
+    assert_eq!(
+        repeated_worker_status_hint.payload["status"],
+        json!("suppressed")
+    );
     assert_eq!(
         repeated_worker_status_hint.payload["reason"],
         json!("pending_same_type_exists")
@@ -3644,10 +3640,7 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         applied.payload["description"],
         Value::from("Focused implementation specialist.")
     );
-    assert_eq!(
-        applied.payload["before"]["description"],
-        Value::Null
-    );
+    assert_eq!(applied.payload["before"]["description"], Value::Null);
     assert_eq!(
         applied.payload["after"]["description"],
         Value::from("Focused implementation specialist.")
@@ -3941,7 +3934,10 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     assert_eq!(created.task.status, crate::team::TeamTaskStatus::InProgress);
     let created_run = created.latest_run.expect("expected auto-created run");
     assert_eq!(created_run.team_id, team.id);
-    assert_eq!(created_run.input["task_id"], Value::from(created.task.id.clone()));
+    assert_eq!(
+        created_run.input["task_id"],
+        Value::from(created.task.id.clone())
+    );
     assert_eq!(
         created_run.input["conversation_id"],
         Value::from(created.conversation.id.clone())
@@ -4101,21 +4097,42 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
     .fetch_all(&state.db)
     .await
     .expect("load mailbox rows");
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].get::<String, _>("from_actor_id"), "planner");
-    assert_eq!(rows[0].get::<String, _>("to_actor_id"), "worker-1");
-    let forwarded_payload: Value =
-        serde_json::from_str(rows[0].get::<String, _>("payload_json").as_str())
-            .expect("parse forwarded payload");
-    assert_eq!(forwarded_payload["delivery_scope"], Value::from("mention"));
+    assert_eq!(rows.len(), 3);
+    let recipients = rows
+        .iter()
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        forwarded_payload["task_message_id"],
-        Value::from(directed_message.message_id)
+        recipients,
+        vec![
+            "planner".to_string(),
+            "worker-1".to_string(),
+            "worker-2".to_string()
+        ]
     );
-    assert_eq!(
-        forwarded_payload["task_conversation_id"],
-        Value::from(directed_message.conversation_id.clone())
-    );
+    for row in &rows {
+        assert_eq!(row.get::<String, _>("from_actor_id"), "planner");
+        let forwarded_payload: Value =
+            serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+                .expect("parse forwarded payload");
+        assert_eq!(forwarded_payload["delivery_scope"], Value::from("broadcast"));
+        assert_eq!(
+            forwarded_payload["task_message_id"],
+            Value::from(directed_message.message_id)
+        );
+        assert_eq!(
+            forwarded_payload["task_conversation_id"],
+            Value::from(directed_message.conversation_id.clone())
+        );
+        assert_eq!(
+            forwarded_payload["mention_actor_ids"],
+            json!(["worker-1"])
+        );
+        assert_eq!(
+            forwarded_payload["mentioned_actor_ids"],
+            json!(["worker-1"])
+        );
+    }
 
     let service = state.teams.actor_mailbox_service();
     let inbox = service
@@ -4126,10 +4143,13 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             limit: Some(50),
             states: None,
         })
-        .await
-        .expect("load worker inbox");
+    .await
+    .expect("load worker inbox");
     assert_eq!(inbox.messages.len(), 1);
-    assert_eq!(inbox.messages[0].message_id, directed_message.message_id);
+    assert_eq!(
+        inbox.messages[0].payload["task_message_id"],
+        Value::from(directed_message.message_id)
+    );
 
     let acked = service
         .actor_ack(ActorAckRequest {
@@ -4148,7 +4168,8 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             run_id: mailbox_run.id.clone(),
             from_actor_id: "worker-1".to_string(),
             from_peer_id: None,
-            to_actor_id: "user".to_string(),
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
             to_peer_id: None,
             channel: Some("coordination".to_string()),
             transport: Some(TeamActorMessageTransport::Local),
@@ -4615,39 +4636,50 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .fetch_all(&state.db)
     .await
     .expect("load directed mailbox rows");
-    assert_eq!(directed_rows.len(), 1);
+    assert_eq!(directed_rows.len(), 3);
+    let directed_recipients = directed_rows
+        .iter()
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        directed_rows[0].get::<String, _>("from_actor_id"),
-        "planner".to_string()
+        directed_recipients,
+        vec![
+            "planner".to_string(),
+            "worker-1".to_string(),
+            "worker-2".to_string()
+        ]
     );
-    assert_eq!(
-        directed_rows[0].get::<String, _>("to_actor_id"),
-        "worker-1".to_string()
-    );
-    let directed_payload: Value =
-        serde_json::from_str(directed_rows[0].get::<String, _>("payload_json").as_str())
-            .expect("parse directed payload json");
-    assert_eq!(directed_payload["delivery_scope"], Value::from("mention"));
-    assert_eq!(
-        directed_payload["task_id"],
-        Value::from(task_created.task.id.clone())
-    );
-    assert_eq!(
-        directed_payload["task_message_id"],
-        Value::from(directed_message.message_id)
-    );
-    assert_eq!(
-        directed_payload["task_conversation_id"],
-        Value::from(directed_message.conversation_id.clone())
-    );
-    assert_eq!(
-        directed_payload["mention_actor_ids"],
-        Value::from(vec!["worker-1"])
-    );
-    assert_eq!(
-        directed_payload["text"],
-        Value::from("<at>worker-1</at> please validate api contract")
-    );
+    for row in &directed_rows {
+        assert_eq!(row.get::<String, _>("from_actor_id"), "planner".to_string());
+        let directed_payload: Value =
+            serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+                .expect("parse directed payload json");
+        assert_eq!(directed_payload["delivery_scope"], Value::from("broadcast"));
+        assert_eq!(
+            directed_payload["task_id"],
+            Value::from(task_created.task.id.clone())
+        );
+        assert_eq!(
+            directed_payload["task_message_id"],
+            Value::from(directed_message.message_id)
+        );
+        assert_eq!(
+            directed_payload["task_conversation_id"],
+            Value::from(directed_message.conversation_id.clone())
+        );
+        assert_eq!(
+            directed_payload["mention_actor_ids"],
+            Value::from(vec!["worker-1"])
+        );
+        assert_eq!(
+            directed_payload["mentioned_actor_ids"],
+            Value::from(vec!["worker-1"])
+        );
+        assert_eq!(
+            directed_payload["text"],
+            Value::from("@worker-1 please validate api contract")
+        );
+    }
 
     let _ = send_team_task_message(
         State(state.clone()),
@@ -4678,10 +4710,10 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .fetch_all(&state.db)
     .await
     .expect("load broadcast mailbox rows");
-    assert_eq!(broadcast_rows.len(), 4);
+    assert_eq!(broadcast_rows.len(), 6);
     let recipients = broadcast_rows
         .iter()
-        .skip(1)
+        .skip(3)
         .map(|row| row.get::<String, _>("to_actor_id"))
         .collect::<Vec<_>>();
     assert_eq!(
@@ -4692,10 +4724,12 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
             "worker-2".to_string()
         ]
     );
-    for row in broadcast_rows.iter().skip(1) {
+    for row in broadcast_rows.iter().skip(3) {
         let payload: Value = serde_json::from_str(row.get::<String, _>("payload_json").as_str())
             .expect("parse broadcast payload");
         assert_eq!(payload["delivery_scope"], Value::from("broadcast"));
+        assert_eq!(payload["mention_actor_ids"], Value::Array(Vec::new()));
+        assert_eq!(payload["mentioned_actor_ids"], Value::Array(Vec::new()));
         assert!(
             payload
                 .get("correlation_id")
