@@ -23,6 +23,12 @@ restating the same rules.
 - Conversation delivery:
   - persist each message once in conversation history
   - forward via actor mailbox transport
+- Routing surfaces:
+  - `leader-mailbox`: default route for worker status, blocker escalation, and execution evidence to leader
+  - `peer-mailbox`: direct single-peer coordination when only one specific teammate needs the update
+  - `shared-channel`: team-wide/human-visible status broadcast through `channel_id` (for example `all`)
+  - `human-notification`: urgent operator-facing mailbox notification (`to_actor_id = user` / `user:<id>`)
+  - combined delivery should be expressed as a primary route plus optional extra notification, not as a new route name
 - Mention routing:
   - group chat / channel messages always broadcast to all relevant team members
   - `@member_id` inside a channel message does not narrow mailbox fan-out; it annotates mention metadata for receivers
@@ -76,9 +82,13 @@ restating the same rules.
 
 - Non-trivial assignments must be reported when work starts, when meaningful progress happens,
   when blockers appear, and when work completes.
-- Default route: report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
-  additionally report to the relevant channel or impacted peers when the update changes shared
-  plans, dependencies, or human-visible progress.
+- Default route: `leader-mailbox`.
+- Use `peer-mailbox` for routine single-peer clarification, dependency handoff, or review nudges
+  that do not need team-wide visibility.
+- Use `shared-channel` when the update changes shared plans, dependencies, review status, or
+  human-visible progress.
+- Use `human-notification` only for urgent operator-facing escalation that cannot wait for normal
+  channel review.
 - Internal discussion, clarification, dependency negotiation, and other routine coordination may go
   directly through mailbox without first updating channel.
 - When an update needs durable traceability:
@@ -94,9 +104,6 @@ restating the same rules.
   update instead of waiting for the final result.
 - Leader owns integrated progress updates to the human/channel and must ensure each active
   assignment has a next checkpoint and fresh evidence.
-- Use shared-channel status when the update needs team-wide visibility; use direct mailbox for
-  routine owner-to-owner coordination; use the human mailbox only for urgent operator-facing
-  notification that cannot wait for normal channel review.
 - Documents and tasks are the source of truth for execution state; channel updates should summarize
   that recorded state instead of becoming the only copy.
 - This durability rule applies to state/progress updates, not to every internal mailbox exchange.

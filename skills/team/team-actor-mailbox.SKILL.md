@@ -33,6 +33,17 @@ Shared routing, mention, and human-visible reply policy remain canonical in
 - `@member_id` in a channel message is mention metadata only; it does not narrow the channel
   broadcast recipient set.
 
+## Routing Surface Contract
+
+- Direct mailbox (`to_actor_id`) is single-target delivery. Use it for `leader-mailbox` or
+  `peer-mailbox`.
+- Shared channel (`channel_id`) is team-wide delivery. Use it for `shared-channel`.
+- Human mailbox (`to_actor_id = user` / `user:<id>`) is urgent operator-facing notification. Use
+  it for `human-notification`.
+- If several specific peers need the same actionable update, either send separate direct mailbox
+  messages or use `shared-channel` with explicit `@member_id` mentions; do not pretend channel
+  mention metadata is a recipient filter.
+
 ## Delivery Topology Contract
 
 - Channel sends persist one canonical conversation message on AgentHub first; this is the
@@ -75,6 +86,8 @@ Recommended fields:
    `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; "$AGENTHUB_ACTOR_CLI" actor send --channel-id all --text "$MESSAGE"`
 7. Escalate to human notifications when urgent coordination cannot wait:
    `MESSAGE="Urgent: permission review timed out.\n\nPlease check Channel for details."; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id user --text "$MESSAGE"`
+8. Direct a single peer when the update does not need channel visibility:
+   `MESSAGE="Please verify the migration assumption before I proceed."; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$PEER_ACTOR_ID" --text "$MESSAGE"`
 
 ## Reply Modes
 

@@ -214,10 +214,15 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
   log or project memory when they can help later tasks.
 - Send integrated progress updates to the human or shared channel whenever plan shape changes,
   major findings emerge, blockers threaten delivery, or milestones complete.
+- Treat those routes as:
+  - `leader-mailbox` for worker coordination and review follow-up
+  - `peer-mailbox` only when a specific non-leader teammate needs a direct coordination nudge
+  - `shared-channel` for human-visible or team-wide progress updates
 - For shared-channel updates, send to the channel mailbox surface and keep `@member_id` mentions as
   ownership metadata; do not treat mentions as a narrowing recipient filter.
 - If operator attention is urgently required, send a concise human-mailbox notification
-  (`to_actor_id = user` / `user:<id>`) in addition to the normal leader/channel update.
+  (`to_actor_id = user` / `user:<id>`) as a `human-notification` secondary route in addition to
+  the normal leader/channel update.
 - Before posting channel-level progress, make sure the underlying state is already reflected in the
   relevant task/doc artifact so the channel message is a summary, not the only durable record.
 - In shared-channel progress updates, explicitly `@` the responsible workers, reviewers, and
