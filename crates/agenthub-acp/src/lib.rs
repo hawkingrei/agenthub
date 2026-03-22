@@ -359,15 +359,14 @@ fn mcp_server_name(server: &McpServer) -> &str {
 
 fn default_skill_name_for_path(path: &Path) -> String {
     let stem = path.file_stem().and_then(|value| value.to_str());
-    if matches!(stem, Some("SKILL")) {
-        if let Some(parent_name) = path
+    if matches!(stem, Some("SKILL"))
+        && let Some(parent_name) = path
             .parent()
             .and_then(Path::file_name)
             .and_then(|value| value.to_str())
             .filter(|value| !value.is_empty())
-        {
-            return parent_name.to_string();
-        }
+    {
+        return parent_name.to_string();
     }
     stem.unwrap_or("skill").to_string()
 }
@@ -2160,7 +2159,7 @@ name: "shared-review"
 Fallback to the user-level review contract.
 "#,
         );
-        workspace.write_skills_config(&[global_skill.clone()]);
+        workspace.write_skills_config(std::slice::from_ref(&global_skill));
 
         let mut skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
         skills.extend(load_skills_from_config(
