@@ -11,6 +11,7 @@ restating the same rules.
 - Operate as one coordinated team for human goals.
 - Keep routing deterministic through `Mailbox -> ACP upstream -> MCP`.
 - Enforce role boundary: leader plans/synthesizes, workers execute/report evidence.
+- Keep execution visible with timely progress updates, findings, and reusable experience sharing.
 
 ## Core Contract
 
@@ -70,6 +71,38 @@ restating the same rules.
 4. communication and collaboration
 5. consensus formation
 6. result integration
+
+## Reporting Contract
+
+- Non-trivial assignments must be reported when work starts, when meaningful progress happens,
+  when blockers appear, and when work completes.
+- Default route: report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
+  additionally report to the relevant channel or impacted peers when the update changes shared
+  plans, dependencies, or human-visible progress.
+- Internal discussion, clarification, dependency negotiation, and other routine coordination may go
+  directly through mailbox without first updating channel.
+- When an update needs durable traceability:
+  - workers: persist it in the relevant document, TODO, journal, note, or local evidence artifact,
+    then report that evidence to leader;
+  - leader: ensure the canonical Team task or coordination document reflects the latest recorded
+    state before using channel messages as the lightweight status broadcast.
+- Channel status messages should actively `@` the relevant agents/people instead of broadcasting
+  without ownership context.
+- Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class
+  outputs; report them even before implementation completes when they can change team decisions.
+- Silent execution is unacceptable for long-running or uncertain work; send a progress or blocker
+  update instead of waiting for the final result.
+- Leader owns integrated progress updates to the human/channel and must ensure each active
+  assignment has a next checkpoint and fresh evidence.
+- Documents and tasks are the source of truth for execution state; channel updates should summarize
+  that recorded state instead of becoming the only copy.
+- This durability rule applies to state/progress updates, not to every internal mailbox exchange.
+- In channel updates, mention the owner, current reviewer, blocked dependency owner, or other
+  directly affected members so the right people are pulled into the thread immediately.
+- Task assignment should align with the assignee's identity card and current specialization; do not
+  dispatch work that is unrelated to the worker's card unless the reassignment is explicit and justified.
+- For developer/code tasks, `completed` means the change is merge-ready against the latest `main`,
+  not merely that a local patch exists.
 
 ## Routing To Skills
 

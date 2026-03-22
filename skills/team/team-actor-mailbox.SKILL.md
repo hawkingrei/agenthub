@@ -54,12 +54,14 @@ Recommended fields:
 4. For human-readable coordination, prefer markdown text and preserve it verbatim:
    `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
 5. Use structured payloads only when the receiver truly needs machine-readable fields:
-   `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
 
 ## Reply Modes
 
 - Internal execution coordination (`leader <-> worker`, worker status/evidence, blocker escalation):
   - prefer plain markdown text for task briefs, review notes, and discussion so formatting survives mailbox transport
+  - routine clarification, dependency negotiation, and internal discussion can be resolved directly in mailbox
+    without first writing a channel update
   - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
   - include phase metadata only when it helps internal coordination
 - Human-facing team conversation replies:
@@ -74,6 +76,8 @@ Recommended fields:
 - Keep messages idempotent-friendly; include stable identifiers in payloads.
 - If the same assignment is retried, return deterministic status updates.
 - If blocked, always include a concrete `next_action`.
+- When mailbox discussion changes durable execution state, follow up by recording that state in the
+  relevant doc/task artifact before or alongside any channel broadcast.
 
 ## Escalation Rules
 
@@ -89,11 +93,11 @@ Recommended fields:
 
 ## Output Contract Examples
 
-Done:
+Completed:
 
 ```json
 {
-  "status": "done",
+  "status": "completed",
   "result": "Implemented API validation and updated tests",
   "evidence": [
     "src/api/teams/router.rs",
