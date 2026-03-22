@@ -14,6 +14,8 @@ The old fallback message also pointed users at a separate Permissions panel, whi
 - Human-review fallback messages in the shared `all` channel now use a structured `permission_review_card` payload instead of a plain `chat_message`.
 - Team channel rendering now shows inline permission action buttons directly in the shared conversation.
 - After a human responds, the card collapses to a status-only surface instead of continuing to show the action buttons.
+- Frontend permission-card parsing now normalizes malformed option payloads before rendering, so invalid `option_id` / `name` values cannot crash the channel view.
+- Permission-card polling now normalizes fetched permission records and skips state writes when the rendered record shape has not changed, reducing unnecessary rerenders while pending reviews poll.
 - Added a unit test locking the default to 5 minutes.
 
 ## Validation

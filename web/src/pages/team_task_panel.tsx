@@ -195,6 +195,86 @@ function resolveActivityItemClassName(
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
 }
 
+function normalizeTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizePermissionOption(value: unknown): AcpPermissionOption | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const optionId = normalizeTrimmedString(record.option_id);
+  const name = normalizeTrimmedString(record.name);
+  if (!optionId || !name) {
+    return null;
+  }
+  return {
+    option_id: optionId,
+    name,
+    kind: typeof record.kind === "string" ? record.kind.trim() : "",
+  };
+}
+
+function normalizePermissionOptions(value: unknown): AcpPermissionOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    const option = normalizePermissionOption(candidate);
+    return option ? [option] : [];
+  });
+}
+
+function normalizePermissionRecord(record: AcpPermissionRecord): AcpPermissionRecord {
+  const raw = record as Record<string, unknown>;
+  return {
+    ...record,
+    options: normalizePermissionOptions(raw.options),
+    selected_option_id: normalizeTrimmedString(raw.selected_option_id),
+    status: typeof raw.status === "string" ? raw.status : String(raw.status ?? ""),
+  };
+}
+
+function equalPermissionOptions(
+  left: AcpPermissionOption[],
+  right: AcpPermissionOption[]
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((option, index) => {
+    const candidate = right[index];
+    return (
+      candidate?.option_id === option.option_id &&
+      candidate.name === option.name &&
+      candidate.kind === option.kind
+    );
+  });
+}
+
+function equalPermissionRecords(
+  left: AcpPermissionRecord,
+  right: AcpPermissionRecord
+): boolean {
+  return (
+    left.id === right.id &&
+    left.agent_id === right.agent_id &&
+    left.session_id === right.session_id &&
+    (left.acp_session_id ?? null) === (right.acp_session_id ?? null) &&
+    (left.tool_call_id ?? null) === (right.tool_call_id ?? null) &&
+    left.status === right.status &&
+    (left.selected_option_id ?? null) === (right.selected_option_id ?? null) &&
+    left.created_at === right.created_at &&
+    (left.responded_at ?? null) === (right.responded_at ?? null) &&
+    equalPermissionOptions(left.options, right.options)
+  );
+}
+
 function parsePermissionReviewCardPayload(payload: unknown): PermissionReviewCardPayload | null {
   const parsed = parseStructuredTeamPayload(payload);
   if (typeof parsed !== "object" || parsed === null) {
@@ -209,9 +289,7 @@ function parsePermissionReviewCardPayload(payload: unknown): PermissionReviewCar
   if (!permissionId || !agentId) {
     return null;
   }
-  const options = Array.isArray(value.options)
-    ? (value.options as AcpPermissionOption[])
-    : [];
+  const options = normalizePermissionOptions(value.options);
   return {
     type: "permission_review_card",
     permission_id: permissionId,
@@ -262,11 +340,12 @@ function resolvePermissionStatusText(
     return "Awaiting human review";
   }
   if (record.status === "responded") {
-    if (!record.selected_option_id) {
+    const selectedOptionId = normalizeTrimmedString(record.selected_option_id);
+    if (!selectedOptionId) {
       return "Cancelled";
     }
     const option = record.options.find(
-      (candidate) => candidate.option_id.trim() === record.selected_option_id?.trim()
+      (candidate) => candidate.option_id === selectedOptionId
     );
     return option ? `Approved · ${option.name}` : "Approved";
   }
@@ -323,11 +402,11 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
           <>
             {payload.summary && <div>{payload.summary}</div>}
             <div className={TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS}>
-              {payload.options.map((option) => {
+              {payload.options.map((option, index) => {
                 const optionId = option.option_id.trim();
                 return (
                   <button
-                    key={optionId}
+                    key={`${optionId}:${index}`}
                     type="button"
                     className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                     disabled={busy || !optionId}
@@ -570,11 +649,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         if (!permissionIds.has(item.id)) {
           continue;
         }
-        nextRecords[item.id] = item;
+        nextRecords[item.id] = normalizePermissionRecord(item);
       }
     }
     setPermissionRecordsById((current) => {
-      const next = { ...current };
+      let next: Record<string, AcpPermissionRecord> | null = null;
       for (const target of permissionCardTargets) {
         const incoming = nextRecords[target.permissionId];
         if (!incoming) {
@@ -584,9 +663,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         if (existing?.status === "responded" && incoming.status === "pending") {
           continue;
         }
+        if (existing && equalPermissionRecords(existing, incoming)) {
+          continue;
+        }
+        if (next === null) {
+          next = { ...current };
+        }
         next[target.permissionId] = incoming;
       }
-      return next;
+      return next ?? current;
     });
   }, [permissionCardTargets, token]);
   const activityWindow = React.useMemo(
