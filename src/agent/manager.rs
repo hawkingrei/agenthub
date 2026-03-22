@@ -1,8 +1,13 @@
 mod acp_provider;
 mod codec;
 mod executor;
+mod nodes;
+mod process;
 mod runtime;
+mod session;
 mod start_plan;
+mod store;
+mod worktree;
 
 #[cfg(test)]
 mod tests;
@@ -14,24 +19,23 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::{Row, SqlitePool};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use uuid::Uuid;
 
-use self::acp_provider::AcpDefaultModeBehavior;
-#[cfg(test)]
-use self::acp_provider::acp_provider_for_agent_with_binary;
-#[cfg(test)]
-use self::acp_provider::{ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI};
-#[cfg(test)]
-use self::codec::stream_to_str;
-use self::codec::{
-    status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str,
+use self::codec::{status_to_str, stream_from_str, worktree_mode_to_str};
+use self::executor::{AgentExecutor, LocalExecutor};
+use self::nodes::{
+    AgentNodeInsertRecord, AgentNodeSchemaCaps, AgentNodeUpdateRecord, decode_agent_node_record,
+    delete_agent_node_record, get_agent_node_row, insert_agent_node_record, list_agent_node_rows,
+    update_agent_node_record,
 };
-use self::executor::{AgentExecutor, LocalExecutionRequest, LocalExecutor};
-use self::start_plan::{AgentStartPlan, build_agent_start_plan};
+use self::store::{
+    AgentInsertRecord, AgentSchemaCaps, RemoteManagedAgentUpsert, decode_agent_record,
+    get_agent_row, insert_agent_record, list_agent_rows, upsert_remote_managed_agent_record,
+};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
@@ -40,15 +44,13 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
-    AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths, normalize_actor_context,
-    spawn_acp_session,
+    load_safe_paths,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::internal::p2p::{MembershipView, ResolvedNodeEndpoint, derive_cluster_id};
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
-use agent_client_protocol::Implementation;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
@@ -80,15 +82,6 @@ const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
 const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
-
-fn decode_target_node_id(row: &SqliteRow) -> Option<String> {
-    normalize_target_node_id(
-        row.try_get::<Option<String>, _>("target_node_id")
-            .ok()
-            .flatten()
-            .as_deref(),
-    )
-}
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
@@ -587,47 +580,11 @@ impl AgentManager {
     }
 
     async fn has_agent_nodes_table(&self) -> anyhow::Result<bool> {
-        let count: i64 = sqlx::query_scalar(
-            r#"
-            SELECT COUNT(*)
-            FROM sqlite_master
-            WHERE type = 'table' AND name = 'agent_nodes'
-            "#,
-        )
-        .fetch_one(&self.db)
-        .await?;
-        Ok(count > 0)
-    }
-
-    async fn has_agent_nodes_default_worktree_root_column(&self) -> anyhow::Result<bool> {
-        if !self.has_agent_nodes_table().await? {
-            return Ok(false);
-        }
-        let rows = sqlx::query(
-            r#"
-            SELECT name
-            FROM pragma_table_info('agent_nodes')
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .any(|row| row.get::<String, _>("name") == "default_worktree_root"))
+        Ok(self.agent_node_schema_caps().await?.has_agent_nodes_table)
     }
 
     async fn has_agents_target_node_id_column(&self) -> anyhow::Result<bool> {
-        let rows = sqlx::query(
-            r#"
-            SELECT name
-            FROM pragma_table_info('agents')
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .any(|row| row.get::<String, _>("name") == "target_node_id"))
+        Ok(self.agent_schema_caps().await?.has_target_node_id_column)
     }
 
     async fn has_agent_persistent_sessions_table(&self) -> anyhow::Result<bool> {
@@ -697,6 +654,14 @@ impl AgentManager {
             );
         }
         Ok(())
+    }
+
+    async fn agent_schema_caps(&self) -> anyhow::Result<AgentSchemaCaps> {
+        AgentSchemaCaps::load(&self.db).await
+    }
+
+    async fn agent_node_schema_caps(&self) -> anyhow::Result<AgentNodeSchemaCaps> {
+        AgentNodeSchemaCaps::load(&self.db).await
     }
 
     async fn agent_source_for(&self, agent_id: &str) -> anyhow::Result<String> {
@@ -800,97 +765,27 @@ impl AgentManager {
         Ok(session_id)
     }
 
-    fn build_agent_node_record_from_row(
-        row: &SqliteRow,
-        has_default_worktree_root_column: bool,
-    ) -> AgentNodeRecord {
-        AgentNodeRecord {
-            id: row.get("id"),
-            name: row.get("name"),
-            grpc_target: row.try_get("grpc_target").ok(),
-            tls_server_name: row.try_get("tls_server_name").ok(),
-            default_worktree_root: if has_default_worktree_root_column {
-                row.try_get("default_worktree_root").ok()
-            } else {
-                None
-            },
-            is_main: false,
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        }
-    }
-
     pub async fn create_agent_node(
         &self,
         config: AgentNodeConfig,
     ) -> anyhow::Result<AgentNodeRecord> {
-        let has_default_worktree_root_column =
-            self.has_agent_nodes_default_worktree_root_column().await?;
+        let schema_caps = self.agent_node_schema_caps().await?;
         let (id, name, grpc_target, tls_server_name, default_worktree_root) =
             validate_agent_node_config_input(&config)?;
         let now = Utc::now().timestamp();
-        if has_default_worktree_root_column {
-            sqlx::query(
-                r#"
-                INSERT INTO agent_nodes (
-                    id,
-                    name,
-                    grpc_target,
-                    tls_server_name,
-                    default_worktree_root,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                "#,
-            )
-            .bind(&id)
-            .bind(&name)
-            .bind(&grpc_target)
-            .bind(&tls_server_name)
-            .bind(&default_worktree_root)
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        } else {
-            if default_worktree_root.is_some() {
-                anyhow::bail!(
-                    "agent_nodes.default_worktree_root column is required to persist node worktree defaults on a legacy schema"
-                );
-            }
-            sqlx::query(
-                r#"
-                INSERT INTO agent_nodes (
-                    id,
-                    name,
-                    grpc_target,
-                    tls_server_name,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                "#,
-            )
-            .bind(&id)
-            .bind(&name)
-            .bind(&grpc_target)
-            .bind(&tls_server_name)
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        }
-        Ok(AgentNodeRecord {
-            id,
-            name,
-            grpc_target: Some(grpc_target),
-            tls_server_name,
-            default_worktree_root,
-            is_main: false,
-            created_at: now,
-            updated_at: now,
-        })
+        insert_agent_node_record(
+            &self.db,
+            schema_caps,
+            AgentNodeInsertRecord {
+                id: &id,
+                name: &name,
+                grpc_target: &grpc_target,
+                tls_server_name: tls_server_name.as_deref(),
+                default_worktree_root: default_worktree_root.as_deref(),
+                now,
+            },
+        )
+        .await
     }
 
     pub async fn update_agent_node(
@@ -905,103 +800,34 @@ impl AgentManager {
                 AGENT_NODE_MAIN_ID
             );
         }
-        let has_default_worktree_root_column =
-            self.has_agent_nodes_default_worktree_root_column().await?;
+        let schema_caps = self.agent_node_schema_caps().await?;
         let (name, grpc_target, tls_server_name, default_worktree_root) =
             validate_agent_node_update_input(&config)?;
         let now = Utc::now().timestamp();
-        let result = if has_default_worktree_root_column {
-            sqlx::query(
-                r#"
-                UPDATE agent_nodes
-                SET name = ?2,
-                    grpc_target = ?3,
-                    tls_server_name = ?4,
-                    default_worktree_root = ?5,
-                    updated_at = ?6
-                WHERE id = ?1
-                "#,
-            )
-            .bind(normalized)
-            .bind(&name)
-            .bind(&grpc_target)
-            .bind(&tls_server_name)
-            .bind(&default_worktree_root)
-            .bind(now)
-            .execute(&self.db)
-            .await?
-        } else {
-            if default_worktree_root.is_some() {
-                anyhow::bail!(
-                    "agent_nodes.default_worktree_root column is required to persist node worktree defaults on a legacy schema"
-                );
-            }
-            sqlx::query(
-                r#"
-                UPDATE agent_nodes
-                SET name = ?2,
-                    grpc_target = ?3,
-                    tls_server_name = ?4,
-                    updated_at = ?5
-                WHERE id = ?1
-                "#,
-            )
-            .bind(normalized)
-            .bind(&name)
-            .bind(&grpc_target)
-            .bind(&tls_server_name)
-            .bind(now)
-            .execute(&self.db)
-            .await?
-        };
-        if result.rows_affected() == 0 {
-            anyhow::bail!("agent node '{}' not found", normalized);
-        }
-        Ok(AgentNodeRecord {
-            id: normalized.to_string(),
-            name,
-            grpc_target: Some(grpc_target),
-            tls_server_name,
-            default_worktree_root,
-            is_main: false,
-            created_at: self.get_agent_node(normalized).await?.created_at,
-            updated_at: now,
-        })
+        update_agent_node_record(
+            &self.db,
+            schema_caps,
+            AgentNodeUpdateRecord {
+                node_id: normalized,
+                name: &name,
+                grpc_target: &grpc_target,
+                tls_server_name: tls_server_name.as_deref(),
+                default_worktree_root: default_worktree_root.as_deref(),
+                now,
+            },
+        )
+        .await
     }
 
     pub async fn list_agent_nodes(&self) -> anyhow::Result<Vec<AgentNodeRecord>> {
         let mut nodes = vec![build_main_agent_node_record()];
-        if !self.has_agent_nodes_table().await? {
+        let schema_caps = self.agent_node_schema_caps().await?;
+        if !schema_caps.has_agent_nodes_table {
             return Ok(nodes);
         }
-        let has_default_worktree_root_column =
-            self.has_agent_nodes_default_worktree_root_column().await?;
-        let rows = if has_default_worktree_root_column {
-            sqlx::query(
-                r#"
-                SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
-                FROM agent_nodes
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
-                FROM agent_nodes
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(&self.db)
-            .await?
-        };
+        let rows = list_agent_node_rows(&self.db, schema_caps).await?;
         for row in rows {
-            nodes.push(Self::build_agent_node_record_from_row(
-                &row,
-                has_default_worktree_root_column,
-            ));
+            nodes.push(decode_agent_node_record(&row, schema_caps));
         }
         Ok(nodes)
     }
@@ -1011,35 +837,9 @@ impl AgentManager {
         if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
             return Ok(build_main_agent_node_record());
         }
-        let has_default_worktree_root_column =
-            self.has_agent_nodes_default_worktree_root_column().await?;
-        let row = if has_default_worktree_root_column {
-            sqlx::query(
-                r#"
-                SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
-                FROM agent_nodes
-                WHERE id = ?1
-                "#,
-            )
-            .bind(normalized)
-            .fetch_one(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
-                FROM agent_nodes
-                WHERE id = ?1
-                "#,
-            )
-            .bind(normalized)
-            .fetch_one(&self.db)
-            .await?
-        };
-        Ok(Self::build_agent_node_record_from_row(
-            &row,
-            has_default_worktree_root_column,
-        ))
+        let schema_caps = self.agent_node_schema_caps().await?;
+        let row = get_agent_node_row(&self.db, schema_caps, normalized).await?;
+        Ok(decode_agent_node_record(&row, schema_caps))
     }
 
     pub async fn delete_agent_node(&self, node_id: &str) -> anyhow::Result<()> {
@@ -1069,16 +869,7 @@ impl AgentManager {
                 );
             }
         }
-        let result = sqlx::query(
-            r#"
-            DELETE FROM agent_nodes
-            WHERE id = ?1
-            "#,
-        )
-        .bind(normalized)
-        .execute(&self.db)
-        .await?;
-        if result.rows_affected() == 0 {
+        if delete_agent_node_record(&self.db, normalized).await? == 0 {
             anyhow::bail!("agent node '{}' not found", normalized);
         }
         Ok(())
@@ -1129,183 +920,28 @@ impl AgentManager {
         let now = Utc::now().timestamp();
         let args_json = serde_json::to_string(&config.args)?;
         let status = AgentStatus::Created;
-        let has_source_column = self.has_agents_source_column().await?;
-        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
+        let schema_caps = self.agent_schema_caps().await?;
         self.ensure_remote_agent_control_available(target_node_id.as_deref())?;
         Self::ensure_remote_target_persistable(
             target_node_id.as_deref(),
-            has_target_node_id_column,
+            schema_caps.has_target_node_id_column,
         )?;
-
-        if has_source_column && has_target_node_id_column {
-            sqlx::query(
-                r#"
-                INSERT INTO agents (
-                    id,
-                    name,
-                    workdir,
-                    command,
-                    args,
-                    target_node_id,
-                    worktree_mode,
-                    worktree_repo,
-                    worktree_ref,
-                    code_mode,
-                    agent_loop_enabled,
-                    agent_loop_idle_seconds,
-                    agent_loop_prompt,
-                    source,
-                    status,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
-                "#,
-            )
-            .bind(&id)
-            .bind(&config.name)
-            .bind(&workdir)
-            .bind(&config.command)
-            .bind(&args_json)
-            .bind(&target_node_id)
-            .bind(worktree_mode_to_str(&config.worktree_mode))
-            .bind(&worktree_repo)
-            .bind(&config.worktree_ref)
-            .bind(if config.code_mode { 1 } else { 0 })
-            .bind(if config.agent_loop_enabled { 1 } else { 0 })
-            .bind(config.agent_loop_idle_seconds)
-            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
-            .bind(source)
-            .bind(status_to_str(&status))
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        } else if has_source_column {
-            sqlx::query(
-                r#"
-                INSERT INTO agents (
-                    id,
-                    name,
-                    workdir,
-                    command,
-                    args,
-                    worktree_mode,
-                    worktree_repo,
-                    worktree_ref,
-                    code_mode,
-                    agent_loop_enabled,
-                    agent_loop_idle_seconds,
-                    agent_loop_prompt,
-                    source,
-                    status,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
-                "#,
-            )
-            .bind(&id)
-            .bind(&config.name)
-            .bind(&workdir)
-            .bind(&config.command)
-            .bind(&args_json)
-            .bind(worktree_mode_to_str(&config.worktree_mode))
-            .bind(&worktree_repo)
-            .bind(&config.worktree_ref)
-            .bind(if config.code_mode { 1 } else { 0 })
-            .bind(if config.agent_loop_enabled { 1 } else { 0 })
-            .bind(config.agent_loop_idle_seconds)
-            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
-            .bind(source)
-            .bind(status_to_str(&status))
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        } else if has_target_node_id_column {
-            sqlx::query(
-                r#"
-                INSERT INTO agents (
-                    id,
-                    name,
-                    workdir,
-                    command,
-                    args,
-                    target_node_id,
-                    worktree_mode,
-                    worktree_repo,
-                    worktree_ref,
-                    code_mode,
-                    agent_loop_enabled,
-                    agent_loop_idle_seconds,
-                    agent_loop_prompt,
-                    status,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
-                "#,
-            )
-            .bind(&id)
-            .bind(&config.name)
-            .bind(&workdir)
-            .bind(&config.command)
-            .bind(&args_json)
-            .bind(&target_node_id)
-            .bind(worktree_mode_to_str(&config.worktree_mode))
-            .bind(&worktree_repo)
-            .bind(&config.worktree_ref)
-            .bind(if config.code_mode { 1 } else { 0 })
-            .bind(if config.agent_loop_enabled { 1 } else { 0 })
-            .bind(config.agent_loop_idle_seconds)
-            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
-            .bind(status_to_str(&status))
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        } else {
-            sqlx::query(
-                r#"
-                INSERT INTO agents (
-                    id,
-                    name,
-                    workdir,
-                    command,
-                    args,
-                    worktree_mode,
-                    worktree_repo,
-                    worktree_ref,
-                    code_mode,
-                    agent_loop_enabled,
-                    agent_loop_idle_seconds,
-                    agent_loop_prompt,
-                    status,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
-                "#,
-            )
-            .bind(&id)
-            .bind(&config.name)
-            .bind(&workdir)
-            .bind(&config.command)
-            .bind(&args_json)
-            .bind(worktree_mode_to_str(&config.worktree_mode))
-            .bind(&worktree_repo)
-            .bind(&config.worktree_ref)
-            .bind(if config.code_mode { 1 } else { 0 })
-            .bind(if config.agent_loop_enabled { 1 } else { 0 })
-            .bind(config.agent_loop_idle_seconds)
-            .bind(config.agent_loop_prompt.as_deref().map(str::trim))
-            .bind(status_to_str(&status))
-            .bind(now)
-            .bind(now)
-            .execute(&self.db)
-            .await?;
-        }
+        insert_agent_record(
+            &self.db,
+            schema_caps,
+            AgentInsertRecord {
+                id: &id,
+                config: &config,
+                workdir: &workdir,
+                args_json: &args_json,
+                target_node_id: target_node_id.as_deref(),
+                worktree_repo: worktree_repo.as_deref(),
+                source,
+                status: &status,
+                now,
+            },
+        )
+        .await?;
 
         Ok(AgentRecord {
             id,
@@ -1354,275 +990,22 @@ impl AgentManager {
         let args_json = serde_json::to_string(&config.args)?;
         let now = Utc::now().timestamp();
         let existing = self.get_agent(agent_id).await.ok();
-        let has_source_column = self.has_agents_source_column().await?;
-        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
-
-        if existing.is_some() {
-            if has_source_column && has_target_node_id_column {
-                sqlx::query(
-                    r#"
-                    UPDATE agents
-                    SET name = ?1,
-                        workdir = ?2,
-                        command = ?3,
-                        args = ?4,
-                        target_node_id = NULL,
-                        worktree_mode = ?5,
-                        worktree_repo = ?6,
-                        worktree_ref = ?7,
-                        code_mode = ?8,
-                        source = ?9,
-                        updated_at = ?10
-                    WHERE id = ?11
-                    "#,
-                )
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(source)
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await?;
-            } else if has_source_column {
-                sqlx::query(
-                    r#"
-                    UPDATE agents
-                    SET name = ?1,
-                        workdir = ?2,
-                        command = ?3,
-                        args = ?4,
-                        worktree_mode = ?5,
-                        worktree_repo = ?6,
-                        worktree_ref = ?7,
-                        code_mode = ?8,
-                        source = ?9,
-                        updated_at = ?10
-                    WHERE id = ?11
-                    "#,
-                )
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(source)
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await?;
-            } else if has_target_node_id_column {
-                sqlx::query(
-                    r#"
-                    UPDATE agents
-                    SET name = ?1,
-                        workdir = ?2,
-                        command = ?3,
-                        args = ?4,
-                        target_node_id = NULL,
-                        worktree_mode = ?5,
-                        worktree_repo = ?6,
-                        worktree_ref = ?7,
-                        code_mode = ?8,
-                        updated_at = ?9
-                    WHERE id = ?10
-                    "#,
-                )
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await?;
-            } else {
-                sqlx::query(
-                    r#"
-                    UPDATE agents
-                    SET name = ?1,
-                        workdir = ?2,
-                        command = ?3,
-                        args = ?4,
-                        worktree_mode = ?5,
-                        worktree_repo = ?6,
-                        worktree_ref = ?7,
-                        code_mode = ?8,
-                        updated_at = ?9
-                    WHERE id = ?10
-                    "#,
-                )
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(now)
-                .bind(agent_id)
-                .execute(&self.db)
-                .await?;
-            }
-        } else {
-            let status = AgentStatus::Created;
-            if has_source_column && has_target_node_id_column {
-                sqlx::query(
-                    r#"
-                    INSERT INTO agents (
-                        id,
-                        name,
-                        workdir,
-                        command,
-                        args,
-                        target_node_id,
-                        worktree_mode,
-                        worktree_repo,
-                        worktree_ref,
-                        code_mode,
-                        source,
-                        status,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(source)
-                .bind(status_to_str(&status))
-                .bind(now)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            } else if has_source_column {
-                sqlx::query(
-                    r#"
-                    INSERT INTO agents (
-                        id,
-                        name,
-                        workdir,
-                        command,
-                        args,
-                        worktree_mode,
-                        worktree_repo,
-                        worktree_ref,
-                        code_mode,
-                        source,
-                        status,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(source)
-                .bind(status_to_str(&status))
-                .bind(now)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            } else if has_target_node_id_column {
-                sqlx::query(
-                    r#"
-                    INSERT INTO agents (
-                        id,
-                        name,
-                        workdir,
-                        command,
-                        args,
-                        target_node_id,
-                        worktree_mode,
-                        worktree_repo,
-                        worktree_ref,
-                        code_mode,
-                        status,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(status_to_str(&status))
-                .bind(now)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            } else {
-                sqlx::query(
-                    r#"
-                    INSERT INTO agents (
-                        id,
-                        name,
-                        workdir,
-                        command,
-                        args,
-                        worktree_mode,
-                        worktree_repo,
-                        worktree_ref,
-                        code_mode,
-                        status,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-                    "#,
-                )
-                .bind(agent_id)
-                .bind(&config.name)
-                .bind(&workdir)
-                .bind(&config.command)
-                .bind(&args_json)
-                .bind(worktree_mode_to_str(&config.worktree_mode))
-                .bind(&worktree_repo)
-                .bind(&config.worktree_ref)
-                .bind(if config.code_mode { 1 } else { 0 })
-                .bind(status_to_str(&status))
-                .bind(now)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            }
-        }
+        let schema_caps = self.agent_schema_caps().await?;
+        upsert_remote_managed_agent_record(
+            &self.db,
+            schema_caps,
+            RemoteManagedAgentUpsert {
+                agent_id,
+                config: &config,
+                workdir: &workdir,
+                args_json: &args_json,
+                worktree_repo: worktree_repo.as_deref(),
+                source,
+                exists: existing.is_some(),
+                now,
+            },
+        )
+        .await?;
 
         self.get_agent(agent_id).await
     }
@@ -1630,83 +1013,23 @@ impl AgentManager {
     pub async fn list_agents(&self) -> anyhow::Result<Vec<AgentRecord>> {
         self.reconcile_stale_running_agents().await?;
         let active_team_member_agents = self.list_active_team_member_agents().await?;
-        let has_source_column = self.has_agents_source_column().await?;
-        let has_target_node_id_column = self.has_agents_target_node_id_column().await?;
-        let rows = if has_source_column && has_target_node_id_column {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE COALESCE(source, 'manual') != ?1
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(AGENT_SOURCE_TEAM_FORGE)
-            .fetch_all(&self.db)
-            .await?
-        } else if has_source_column {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE COALESCE(source, 'manual') != ?1
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(AGENT_SOURCE_TEAM_FORGE)
-            .fetch_all(&self.db)
-            .await?
-        } else if has_target_node_id_column {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(&self.db)
-            .await?
-        };
+        let schema_caps = self.agent_schema_caps().await?;
+        let rows = list_agent_rows(
+            &self.db,
+            schema_caps,
+            schema_caps
+                .has_source_column
+                .then_some(AGENT_SOURCE_TEAM_FORGE),
+        )
+        .await?;
 
         let mut agents = Vec::with_capacity(rows.len());
         for row in rows {
-            let agent_id: String = row.get("id");
-            if active_team_member_agents.contains(&agent_id) {
+            let agent = decode_agent_record(&row)?;
+            if active_team_member_agents.contains(&agent.id) {
                 continue;
             }
-            let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
-            let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
-            let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
-            let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
-            let target_node_id = decode_target_node_id(&row);
-            agents.push(AgentRecord {
-                id: agent_id,
-                name: row.get("name"),
-                workdir: row.get("workdir"),
-                command: row.get("command"),
-                args,
-                target_node_id,
-                worktree_mode,
-                worktree_repo: row.try_get("worktree_repo").ok(),
-                worktree_ref: row.try_get("worktree_ref").ok(),
-                code_mode: code_mode != 0,
-                agent_loop_enabled: agent_loop_enabled != 0,
-                agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
-                agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
-                status: status_from_str(row.get::<String, _>("status").as_str()),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            });
+            agents.push(agent);
         }
         Ok(agents)
     }
@@ -1812,17 +1135,7 @@ impl AgentManager {
     }
 
     async fn has_agents_source_column(&self) -> anyhow::Result<bool> {
-        let rows = sqlx::query(
-            r#"
-            SELECT name
-            FROM pragma_table_info('agents')
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .any(|row| row.get::<String, _>("name") == "source"))
+        Ok(self.agent_schema_caps().await?.has_source_column)
     }
 
     async fn list_active_team_member_agents(&self) -> anyhow::Result<HashSet<String>> {
@@ -1865,53 +1178,8 @@ impl AgentManager {
 
     pub async fn get_agent(&self, agent_id: &str) -> anyhow::Result<AgentRecord> {
         self.reconcile_stale_running_agents().await?;
-        let row = if self.has_agents_target_node_id_column().await? {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE id = ?1
-                "#,
-            )
-            .bind(agent_id)
-            .fetch_one(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE id = ?1
-                "#,
-            )
-            .bind(agent_id)
-            .fetch_one(&self.db)
-            .await?
-        };
-
-        let args = serde_json::from_str::<Vec<String>>(row.get("args"))?;
-        let worktree_mode = worktree_mode_from_opt(row.try_get("worktree_mode").ok());
-        let code_mode: i64 = row.try_get("code_mode").unwrap_or(0);
-        let agent_loop_enabled: i64 = row.try_get("agent_loop_enabled").unwrap_or(0);
-        let target_node_id = decode_target_node_id(&row);
-        Ok(AgentRecord {
-            id: row.get("id"),
-            name: row.get("name"),
-            workdir: row.get("workdir"),
-            command: row.get("command"),
-            args,
-            target_node_id,
-            worktree_mode,
-            worktree_repo: row.try_get("worktree_repo").ok(),
-            worktree_ref: row.try_get("worktree_ref").ok(),
-            code_mode: code_mode != 0,
-            agent_loop_enabled: agent_loop_enabled != 0,
-            agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
-            agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
-            status: status_from_str(row.get::<String, _>("status").as_str()),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        let row = get_agent_row(&self.db, self.agent_schema_caps().await?, agent_id).await?;
+        decode_agent_record(&row)
     }
 
     pub(crate) async fn list_safe_paths(&self) -> anyhow::Result<Vec<String>> {
@@ -2060,680 +1328,6 @@ impl AgentManager {
         Ok(events)
     }
 
-    async fn get_persistent_session(
-        &self,
-        agent_id: &str,
-        provider: &str,
-    ) -> anyhow::Result<Option<String>> {
-        let row = sqlx::query(
-            r#"
-            SELECT session_id
-            FROM agent_persistent_sessions
-            WHERE agent_id = ?1 AND provider = ?2
-            "#,
-        )
-        .bind(agent_id)
-        .bind(provider)
-        .fetch_optional(&self.db)
-        .await?;
-        Ok(row.map(|row| row.get::<String, _>("session_id")))
-    }
-
-    async fn set_persistent_session(
-        &self,
-        agent_id: &str,
-        provider: &str,
-        session_id: &str,
-    ) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO agent_persistent_sessions (agent_id, provider, session_id, updated_at)
-            VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(agent_id, provider)
-            DO UPDATE SET session_id = excluded.session_id, updated_at = excluded.updated_at
-            "#,
-        )
-        .bind(agent_id)
-        .bind(provider)
-        .bind(session_id)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn clear_persistent_session(
-        &self,
-        agent_id: &str,
-        provider: &str,
-    ) -> anyhow::Result<()> {
-        sqlx::query(
-            r#"
-            DELETE FROM agent_persistent_sessions
-            WHERE agent_id = ?1 AND provider = ?2
-            "#,
-        )
-        .bind(agent_id)
-        .bind(provider)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-
-    async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
-        let (child, session_id) = {
-            let guard = self.inner.read().await;
-            guard
-                .get(agent_id)
-                .map(|handle| (handle.child.clone(), handle.session_id.clone()))?
-        };
-        let exit_result = {
-            let mut child_guard = child.lock().await;
-            let child_ref = child_guard.as_mut()?;
-            child_ref.try_wait()
-        };
-
-        match exit_result {
-            Ok(None) => Some(session_id),
-            Ok(Some(status)) => {
-                Self::finalize_process_exit(
-                    &self.db,
-                    &self.event_dbs,
-                    self.idle_gc.clone(),
-                    &self.inner,
-                    &self.push,
-                    agent_id,
-                    &session_id,
-                    status.success(),
-                )
-                .await;
-                None
-            }
-            Err(err) => {
-                tracing::warn!(
-                    "start_agent: failed to poll child status: agent_id={}, error={}",
-                    agent_id,
-                    err
-                );
-                Self::finalize_process_exit(
-                    &self.db,
-                    &self.event_dbs,
-                    self.idle_gc.clone(),
-                    &self.inner,
-                    &self.push,
-                    agent_id,
-                    &session_id,
-                    false,
-                )
-                .await;
-                None
-            }
-        }
-    }
-
-    pub async fn running_session_id_for_agent(&self, agent_id: &str) -> Option<String> {
-        self.get_running_session_id(agent_id).await
-    }
-
-    pub async fn running_actor_context_for_agent(
-        &self,
-        agent_id: &str,
-    ) -> Option<AcpActorSkillContext> {
-        let session_id = self.get_running_session_id(agent_id).await?;
-        let guard = self.inner.read().await;
-        let handle = guard.get(agent_id)?;
-        if handle.session_id != session_id {
-            return None;
-        }
-        handle.actor_context.clone()
-    }
-
-    async fn reserve_agent_start(&self, agent_id: &str) -> anyhow::Result<()> {
-        {
-            let guard = self.inner.read().await;
-            if guard.contains_key(agent_id) {
-                return Err(anyhow::anyhow!("agent already running"));
-            }
-        }
-        let mut starting = self.starting.lock().await;
-        if starting.contains(agent_id) {
-            return Err(anyhow::anyhow!("agent already running"));
-        }
-        starting.insert(agent_id.to_string());
-        Ok(())
-    }
-
-    async fn release_agent_start(&self, agent_id: &str) {
-        let mut starting = self.starting.lock().await;
-        starting.remove(agent_id);
-    }
-
-    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
-    pub async fn start_agent(&self, agent_id: &str) -> anyhow::Result<String> {
-        self.start_agent_with_actor_context(agent_id, None).await
-    }
-
-    #[tracing::instrument(
-        skip(self, actor_context),
-        fields(agent_id = %agent_id),
-        err
-    )]
-    pub async fn start_agent_with_actor_context(
-        &self,
-        agent_id: &str,
-        actor_context: Option<AcpActorSkillContext>,
-    ) -> anyhow::Result<String> {
-        let agent = self.get_agent(agent_id).await?;
-        let running_session_id = self.get_running_session_id(agent_id).await;
-        let start_plan =
-            build_agent_start_plan(agent, actor_context, running_session_id.as_deref())?;
-        if let AgentStartPlan::ReuseRunningSession { session_id } = &start_plan {
-            return Ok(session_id.clone());
-        }
-        self.reserve_agent_start(agent_id).await?;
-        let result = match start_plan {
-            AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
-            AgentStartPlan::StartLocal {
-                agent,
-                actor_context,
-            } => self.start_local_agent(agent, actor_context).await,
-            AgentStartPlan::StartRemote {
-                agent,
-                target_node_id,
-                actor_context,
-            } => {
-                self.start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
-                    .await
-            }
-        };
-        self.release_agent_start(agent_id).await;
-        result
-    }
-
-    #[tracing::instrument(
-        skip(self, agent, actor_context),
-        fields(agent_id = %agent.id),
-        err
-    )]
-    async fn start_local_agent(
-        &self,
-        agent: AgentRecord,
-        actor_context: Option<AcpActorSkillContext>,
-    ) -> anyhow::Result<String> {
-        let session_id = Uuid::new_v4().to_string();
-        let actor_context = actor_context.map(normalize_actor_context).transpose()?;
-        let persisted_workdir = expand_tilde(&agent.workdir);
-        let persisted_worktree_repo = agent.worktree_repo.as_deref().map(expand_tilde);
-        if (persisted_workdir != agent.workdir
-            || persisted_worktree_repo.as_deref() != agent.worktree_repo.as_deref())
-            && let Err(err) = sqlx::query(
-                r#"
-                UPDATE agents
-                SET workdir = ?1, worktree_repo = ?2, updated_at = ?3
-                WHERE id = ?4
-                "#,
-            )
-            .bind(&persisted_workdir)
-            .bind(&persisted_worktree_repo)
-            .bind(Utc::now().timestamp())
-            .bind(&agent.id)
-            .execute(&self.db)
-            .await
-        {
-            tracing::warn!(
-                agent_id = %agent.id,
-                workdir = %persisted_workdir,
-                worktree_repo = ?persisted_worktree_repo,
-                error = %err,
-                "failed to persist normalized workdir/worktree_repo"
-            );
-        }
-        let start_policy = build_runtime_start_policy(
-            &agent,
-            actor_context.as_ref(),
-            &persisted_workdir,
-            persisted_worktree_repo.as_deref(),
-            Some(&session_id),
-        )?;
-        let mut runtime_agent = agent.clone();
-        runtime_agent.worktree_mode = start_policy.worktree_mode.clone();
-        runtime_agent.worktree_ref = start_policy.worktree_ref.clone();
-
-        if let Err(err) = self
-            .prepare_worktree_with_paths(
-                &runtime_agent,
-                &start_policy.workdir,
-                start_policy.worktree_repo.as_deref(),
-            )
-            .await
-        {
-            if let Err(record_err) = self
-                .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %record_err,
-                    "failed to record startup failure session"
-                );
-            }
-            if let Err(status_err) = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %status_err,
-                    "failed to update agent status after startup failure"
-                );
-            }
-            return Err(err);
-        }
-        if let Err(err) = self.ensure_safe_path(&start_policy.workdir).await {
-            if let Err(record_err) = self
-                .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %record_err,
-                    "failed to record safe-path startup failure"
-                );
-            }
-            if let Err(status_err) = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %status_err,
-                    "failed to update agent status after safe-path failure"
-                );
-            }
-            return Err(err);
-        }
-        if let Err(err) =
-            ensure_team_leader_workdir_exists(actor_context.as_ref(), &start_policy.workdir)
-        {
-            let message = err.to_string();
-            let _ = self
-                .record_failed_session(&agent.id, &session_id, &message)
-                .await;
-            let _ = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await;
-            return Err(anyhow::anyhow!(message));
-        }
-        if let Some(worker_branch) = start_policy.worker_branch.as_deref()
-            && let Err(err) = self
-                .checkout_team_worker_branch(&start_policy.workdir, worker_branch)
-                .await
-        {
-            if let Err(record_err) = self
-                .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %record_err,
-                    "failed to record worker-branch startup failure"
-                );
-            }
-            if let Err(status_err) = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %status_err,
-                    "failed to update agent status after worker-branch failure"
-                );
-            }
-            return Err(err);
-        }
-
-        let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
-        let is_acp = acp_provider.is_some();
-        let command_path = self.resolve_command_path(&agent.command, acp_provider);
-        let local_execution_request = LocalExecutionRequest {
-            command_path: command_path.clone(),
-            args: agent.args.clone(),
-            workdir: start_policy.workdir.clone(),
-            actor_context: actor_context.clone(),
-        };
-        let local_execution = match self
-            .local_executor
-            .spawn_process(local_execution_request.clone())
-            .await
-        {
-            Ok(execution) => execution,
-            Err(err) => {
-                if let Err(record_err) = self
-                    .record_failed_session(&agent.id, &session_id, &err.to_string())
-                    .await
-                {
-                    tracing::error!(
-                        agent_id = %agent.id,
-                        session_id = %session_id,
-                        error = %record_err,
-                        "failed to record spawn failure session"
-                    );
-                }
-                if let Err(status_err) = self
-                    .update_agent_status(&agent.id, AgentStatus::Failed)
-                    .await
-                {
-                    tracing::error!(
-                        agent_id = %agent.id,
-                        session_id = %session_id,
-                        error = %status_err,
-                        "failed to update agent status after spawn failure"
-                    );
-                }
-                tracing::error!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    local_execution_request.command_path,
-                    local_execution_request.workdir,
-                    local_execution_request.args,
-                    err
-                );
-                return Err(anyhow::anyhow!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    local_execution_request.command_path,
-                    local_execution_request.workdir,
-                    local_execution_request.args,
-                    err
-                ));
-            }
-        };
-        let mut child = local_execution.child;
-        let mut stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-        let stdin = child.stdin.take();
-
-        let (output_tx, _rx) = broadcast::channel(256);
-        let child = Arc::new(Mutex::new(Some(child)));
-        let stdin = Arc::new(Mutex::new(stdin));
-
-        let now = Utc::now().timestamp();
-        if let Err(err) = sqlx::query(
-            r#"
-            INSERT INTO agent_sessions (id, agent_id, status, started_at)
-            VALUES (?1, ?2, ?3, ?4)
-            "#,
-        )
-        .bind(&session_id)
-        .bind(&agent.id)
-        .bind("running")
-        .bind(now)
-        .execute(&self.db)
-        .await
-        {
-            tracing::error!(
-                agent_id = %agent.id,
-                session_id = %session_id,
-                error = %err,
-                "failed to insert running agent session"
-            );
-            if let Err(record_err) = self
-                .record_failed_session(&agent.id, &session_id, "session insert failed")
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %record_err,
-                    "failed to record session-insert startup failure"
-                );
-            }
-            if let Err(status_err) = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %status_err,
-                    "failed to update agent status after session-insert failure"
-                );
-            }
-            return Err(err.into());
-        }
-
-        self.update_agent_status(&agent.id, AgentStatus::Running)
-            .await?;
-
-        let mut loop_controller = None;
-        let input = if let Some(provider) = acp_provider {
-            let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
-            let stdout = match stdout.take() {
-                Some(stdout) => stdout,
-                None => {
-                    if let Err(record_err) = self
-                        .record_failed_session(&agent.id, &session_id, "acp stdout missing")
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %record_err,
-                            "failed to record missing acp stdout failure"
-                        );
-                    }
-                    if let Err(status_err) = self
-                        .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %status_err,
-                            "failed to update agent status after missing acp stdout"
-                        );
-                    }
-                    return Err(anyhow::anyhow!("acp stdout missing"));
-                }
-            };
-            let stdin = match stdin.lock().await.take() {
-                Some(stdin) => stdin,
-                None => {
-                    if let Err(record_err) = self
-                        .record_failed_session(&agent.id, &session_id, "acp stdin missing")
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %record_err,
-                            "failed to record missing acp stdin failure"
-                        );
-                    }
-                    if let Err(status_err) = self
-                        .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %status_err,
-                            "failed to update agent status after missing acp stdin"
-                        );
-                    }
-                    return Err(anyhow::anyhow!("acp stdin missing"));
-                }
-            };
-            let safe_paths = match load_safe_paths(&self.db).await {
-                Ok(paths) => paths,
-                Err(err) => {
-                    tracing::warn!("safe paths load failed: {err}");
-                    Vec::new()
-                }
-            };
-            let event_sink = Arc::new(AgenthubAcpEventSink::new(
-                self.event_dbs.clone(),
-                self.idle_gc.clone(),
-                output_tx.clone(),
-                agent.id.clone(),
-                session_id.clone(),
-            ));
-            let client_info = Implementation::new("agenthub", env!("CARGO_PKG_VERSION"));
-            let permission_review_dispatcher = self
-                .permission_review_dispatcher
-                .read()
-                .ok()
-                .and_then(|guard| guard.clone());
-            let handle = match spawn_acp_session(SpawnAcpSessionRequest {
-                event_sink,
-                permissions: self.permissions.clone(),
-                permission_review_dispatcher,
-                agent_id: agent.id.clone(),
-                agent_session_id: session_id.clone(),
-                resume_session_id,
-                workdir: start_policy.workdir.clone(),
-                client_info,
-                stdout,
-                stdin,
-                safe_paths,
-                actor_context: actor_context.clone(),
-                prompt_delivery_policy: provider.prompt_delivery_policy,
-                runtime_location: local_execution.runtime_location,
-            })
-            .await
-            {
-                Ok(handle) => handle,
-                Err(err) => {
-                    if let Err(record_err) = self
-                        .record_failed_session(&agent.id, &session_id, &err.to_string())
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %record_err,
-                            "failed to record acp session spawn failure"
-                        );
-                    }
-                    if let Err(status_err) = self
-                        .update_agent_status(&agent.id, AgentStatus::Failed)
-                        .await
-                    {
-                        tracing::error!(
-                            agent_id = %agent.id,
-                            session_id = %session_id,
-                            error = %status_err,
-                            "failed to update agent status after acp session spawn failure"
-                        );
-                    }
-                    return Err(err);
-                }
-            };
-            if let Err(err) = self
-                .set_persistent_session(&agent.id, provider.id, &handle.session_id)
-                .await
-            {
-                tracing::error!("persist acp session failed: {}", err);
-            }
-            if provider.uses_default_mode_config() {
-                if let Some(mode_id) = self.acp_default_mode.as_deref()
-                    && let Err(err) = handle.set_mode(mode_id.to_string()).await
-                {
-                    tracing::warn!(
-                        "set acp default mode failed: agent_id={}, mode_id={}, error={}",
-                        agent.id,
-                        mode_id,
-                        err
-                    );
-                }
-            } else if matches!(
-                provider.default_mode_behavior,
-                AcpDefaultModeBehavior::IgnoreConfigured
-            ) && self.acp_default_mode.is_some()
-            {
-                tracing::debug!(
-                    "acp default mode ignored for provider {} (agent_id={})",
-                    provider.id,
-                    agent.id
-                );
-            }
-            if let Some(config) = normalize_agent_loop_config(
-                agent.agent_loop_enabled,
-                agent.agent_loop_idle_seconds,
-                agent.agent_loop_prompt.as_deref(),
-            ) {
-                loop_controller = Some(spawn_agent_loop_controller(
-                    self.event_dbs.clone(),
-                    self.idle_gc.clone(),
-                    output_tx.clone(),
-                    handle.clone(),
-                    agent.id.clone(),
-                    session_id.clone(),
-                    config,
-                ));
-            }
-            AgentInput::Acp(handle.clone())
-        } else {
-            AgentInput::Stdin(stdin.clone())
-        };
-
-        let handle = AgentHandle {
-            child: child.clone(),
-            output_tx: output_tx.clone(),
-            input,
-            session_id: session_id.clone(),
-            actor_context,
-            loop_controller,
-        };
-
-        {
-            let mut guard = self.inner.write().await;
-            guard.insert(agent.id.clone(), handle);
-        }
-
-        if !is_acp && let Some(stdout) = stdout {
-            self.spawn_output_reader(
-                agent.id.clone(),
-                session_id.clone(),
-                OutputStream::Stdout,
-                stdout,
-                output_tx.clone(),
-                false,
-            )
-            .await;
-        }
-
-        if let Some(stderr) = stderr {
-            self.spawn_output_reader(
-                agent.id.clone(),
-                session_id.clone(),
-                OutputStream::Stderr,
-                stderr,
-                output_tx.clone(),
-                is_acp,
-            )
-            .await;
-        }
-
-        self.spawn_exit_watcher(agent.id.clone(), session_id.clone())
-            .await;
-
-        self.emit_run_status(
-            output_tx.clone(),
-            agent.id.clone(),
-            session_id.clone(),
-            "running",
-        )
-        .await;
-
-        Ok(session_id)
-    }
-
     async fn checkout_team_worker_branch(&self, workdir: &str, branch: &str) -> anyhow::Result<()> {
         let output = Command::new("git")
             .arg("-C")
@@ -2787,149 +1381,6 @@ impl AgentManager {
         }
 
         anyhow::bail!("workdir not allowed")
-    }
-
-    #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
-    pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
-        let agent = self.get_agent(agent_id).await?;
-        if let Some(target_node_id) = agent.target_node_id.as_deref() {
-            let client = self
-                .remote_control_client_for_target_node(target_node_id)
-                .await?;
-            client.stop_managed_agent(agent_id).await?;
-            self.update_agent_status(agent_id, AgentStatus::Stopped)
-                .await?;
-            return Ok(());
-        }
-        let handle = {
-            let mut guard = self.inner.write().await;
-            guard.remove(agent_id)
-        };
-        if let Some(handle) = handle {
-            let session_id = handle.session_id.clone();
-            let now = Utc::now().timestamp();
-            if let Err(err) = sqlx::query(
-                r#"
-                UPDATE agent_sessions
-                SET status = 'cancelled', ended_at = ?1
-                WHERE id = ?2
-                "#,
-            )
-            .bind(now)
-            .bind(&session_id)
-            .execute(&self.db)
-            .await
-            {
-                tracing::warn!(
-                    agent_id = %agent_id,
-                    session_id = %session_id,
-                    error = %err,
-                    "failed to mark agent session as cancelled during stop"
-                );
-            }
-            if let Err(err) = self
-                .update_agent_status(agent_id, AgentStatus::Stopped)
-                .await
-            {
-                tracing::warn!(
-                    agent_id = %agent_id,
-                    session_id = %session_id,
-                    error = %err,
-                    "failed to update agent status during stop"
-                );
-            }
-            self.emit_run_status(
-                handle.output_tx.clone(),
-                agent_id.to_string(),
-                session_id,
-                "cancelled",
-            )
-            .await;
-            if let Some(idle_gc) = &self.idle_gc {
-                idle_gc.remove_agent(agent_id).await;
-            }
-            let mut child_guard = handle.child.lock().await;
-            if let Some(mut child) = child_guard.take() {
-                if let Err(err) = child.kill().await {
-                    tracing::warn!(
-                        agent_id = %agent_id,
-                        error = %err,
-                        "failed to kill agent child process during stop"
-                    );
-                }
-                match tokio::time::timeout(AGENT_STOP_WAIT_TIMEOUT, child.wait()).await {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(err)) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            error = %err,
-                            "failed to wait for agent child process during stop"
-                        );
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            timeout_secs = AGENT_STOP_WAIT_TIMEOUT.as_secs(),
-                            "timed out waiting for agent child process during stop"
-                        );
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn record_failed_session(
-        &self,
-        agent_id: &str,
-        session_id: &str,
-        message: &str,
-    ) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        let seq = Uuid::now_v7().to_string();
-        if let Err(err) = sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'failed', ?3, ?4)
-            "#,
-        )
-        .bind(session_id)
-        .bind(agent_id)
-        .bind(now)
-        .bind(now)
-        .execute(&self.db)
-        .await
-        {
-            tracing::warn!(
-                agent_id = %agent_id,
-                session_id = %session_id,
-                error = %err,
-                "failed to persist failed agent session row"
-            );
-        }
-
-        let failure_message = format!("start failed: {}", message);
-        if let Err(err) = persist_agent_event(
-            &self.event_dbs,
-            None,
-            agent_id,
-            session_id,
-            &seq,
-            now,
-            &OutputStream::System,
-            failure_message.as_str(),
-        )
-        .await
-        {
-            tracing::warn!(
-                agent_id = %agent_id,
-                session_id = %session_id,
-                error = %err,
-                "failed to persist startup failure event"
-            );
-        }
-
-        Ok(())
     }
 
     pub async fn subscribe_output(
