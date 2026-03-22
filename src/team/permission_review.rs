@@ -14,6 +14,7 @@ use crate::agent::AgentManager;
 use super::TeamManager;
 
 const TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE: &str = "permission_review_request";
+const TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE: &str = "permission_review_card";
 
 #[derive(Debug, Clone, Copy)]
 pub struct TeamPermissionReviewDispatcherSettings {
@@ -23,7 +24,7 @@ pub struct TeamPermissionReviewDispatcherSettings {
 impl Default for TeamPermissionReviewDispatcherSettings {
     fn default() -> Self {
         Self {
-            human_fallback_delay: Duration::from_secs(45),
+            human_fallback_delay: Duration::from_secs(300),
         }
     }
 }
@@ -189,8 +190,21 @@ impl TeamPermissionReviewDispatcher {
             .ensure_shared_thread_target_for_team(team_id, requester_actor_id)
             .await?;
         let payload = json!({
-            "type": "chat_message",
-            "text": build_human_review_message(request, reason),
+            "type": TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE,
+            "permission_id": request.request_id,
+            "agent_id": request.agent_id,
+            "agent_session_id": request.agent_session_id,
+            "acp_session_id": request.acp_session_id,
+            "tool_call_id": request.tool_call_id,
+            "tool_call": request.tool_call,
+            "tool_name": request.tool_call.as_ref().and_then(extract_tool_name),
+            "requester_actor_id": request.routing.requester_actor_id,
+            "requester_role": request.routing.requester_role,
+            "options": request.options,
+            "summary": build_permission_review_summary(request),
+            "reason": reason,
+            "reason_text": human_review_reason_text(reason),
+            "status": "pending",
         });
         let _ = self
             .teams
@@ -377,28 +391,12 @@ fn build_permission_review_summary(request: &AcpPermissionReviewRequest) -> Stri
     format!("{requester} requests permission to execute {tool_name}.")
 }
 
-fn build_human_review_message(request: &AcpPermissionReviewRequest, reason: &str) -> String {
-    let requester = request
-        .routing
-        .requester_actor_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("worker");
-    let tool_name = request
-        .tool_call
-        .as_ref()
-        .and_then(extract_tool_name)
-        .unwrap_or("an ACP tool call");
-    let reason_text = match reason {
+fn human_review_reason_text(reason: &str) -> &str {
+    match reason {
         "review_timeout" => "Agent review timed out",
         "review_dispatch_failed" | "leader_dispatch_failed" => "Agent review dispatch failed",
         other => other,
-    };
-    format!(
-        "{reason_text}. Human review is required for permission `{}` from {requester} ({tool_name}). Use the Permissions panel to approve or cancel it.",
-        request.request_id
-    )
+    }
 }
 
 fn extract_tool_name(value: &Value) -> Option<&str> {
@@ -425,6 +423,14 @@ mod tests {
     use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService};
     use serde_json::json;
     use uuid::Uuid;
+
+    #[test]
+    fn permission_review_dispatcher_default_human_fallback_is_five_minutes() {
+        assert_eq!(
+            TeamPermissionReviewDispatcherSettings::default().human_fallback_delay,
+            Duration::from_secs(300)
+        );
+    }
 
     #[test]
     fn builds_permission_review_summary_from_tool_name() {
@@ -626,12 +632,10 @@ mod tests {
             .await
             .expect("list shared-thread messages");
         let fallback = conversation_messages.iter().find(|message| {
-            message.payload.get("type").and_then(Value::as_str) == Some("chat_message")
-                && message
-                    .payload
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .is_some_and(|text| text.contains("perm-review-timeout"))
+            message.payload.get("type").and_then(Value::as_str)
+                == Some(TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE)
+                && message.payload.get("permission_id").and_then(Value::as_str)
+                    == Some("perm-review-timeout")
         });
         let record_after_timeout = state
             .acp_permissions
@@ -645,6 +649,11 @@ mod tests {
             )
         });
         assert_eq!(fallback.from_actor_id, "worker");
+        assert_eq!(
+            fallback.payload["reason_text"],
+            json!("Agent review timed out")
+        );
+        assert_eq!(fallback.payload["status"], json!("pending"));
 
         assert_eq!(
             record_after_timeout.review_dispatch_status.as_deref(),

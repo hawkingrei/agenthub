@@ -2865,6 +2865,7 @@ export function TeamPage(props: TeamPageProps) {
   const conversationPanel = (
     <TeamConversationPanel
       developerMode={props.developerMode}
+      token={props.token}
       tasksLoading={tasksLoading}
       onRefreshTasks={onRefreshTasks}
       messageDraft={taskMessageDraft}
