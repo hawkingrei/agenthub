@@ -19,7 +19,9 @@ Primary references:
 - Keep current phase, transition condition, assignment map, and integration checklist.
 - Keep human-facing planning decisions in leader index records.
 - Keep pointers for self-profile maintenance (`profile_patch_proposal`) and timed follow-up
-  reminders (`agent_time_trigger_set/list/cancel`) when they are active.
+  reminders (`"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel`) when they are active.
 - Keep `team-task-lifecycle` in the active skill set whenever leader is creating, reviewing, or
   closing canonical Team tasks.
 

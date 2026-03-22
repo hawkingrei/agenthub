@@ -23,19 +23,19 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Use stable `spec.members[].member_id` as teammate routing keys in mailbox coordination.\n",
     "- Treat `spec.members[].description` as A2A identity card source for each member.\n",
     "- Keep `/api/agents/:id/.well-known/agent-card` description aligned with team member role identity.\n",
-    "- Use the runtime `team_members` tool to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before routing work.\n",
-    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before routing work.\n",
+    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.\n",
     "- Record discovery-card identity policy and update checkpoints in `AGENTS.md`.\n",
     "- Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.\n",
-    "- Use `team_tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.\n",
-    "- Use `team_task_create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `team_tasks`.\n",
-    "- Use `team_task_update` when you intentionally move a Team task through lifecycle states.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-task-create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `\"$AGENTHUB_ACTOR_CLI\" actor team-tasks`.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-task-update` when you intentionally move a Team task through lifecycle states.\n",
     "- Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.\n",
     "- Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.\n",
     "- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.\n",
     "- Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.\n",
     "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
-    "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Team ACP permission review path is operator-facing: worker-originated permission requests should route to leader first, while leader-originated permission requests should route to an automatically selected subordinate worker reviewer.\n",
@@ -80,17 +80,17 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n",
     "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
     "- If your own description/prompt/skill profile is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.\n",
-    "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Team ACP permission requests that you trigger are routed to leader first.\n",
     "- Leader-originated Team ACP permission requests may be routed to you automatically; only review them when ACP exposes the review action in your current session.\n",
     "- Do not review your own Team ACP permission request; wait for the assigned reviewer or human review in `Channel` (`all`).\n",
     "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.\n",
-    "- Use the runtime `team_members` tool to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
-    "- Use `team_tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.\n",
-    "- Do not call `team_task_create` or `team_task_update`; canonical Team task creation and lifecycle updates remain leader-owned.\n",
-    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `team_members` for current execution decisions.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
+    "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.\n",
+    "- Do not call `\"$AGENTHUB_ACTOR_CLI\" actor team-task-create` or `\"$AGENTHUB_ACTOR_CLI\" actor team-task-update`; canonical Team task creation and lifecycle updates remain leader-owned.\n",
+    "- Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.\n",
     "- Load `team-task-lifecycle` whenever you need canonical Team task state guidance.\n",
     "- Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
@@ -163,12 +163,12 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".well-known/agent-card"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_members"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_tasks"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_task_create"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("team_task_update"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-members"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-tasks"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-task-create"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-task-update"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("profile_patch_proposal"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_time_trigger_set"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
         assert!(
             DEFAULT_TEAM_LEADER_PROMPT
@@ -180,11 +180,11 @@ mod tests {
         );
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_members"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_tasks"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team_task_create"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-members"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-tasks"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-task-create"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_time_trigger_set"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("routed to leader first"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("routed to you automatically"));

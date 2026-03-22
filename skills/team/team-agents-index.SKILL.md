@@ -29,7 +29,9 @@ Primary references:
 - Keep runtime AGENTS context small by loading only role-required skills.
 - Remember two shared runtime capabilities:
   - self-profile updates via `profile_patch_proposal`
-  - timed self-reminders via `agent_time_trigger_set/list/cancel`
+  - timed self-reminders via `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel`
   - canonical Team task lifecycle via `team-task-lifecycle`
 
 ## Routing
@@ -41,7 +43,9 @@ Primary references:
 - Team task lifecycle: `team-task-lifecycle`
 - Deliberation quality gate: `team-deliberation-rules`
 - Actor mailbox protocol: `team-actor-mailbox`
-- Timed self-reminders: actor MCP tools `agent_time_trigger_set`, `agent_time_trigger_list`, `agent_time_trigger_cancel`
+- Timed self-reminders: `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel`
 
 ## Startup Checklist
 

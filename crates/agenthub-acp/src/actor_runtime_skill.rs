@@ -29,50 +29,50 @@ You are running inside an AgentHub actor session.
 - `default_channel`: `{default_channel}`
 {continuity_section}
 
-Use MCP native actor mailbox tools (do not shell out to CLI):
+Use the actor CLI for runtime coordination:
 
-Team mailbox tools:
+Team mailbox commands:
 
 1. Pull inbox:
-   `actor_inbox` with `{{"run_id":"<run-id>","limit": 20}}`
+   `"$AGENTHUB_ACTOR_CLI" actor inbox --run-id "<run-id>" --limit 20`
 2. Acknowledge a message after processing:
-   `actor_ack` with `{{"run_id":"<run-id>","message_id": 123}}`
+   `"$AGENTHUB_ACTOR_CLI" actor ack --run-id "<run-id>" --message-id 123`
 3. Send a local direct message:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
-   `actor_send` with `{{"run_id":"<run-id>","channel_id":"all","text":"@worker Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
 5. Send a remote direct message:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"remote-worker","transport":"remote","route":{{"endpoint":"https://..."}},"text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{{"endpoint":"https://..."}}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 6. Send an urgent human notification:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"user","text":"Urgent: permission review timed out. Please check Channel for details."}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
 7. Force duplicate delivery when business logic requires repeated send:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","allow_duplicate":true,"text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 8. Use explicit idempotency key when coordinating retries across workers:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","idempotency_key":"stable-key","text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
+   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
-Team context tool:
+Team context commands:
 
-7. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
-   `team_members` with `{{}}`
-8. When you need step-level overlay for a specific run:
-   `team_members` with `{{"run_id":"<run-id>"}}`
+9. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
+   `"$AGENTHUB_ACTOR_CLI" actor team-members`
+10. When you need step-level overlay for a specific run:
+   `"$AGENTHUB_ACTOR_CLI" actor team-members --run-id "<run-id>"`
 
 Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
-- In each turn, the first mailbox action must be `actor_inbox` before planning/coding.
-- Before routing work based on teammate assumptions, inspect `team_members`.
-- Treat `team_members` as the single Team context snapshot tool: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.
+- In each turn, the first mailbox action must be `actor inbox` before planning/coding.
+- Before routing work based on teammate assumptions, inspect `actor team-members`.
+- Treat `actor team-members` as the single Team context snapshot command: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.
 - Treat `current_run_id` as a convenience default only; pass `run_id` explicitly whenever you are operating on a different run.
-- If inbox has pending items, process and `actor_ack` them before emitting final result.
+- If inbox has pending items, process and `actor ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
-- Prefer `actor_send.text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
+- Prefer `actor send --text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
 - For group chat / channel sends, use `channel_id`; the message will still fan out to all relevant teammates even when `@member_id` appears in the text.
 - Treat `@member_id` in channel text as mention metadata for receivers, not as a routing override.
 - Use `to_actor_id = "user"` or `user:<id>` only when you intentionally want a human notification.
 - Use `channel` only when a non-default channel is required.
-- By default, `actor_send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
+- By default, `actor send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
 - Reuse the same payload and routing fields when retrying; changing payload under the same idempotency key will be rejected.
 - Use `allow_duplicate=true` only when you intentionally need repeated delivery of equivalent payloads.
 - Use `payload` only when the receiver genuinely needs machine-readable fields such as `status`, `evidence`, or workflow metadata.
@@ -122,7 +122,7 @@ mod tests {
     use super::{AcpActorSkillContext, build_actor_runtime_skill};
 
     #[test]
-    fn actor_runtime_skill_includes_context_and_native_tool_contract() {
+    fn actor_runtime_skill_includes_context_and_cli_contract() {
         let skill = build_actor_runtime_skill(&AcpActorSkillContext {
             team_id: Some("team-7".to_string()),
             current_run_id: Some("run-42".to_string()),
@@ -144,18 +144,18 @@ mod tests {
                 .instructions
                 .contains("default_channel`: `coordination`")
         );
-        assert!(skill.instructions.contains("actor_inbox"));
-        assert!(skill.instructions.contains("actor_ack"));
-        assert!(skill.instructions.contains("actor_send"));
-        assert!(skill.instructions.contains("\"channel_id\":\"all\""));
-        assert!(skill.instructions.contains("\"to_actor_id\":\"user\""));
-        assert!(skill.instructions.contains("team_members"));
+        assert!(skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
+        assert!(skill.instructions.contains("actor inbox"));
+        assert!(skill.instructions.contains("actor ack"));
+        assert!(skill.instructions.contains("actor send"));
+        assert!(skill.instructions.contains("--channel-id \"all\""));
+        assert!(skill.instructions.contains("--to-actor-id \"user\""));
+        assert!(skill.instructions.contains("actor team-members"));
         assert!(
             skill
                 .instructions
-                .contains("single Team context snapshot tool")
+                .contains("single Team context snapshot command")
         );
-        assert!(skill.instructions.contains("\"run_id\":\"<run-id>\""));
-        assert!(!skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
+        assert!(skill.instructions.contains("--run-id \"<run-id>\""));
     }
 }

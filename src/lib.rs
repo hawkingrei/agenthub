@@ -2,6 +2,7 @@
 
 mod acp;
 mod actor_cli;
+mod actor_runtime_env;
 mod actor_mcp;
 mod agent;
 #[cfg(test)]
