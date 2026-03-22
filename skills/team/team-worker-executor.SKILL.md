@@ -16,8 +16,8 @@ findings.
 
 ## Skill Routing Contract
 
-- Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
-- Use `team-worker-agents-index.SKILL.md` to load worker-specific AGENTS template/rules.
+- Use `team-agents-index` to load shared Team terminology and startup checklist first.
+- Use `team-worker-agents-index` to load worker-specific AGENTS template/rules.
 - Use this skill for worker execution and evidence reporting.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.

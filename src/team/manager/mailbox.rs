@@ -238,6 +238,7 @@ impl TeamManager {
         Ok(message)
     }
 
+    #[allow(dead_code)]
     pub async fn has_pending_actor_message_payload_type(
         &self,
         run_id: &str,
@@ -763,6 +764,11 @@ impl ActorMailboxService for TeamActorMailboxService {
         let run_id = required_trimmed_field(&request.run_id, "run_id")?;
         let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
         let limit = request.limit.unwrap_or(50).clamp(1, 1000);
+        let pending_count = self
+            .manager
+            .count_actor_pending_inbox(run_id, actor_id)
+            .await
+            .map_err(map_actor_service_error)?;
         let include_delivered = request
             .states
             .as_ref()
@@ -783,6 +789,7 @@ impl ActorMailboxService for TeamActorMailboxService {
         Ok(ActorInboxResponse {
             messages,
             next_cursor,
+            pending_count,
         })
     }
 

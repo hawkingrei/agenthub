@@ -2,6 +2,8 @@ use crate::internal::client::{
     InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
 };
 
+type OptionalRemoteMailboxClient = anyhow::Result<Option<InternalGrpcMailboxClient>>;
+
 pub(crate) const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 pub(crate) const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 pub(crate) const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
@@ -25,8 +27,7 @@ pub(crate) fn normalized_env_var(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(crate) async fn maybe_remote_mailbox_service(
-) -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+pub(crate) async fn maybe_remote_mailbox_service() -> OptionalRemoteMailboxClient {
     let Some(target) = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV) else {
         return Ok(None);
     };

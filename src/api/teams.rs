@@ -7,7 +7,7 @@ use self::errors::{
     map_runtime_start_error, map_submit_step_error, map_team_internal_error,
 };
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
     actor_inbox_with_auto_ack, parse_actor_transport,
 };
@@ -31,7 +31,8 @@ use crate::team::{
     TeamActorMessageTransport, TeamConversationMessageRecord, TeamConversationRecord,
     TeamDefinitionConfig, TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
     TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
-    TeamTaskRecord, TeamTaskStatus, ensure_team_runtime_started, stop_team_runtime,
+    TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
+    ensure_team_runtime_started, plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -1376,77 +1377,48 @@ async fn maybe_notify_actor_new_mailbox_message_type(
     run_id: &str,
     send_result: &agenthub_team_actor::ActorSendResponse,
 ) -> anyhow::Result<()> {
-    if send_result.deduped {
-        return Ok(());
-    }
-    let message = &send_result.message;
-    if message.transport != TeamActorMessageTransport::Local {
-        return Ok(());
-    }
-    if message.to_peer_id != ACTOR_MAIN_PEER_ID {
-        return Ok(());
-    }
-    if message.to_actor_kind != ActorIdentityKind::Agent {
-        return Ok(());
-    }
-    let Some(payload_type) = extract_mailbox_payload_type(&message.payload) else {
+    let Some(plan) = plan_actor_mailbox_immediate_hint(&state.teams, run_id, send_result).await?
+    else {
         return Ok(());
     };
-
-    if should_suppress_mailbox_type_hint_for_pending_same_type(payload_type.as_str()) {
-        let has_pending_same_type = state
-            .teams
-            .has_pending_actor_message_payload_type(
-                run_id,
-                &message.to_actor_id,
-                payload_type.as_str(),
-                Some(message.message_id),
-            )
-            .await?;
-        if has_pending_same_type {
-            append_actor_mailbox_type_hint_event(
-                state,
-                run_id,
-                serde_json::json!({
-                    "status": "suppressed",
-                    "reason": "pending_same_type_exists",
-                    "message_id": message.message_id,
-                    "to_actor_id": message.to_actor_id,
-                    "payload_type": payload_type,
-                }),
-            )
-            .await;
-            return Ok(());
-        }
-    }
-
-    let hint = build_actor_mailbox_type_hint_prompt(run_id, payload_type.as_str());
-    let send_status = match state
-        .agents
-        .send_input(&message.to_actor_id, &hint, None, None)
-        .await
-    {
-        Ok(()) => ("sent", None),
-        Err(err) => {
-            tracing::debug!(
-                run_id = %run_id,
-                actor_id = %message.to_actor_id,
-                payload_type = %payload_type,
-                "skip mailbox type hint push because agent input is unavailable: {}",
-                err
-            );
-            ("send_failed", Some("agent_input_unavailable"))
+    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
+    let reason_label = match plan.reason {
+        crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
+        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention => {
+            "leader_channel_mention"
         }
     };
+    let mut sent_targets = Vec::new();
+    let mut failed_targets = Vec::new();
+    for target_actor_id in &plan.target_actor_ids {
+        match state
+            .agents
+            .send_input(target_actor_id, &prompt, None, None)
+            .await
+        {
+            Ok(()) => sent_targets.push(target_actor_id.clone()),
+            Err(err) => {
+                tracing::debug!(
+                    run_id = %run_id,
+                    actor_id = %target_actor_id,
+                    reason = ?plan.reason,
+                    "skip mailbox hint push because agent input is unavailable: {}",
+                    err
+                );
+                failed_targets.push(target_actor_id.clone());
+            }
+        }
+    }
     append_actor_mailbox_type_hint_event(
         state,
         run_id,
         serde_json::json!({
-            "status": send_status.0,
-            "message_id": message.message_id,
-            "to_actor_id": message.to_actor_id,
-            "payload_type": payload_type,
-            "error_code": send_status.1,
+            "status": if failed_targets.is_empty() { "sent" } else if sent_targets.is_empty() { "send_failed" } else { "partial" },
+            "message_id": send_result.message_id,
+            "reason": reason_label,
+            "target_actor_ids": plan.target_actor_ids,
+            "sent_actor_ids": sent_targets,
+            "failed_actor_ids": failed_targets,
         }),
     )
     .await;
@@ -1467,24 +1439,17 @@ async fn append_actor_mailbox_type_hint_event(state: &AppState, run_id: &str, pa
     }
 }
 
-fn extract_mailbox_payload_type(payload: &Value) -> Option<String> {
-    let payload_type = payload
-        .as_object()
-        .and_then(|obj| obj.get("type"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?;
-    Some(payload_type.to_string())
-}
-
-fn build_actor_mailbox_type_hint_prompt(run_id: &str, payload_type: &str) -> String {
-    format!(
-        "New mailbox message type '{payload_type}' is pending in run '{run_id}'. Use actor_inbox to inspect pending messages and batch-handle this type before ack."
-    )
-}
-
-fn should_suppress_mailbox_type_hint_for_pending_same_type(payload_type: &str) -> bool {
-    !payload_type.trim().eq_ignore_ascii_case("chat_message")
+#[cfg(test)]
+fn build_actor_mailbox_immediate_hint_prompt_for_test(
+    run_id: &str,
+    reason: &'static str,
+) -> String {
+    let reason = if reason == "leader_channel_mention" {
+        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention
+    } else {
+        crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage
+    };
+    crate::team::build_actor_mailbox_immediate_hint_prompt(run_id, reason)
 }
 
 async fn list_team_run_inbox(

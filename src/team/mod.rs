@@ -1,3 +1,4 @@
+mod mailbox_hint;
 mod manager;
 mod orchestrator;
 mod permission_review;
@@ -13,6 +14,11 @@ pub use agenthub_team_domain::{
     TeamDefinitionConfig, TeamDefinitionRecord, TeamMemberContinuityStateRecord,
     TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
     TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+};
+pub(crate) use mailbox_hint::{
+    ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
+    TeamMailboxUnreadHintWorkerSettings, build_actor_mailbox_immediate_hint_prompt,
+    plan_actor_mailbox_immediate_hint,
 };
 #[allow(unused_imports)]
 pub use manager::{

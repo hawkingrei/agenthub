@@ -52,6 +52,8 @@ pub struct ListActorInboxRequest {
 pub struct ListActorInboxResponse {
     #[prost(message, repeated, tag = "1")]
     pub messages: ::prost::alloc::vec::Vec<ActorMessage>,
+    #[prost(int64, tag = "2")]
+    pub pending_count: i64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AckActorMessageRequest {

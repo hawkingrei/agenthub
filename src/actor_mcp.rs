@@ -11,12 +11,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
-use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::actor_runtime_env::{
     ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, maybe_remote_mailbox_service,
     normalized_env_var,
 };
+use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::team::{TEAM_TASK_STATUS_VALUES, TeamManager, TeamTaskStatus};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
@@ -671,6 +671,7 @@ async fn tool_actor_inbox<S: ActorMailboxService + ?Sized>(
         Ok::<_, ActorServiceError>(agenthub_team_actor::ActorInboxResponse {
             messages,
             next_cursor: inbox.next_cursor,
+            pending_count: inbox.pending_count,
         })
     }
     .await;
@@ -678,6 +679,7 @@ async fn tool_actor_inbox<S: ActorMailboxService + ?Sized>(
         Ok(response) => tool_result_success(json!({
             "messages": response.messages,
             "next_cursor": response.next_cursor,
+            "pending_count": response.pending_count,
         })),
         Err(err) => tool_result_actor_service_error(err),
     }

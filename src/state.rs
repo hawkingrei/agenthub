@@ -14,9 +14,9 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::push::PushService;
 use crate::team::{
-    TeamManager, TeamOrchestratorWorker, TeamOrchestratorWorkerSettings,
-    TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
-    TeamRemoteRelayWorkerSettings,
+    TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager,
+    TeamOrchestratorWorker, TeamOrchestratorWorkerSettings, TeamPermissionReviewDispatcher,
+    TeamPermissionReviewDispatcherSettings, TeamRemoteRelayWorkerSettings,
 };
 
 #[derive(Clone)]
@@ -53,6 +53,8 @@ impl AppState {
 
         let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
             .spawn(TeamOrchestratorWorkerSettings::default());
+        let _mailbox_hint_handle = TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
+            .spawn(TeamMailboxUnreadHintWorkerSettings::default());
         let trigger_manager = Arc::new(AgentTimeTriggerManager::new(db.clone()));
         let recovered_dispatching = trigger_manager.reset_inflight_on_startup().await?;
         if recovered_dispatching > 0 {

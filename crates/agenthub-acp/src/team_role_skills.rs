@@ -12,10 +12,6 @@ const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
 const TEAM_AGENTS_INDEX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-agents-index.SKILL.md");
-const TEAM_LEADER_AGENTS_INDEX_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-leader-agents-index.SKILL.md");
-const TEAM_WORKER_AGENTS_INDEX_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-worker-agents-index.SKILL.md");
 const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
 
@@ -27,6 +23,122 @@ const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
 const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
 const TEAM_DELIBERATION_SKILL_NAME: &str = "team-deliberation-rules";
 const TEAM_ACTOR_MAILBOX_SKILL_NAME: &str = "team-actor-mailbox";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TeamRoleIndexKind {
+    Leader,
+    Worker,
+}
+
+impl TeamRoleIndexKind {
+    fn skill_name(self) -> &'static str {
+        match self {
+            Self::Leader => TEAM_LEADER_AGENTS_INDEX_SKILL_NAME,
+            Self::Worker => TEAM_WORKER_AGENTS_INDEX_SKILL_NAME,
+        }
+    }
+
+    fn skill_path(self) -> &'static str {
+        match self {
+            Self::Leader => "builtin://agenthub/team/team-leader-agents-index",
+            Self::Worker => "builtin://agenthub/team/team-worker-agents-index",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Leader => "Team Leader AGENTS Index",
+            Self::Worker => "Team Worker AGENTS Index",
+        }
+    }
+
+    fn role_label(self) -> &'static str {
+        match self {
+            Self::Leader => "leader",
+            Self::Worker => "worker",
+        }
+    }
+
+    fn role_core_skill(self) -> &'static str {
+        match self {
+            Self::Leader => TEAM_LEADER_SKILL_NAME,
+            Self::Worker => TEAM_WORKER_SKILL_NAME,
+        }
+    }
+
+    fn memory_rule(self) -> &'static str {
+        match self {
+            Self::Leader => {
+                "Keep leader durable memory lightweight; empty coordination workspaces normally do not need `.agenthubmemory/`."
+            }
+            Self::Worker => {
+                "Maintain project-local durable memory under `.agenthubmemory/` when operating inside a concrete repository."
+            }
+        }
+    }
+
+    fn responsibility_lines(self) -> &'static [&'static str] {
+        match self {
+            Self::Leader => &[
+                "Maintain leader workspace `AGENTS.md` as the coordination index.",
+                "Keep current phase, transition condition, assignment map, and integration checklist concise.",
+                "Keep human-facing planning decisions in leader index records.",
+                "Keep `team-task-lifecycle` active whenever leader is creating, reviewing, or closing canonical Team tasks.",
+            ],
+            Self::Worker => &[
+                "Maintain worker workspace `AGENTS.md` as the execution index.",
+                "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
+                "Keep worker updates routed to leader unless explicit escalation policy applies.",
+                "Keep `team-task-lifecycle` active whenever worker execution must advance a leader-owned Team task toward review.",
+            ],
+        }
+    }
+}
+
+fn build_role_agents_index_skill(kind: TeamRoleIndexKind) -> AcpSkill {
+    let responsibilities = kind
+        .responsibility_lines()
+        .iter()
+        .map(|line| format!("- {line}\n"))
+        .collect::<String>();
+    let instructions = format!(
+        r#"# {title}
+
+Use this skill as the {role_label}-specific AGENTS index initializer.
+
+Primary references:
+
+- Shared baseline: `skills/team/AGENTS.md`
+- Unified runtime template: `skills/team/TEAM_AGENTS.md`
+
+## Responsibilities
+
+{responsibilities}- {memory_rule}
+- Keep the active skill set minimal and phase-scoped.
+
+## Startup Checklist
+
+1. Read shared baseline (`skills/team/AGENTS.md`).
+2. Initialize or refresh workspace `AGENTS.md` from `skills/team/TEAM_AGENTS.md`.
+3. Set `role={role_label}` and keep `Active Skills` minimal:
+   - `{role_core_skill}` (role execution skill)
+   - `team-actor-mailbox`
+   - add `team-task-lifecycle` only when canonical Team task state must change
+   - add `team-deliberation-rules` only when option comparison or consensus work is active
+4. Check `TODO.md` before mailbox rounds.
+"#,
+        title = kind.title(),
+        role_label = kind.role_label(),
+        responsibilities = responsibilities,
+        memory_rule = kind.memory_rule(),
+        role_core_skill = kind.role_core_skill(),
+    );
+    build_skill(
+        kind.skill_name().to_string(),
+        kind.skill_path().to_string(),
+        &instructions,
+    )
+}
 
 fn normalize_member_role(role: Option<&str>) -> Option<&str> {
     role.map(str::trim).filter(|value| !value.is_empty())
@@ -69,11 +181,7 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-agents-index".to_string(),
                 TEAM_AGENTS_INDEX_SKILL_TEXT,
             ));
-            out.push(build_skill(
-                TEAM_LEADER_AGENTS_INDEX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-leader-agents-index".to_string(),
-                TEAM_LEADER_AGENTS_INDEX_SKILL_TEXT,
-            ));
+            out.push(build_role_agents_index_skill(TeamRoleIndexKind::Leader));
             out.push(build_skill(
                 TEAM_LEADER_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-leader-orchestrator".to_string(),
@@ -105,11 +213,7 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
                 "builtin://agenthub/team/team-agents-index".to_string(),
                 TEAM_AGENTS_INDEX_SKILL_TEXT,
             ));
-            out.push(build_skill(
-                TEAM_WORKER_AGENTS_INDEX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-worker-agents-index".to_string(),
-                TEAM_WORKER_AGENTS_INDEX_SKILL_TEXT,
-            ));
+            out.push(build_role_agents_index_skill(TeamRoleIndexKind::Worker));
             out.push(build_skill(
                 TEAM_WORKER_SKILL_NAME.to_string(),
                 "builtin://agenthub/team/team-worker-executor".to_string(),
@@ -143,7 +247,8 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
 #[cfg(test)]
 mod tests {
     use super::{
-        build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
+        TeamRoleIndexKind, build_role_agents_index_skill, build_team_role_skills,
+        is_reserved_team_role_skill, should_attach_team_role_skills,
     };
     use crate::AcpActorSkillContext;
 
@@ -260,5 +365,20 @@ mod tests {
         assert!(is_reserved_team_role_skill("team-actor-mailbox"));
         assert!(is_reserved_team_role_skill("TEAM-WORKER-EXECUTOR"));
         assert!(!is_reserved_team_role_skill("custom-skill"));
+    }
+
+    #[test]
+    fn role_agents_index_builder_keeps_role_specific_contract_small() {
+        let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader);
+        assert_eq!(leader.name, "team-leader-agents-index");
+        assert!(leader.instructions.contains("role=leader"));
+        assert!(leader.instructions.contains("team-leader-orchestrator"));
+        assert!(!leader.instructions.contains("team-worker-executor"));
+
+        let worker = build_role_agents_index_skill(TeamRoleIndexKind::Worker);
+        assert_eq!(worker.name, "team-worker-agents-index");
+        assert!(worker.instructions.contains("role=worker"));
+        assert!(worker.instructions.contains("team-worker-executor"));
+        assert!(!worker.instructions.contains("team-leader-orchestrator"));
     }
 }

@@ -8,7 +8,7 @@ use agenthub_team_actor::{
 use anyhow::Context;
 use chrono::Utc;
 use serde_json::Value;
-use std::{path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
 use crate::actor_runtime_env::{
@@ -18,10 +18,12 @@ use crate::actor_runtime_env::{
 };
 use crate::agent::AGENT_NODE_MAIN_ID;
 use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
-use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::auth::InternalAction;
+use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::team::{
     TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager, TeamTaskStatus,
+    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
 };
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
@@ -210,33 +212,143 @@ fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
 
 fn configure_actor_cli_internal_grpc(
     manager: &TeamManager,
+    peer_client: Option<InternalGrpcPeerClientConfig>,
+) {
+    if let Some(peer_client) = peer_client {
+        manager.configure_internal_grpc_relay(
+            PathBuf::from(&peer_client.cert_dir).as_path(),
+            peer_client.security_mode,
+        );
+        manager.configure_internal_grpc_peer_client(Some(peer_client));
+    }
+}
+
+fn build_actor_cli_internal_grpc_peer_client(
     config: &agenthub_config::AppConfig,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<InternalGrpcPeerClientConfig>> {
     if !config.internal_grpc_enabled() {
-        return Ok(());
+        return Ok(None);
     }
     let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
     let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
     let shared_secret = ensure_shared_secret(&cert_dir, config.internal_grpc_auth_shared_secret())?;
     let _ = ensure_tls_material(&cert_dir, security_mode)?;
-    manager.configure_internal_grpc_relay(&cert_dir, security_mode);
-    manager.configure_internal_grpc_peer_client(Some(InternalGrpcPeerClientConfig {
+    Ok(Some(InternalGrpcPeerClientConfig {
         shared_secret,
         expected_issuer: config.internal_grpc_auth_issuer(),
         expected_audience: config.internal_grpc_auth_audience(),
         source_node_id: AGENT_NODE_MAIN_ID.to_string(),
         cert_dir: cert_dir.to_string_lossy().to_string(),
         security_mode,
-    }));
+    }))
+}
+
+fn actor_cli_internal_grpc_hint_target(listen_addr: &str) -> Option<String> {
+    let parsed = listen_addr.parse::<SocketAddr>().ok()?;
+    Some(format!("https://127.0.0.1:{}", parsed.port()))
+}
+
+async fn init_actor_mailbox_hint_client_from_config(
+    config: &agenthub_config::AppConfig,
+) -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+    match maybe_remote_mailbox_service().await {
+        Ok(Some(client)) => return Ok(Some(client)),
+        Ok(None) => {}
+        Err(err) => {
+            tracing::debug!(
+                "skip mailbox hint client because remote mailbox service init failed: {err}"
+            );
+            return Ok(None);
+        }
+    }
+    let Some(peer_client) = (match build_actor_cli_internal_grpc_peer_client(config) {
+        Ok(peer_client) => peer_client,
+        Err(err) => {
+            tracing::debug!(
+                "skip mailbox hint client because internal grpc peer config is unavailable: {err}"
+            );
+            return Ok(None);
+        }
+    }) else {
+        return Ok(None);
+    };
+    let Some(target) = actor_cli_internal_grpc_hint_target(&config.internal_grpc_listen_addr())
+    else {
+        tracing::debug!(
+            listen_addr = %config.internal_grpc_listen_addr(),
+            "skip mailbox hint client because internal grpc listen address is not a socket address"
+        );
+        return Ok(None);
+    };
+    let client = match InternalGrpcMailboxClient::connect_peer(
+        &peer_client,
+        &target,
+        Some("localhost"),
+        vec![InternalAction::AgentManage.as_str().to_string()],
+    )
+    .await
+    {
+        Ok(client) => client,
+        Err(err) => {
+            tracing::debug!(
+                target = %target,
+                "skip mailbox hint client because internal grpc connect failed: {err}"
+            );
+            return Ok(None);
+        }
+    };
+    Ok(Some(client))
+}
+
+async fn maybe_notify_actor_new_mailbox_message_type_from_cli(
+    manager: &TeamManager,
+    config: &agenthub_config::AppConfig,
+    send_result: &agenthub_team_actor::ActorSendResponse,
+) -> anyhow::Result<()> {
+    let Some(plan) = plan_actor_mailbox_immediate_hint(
+        manager,
+        send_result.message.run_id.as_str(),
+        send_result,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    let Some(client) = init_actor_mailbox_hint_client_from_config(config).await? else {
+        tracing::debug!(
+            run_id = %send_result.message.run_id,
+            targets = ?plan.target_actor_ids,
+            reason = ?plan.reason,
+            "skip mailbox hint push because no agent input channel is available"
+        );
+        return Ok(());
+    };
+    let prompt =
+        build_actor_mailbox_immediate_hint_prompt(send_result.message.run_id.as_str(), plan.reason);
+    for target_actor_id in plan.target_actor_ids {
+        if let Err(err) = client
+            .send_agent_input(&target_actor_id, &prompt, None, None)
+            .await
+        {
+            tracing::debug!(
+                run_id = %send_result.message.run_id,
+                actor_id = %target_actor_id,
+                reason = ?plan.reason,
+                "skip mailbox hint push because agent input is unavailable: {}",
+                err
+            );
+        }
+    }
     Ok(())
 }
 
-async fn init_team_manager() -> anyhow::Result<TeamManager> {
+async fn init_team_manager() -> anyhow::Result<(TeamManager, agenthub_config::AppConfig)> {
     let db = agenthub_db::init_db().await?;
     let manager = TeamManager::new(db);
     let (config, _) = agenthub_config::AppConfig::load_with_info()?;
-    configure_actor_cli_internal_grpc(&manager, &config)?;
-    Ok(manager)
+    let peer_client = build_actor_cli_internal_grpc_peer_client(&config)?;
+    configure_actor_cli_internal_grpc(&manager, peer_client);
+    Ok((manager, config))
 }
 
 async fn init_actor_mailbox_service(
@@ -1342,7 +1454,7 @@ async fn run_actor_command(
             after_id,
             include_delivered,
         } => {
-            let manager = init_team_manager().await?;
+            let (manager, _) = init_team_manager().await?;
             let service = init_actor_mailbox_service(&manager).await?;
             let states = if include_delivered {
                 Some(vec![
@@ -1372,7 +1484,7 @@ async fn run_actor_command(
             actor_id,
             message_id,
         } => {
-            let manager = init_team_manager().await?;
+            let (manager, _) = init_team_manager().await?;
             let service = init_actor_mailbox_service(&manager).await?;
             let message = service
                 .actor_ack(ActorAckRequest {
@@ -1398,7 +1510,7 @@ async fn run_actor_command(
             payload_source,
             idempotency_key,
         } => {
-            let manager = init_team_manager().await?;
+            let (manager, config) = init_team_manager().await?;
             let service = init_actor_mailbox_service(&manager).await?;
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {
@@ -1423,6 +1535,17 @@ async fn run_actor_command(
                 })
                 .await
                 .map_err(|err| map_actor_service_error("actor send", err))?;
+            if let Err(err) =
+                maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &config, &message)
+                    .await
+            {
+                tracing::warn!(
+                    run_id = %message.message.run_id,
+                    message_id = message.message.message_id,
+                    "failed to process actor mailbox type hint: {}",
+                    err
+                );
+            }
             if payload_source == ActorSendPayloadSource::Payload {
                 eprintln!(
                     "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
@@ -1597,9 +1720,13 @@ mod tests {
     use super::*;
     use agenthub_team_actor::ActorInboxResponse;
     use serde::Serialize;
-    use std::sync::Mutex;
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn env_lock() -> &'static Mutex<()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn restore_env(key: &str, value: Option<String>) {
         if let Some(value) = value {
@@ -1609,9 +1736,28 @@ mod tests {
         }
     }
 
+    fn test_internal_grpc_config(
+        listen: &str,
+        cert_dir: &std::path::Path,
+    ) -> agenthub_config::AppConfig {
+        agenthub_config::AppConfig {
+            internal_grpc: Some(agenthub_config::InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some(listen.to_string()),
+                security: Some(agenthub_config::InternalGrpcSecurityConfig {
+                    mode: Some("disabled".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn parse_inbox_uses_env_fallback() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
@@ -1684,7 +1830,7 @@ mod tests {
 
     #[test]
     fn parse_team_members_uses_env_fallback() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         unsafe {
@@ -1707,7 +1853,7 @@ mod tests {
 
     #[test]
     fn parse_team_members_accepts_run_id_flag() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         unsafe {
@@ -1737,7 +1883,7 @@ mod tests {
 
     #[test]
     fn parse_team_members_accepts_team_id_flag_without_run() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         unsafe {
@@ -1764,7 +1910,7 @@ mod tests {
 
     #[test]
     fn parse_inbox_ignores_legacy_run_env_alias() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
@@ -1790,7 +1936,7 @@ mod tests {
 
     #[test]
     fn parse_send_validates_remote_route() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1819,7 +1965,7 @@ mod tests {
 
     #[test]
     fn parse_send_generates_default_idempotency_key() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1852,7 +1998,7 @@ mod tests {
 
     #[test]
     fn parse_send_allow_duplicate_disables_default_idempotency_key() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1888,7 +2034,7 @@ mod tests {
 
     #[test]
     fn parse_send_rejects_duplicate_flag_with_explicit_idempotency_key() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1918,7 +2064,7 @@ mod tests {
 
     #[test]
     fn parse_inbox_accepts_agent_id_alias_flag() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1947,7 +2093,7 @@ mod tests {
 
     #[test]
     fn parse_inbox_uses_agent_id_env_fallback() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -1972,7 +2118,7 @@ mod tests {
 
     #[test]
     fn parse_send_accepts_agent_id_alias_flags() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2013,7 +2159,7 @@ mod tests {
 
     #[test]
     fn parse_send_accepts_text_and_preserves_markdown() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2049,7 +2195,7 @@ mod tests {
 
     #[test]
     fn parse_send_rejects_text_and_payload_json_together() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2079,7 +2225,7 @@ mod tests {
 
     #[test]
     fn parse_send_payload_json_marks_payload_source_for_warning() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2109,7 +2255,7 @@ mod tests {
 
     #[test]
     fn parse_send_accepts_channel_id_target() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2144,9 +2290,151 @@ mod tests {
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
+    #[tokio::test]
+    async fn actor_send_type_hint_is_best_effort_without_internal_grpc_client() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
+        }
+        let (manager, config) = init_team_manager().await.expect("init team manager");
+        let send_result = agenthub_team_actor::ActorSendResponse {
+            message_id: 42,
+            state: agenthub_team_actor::ActorMessageStatus::Pending,
+            deduped: false,
+            created_at: 1_700_000_000,
+            message: agenthub_team_actor::ActorMessageRecord {
+                message_id: 42,
+                run_id: "run-cli-hint".to_string(),
+                from_actor_id: "leader".to_string(),
+                from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                from_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+                to_actor_id: "worker".to_string(),
+                to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                to_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+                channel: "default".to_string(),
+                transport: agenthub_team_actor::ActorMessageTransport::Local,
+                route: None,
+                payload: serde_json::json!({
+                    "type": "worker_status",
+                    "status": "ready"
+                }),
+                status: agenthub_team_actor::ActorMessageStatus::Pending,
+                created_at: 1_700_000_000,
+                delivered_at: None,
+            },
+        };
+        maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &config, &send_result)
+            .await
+            .expect("best-effort mailbox hint should not fail");
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
+    #[tokio::test]
+    async fn init_actor_mailbox_hint_client_from_config_skips_missing_remote_token() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+                "https://127.0.0.1:50051",
+            );
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
+        }
+        assert!(
+            init_actor_mailbox_hint_client_from_config(&agenthub_config::AppConfig::default())
+                .await
+                .expect("missing token should degrade to None")
+                .is_none()
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
+    #[tokio::test]
+    async fn init_actor_mailbox_hint_client_from_config_skips_when_internal_grpc_disabled() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
+        }
+        assert!(
+            init_actor_mailbox_hint_client_from_config(&agenthub_config::AppConfig::default())
+                .await
+                .expect("disabled internal grpc should return None")
+                .is_none()
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
+    #[tokio::test]
+    async fn init_actor_mailbox_hint_client_from_config_skips_invalid_listen_addr() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
+            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
+        }
+        let tempdir = std::env::temp_dir().join(format!(
+            "agenthub-actor-cli-invalid-listen-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tempdir).expect("create temp cert dir");
+        let config = test_internal_grpc_config("not-an-addr", &tempdir);
+        assert!(
+            init_actor_mailbox_hint_client_from_config(&config)
+                .await
+                .expect("invalid listen addr should return None")
+                .is_none()
+        );
+        let _ = std::fs::remove_dir_all(&tempdir);
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
     #[test]
     fn parse_send_rejects_conflicting_actor_and_channel_targets() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2184,7 +2472,7 @@ mod tests {
 
     #[test]
     fn parse_team_tasks_uses_env_fallback_and_status_filter() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2223,7 +2511,7 @@ mod tests {
 
     #[test]
     fn parse_team_task_create_accepts_context_and_status() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2267,7 +2555,7 @@ mod tests {
 
     #[test]
     fn parse_time_trigger_set_uses_actor_env_fallback() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
@@ -2314,8 +2602,21 @@ mod tests {
     }
 
     #[test]
+    fn actor_cli_internal_grpc_hint_target_forces_loopback() {
+        assert_eq!(
+            actor_cli_internal_grpc_hint_target("0.0.0.0:50051").as_deref(),
+            Some("https://127.0.0.1:50051")
+        );
+        assert_eq!(
+            actor_cli_internal_grpc_hint_target("127.0.0.1:50052").as_deref(),
+            Some("https://127.0.0.1:50052")
+        );
+        assert!(actor_cli_internal_grpc_hint_target("not-an-addr").is_none());
+    }
+
+    #[test]
     fn parse_permission_review_respond_rejects_conflicting_outcome_flags() {
-        let _guard = ENV_LOCK.lock().expect("lock env");
+        let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
@@ -2397,12 +2698,14 @@ mod tests {
             &ActorInboxResponse {
                 messages: Vec::new(),
                 next_cursor: Some(42),
+                pending_count: 3,
             },
             ActorOutputMode::Default,
             ActorOutputPreference::ToonPreferred,
         )
         .expect("encode inbox response");
         assert!(output.contains("next_cursor: 42"));
+        assert!(output.contains("pending_count: 3"));
     }
 
     #[test]
