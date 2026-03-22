@@ -157,7 +157,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
-   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: done|blocked\n- result: ...\n- evidence:\n  - ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
+   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|done|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 6. Proactively advance the assigned task:
@@ -186,7 +186,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   merge-ready against latest `main`, not just "local code compiles".
 - If review requests changes, resume execution from `in_progress` with updated acceptance notes.
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
-- If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
+- If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep
+  one authoritative active item.
 - Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.
 
 ## Shutdown Handling
@@ -199,7 +200,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Response Contract
 
-- `status`: `done` or `blocked`
+- `status`: `in_progress`, `done`, or `blocked`
 - `result`: concise summary of what changed or what failed
 - `evidence`: command output snippets, file paths, test names
 - `finding`: optional concise discovery, lesson, or reusable heuristic

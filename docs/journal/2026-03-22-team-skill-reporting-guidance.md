@@ -19,7 +19,7 @@ timely way, and leaders actively supervise worker output and publish integrated 
   before a task is complete.
 - Leaders are expected to supervise reporting cadence and publish integrated progress updates to
   human-visible channels when team state materially changes.
-- Developer/code tasks now use `merge-ready against latest main` as the default completion bar.
+- Developer/code tasks now use merge-ready against latest `main` as the default completion bar.
 - Task delegation is now tied explicitly to worker identity cards so leader assignment and
   collaboration planning stay capability-aware.
 - Channel status updates now assume the underlying state has already been recorded in docs/tasks, so
