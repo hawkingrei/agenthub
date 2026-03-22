@@ -1709,8 +1709,9 @@ fn parse_permission_record_row(
 mod tests {
     use super::{
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, load_mcp_servers_from_path,
-        load_skills_from_config, load_workdir_skills, should_queue_while_prompts_active,
+        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, dedupe_skills,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
