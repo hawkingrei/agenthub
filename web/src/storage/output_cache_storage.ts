@@ -26,7 +26,7 @@ export function loadOutputCaches(
   if (typeof localStorage === "undefined") {
     return { outputCache: {}, acpOutputCache: {} };
   }
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch {

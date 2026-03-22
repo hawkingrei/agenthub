@@ -166,7 +166,6 @@ export function buildConversationMessages(
       order,
       plan,
     });
-    order += 1;
   }
   entries.sort((a, b) => {
     const base = compareEventOrder(
