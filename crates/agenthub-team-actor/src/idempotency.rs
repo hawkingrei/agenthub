@@ -249,4 +249,43 @@ mod tests {
         assert_eq!(key_a, key_b);
         assert!(key_a.starts_with("auto:channel:v1:"));
     }
+
+    #[test]
+    fn channel_fanout_idempotency_key_is_stable_per_recipient() {
+        let base = "auto:channel:v1:abc";
+        let reviewer_a = build_actor_channel_fanout_idempotency_key(base, "reviewer-a");
+        let reviewer_a_retry = build_actor_channel_fanout_idempotency_key(base, "reviewer-a");
+        let reviewer_b = build_actor_channel_fanout_idempotency_key(base, "reviewer-b");
+
+        assert_eq!(reviewer_a, reviewer_a_retry);
+        assert_ne!(reviewer_a, reviewer_b);
+        assert!(reviewer_a.starts_with("fanout:v1:"));
+    }
+
+    #[test]
+    fn default_channel_idempotency_key_changes_when_channel_target_changes() {
+        let payload = json!({"text":"hello"});
+        let all_key = build_default_actor_channel_idempotency_key(
+            "run-1",
+            "planner",
+            ACTOR_MAIN_PEER_ID,
+            "all",
+            "coordination",
+            "local",
+            None,
+            &payload,
+        );
+        let reviewers_key = build_default_actor_channel_idempotency_key(
+            "run-1",
+            "planner",
+            ACTOR_MAIN_PEER_ID,
+            "reviewers",
+            "coordination",
+            "local",
+            None,
+            &payload,
+        );
+
+        assert_ne!(all_key, reviewers_key);
+    }
 }
