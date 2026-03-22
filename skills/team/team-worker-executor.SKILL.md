@@ -134,6 +134,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Send blocker updates immediately with a concrete `next_action`.
 - Send completion updates with evidence plus any findings or reusable lessons discovered along the
   way.
+- Use mailbox directly for internal discussion, clarifications, and dependency coordination; do not
+  force those conversations through channel first.
 - If the update should persist beyond chat, write it into the relevant TODO, journal, note, or
   Team task evidence first; then send the channel/leader status message.
 - Report to `@leader` by default; additionally notify impacted peers or the shared channel when the
@@ -146,6 +148,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   inefficient ownership split.
 - Do not let a channel update become the only record of execution state; durable state belongs in
   docs/tasks first.
+- Routine mailbox discussion does not need a prior doc/task write unless it changes durable state.
 - Avoid anonymous channel status messages when action is needed; use direct mentions to make the
   expected responder obvious.
 

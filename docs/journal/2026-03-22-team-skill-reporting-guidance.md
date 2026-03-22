@@ -26,3 +26,5 @@ timely way, and leaders actively supervise worker output and publish integrated 
   chat stays a summary layer instead of becoming the only durable execution record.
 - Channel status updates are also expected to `@` the relevant agents/people so ownership and
   follow-up responsibility stay explicit.
+- Routine internal coordination can still happen directly through mailbox; the doc/task-first rule
+  only applies when the discussion produces durable state that should be tracked.

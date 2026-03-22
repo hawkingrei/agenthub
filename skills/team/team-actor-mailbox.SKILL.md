@@ -60,6 +60,8 @@ Recommended fields:
 
 - Internal execution coordination (`leader <-> worker`, worker status/evidence, blocker escalation):
   - prefer plain markdown text for task briefs, review notes, and discussion so formatting survives mailbox transport
+  - routine clarification, dependency negotiation, and internal discussion can be resolved directly in mailbox
+    without first writing a channel update
   - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
   - include phase metadata only when it helps internal coordination
 - Human-facing team conversation replies:
@@ -74,6 +76,8 @@ Recommended fields:
 - Keep messages idempotent-friendly; include stable identifiers in payloads.
 - If the same assignment is retried, return deterministic status updates.
 - If blocked, always include a concrete `next_action`.
+- When mailbox discussion changes durable execution state, follow up by recording that state in the
+  relevant doc/task artifact before or alongside any channel broadcast.
 
 ## Escalation Rules
 

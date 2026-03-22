@@ -78,6 +78,8 @@ restating the same rules.
   when blockers appear, and when work completes.
 - Default route: report to `@leader`; additionally report to the relevant channel or impacted peers
   when the update changes shared plans, dependencies, or human-visible progress.
+- Internal discussion, clarification, dependency negotiation, and other routine coordination may go
+  directly through mailbox without first updating channel.
 - When an update needs durable traceability, record it in the relevant document, TODO, journal, or
   canonical Team task first; then use channel messages as the lightweight status broadcast.
 - Channel status messages should actively `@` the relevant agents/people instead of broadcasting
@@ -90,6 +92,7 @@ restating the same rules.
   assignment has a next checkpoint and fresh evidence.
 - Documents and tasks are the source of truth for execution state; channel updates should summarize
   that recorded state instead of becoming the only copy.
+- This durability rule applies to state/progress updates, not to every internal mailbox exchange.
 - In channel updates, mention the owner, current reviewer, blocked dependency owner, or other
   directly affected members so the right people are pulled into the thread immediately.
 - Task assignment should align with the assignee's identity card and current specialization; do not
