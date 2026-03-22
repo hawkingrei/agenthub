@@ -1,9 +1,3 @@
----
-title: Root Apache-2.0 License Adoption
-date: 2026-03-22
-status: implemented
----
-
 ## Summary
 
 Adopt Apache License 2.0 at the repository root so the main AgentHub workspace
