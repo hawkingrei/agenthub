@@ -378,7 +378,7 @@ fn load_skill_from_path(
 ) -> Option<AcpSkill> {
     if !is_skill_path_allowed(path_buf, safe_paths) {
         tracing::warn!(
-            "skills config skipped: path={} reason=not allowed",
+            "skill skipped: path={} reason=not allowed",
             path_buf.display()
         );
         return None;
@@ -454,16 +454,42 @@ fn collect_workdir_skill_paths(dir: &Path, out: &mut Vec<PathBuf>) {
             return;
         }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                tracing::warn!(
+                    "skill discovery entry read failed: path={} error={}",
+                    dir.display(),
+                    err
+                );
+                continue;
+            }
+        };
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) => {
+                tracing::warn!(
+                    "skill discovery entry type failed: path={} error={}",
+                    entry.path().display(),
+                    err
+                );
+                continue;
+            }
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_dir() {
             collect_workdir_skill_paths(&path, out);
             continue;
         }
-        if path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .is_some_and(|value| value == "SKILL.md")
+        if file_type.is_file()
+            && path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == "SKILL.md")
         {
             out.push(path);
         }
@@ -1771,6 +1797,8 @@ mod tests {
     use sqlx::Row;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs as unix_fs;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -2138,6 +2166,37 @@ Use the repo-local ops workflow.
 
         let skills = load_workdir_skills(workspace.workdir(), &[]);
         assert!(skills.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_workdir_skills_skips_symlinked_directories() {
+        let workspace = TempSkillWorkspace::new();
+        workspace.create_workdir_skill(
+            "primary",
+            r#"---
+name: "primary-skill"
+---
+Use the repo-local primary workflow.
+"#,
+        );
+        let loop_dir = workspace
+            .workdir()
+            .join(".agents")
+            .join("skills")
+            .join("loop");
+        unix_fs::symlink(
+            workspace.workdir().join(".agents").join("skills"),
+            &loop_dir,
+        )
+        .expect("create loop symlink");
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let names = skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["primary-skill"]);
     }
 
     #[test]

@@ -18,6 +18,8 @@ skills and user-level `~/.agenthub/skills.json` config.
 - Load repo-local skills before `~/.agenthub/skills.json` so project-local
   definitions win when names collide.
 - Keep discovery narrow: only files named `SKILL.md` are loaded.
+- Skip symlinked entries during recursive discovery so `.agents/skills` cannot
+  recurse through symlink loops.
 
 ## Validation
 
