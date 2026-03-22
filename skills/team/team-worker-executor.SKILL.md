@@ -89,8 +89,8 @@ Completion guardrails:
 - never mark task `completed` when acceptance is unmet
 - never mark task `completed` while unresolved errors/blockers remain
 - add follow-up TODO items when new required work is discovered
-- for developer/code tasks, do not report `done` until the branch is merge-ready against the latest
-  `main` or leader explicitly narrows the acceptance criteria
+- for developer/code tasks, do not report `completed` until the branch is merge-ready against the
+  latest `main` or leader explicitly narrows the acceptance criteria
 
 ## Team Workflow Phases
 
@@ -136,10 +136,12 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   way.
 - Use mailbox directly for internal discussion, clarifications, and dependency coordination; do not
   force those conversations through channel first.
-- If the update should persist beyond chat, write it into the relevant TODO, journal, note, or
-  Team task evidence first; then send the channel/leader status message.
-- Report to `@leader` by default; additionally notify impacted peers or the shared channel when the
-  discovery affects shared plans, dependencies, or future debugging work.
+- If the update should persist beyond chat, record it in the relevant TODO, journal, note, or
+  local evidence artifact first; then send the channel/leader status message and let leader update
+  the canonical Team task if needed.
+- By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
+  additionally notify impacted peers or the shared channel when the discovery affects shared plans,
+  dependencies, or future debugging work.
 - When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
   or human stakeholder so the update has clear recipients.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
@@ -160,7 +162,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
-   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|done|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
+   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|completed|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 6. Proactively advance the assigned task:
@@ -170,7 +172,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Mention Discipline
 
-- Proactively mention `@leader` in all non-trivial status/evidence updates.
+- Proactively mention the leader by stable `@member_id` in all non-trivial status/evidence updates.
 - Mention impacted peers directly for dependency handoff, interface changes, or blocker ownership.
 - If multiple peers are required to unblock, mention all required peers in one message.
 - Avoid broad broadcasts for actionable work items; use directed mentions to keep ownership explicit.
@@ -191,7 +193,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
 - If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep
   one authoritative active item.
-- Before reporting `done`, ensure acceptance evidence is attached and TODO state is `completed`.
+- Before reporting `completed`, ensure acceptance evidence is attached and TODO state is
+  `completed`.
 
 ## Shutdown Handling
 
@@ -203,7 +206,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Response Contract
 
-- `status`: `in_progress`, `done`, or `blocked`
+- `status`: `in_progress`, `completed`, or `blocked`
 - `result`: concise summary of what changed or what failed
 - `evidence`: command output snippets, file paths, test names
 - `finding`: optional concise discovery, lesson, or reusable heuristic

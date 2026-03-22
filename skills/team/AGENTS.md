@@ -76,12 +76,16 @@ restating the same rules.
 
 - Non-trivial assignments must be reported when work starts, when meaningful progress happens,
   when blockers appear, and when work completes.
-- Default route: report to `@leader`; additionally report to the relevant channel or impacted peers
-  when the update changes shared plans, dependencies, or human-visible progress.
+- Default route: report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
+  additionally report to the relevant channel or impacted peers when the update changes shared
+  plans, dependencies, or human-visible progress.
 - Internal discussion, clarification, dependency negotiation, and other routine coordination may go
   directly through mailbox without first updating channel.
-- When an update needs durable traceability, record it in the relevant document, TODO, journal, or
-  canonical Team task first; then use channel messages as the lightweight status broadcast.
+- When an update needs durable traceability:
+  - workers: persist it in the relevant document, TODO, journal, note, or local evidence artifact,
+    then report that evidence to leader;
+  - leader: ensure the canonical Team task or coordination document reflects the latest recorded
+    state before using channel messages as the lightweight status broadcast.
 - Channel status messages should actively `@` the relevant agents/people instead of broadcasting
   without ownership context.
 - Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class

@@ -113,9 +113,9 @@ Use this shared phase model for every team run:
 Phase execution contract:
 - `Team formation`: confirm available members, capability gaps, and operating assumptions.
 - `Task analysis`: decompose objective, risks, constraints, and acceptance criteria.
-- `Role assignment`: bind tasks to owners with deterministic payloads and deadlines.
-- `Role assignment`: match each task to the worker card that best fits the needed specialization,
-  then design collaboration edges only where combined cards increase throughput or reduce risk.
+- `Role assignment`: bind tasks to owners with deterministic payloads and deadlines; match each
+  task to the worker card that best fits the needed specialization, then design collaboration
+  edges only where combined cards increase throughput or reduce risk.
 - `Communication and collaboration`: drive checkpoint cadence and unblock workers.
 - `Consensus formation`: compare evidence, settle conflicts, and lock decisions.
 - `Result integration`: merge outputs into a single human-facing answer.

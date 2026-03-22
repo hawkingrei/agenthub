@@ -54,7 +54,7 @@ Recommended fields:
 4. For human-readable coordination, prefer markdown text and preserve it verbatim:
    `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
 5. Use structured payloads only when the receiver truly needs machine-readable fields:
-   `PAYLOAD_JSON="$(jq -cn --arg status "done|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
 
 ## Reply Modes
 
@@ -93,11 +93,11 @@ Recommended fields:
 
 ## Output Contract Examples
 
-Done:
+Completed:
 
 ```json
 {
-  "status": "done",
+  "status": "completed",
   "result": "Implemented API validation and updated tests",
   "evidence": [
     "src/api/teams/router.rs",

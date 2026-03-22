@@ -28,3 +28,9 @@ timely way, and leaders actively supervise worker output and publish integrated 
   follow-up responsibility stay explicit.
 - Routine internal coordination can still happen directly through mailbox; the doc/task-first rule
   only applies when the discussion produces durable state that should be tracked.
+
+## Validation
+
+- No code or automated tests were run as part of this journal update.
+- Reviewed and updated Team skill guidance for reporting, card-aligned assignment, and mailbox
+  coordination.
