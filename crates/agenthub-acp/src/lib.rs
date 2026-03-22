@@ -357,9 +357,52 @@ fn mcp_server_name(server: &McpServer) -> &str {
     }
 }
 
-fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
-    let path = skills_config_path();
-    let contents = match fs::read_to_string(&path) {
+fn default_skill_name_for_path(path: &Path) -> String {
+    let stem = path.file_stem().and_then(|value| value.to_str());
+    if matches!(stem, Some("SKILL"))
+        && let Some(parent_name) = path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+    {
+        return parent_name.to_string();
+    }
+    stem.unwrap_or("skill").to_string()
+}
+
+fn load_skill_from_path(
+    path_buf: &Path,
+    explicit_name: Option<String>,
+    safe_paths: &[String],
+) -> Option<AcpSkill> {
+    if !is_skill_path_allowed(path_buf, safe_paths) {
+        tracing::warn!(
+            "skill skipped: path={} reason=not allowed",
+            path_buf.display()
+        );
+        return None;
+    }
+    let contents = match fs::read_to_string(path_buf) {
+        Ok(contents) => contents,
+        Err(err) => {
+            tracing::warn!(
+                "skills file read failed: path={} error={}",
+                path_buf.display(),
+                err
+            );
+            return None;
+        }
+    };
+    let name = explicit_name
+        .or_else(|| extract_skill_name(&contents))
+        .unwrap_or_else(|| default_skill_name_for_path(path_buf));
+    let path_display = path_buf.to_string_lossy().to_string();
+    Some(build_skill(name, path_display, &contents))
+}
+
+fn load_skills_from_config(path: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
+    let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
         Err(err) => {
@@ -392,37 +435,108 @@ fn load_skills(safe_paths: &[String]) -> Vec<AcpSkill> {
     for entry in entries {
         let raw_path = expand_tilde(&entry.path);
         let path_buf = PathBuf::from(&raw_path);
-        if !is_skill_path_allowed(&path_buf, safe_paths) {
-            tracing::warn!(
-                "skills config skipped: path={} reason=not allowed",
-                path_buf.display()
-            );
-            continue;
+        if let Some(skill) = load_skill_from_path(&path_buf, entry.name, safe_paths) {
+            skills.push(skill);
         }
-        let contents = match fs::read_to_string(&path_buf) {
-            Ok(contents) => contents,
+    }
+    skills
+}
+
+fn collect_workdir_skill_paths(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::warn!(
+                "skill discovery skipped: path={} error={}",
+                dir.display(),
+                err
+            );
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
             Err(err) => {
                 tracing::warn!(
-                    "skills file read failed: path={} error={}",
-                    path_buf.display(),
+                    "skill discovery entry read failed: path={} error={}",
+                    dir.display(),
                     err
                 );
                 continue;
             }
         };
-        let name = entry
-            .name
-            .or_else(|| extract_skill_name(&contents))
-            .unwrap_or_else(|| {
-                path_buf
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .unwrap_or("skill")
-                    .to_string()
-            });
-        let path_display = path_buf.to_string_lossy().to_string();
-        skills.push(build_skill(name, path_display, &contents));
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) => {
+                tracing::warn!(
+                    "skill discovery entry type failed: path={} error={}",
+                    entry.path().display(),
+                    err
+                );
+                continue;
+            }
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if file_type.is_dir() {
+            collect_workdir_skill_paths(&path, out);
+            continue;
+        }
+        if file_type.is_file()
+            && path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == "SKILL.md")
+        {
+            out.push(path);
+        }
     }
+}
+
+fn load_workdir_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
+    let skills_dir = workdir.join(".agents").join("skills");
+    if !skills_dir.exists() {
+        return Vec::new();
+    }
+    if safe_paths.is_empty() {
+        tracing::warn!("workdir skills skipped: no safe paths configured");
+        return Vec::new();
+    }
+    match fs::symlink_metadata(&skills_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            tracing::warn!(
+                "workdir skills skipped: skills_dir is a symlink: path={}",
+                skills_dir.display()
+            );
+            return Vec::new();
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(
+                "workdir skills skipped: failed to stat skills_dir: path={} error={}",
+                skills_dir.display(),
+                err
+            );
+            return Vec::new();
+        }
+    }
+
+    let mut skill_paths = Vec::new();
+    collect_workdir_skill_paths(&skills_dir, &mut skill_paths);
+    skill_paths.sort();
+
+    skill_paths
+        .into_iter()
+        .filter_map(|path| load_skill_from_path(&path, None, safe_paths))
+        .collect()
+}
+
+fn load_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
+    let mut skills = load_workdir_skills(workdir, safe_paths);
+    skills.extend(load_skills_from_config(&skills_config_path(), safe_paths));
     skills
 }
 
@@ -830,7 +944,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
             let mcp_servers = load_mcp_servers(actor_context.as_ref());
-            let mut skills = load_skills(&safe_paths);
+            let mut skills = load_skills(Path::new(&workdir), &safe_paths);
             skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
             let mut attached_team_role_skills = false;
             if let Some(ctx) = actor_context.as_ref() {
@@ -1692,14 +1806,17 @@ mod tests {
     use super::{
         ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle,
         AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
-        AcpRuntimeLocation, AcpSendError, build_actor_mailbox_mcp_server,
-        load_mcp_servers_from_path, should_queue_while_prompts_active,
+        AcpRuntimeLocation, AcpSendError, build_actor_mailbox_mcp_server, dedupe_skills,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
     use sqlx::Row;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs as unix_fs;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -1755,6 +1872,85 @@ mod tests {
                 .filter(|dir| dir.exists())
             {
                 let _ = fs::remove_dir_all(root);
+            }
+        }
+    }
+
+    struct TempSkillWorkspace {
+        root: PathBuf,
+        workdir: PathBuf,
+        config_path: PathBuf,
+    }
+
+    impl TempSkillWorkspace {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!("agenthub-acp-skills-{}", Uuid::new_v4()));
+            let workdir = root.join("repo");
+            let config_path = root.join(".agenthub").join("skills.json");
+            fs::create_dir_all(&workdir).expect("create workdir");
+            Self {
+                root,
+                workdir,
+                config_path,
+            }
+        }
+
+        fn workdir(&self) -> &Path {
+            &self.workdir
+        }
+
+        fn config_path(&self) -> &Path {
+            &self.config_path
+        }
+
+        fn safe_paths(&self) -> Vec<String> {
+            vec![self.root.to_string_lossy().to_string()]
+        }
+
+        fn create_workdir_skill(&self, relative_dir: &str, contents: &str) -> PathBuf {
+            let path = self
+                .workdir
+                .join(".agents")
+                .join("skills")
+                .join(relative_dir)
+                .join("SKILL.md");
+            fs::create_dir_all(path.parent().expect("workdir skill parent"))
+                .expect("create workdir skill parent");
+            fs::write(&path, contents).expect("write workdir skill");
+            path
+        }
+
+        fn create_global_skill(&self, relative_dir: &str, contents: &str) -> PathBuf {
+            let path = self
+                .root
+                .join("global-skills")
+                .join(relative_dir)
+                .join("SKILL.md");
+            fs::create_dir_all(path.parent().expect("global skill parent"))
+                .expect("create global skill parent");
+            fs::write(&path, contents).expect("write global skill");
+            path
+        }
+
+        fn write_skills_config(&self, skill_paths: &[PathBuf]) {
+            fs::create_dir_all(self.config_path.parent().expect("skills config parent"))
+                .expect("create skills config parent");
+            let skills = skill_paths
+                .iter()
+                .map(|path| serde_json::Value::String(path.to_string_lossy().to_string()))
+                .collect::<Vec<_>>();
+            fs::write(
+                &self.config_path,
+                serde_json::json!({ "skills": skills }).to_string(),
+            )
+            .expect("write skills config");
+        }
+    }
+
+    impl Drop for TempSkillWorkspace {
+        fn drop(&mut self) {
+            if self.root.exists() {
+                let _ = fs::remove_dir_all(&self.root);
             }
         }
     }
@@ -1930,6 +2126,152 @@ mod tests {
         let names = servers.iter().map(server_name).collect::<Vec<_>>();
         assert!(names.contains(&"local-stdio"));
         assert!(names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME));
+    }
+
+    #[test]
+    fn load_workdir_skills_discovers_nested_skill_markdown_files() {
+        let workspace = TempSkillWorkspace::new();
+        workspace.create_workdir_skill(
+            "alpha/research",
+            r#"---
+name: "research-skill"
+---
+Use the repo-local research workflow.
+"#,
+        );
+        workspace.create_workdir_skill(
+            "beta/implementation",
+            r#"---
+name: "implementation-skill"
+---
+Use the repo-local implementation workflow.
+"#,
+        );
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let names = skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["research-skill", "implementation-skill"]);
+    }
+
+    #[test]
+    fn load_workdir_skills_uses_parent_directory_name_as_fallback() {
+        let workspace = TempSkillWorkspace::new();
+        let skill_path = workspace.create_workdir_skill(
+            "incident-response",
+            "Respond to incidents with the repo-local workflow.\n",
+        );
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "incident-response");
+        assert_eq!(skills[0].path, skill_path.to_string_lossy());
+    }
+
+    #[test]
+    fn load_workdir_skills_respects_safe_paths() {
+        let workspace = TempSkillWorkspace::new();
+        workspace.create_workdir_skill(
+            "ops",
+            r#"---
+name: "ops-skill"
+---
+Use the repo-local ops workflow.
+"#,
+        );
+
+        let skills = load_workdir_skills(workspace.workdir(), &[]);
+        assert!(skills.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_workdir_skills_skips_symlinked_directories() {
+        let workspace = TempSkillWorkspace::new();
+        workspace.create_workdir_skill(
+            "primary",
+            r#"---
+name: "primary-skill"
+---
+Use the repo-local primary workflow.
+"#,
+        );
+        let loop_dir = workspace
+            .workdir()
+            .join(".agents")
+            .join("skills")
+            .join("loop");
+        unix_fs::symlink(
+            workspace.workdir().join(".agents").join("skills"),
+            &loop_dir,
+        )
+        .expect("create loop symlink");
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let names = skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["primary-skill"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_workdir_skills_skips_symlinked_skills_root() {
+        let workspace = TempSkillWorkspace::new();
+        let real_dir = workspace.root.join("detached-skills-root");
+        fs::create_dir_all(real_dir.join("shadow")).expect("create detached root");
+        fs::write(
+            real_dir.join("shadow").join("SKILL.md"),
+            r#"---
+name: "shadow-skill"
+---
+Use the detached skill root.
+"#,
+        )
+        .expect("write detached root skill");
+
+        let agents_dir = workspace.workdir().join(".agents");
+        fs::create_dir_all(&agents_dir).expect("create .agents directory");
+        unix_fs::symlink(&real_dir, agents_dir.join("skills")).expect("symlink skills root");
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn repo_local_skills_take_precedence_over_global_config_skills() {
+        let workspace = TempSkillWorkspace::new();
+        let local_skill = workspace.create_workdir_skill(
+            "review",
+            r#"---
+name: "shared-review"
+---
+Prefer the repo-local review contract.
+"#,
+        );
+        let global_skill = workspace.create_global_skill(
+            "review",
+            r#"---
+name: "shared-review"
+---
+Fallback to the user-level review contract.
+"#,
+        );
+        workspace.write_skills_config(std::slice::from_ref(&global_skill));
+
+        let mut skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        skills.extend(load_skills_from_config(
+            workspace.config_path(),
+            &workspace.safe_paths(),
+        ));
+        let deduped = dedupe_skills(skills);
+
+        assert_eq!(deduped.len(), 1);
+        assert_eq!(deduped[0].name, "shared-review");
+        assert_eq!(deduped[0].path, local_skill.to_string_lossy());
     }
 
     #[tokio::test]
