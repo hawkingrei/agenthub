@@ -187,29 +187,30 @@ impl AgentManager {
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let running_session_id = self.get_running_session_id(agent_id).await;
-        let start_plan =
-            build_agent_start_plan(agent, actor_context, running_session_id.as_deref())?;
-        if let AgentStartPlan::ReuseRunningSession { session_id } = &start_plan {
-            return Ok(session_id.clone());
-        }
-        self.reserve_agent_start(agent_id).await?;
-        let result = match start_plan {
+        match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
             AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
             AgentStartPlan::StartLocal {
                 agent,
                 actor_context,
-            } => self.start_local_agent(agent, actor_context).await,
+            } => {
+                self.reserve_agent_start(agent_id).await?;
+                let result = self.start_local_agent(agent, actor_context).await;
+                self.release_agent_start(agent_id).await;
+                result
+            }
             AgentStartPlan::StartRemote {
                 agent,
                 target_node_id,
                 actor_context,
             } => {
-                self.start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
-                    .await
+                self.reserve_agent_start(agent_id).await?;
+                let result = self
+                    .start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
+                    .await;
+                self.release_agent_start(agent_id).await;
+                result
             }
-        };
-        self.release_agent_start(agent_id).await;
-        result
+        }
     }
 
     #[tracing::instrument(
@@ -363,6 +364,10 @@ impl AgentManager {
         let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
         let is_acp = acp_provider.is_some();
         let command_path = self.resolve_command_path(&agent.command, acp_provider);
+        let spawn_summary = format!(
+            "command={} workdir={} args={:?}",
+            command_path, start_policy.workdir, agent.args
+        );
         let local_execution_request = LocalExecutionRequest {
             command_path: command_path.clone(),
             args: agent.args.clone(),
@@ -371,7 +376,7 @@ impl AgentManager {
         };
         let local_execution = match self
             .local_executor
-            .spawn_process(local_execution_request.clone())
+            .spawn_process(local_execution_request)
             .await
         {
             Ok(execution) => execution,
@@ -398,18 +403,10 @@ impl AgentManager {
                         "failed to update agent status after spawn failure"
                     );
                 }
-                tracing::error!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    local_execution_request.command_path,
-                    local_execution_request.workdir,
-                    local_execution_request.args,
-                    err
-                );
+                tracing::error!("spawn failed: {} error={}", spawn_summary, err);
                 return Err(anyhow::anyhow!(
-                    "spawn failed: command={} workdir={} args={:?} error={}",
-                    local_execution_request.command_path,
-                    local_execution_request.workdir,
-                    local_execution_request.args,
+                    "spawn failed: {} error={}",
+                    spawn_summary,
                     err
                 ));
             }

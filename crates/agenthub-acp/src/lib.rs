@@ -125,15 +125,10 @@ pub enum AcpPromptDeliveryPolicy {
     AllowConcurrentPrompts,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AcpRuntimeLocation {
+    #[default]
     LocalProcess,
-}
-
-impl Default for AcpRuntimeLocation {
-    fn default() -> Self {
-        Self::LocalProcess
-    }
 }
 
 #[async_trait::async_trait]
@@ -832,56 +827,55 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
 
-    std::thread::spawn(move || {
-        match runtime_location {
-            AcpRuntimeLocation::LocalProcess => {}
-        }
-        let mcp_servers = load_mcp_servers(actor_context.as_ref());
-        let mut skills = load_skills(&safe_paths);
-        skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
-        let mut attached_team_role_skills = false;
-        if let Some(ctx) = actor_context.as_ref() {
-            if should_attach_team_role_skills(Some(ctx)) {
-                skills.extend(build_team_role_skills(ctx));
-                attached_team_role_skills = true;
+    std::thread::spawn(move || match runtime_location {
+        AcpRuntimeLocation::LocalProcess => {
+            let mcp_servers = load_mcp_servers(actor_context.as_ref());
+            let mut skills = load_skills(&safe_paths);
+            skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
+            let mut attached_team_role_skills = false;
+            if let Some(ctx) = actor_context.as_ref() {
+                if should_attach_team_role_skills(Some(ctx)) {
+                    skills.extend(build_team_role_skills(ctx));
+                    attached_team_role_skills = true;
+                }
+                skills.push(build_actor_runtime_skill(ctx));
             }
-            skills.push(build_actor_runtime_skill(ctx));
-        }
-        let skills = dedupe_skills(skills);
-        if let Some(ctx) = actor_context.as_ref() {
-            let skill_names = skills
-                .iter()
-                .map(|skill| skill.name.as_str())
-                .collect::<Vec<_>>();
-            let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
-            let has_actor_mailbox_mcp = mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
-            tracing::info!(
-                team_id = %ctx.team_id.as_deref().unwrap_or("none"),
-                current_run_id = %ctx.current_run_id.as_deref().unwrap_or("none"),
-                actor_id = %ctx.actor_id,
-                member_role = %ctx.member_role.as_deref().unwrap_or("none"),
-                attached_team_role_skills,
-                has_actor_mailbox_mcp,
-                skill_names = ?skill_names,
-                mcp_server_names = ?mcp_server_names,
-                "acp actor session bootstrap prepared runtime capabilities"
-            );
-        }
-        let skill_blocks = build_skill_blocks(&skills);
-        let skills_meta = build_skills_meta(&skills);
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(err) => {
-                let _ = ready_tx.send(Err(format!("acp runtime init failed: {err}")));
-                return;
+            let skills = dedupe_skills(skills);
+            if let Some(ctx) = actor_context.as_ref() {
+                let skill_names = skills
+                    .iter()
+                    .map(|skill| skill.name.as_str())
+                    .collect::<Vec<_>>();
+                let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
+                let has_actor_mailbox_mcp =
+                    mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
+                tracing::info!(
+                    team_id = %ctx.team_id.as_deref().unwrap_or("none"),
+                    current_run_id = %ctx.current_run_id.as_deref().unwrap_or("none"),
+                    actor_id = %ctx.actor_id,
+                    member_role = %ctx.member_role.as_deref().unwrap_or("none"),
+                    attached_team_role_skills,
+                    has_actor_mailbox_mcp,
+                    skill_names = ?skill_names,
+                    mcp_server_names = ?mcp_server_names,
+                    "acp actor session bootstrap prepared runtime capabilities"
+                );
             }
-        };
+            let skill_blocks = build_skill_blocks(&skills);
+            let skills_meta = build_skills_meta(&skills);
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(err) => {
+                    let _ = ready_tx.send(Err(format!("acp runtime init failed: {err}")));
+                    return;
+                }
+            };
 
-        let local = tokio::task::LocalSet::new();
-        runtime.block_on(local.run_until(async move {
+            let local = tokio::task::LocalSet::new();
+            runtime.block_on(local.run_until(async move {
             let client = AcpClient::new(
                 event_sink.clone(),
                 permissions,
@@ -1036,6 +1030,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 }
             }
         }));
+        }
     });
 
     match tokio::time::timeout(ACP_SESSION_START_TIMEOUT, ready_rx).await {
