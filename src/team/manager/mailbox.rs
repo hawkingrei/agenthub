@@ -1797,3 +1797,160 @@ fn map_actor_mailbox_store_error(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn normalize_channel_message_payload_wraps_non_object_inputs() {
+        let text = normalize_channel_message_payload(Value::String("hello".to_string()));
+        let number = normalize_channel_message_payload(json!(42));
+
+        assert_eq!(
+            text,
+            json!({
+                "type": "chat_message",
+                "text": "hello"
+            })
+        );
+        assert_eq!(
+            number,
+            json!({
+                "type": "chat_message",
+                "text": "42"
+            })
+        );
+    }
+
+    #[test]
+    fn ensure_channel_message_correlation_id_preserves_existing_or_uses_fallback() {
+        let existing = ensure_channel_message_correlation_id(
+            json!({
+                "type": "chat_message",
+                "text": "hello",
+                "correlation_id": "corr-existing"
+            }),
+            Some("corr-fallback"),
+        );
+        let fallback = ensure_channel_message_correlation_id(
+            json!({
+                "type": "chat_message",
+                "text": "hello"
+            }),
+            Some("corr-fallback"),
+        );
+
+        assert_eq!(
+            channel_payload_correlation_id(&existing),
+            Some("corr-existing")
+        );
+        assert_eq!(
+            channel_payload_correlation_id(&fallback),
+            Some("corr-fallback")
+        );
+    }
+
+    #[test]
+    fn build_channel_mailbox_forward_payload_carries_metadata_and_mentions() {
+        let payload = build_channel_mailbox_forward_payload(
+            &json!({
+                "type": "chat_message",
+                "text": "@reviewer please inspect this",
+                "correlation_id": "corr-1"
+            }),
+            &ResolvedChannelMailboxTarget {
+                team_id: "team-1".to_string(),
+                task_id: "task-1".to_string(),
+                conversation_id: "conversation-1".to_string(),
+                recipient_actor_ids: vec!["reviewer".to_string()],
+            },
+            "all",
+            42,
+            &["reviewer".to_string(), "worker-b".to_string()],
+        );
+
+        assert_eq!(
+            payload.get("delivery_scope"),
+            Some(&Value::String("channel_broadcast".to_string()))
+        );
+        assert_eq!(
+            payload.get("team_id"),
+            Some(&Value::String("team-1".to_string()))
+        );
+        assert_eq!(
+            payload.get("channel_conversation_id"),
+            Some(&Value::String("conversation-1".to_string()))
+        );
+        assert_eq!(
+            payload.get("task_id"),
+            Some(&Value::String("task-1".to_string()))
+        );
+        assert_eq!(payload.get("authority_message_id"), Some(&json!(42)));
+        assert_eq!(
+            payload.get("mentioned_actor_ids"),
+            Some(&json!(["reviewer", "worker-b"]))
+        );
+        assert_eq!(channel_payload_correlation_id(&payload), Some("corr-1"));
+    }
+
+    #[test]
+    fn human_visible_chat_reply_requires_local_non_human_to_human_chat_message() {
+        let payload = json!({
+            "type": "chat_message",
+            "text": "final answer"
+        });
+
+        assert!(should_persist_human_visible_chat_reply_for_payload(
+            &agenthub_team_actor::ActorMessageTransport::Local,
+            "user",
+            ACTOR_MAIN_PEER_ID,
+            "worker",
+            &payload,
+        ));
+        assert!(!should_persist_human_visible_chat_reply_for_payload(
+            &agenthub_team_actor::ActorMessageTransport::Remote,
+            "user",
+            ACTOR_MAIN_PEER_ID,
+            "worker",
+            &payload,
+        ));
+        assert!(!should_persist_human_visible_chat_reply_for_payload(
+            &agenthub_team_actor::ActorMessageTransport::Local,
+            "reviewer",
+            ACTOR_MAIN_PEER_ID,
+            "worker",
+            &payload,
+        ));
+        assert!(!should_persist_human_visible_chat_reply_for_payload(
+            &agenthub_team_actor::ActorMessageTransport::Local,
+            "user:123",
+            ACTOR_MAIN_PEER_ID,
+            "user",
+            &payload,
+        ));
+        assert!(!should_persist_human_visible_chat_reply_for_payload(
+            &agenthub_team_actor::ActorMessageTransport::Local,
+            "user",
+            ACTOR_MAIN_PEER_ID,
+            "worker",
+            &json!({
+                "type": "tool_result",
+                "text": "not a chat"
+            }),
+        ));
+    }
+
+    #[test]
+    fn resolve_canonical_chat_reply_accepts_stringified_json_chat_message() {
+        let reply = resolve_canonical_chat_reply(&Value::String(
+            r#"{"type":"chat_message","text":"hello","correlation_id":"corr-9"}"#.to_string(),
+        ))
+        .expect("resolve chat reply");
+
+        assert_eq!(reply.text, "hello");
+        assert_eq!(reply.correlation_id.as_deref(), Some("corr-9"));
+    }
+}
