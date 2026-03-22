@@ -14,9 +14,9 @@ use agent_client_protocol::{
     ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
     NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
-    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
+    SetSessionModeRequest, SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate,
+    ToolCallUpdateFields,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

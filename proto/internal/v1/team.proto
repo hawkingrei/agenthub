@@ -52,6 +52,7 @@ message ListActorInboxRequest {
 
 message ListActorInboxResponse {
   repeated ActorMessage messages = 1;
+  int64 pending_count = 2;
 }
 
 message AckActorMessageRequest {

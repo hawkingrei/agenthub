@@ -25,6 +25,7 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 - Frontend UI standard: all new UI features and UI refactors must use the project UI library (`@mantine/core`) plus Tailwind CSS utility classes as the default styling path
 - CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
 - Maintainability policy: low-risk maintainability review suggestions should be implemented directly in the active change instead of being deferred by default
+- Development policy: AgentHub follows TDD / test-first for non-trivial changes; add or update focused tests before or alongside implementation, and treat missing regression coverage as unfinished work
 - Database: SQLite
 - Deployment: single binary, no separate frontend deployment
 - Agent execution: spawn subprocess under the user-specified path; closing the page must not stop the agent
@@ -76,6 +77,7 @@ agenthub/
 
 ## 7. Testing and Validation (initial suggestions)
 
+- Test-first expectation: non-trivial behavior changes should start from a focused failing or regression test when practical, and the test should remain part of the merged change
 - Username/password login and join/bootstrap flows
 - ACP rendering and history replay
 - WS reconnect and message integrity (optional)
@@ -114,8 +116,8 @@ agenthub/
   - Team workflow must be indexed in `AGENTS.md` and routed to concrete skills:
     - shared Team baseline (injected to both leader/worker at startup): `skills/team/AGENTS.md` -> skill `team-agents-index`
     - unified Team runtime template (used by both roles): `skills/team/TEAM_AGENTS.md`
-    - leader role index (applies leader skill profile into runtime AGENTS): skill `team-leader-agents-index`
-    - worker role index (applies worker skill profile into runtime AGENTS): skill `team-worker-agents-index`
+    - leader role index (builtin generated and injected into runtime AGENTS): skill `team-leader-agents-index`
+    - worker role index (builtin generated and injected into runtime AGENTS): skill `team-worker-agents-index`
     - phase planning/orchestration: `skills/team/team-leader-orchestrator.SKILL.md`
     - execution delivery: `skills/team/team-worker-executor.SKILL.md`
     - deliberation quality gate: `skills/team/team-deliberation-rules.SKILL.md`

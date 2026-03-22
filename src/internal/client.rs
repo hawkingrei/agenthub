@@ -524,6 +524,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
         Ok(ActorInboxResponse {
             messages,
             next_cursor,
+            pending_count: response.pending_count,
         })
     }
 

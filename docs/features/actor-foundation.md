@@ -143,6 +143,19 @@ Required visibility:
 - counters for send total, dedupe hit, retry count, dead-letter count;
 - run/actor scoped traces for message path debugging.
 
+### 6) Mailbox Hint Policy
+
+- Mailbox nudges should be token-efficient by default.
+- Immediate ACP nudges are reserved for:
+  - direct `agent -> agent` mailbox sends;
+  - leader-authored channel messages that explicitly `@member_id` mention recipients.
+- Other mailbox traffic should not eagerly inject ACP prompts.
+  - when unread mailbox items remain and the target ACP session has produced no non-user output for
+    roughly 3 minutes, AgentHub may send a compact unread-summary prompt instead;
+  - if unread count is `0`, no reminder should be sent.
+- `actor inbox` should surface the current unread snapshot directly (`pending_count`) so agents can
+  decide whether a mailbox pull is needed without spending extra tokens on speculative prompts.
+
 ## Validation Matrix
 
 - `cargo test teams_router_http_contract -- --nocapture`

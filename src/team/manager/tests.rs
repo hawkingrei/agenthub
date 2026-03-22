@@ -2011,6 +2011,7 @@ async fn actor_mailbox_service_returns_contract_responses() {
     assert_eq!(inbox.messages.len(), 1);
     assert_eq!(inbox.messages[0].message_id, sent.message_id);
     assert_eq!(inbox.next_cursor, Some(sent.message_id));
+    assert_eq!(inbox.pending_count, 1);
 
     let acked = service
         .actor_ack(ActorAckRequest {

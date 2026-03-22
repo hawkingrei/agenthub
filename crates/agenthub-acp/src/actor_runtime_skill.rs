@@ -61,6 +61,9 @@ Protocol rules:
 
 - Always pull inbox before starting a new coordination step.
 - In each turn, the first mailbox action must be `actor inbox` before planning/coding.
+- Treat `actor inbox` output as a live unread snapshot: it now includes `pending_count` alongside the fetched messages.
+- Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and leader-authored channel `@member_id` mentions trigger immediate ACP hints.
+- Other unread mailbox traffic may surface later as one compact unread summary after roughly 3 minutes of ACP output silence; if unread count is `0`, no reminder is sent.
 - Before routing work based on teammate assumptions, inspect `actor team-members`.
 - Treat `actor team-members` as the single Team context snapshot command: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.
 - Treat `current_run_id` as a convenience default only; pass `run_id` explicitly whenever you are operating on a different run.
