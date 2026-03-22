@@ -41,6 +41,7 @@ pub struct ActorInboxRequest {
 pub struct ActorInboxResponse {
     pub messages: Vec<ActorMessageRecord>,
     pub next_cursor: Option<i64>,
+    pub pending_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +138,7 @@ pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService + ?Sized>(
     Ok(ActorInboxResponse {
         messages,
         next_cursor: response.next_cursor,
+        pending_count: response.pending_count,
     })
 }
 
@@ -178,6 +180,11 @@ mod tests {
             Ok(ActorInboxResponse {
                 messages: self.inbox.clone(),
                 next_cursor: self.inbox.last().map(|item| item.message_id),
+                pending_count: self
+                    .inbox
+                    .iter()
+                    .filter(|message| message.status == ActorMessageStatus::Pending)
+                    .count() as i64,
             })
         }
 

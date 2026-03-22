@@ -12,6 +12,8 @@ restating the same rules.
 - Keep routing deterministic through `Mailbox -> ACP upstream -> actor CLI`.
 - Enforce role boundary: leader plans/synthesizes, workers execute/report evidence.
 - Keep execution visible with timely progress updates, findings, and reusable experience sharing.
+- Treat token budget as a first-class constraint: keep runtime `AGENTS.md`, active skills, and
+  channel/mailbox text as small as possible while preserving correctness.
 
 ## Core Contract
 
@@ -132,7 +134,9 @@ restating the same rules.
 ## Startup Checklist
 
 - Read this file first.
-- Then load role-specific index and only skills required for the current phase.
+- Then load role-specific index and only the smallest skill set required for the current phase.
+- Prefer one shared baseline + one role core + optional phase skill; do not keep optional skills
+  active once the phase no longer needs them.
 - Memory layout:
   - worker in a concrete project workspace should keep human-readable project memory under
     `.agenthubmemory/`

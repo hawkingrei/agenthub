@@ -3255,48 +3255,50 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
         .iter()
         .find(|event| event.payload["message_id"] == json!(first_chat.message_id))
         .expect("first chat hint event");
-    let first_status = first_hint.payload["status"].as_str().expect("first status");
-    assert_ne!(first_status, "suppressed");
-    assert_eq!(first_hint.payload["payload_type"], json!("chat_message"));
+    assert_eq!(first_hint.payload["status"], json!("sent"));
+    assert_eq!(
+        first_hint.payload["reason"],
+        json!("direct_agent_message")
+    );
+    assert_eq!(first_hint.payload["target_actor_ids"], json!(["reviewer"]));
 
     let second_hint = hint_events
         .iter()
         .find(|event| event.payload["message_id"] == json!(second_chat.message_id))
         .expect("second chat hint event");
-    let second_status = second_hint.payload["status"]
-        .as_str()
-        .expect("second status");
-    assert_ne!(second_status, "suppressed");
-    assert_eq!(second_hint.payload["payload_type"], json!("chat_message"));
+    assert_eq!(second_hint.payload["status"], json!("sent"));
+    assert_eq!(
+        second_hint.payload["reason"],
+        json!("direct_agent_message")
+    );
+    assert_eq!(second_hint.payload["target_actor_ids"], json!(["reviewer"]));
 
     let worker_status_hint = hint_events
         .iter()
         .find(|event| event.payload["message_id"] == json!(worker_status.message_id))
         .expect("worker status hint event");
-    let worker_status_state = worker_status_hint.payload["status"]
-        .as_str()
-        .expect("worker status state");
-    assert_ne!(worker_status_state, "suppressed");
+    assert_eq!(worker_status_hint.payload["status"], json!("sent"));
     assert_eq!(
-        worker_status_hint.payload["payload_type"],
-        json!("worker_status")
+        worker_status_hint.payload["reason"],
+        json!("direct_agent_message")
+    );
+    assert_eq!(
+        worker_status_hint.payload["target_actor_ids"],
+        json!(["reviewer"])
     );
 
     let repeated_worker_status_hint = hint_events
         .iter()
         .find(|event| event.payload["message_id"] == json!(worker_status_repeat.message_id))
         .expect("repeated worker status hint event");
-    assert_eq!(
-        repeated_worker_status_hint.payload["status"],
-        json!("suppressed")
-    );
+    assert_eq!(repeated_worker_status_hint.payload["status"], json!("sent"));
     assert_eq!(
         repeated_worker_status_hint.payload["reason"],
-        json!("pending_same_type_exists")
+        json!("direct_agent_message")
     );
     assert_eq!(
-        repeated_worker_status_hint.payload["payload_type"],
-        json!("worker_status")
+        repeated_worker_status_hint.payload["target_actor_ids"],
+        json!(["reviewer"])
     );
 
     let second_hint_count = hint_events
@@ -5025,35 +5027,11 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
 }
 
 #[test]
-fn mailbox_type_hint_helpers_extract_payload_type() {
-    assert_eq!(
-        super::extract_mailbox_payload_type(&json!({"type":"chat_message","text":"hello"})),
-        Some("chat_message".to_string())
-    );
-    assert_eq!(
-        super::extract_mailbox_payload_type(&json!({"type":"  worker_status  "})),
-        Some("worker_status".to_string())
-    );
-    assert_eq!(
-        super::extract_mailbox_payload_type(&json!({"type":""})),
-        None
-    );
-    assert_eq!(
-        super::extract_mailbox_payload_type(&json!({"type":"   "})),
-        None
-    );
-    assert_eq!(
-        super::extract_mailbox_payload_type(&json!({"type":true})),
-        None
-    );
-    assert_eq!(super::extract_mailbox_payload_type(&json!({})), None);
-}
-
-#[test]
 fn mailbox_type_hint_helpers_build_prompt_contains_context() {
-    let prompt = super::build_actor_mailbox_type_hint_prompt("run-42", "chat_message");
+    let prompt =
+        super::build_actor_mailbox_immediate_hint_prompt_for_test("run-42", "direct_agent_message");
     assert!(prompt.contains("run-42"));
-    assert!(prompt.contains("chat_message"));
+    assert!(prompt.contains("Direct mailbox message pending"));
     assert!(prompt.contains("AGENTHUB_ACTOR_CLI"));
     assert!(prompt.contains("actor inbox"));
 }

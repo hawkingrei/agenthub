@@ -25,8 +25,8 @@ pub(crate) fn normalized_env_var(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(crate) async fn maybe_remote_mailbox_service(
-) -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+pub(crate) async fn maybe_remote_mailbox_service()
+-> anyhow::Result<Option<InternalGrpcMailboxClient>> {
     let Some(target) = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV) else {
         return Ok(None);
     };

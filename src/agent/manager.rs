@@ -363,6 +363,14 @@ fn is_agent_loop_user_message(message: &str) -> bool {
             .is_some_and(|value| value.starts_with(AGENT_LOOP_MESSAGE_ID_PREFIX))
 }
 
+fn is_agent_user_message(message: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(message)
+        .ok()
+        .and_then(|value| value.get("type").cloned())
+        .and_then(|value| value.as_str().map(str::to_string))
+        .is_some_and(|value| value == "user_message")
+}
+
 async fn emit_agent_loop_prompt(
     event_dbs: &AgentEventDbRouter,
     idle_gc: Option<&AgentEventIdleGc>,
@@ -1260,6 +1268,43 @@ impl AgentManager {
         if let Some(idle_gc) = &self.idle_gc {
             idle_gc.record_activity(agent_id).await;
         }
+    }
+
+    pub async fn mailbox_idle_anchor_ts(
+        &self,
+        agent_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<Option<i64>> {
+        let session = sqlx::query(
+            r#"
+            SELECT status, started_at
+            FROM agent_sessions
+            WHERE id = ?1
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await?;
+        let Some(session) = session else {
+            return Ok(None);
+        };
+        let status: String = session.get("status");
+        if status.trim() != "running" {
+            return Ok(None);
+        }
+        let started_at: i64 = session.get("started_at");
+        let events = self
+            .list_events_for_session(agent_id, session_id, 64, None)
+            .await?;
+        let latest_visible_acp_ts = events
+            .iter()
+            .rev()
+            .find(|event| {
+                matches!(event.stream, OutputStream::Acp) && !is_agent_user_message(&event.message)
+            })
+            .map(|event| event.ts);
+        Ok(Some(latest_visible_acp_ts.unwrap_or(started_at)))
     }
 
     pub async fn list_events_for_session(

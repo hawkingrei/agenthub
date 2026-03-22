@@ -22,8 +22,8 @@ use crate::internal::auth::InternalAction;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
 use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::team::{
-    ActorMailboxTypeHintPlan, TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager,
-    TeamTaskStatus, plan_actor_mailbox_type_hint,
+    TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager, TeamTaskStatus,
+    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
 };
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
@@ -249,41 +249,39 @@ async fn maybe_notify_actor_new_mailbox_message_type_from_cli(
     manager: &TeamManager,
     send_result: &agenthub_team_actor::ActorSendResponse,
 ) -> anyhow::Result<()> {
-    let Some(plan) =
-        plan_actor_mailbox_type_hint(manager, send_result.message.run_id.as_str(), send_result)
-            .await?
-    else {
-        return Ok(());
-    };
-    let ActorMailboxTypeHintPlan::Notify {
-        to_actor_id,
-        payload_type,
-        prompt,
-        ..
-    } = plan
+    let Some(plan) = plan_actor_mailbox_immediate_hint(
+        manager,
+        send_result.message.run_id.as_str(),
+        send_result,
+    )
+    .await?
     else {
         return Ok(());
     };
     let Some(client) = init_actor_mailbox_hint_client().await? else {
         tracing::debug!(
             run_id = %send_result.message.run_id,
-            actor_id = %to_actor_id,
-            payload_type = %payload_type,
-            "skip mailbox type hint push because no agent input channel is available"
+            targets = ?plan.target_actor_ids,
+            reason = ?plan.reason,
+            "skip mailbox hint push because no agent input channel is available"
         );
         return Ok(());
     };
-    if let Err(err) = client
-        .send_agent_input(&to_actor_id, &prompt, None, None)
-        .await
-    {
-        tracing::debug!(
-            run_id = %send_result.message.run_id,
-            actor_id = %to_actor_id,
-            payload_type = %payload_type,
-            "skip mailbox type hint push because agent input is unavailable: {}",
-            err
-        );
+    let prompt =
+        build_actor_mailbox_immediate_hint_prompt(send_result.message.run_id.as_str(), plan.reason);
+    for target_actor_id in plan.target_actor_ids {
+        if let Err(err) = client
+            .send_agent_input(&target_actor_id, &prompt, None, None)
+            .await
+        {
+            tracing::debug!(
+                run_id = %send_result.message.run_id,
+                actor_id = %target_actor_id,
+                reason = ?plan.reason,
+                "skip mailbox hint push because agent input is unavailable: {}",
+                err
+            );
+        }
     }
     Ok(())
 }
@@ -2520,11 +2518,13 @@ mod tests {
             &ActorInboxResponse {
                 messages: Vec::new(),
                 next_cursor: Some(42),
+                pending_count: 3,
             },
             ActorOutputMode::Default,
             ActorOutputPreference::ToonPreferred,
         )
         .expect("encode inbox response");
         assert!(output.contains("next_cursor: 42"));
+        assert!(output.contains("pending_count: 3"));
     }
 }

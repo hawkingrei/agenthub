@@ -29,8 +29,8 @@ You are the coordinator for a multi-agent team run.
 
 ## Skill Routing Contract
 
-- Use `team-agents-index.SKILL.md` to load shared Team terminology and startup checklist first.
-- Use `team-leader-agents-index.SKILL.md` to load leader-specific AGENTS template/rules.
+- Use `team-agents-index` to load shared Team terminology and startup checklist first.
+- Use `team-leader-agents-index` to load leader-specific AGENTS template/rules.
 - Use this skill for leader planning, assignment, synthesis, and human-facing coordination.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task creation, review, and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.

@@ -96,6 +96,13 @@ pub struct TeamMemoryFlushResult {
     pub flushed_events: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamPendingActorUnreadRecord {
+    pub run_id: String,
+    pub actor_id: String,
+    pub unread_count: i64,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRunMembersRecord {
     pub team_id: String,
@@ -2927,6 +2934,78 @@ impl TeamManager {
             counts.insert(actor_id, count);
         }
         Ok(counts)
+    }
+
+    pub async fn count_actor_pending_inbox(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+    ) -> anyhow::Result<i64> {
+        let count = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM team_actor_messages
+            WHERE run_id = ?1
+              AND to_actor_id = ?2
+              AND status = 'pending'
+              AND to_peer_id = ?3
+            "#,
+        )
+        .bind(run_id)
+        .bind(actor_id)
+        .bind(ACTOR_MAIN_PEER_ID)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(count)
+    }
+
+    pub async fn list_pending_actor_unread_counts(
+        &self,
+    ) -> anyhow::Result<Vec<TeamPendingActorUnreadRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT run_id, to_actor_id, COUNT(*) AS cnt
+            FROM team_actor_messages
+            WHERE status = 'pending'
+              AND to_peer_id = ?1
+            GROUP BY run_id, to_actor_id
+            ORDER BY run_id ASC, to_actor_id ASC
+            "#,
+        )
+        .bind(ACTOR_MAIN_PEER_ID)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(TeamPendingActorUnreadRecord {
+                run_id: row.get("run_id"),
+                actor_id: row.get("to_actor_id"),
+                unread_count: row.get("cnt"),
+            });
+        }
+        Ok(out)
+    }
+
+    pub async fn member_role_for_run(
+        &self,
+        run_id: &str,
+        member_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let team_id =
+            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+                .bind(run_id)
+                .fetch_optional(&self.db)
+                .await?;
+        let Some(team_id) = team_id else {
+            return Ok(None);
+        };
+        let team = self.get_team(&team_id).await?;
+        let role = parse_team_member_specs(&team.spec)?
+            .into_iter()
+            .find(|member| member.member_id == member_id)
+            .map(|member| member.role);
+        Ok(role)
     }
 }
 

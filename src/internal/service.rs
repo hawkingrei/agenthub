@@ -251,7 +251,7 @@ impl TeamInternalControl for TeamInternalControlService {
         } else {
             None
         };
-        let messages = self
+        let response = self
             .state
             .teams
             .actor_mailbox_service()
@@ -263,7 +263,8 @@ impl TeamInternalControl for TeamInternalControlService {
                 states,
             })
             .await
-            .map_err(map_actor_service_status)?
+            .map_err(map_actor_service_status)?;
+        let messages = response
             .messages
             .into_iter()
             .map(|message| ActorMessage {
@@ -291,7 +292,10 @@ impl TeamInternalControl for TeamInternalControlService {
             })
             .collect::<Vec<_>>();
 
-        Ok(Response::new(ListActorInboxResponse { messages }))
+        Ok(Response::new(ListActorInboxResponse {
+            messages,
+            pending_count: response.pending_count,
+        }))
     }
 
     async fn ack_actor_message(

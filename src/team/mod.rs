@@ -15,9 +15,11 @@ pub use agenthub_team_domain::{
     TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
     TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
 };
-pub(crate) use mailbox_hint::{ActorMailboxTypeHintPlan, plan_actor_mailbox_type_hint};
-#[cfg(test)]
-pub(crate) use mailbox_hint::{build_actor_mailbox_type_hint_prompt, extract_mailbox_payload_type};
+pub(crate) use mailbox_hint::{
+    ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
+    TeamMailboxUnreadHintWorkerSettings, build_actor_mailbox_immediate_hint_prompt,
+    plan_actor_mailbox_immediate_hint,
+};
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamConversationStreamEvent, TeamManager, TeamMemoryFlushRequest,
