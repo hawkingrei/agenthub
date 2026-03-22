@@ -1384,7 +1384,7 @@ async fn run_actor_command(
                 })
                 .await
                 .map_err(|err| map_actor_service_error("actor ack", err))?;
-            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&message, output_mode, output_preference)?;
         }
         ActorCommand::Send {
             run_id,
@@ -1428,7 +1428,7 @@ async fn run_actor_command(
                     "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
                 );
             }
-            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&message, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerSet {
             actor_id,
@@ -1531,7 +1531,7 @@ async fn run_actor_command(
                     "permission_id": permission_id,
                     "request_status": record.status,
                 });
-                write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+                write_actor_output(&output, output_mode, output_preference)?;
                 return Ok(());
             }
 
@@ -1566,7 +1566,7 @@ async fn run_actor_command(
                     "permission_id": permission_id,
                     "request_status": request_status,
                 });
-                write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+                write_actor_output(&output, output_mode, output_preference)?;
                 return Ok(());
             }
             let output = serde_json::json!({
@@ -1574,7 +1574,7 @@ async fn run_actor_command(
                 "permission_id": permission_id,
                 "reviewed_by_actor_id": actor_id,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
     }
     Ok(())

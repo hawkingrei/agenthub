@@ -4,6 +4,7 @@
 
 - extracted a small `actor_output_preference_for_command(...)` helper in `src/actor_cli.rs`
 - routed actor CLI commands through the shared output-preference helper
+- removed the last `ack` / `send` / `permission-review-respond` branch-local JSON preference overrides so the command mapping is enforced from one place
 - kept read-heavy commands and human-oriented task/trigger confirmations on default TOON output
 - kept `ack`, `send`, and `permission-review-respond` on default JSON output
 - added focused regression tests to lock the conservative output split and `--json` override behavior
