@@ -31,6 +31,12 @@ enum ActorOutputFormat {
     Json,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorSendPayloadSource {
+    Text,
+    Payload,
+}
+
 enum ActorCommand {
     Help,
     TeamMembers {
@@ -57,13 +63,14 @@ enum ActorCommand {
         transport: TeamActorMessageTransport,
         route: Option<Value>,
         payload: Value,
+        payload_source: ActorSendPayloadSource,
         idempotency_key: Option<String>,
     },
 }
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send --to-actor-id <actor_id> | --to-agent-id <agent_id> --payload-json <json> [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nOutput:\n  Read-heavy results (`team-members`, `inbox`) default to TOON on stdout.\n  Confirmation results (`ack`, `send`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send --to-actor-id <actor_id> | --to-agent-id <agent_id> (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n\nOutput:\n  Read-heavy results (`team-members`, `inbox`) default to TOON on stdout.\n  Confirmation results (`ack`, `send`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
@@ -130,6 +137,25 @@ fn parse_i64(value: &str, field: &str) -> anyhow::Result<i64> {
 fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
     serde_json::from_str::<Value>(value)
         .map_err(|err| anyhow::anyhow!("invalid {} JSON: {}", field, err))
+}
+
+fn resolve_actor_send_payload(
+    text: Option<String>,
+    payload: Option<Value>,
+) -> anyhow::Result<(Value, ActorSendPayloadSource)> {
+    match (text, payload) {
+        (Some(text), None) => {
+            if text.trim().is_empty() {
+                return Err(anyhow::anyhow!("text must be a non-empty string"));
+            }
+            Ok((Value::String(text), ActorSendPayloadSource::Text))
+        }
+        (None, Some(payload)) => Ok((payload, ActorSendPayloadSource::Payload)),
+        (Some(_), Some(_)) => Err(anyhow::anyhow!(
+            "--text and --payload-json cannot be used together"
+        )),
+        (None, None) => Err(anyhow::anyhow!("--text or --payload-json is required")),
+    }
 }
 
 fn take_required_with_env_keys(
@@ -363,6 +389,7 @@ fn parse_actor_command(
             let mut channel = None;
             let mut transport = None;
             let mut route = None;
+            let mut text = None;
             let mut payload = None;
             let mut idempotency_key = None;
             let mut allow_duplicate = false;
@@ -433,6 +460,14 @@ fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--route-json requires a value"))?;
                         route = Some(parse_json(raw, "route_json")?);
                     }
+                    "--text" => {
+                        idx += 1;
+                        text = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--text requires a value"))?,
+                        );
+                    }
                     "--payload-json" => {
                         idx += 1;
                         let raw = args
@@ -476,7 +511,7 @@ fn parse_actor_command(
             )?;
             let to_actor_id = take_required_with_env_keys(to_actor_id, &[], "to_actor_id")?;
             let channel = take_optional(channel).unwrap_or(fallback_channel);
-            let payload = payload.ok_or_else(|| anyhow::anyhow!("payload_json is required"))?;
+            let (payload, payload_source) = resolve_actor_send_payload(text, payload)?;
             let explicit_idempotency_key = match idempotency_key {
                 Some(raw) => {
                     let trimmed = raw.trim();
@@ -530,6 +565,7 @@ fn parse_actor_command(
                 transport,
                 route,
                 payload,
+                payload_source,
                 idempotency_key: resolved_idempotency_key,
             })
         }
@@ -617,6 +653,7 @@ async fn run_actor_command(
             transport,
             route,
             payload,
+            payload_source,
             idempotency_key,
         } => {
             let db = agenthub_db::init_db().await?;
@@ -639,6 +676,11 @@ async fn run_actor_command(
                     idempotency_key: idempotency_key.as_deref(),
                 })
                 .await?;
+            if payload_source == ActorSendPayloadSource::Payload {
+                eprintln!(
+                    "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
+                );
+            }
             write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
         }
     }
@@ -870,8 +912,8 @@ mod tests {
             "remote-peer".to_string(),
             "--transport".to_string(),
             "remote".to_string(),
-            "--payload-json".to_string(),
-            r#"{"text":"hi"}"#.to_string(),
+            "--text".to_string(),
+            "hi".to_string(),
         ];
         assert!(
             parse_actor_command(&args, &mut ActorOutputMode::Default).is_err(),
@@ -897,8 +939,8 @@ mod tests {
             "send".to_string(),
             "--to-actor-id".to_string(),
             "reviewer".to_string(),
-            "--payload-json".to_string(),
-            r#"{"text":"hello"}"#.to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
@@ -930,8 +972,8 @@ mod tests {
             "send".to_string(),
             "--to-actor-id".to_string(),
             "reviewer".to_string(),
-            "--payload-json".to_string(),
-            r#"{"text":"hello"}"#.to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
             "--allow-duplicate".to_string(),
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
@@ -966,8 +1008,8 @@ mod tests {
             "send".to_string(),
             "--to-actor-id".to_string(),
             "reviewer".to_string(),
-            "--payload-json".to_string(),
-            r#"{"text":"hello"}"#.to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
             "--idempotency-key".to_string(),
             "k-1".to_string(),
             "--allow-duplicate".to_string(),
@@ -1052,18 +1094,116 @@ mod tests {
             "leader-agent".to_string(),
             "--to-agent-id".to_string(),
             "worker-agent".to_string(),
-            "--payload-json".to_string(),
-            r#"{"text":"hello"}"#.to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
             ActorCommand::Send {
                 from_actor_id,
                 to_actor_id,
+                payload_source,
                 ..
             } => {
                 assert_eq!(from_actor_id, "leader-agent");
                 assert_eq!(to_actor_id, "worker-agent");
+                assert_eq!(payload_source, ActorSendPayloadSource::Text);
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_accepts_text_and_preserves_markdown() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-markdown");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let markdown = "## Review\n\n- keep markdown\n- keep spacing\n";
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            markdown.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
+        match parsed {
+            ActorCommand::Send {
+                payload,
+                payload_source,
+                ..
+            } => {
+                assert_eq!(payload, Value::String(markdown.to_string()));
+                assert_eq!(payload_source, ActorSendPayloadSource::Text);
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_rejects_text_and_payload_json_together() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-conflict");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
+            "--payload-json".to_string(),
+            r#"{"text":"hello"}"#.to_string(),
+        ];
+        let err = match parse_actor_command(&args, &mut ActorOutputMode::Default) {
+            Ok(_) => panic!("text and payload should conflict"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("--text and --payload-json"));
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_payload_json_marks_payload_source_for_warning() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-payload");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--payload-json".to_string(),
+            r#"{"status":"done","result":"ok"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
+        match parsed {
+            ActorCommand::Send { payload_source, .. } => {
+                assert_eq!(payload_source, ActorSendPayloadSource::Payload);
             }
             _ => panic!("expected send command"),
         }

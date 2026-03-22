@@ -66,6 +66,7 @@ struct ActorAckToolArgs {
 struct ActorSendToolArgs {
     run_id: Option<String>,
     to_actor_id: Option<String>,
+    text: Option<String>,
     payload: Option<Value>,
     channel: Option<String>,
     transport: Option<String>,
@@ -295,14 +296,22 @@ fn actor_tools() -> Vec<Value> {
         }),
         json!({
             "name": "actor_send",
-            "description": "Send a mailbox message from current actor to another actor.",
+            "description": "Send a mailbox message from current actor to another actor. Prefer text for markdown-rich replies; use payload only for structured machine-readable coordination.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["to_actor_id", "payload"],
+                "oneOf": [
+                    { "required": ["to_actor_id", "text"] },
+                    { "required": ["to_actor_id", "payload"] }
+                ],
                 "properties": {
                     "run_id": { "type": "string", "minLength": 1 },
                     "to_actor_id": { "type": "string", "minLength": 1 },
+                    "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Preferred raw mailbox text. Markdown is preserved as-is."
+                    },
                     "payload": {},
                     "channel": { "type": "string" },
                     "transport": { "type": "string", "enum": ["local", "remote"], "default": "local" },
@@ -515,6 +524,29 @@ fn resolve_tool_run_id(explicit: Option<String>, current: Option<&str>) -> Resul
     Err("run_id is required for this tool call".to_string())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorSendPayloadSource {
+    Text,
+    Payload,
+}
+
+fn resolve_actor_send_payload(
+    text: Option<String>,
+    payload: Option<Value>,
+) -> Result<(Value, ActorSendPayloadSource), String> {
+    match (text, payload) {
+        (Some(text), None) => {
+            if text.trim().is_empty() {
+                return Err("text must be a non-empty string".to_string());
+            }
+            Ok((Value::String(text), ActorSendPayloadSource::Text))
+        }
+        (None, Some(payload)) => Ok((payload, ActorSendPayloadSource::Payload)),
+        (Some(_), Some(_)) => Err("text and payload cannot be used together".to_string()),
+        (None, None) => Err("text or payload is required".to_string()),
+    }
+}
+
 struct ResolveIdempotencyKeyInput<'a> {
     run_id: &'a str,
     from_actor_id: &'a str,
@@ -682,9 +714,9 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
         Ok(value) => value,
         Err(err) => return tool_result_error(err.to_string(), None),
     };
-    let mut payload = match args.payload {
-        Some(payload) => payload,
-        None => return tool_result_error("payload is required", None),
+    let (mut payload, payload_source) = match resolve_actor_send_payload(args.text, args.payload) {
+        Ok(payload) => payload,
+        Err(err) => return tool_result_error(err, None),
     };
     let transport = match parse_actor_transport(args.transport.as_deref()) {
         Ok(transport) => transport,
@@ -753,6 +785,19 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
         .await;
     match response {
         Ok(response) => {
+            let mut structured = json!({
+                "message_id": response.message_id,
+                "state": response.state,
+                "deduped": response.deduped,
+                "created_at": response.created_at,
+                "message": response.message,
+            });
+            if payload_source == ActorSendPayloadSource::Payload {
+                structured["warning"] = Value::String(
+                    "Prefer actor_send.text for markdown-rich mailbox messages; payload is best reserved for structured machine-readable coordination."
+                        .to_string(),
+                );
+            }
             if let Some(permission_id) = permission_review_request_id.as_deref()
                 && let Err(err) = permissions
                     .record_review_dispatch(
@@ -772,13 +817,7 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
                     })),
                 );
             }
-            tool_result_success(json!({
-                "message_id": response.message_id,
-                "state": response.state,
-                "deduped": response.deduped,
-                "created_at": response.created_at,
-                "message": response.message,
-            }))
+            tool_result_success(structured)
         }
         Err(err) => tool_result_actor_service_error(err),
     }
@@ -1583,7 +1622,7 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 mod tests {
     use super::*;
     use crate::api::team_tests::build_test_state;
-    use crate::team::TeamDefinitionConfig;
+    use crate::team::{SendActorMessageInput, TeamActorMessageTransport, TeamDefinitionConfig};
     use sqlx::Row;
     use uuid::Uuid;
 
@@ -2344,6 +2383,29 @@ mod tests {
     }
 
     #[test]
+    fn resolve_actor_send_payload_prefers_text_and_marks_payload_source() {
+        let markdown = "## Review\n\n- preserve markdown\n";
+        let (payload, source) = resolve_actor_send_payload(Some(markdown.to_string()), None)
+            .expect("resolve text payload");
+        assert_eq!(payload, Value::String(markdown.to_string()));
+        assert_eq!(source, ActorSendPayloadSource::Text);
+
+        let (payload, source) =
+            resolve_actor_send_payload(None, Some(json!({"status":"done","result":"ok"})))
+                .expect("resolve structured payload");
+        assert_eq!(payload, json!({"status":"done","result":"ok"}));
+        assert_eq!(source, ActorSendPayloadSource::Payload);
+    }
+
+    #[test]
+    fn resolve_actor_send_payload_rejects_conflicting_inputs() {
+        let err =
+            resolve_actor_send_payload(Some("hello".to_string()), Some(json!({"text":"hello"})))
+                .expect_err("text and payload should conflict");
+        assert!(err.contains("cannot be used together"));
+    }
+
+    #[test]
     fn resolve_tool_run_id_prefers_explicit_then_current_context() {
         assert_eq!(
             resolve_tool_run_id(Some("run-explicit".to_string()), Some("run-current"))
@@ -2615,7 +2677,7 @@ mod tests {
                 "name":"actor_send",
                 "arguments":{
                     "to_actor_id":"reviewer",
-                    "payload":{"task":"review patch"}
+                    "text":"## Review request\n\n- check the patch\n- report blockers"
                 }
             })),
         )
@@ -2666,6 +2728,10 @@ mod tests {
         assert_eq!(inbox_messages.len(), 1);
         assert_eq!(inbox_messages[0]["message_id"].as_i64(), Some(message_id));
         assert_eq!(inbox_messages[0]["status"], "delivered");
+        assert_eq!(
+            inbox_messages[0]["payload"],
+            Value::String("## Review request\n\n- check the patch\n- report blockers".to_string())
+        );
 
         let ack_resp = handle_jsonrpc_request(
             &tool_context,
@@ -2703,6 +2769,63 @@ mod tests {
             .expect("delivered messages");
         assert_eq!(delivered_messages.len(), 1);
         assert_eq!(delivered_messages[0]["status"], "delivered");
+    }
+
+    #[tokio::test]
+    async fn actor_send_returns_warning_when_structured_payload_is_used() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-send-payload-warning-{}", Uuid::new_v4()),
+                description: Some("actor mcp payload warning".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-payload-warning"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let service = state.teams.actor_mailbox_service();
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let context = ActorMcpContext {
+            team_id: Some(team.id),
+            current_run_id: Some(run.id),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+
+        let response = tool_actor_send(
+            &service,
+            &state.teams,
+            &permissions,
+            &context,
+            Some(
+                json!({
+                    "to_actor_id":"reviewer",
+                    "payload":{"status":"done","result":"ok"}
+                })
+                .as_object()
+                .expect("payload args"),
+            ),
+        )
+        .await;
+        assert_eq!(response["isError"], Value::Bool(false), "{response}");
+        assert!(
+            response["structuredContent"]["warning"]
+                .as_str()
+                .is_some_and(|warning| warning.contains("Prefer actor_send.text")),
+            "missing payload warning: {response}"
+        );
     }
 
     #[tokio::test]
@@ -2824,6 +2947,22 @@ mod tests {
             .start_step(&leader_step.id, Some("session-leader"))
             .await
             .expect("start leader step");
+        state
+            .teams
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run.id,
+                from_actor_id: "leader",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "worker",
+                to_peer_id: ACTOR_MAIN_PEER_ID,
+                channel: "coordination",
+                transport: TeamActorMessageTransport::Local,
+                route: None,
+                payload: json!("## Review request\n\nPlease inspect the patch."),
+                idempotency_key: Some("team-members-unread-worker"),
+            })
+            .await
+            .expect("send unread worker mailbox message");
 
         let team_id = team.id.clone();
         let run_id = run.id.clone();
@@ -2889,12 +3028,14 @@ mod tests {
             .expect("members array");
         assert_eq!(members.len(), 2);
         assert_eq!(members[0]["display_name"], "Leader Agent");
+        assert_eq!(members[0]["pending_inbox_count"], 0);
         assert_eq!(members[0]["session_id"], "session-leader");
         assert_eq!(members[0]["session_status"], "running");
         assert_eq!(members[0]["steps"][0]["session_id"], "session-leader");
         assert_eq!(members[0]["steps"][0]["session_status"], "running");
         assert_eq!(members[1]["display_name"], "Worker Agent");
         assert_eq!(members[1]["description"], "Implements patches");
+        assert_eq!(members[1]["pending_inbox_count"], 1);
         assert_eq!(members[1]["session_id"], "session-worker");
         assert_eq!(members[1]["session_status"], "running");
         assert_eq!(members[1]["steps"][0]["status"], "submitted");
@@ -3184,6 +3325,8 @@ mod tests {
             .as_array()
             .expect("members array");
         assert_eq!(members.len(), 2);
+        assert_eq!(members[0]["pending_inbox_count"], 0);
+        assert_eq!(members[1]["pending_inbox_count"], 0);
         assert!(
             members[0]["steps"]
                 .as_array()

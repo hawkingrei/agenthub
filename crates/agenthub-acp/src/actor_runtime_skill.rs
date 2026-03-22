@@ -38,13 +38,13 @@ Team mailbox tools:
 2. Acknowledge a message after processing:
    `actor_ack` with `{{"run_id":"<run-id>","message_id": 123}}`
 3. Send a local message:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","payload":{{"text":"..."}}}}`
+   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
 4. Send a remote message:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"remote-worker","transport":"remote","route":{{"endpoint":"https://..."}},"payload":{{"text":"..."}}}}`
+   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"remote-worker","transport":"remote","route":{{"endpoint":"https://..."}},"text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
 5. Force duplicate delivery when business logic requires repeated send:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","allow_duplicate":true,"payload":{{"text":"..."}}}}`
+   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","allow_duplicate":true,"text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
 6. Use explicit idempotency key when coordinating retries across workers:
-   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","idempotency_key":"stable-key","payload":{{"text":"..."}}}}`
+   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","idempotency_key":"stable-key","text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
 
 Team context tool:
 
@@ -58,15 +58,17 @@ Protocol rules:
 - Always pull inbox before starting a new coordination step.
 - In each turn, the first mailbox action must be `actor_inbox` before planning/coding.
 - Before routing work based on teammate assumptions, inspect `team_members`.
-- Treat `team_members` as the single Team context snapshot tool: it returns runtime summary, roster/card data, and optional run overlay.
+- Treat `team_members` as the single Team context snapshot tool: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.
 - Treat `current_run_id` as a convenience default only; pass `run_id` explicitly whenever you are operating on a different run.
 - If inbox has pending items, process and `actor_ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
+- Prefer `actor_send.text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
 - Use `channel` only when a non-default channel is required.
 - By default, `actor_send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
 - Reuse the same payload and routing fields when retrying; changing payload under the same idempotency key will be rejected.
 - Use `allow_duplicate=true` only when you intentionally need repeated delivery of equivalent payloads.
+- Use `payload` only when the receiver genuinely needs machine-readable fields such as `status`, `evidence`, or workflow metadata.
 "#,
         team_section = team_section,
         current_run_section = current_run_section,

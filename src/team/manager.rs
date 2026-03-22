@@ -145,6 +145,7 @@ pub struct TeamRuntimeMemberRecord {
     pub display_name: String,
     pub role: String,
     pub description: Option<String>,
+    pub pending_inbox_count: i64,
     pub agent_status: Option<String>,
     pub session_id: Option<String>,
     pub session_status: Option<String>,
@@ -157,6 +158,7 @@ pub struct TeamRunMemberRecord {
     pub display_name: String,
     pub role: String,
     pub description: Option<String>,
+    pub pending_inbox_count: i64,
     pub agent_status: Option<String>,
     pub session_id: Option<String>,
     pub session_status: Option<String>,
@@ -899,6 +901,7 @@ impl TeamManager {
         let team = self.get_team(&run.team_id).await?;
         let members = parse_team_member_specs(&team.spec)?;
         let steps = self.list_steps(run_id).await?;
+        let pending_inbox_counts = self.list_actor_pending_counts_by_actor(run_id).await?;
 
         let mut steps_by_member = HashMap::<String, Vec<TeamStepRecord>>::new();
         let mut session_ids = Vec::new();
@@ -924,6 +927,10 @@ impl TeamManager {
 
         let mut out = Vec::with_capacity(members.len());
         for member in members {
+            let pending_inbox_count = pending_inbox_counts
+                .get(member.member_id.as_str())
+                .copied()
+                .unwrap_or(0);
             let display_name = agent_runtime_by_id
                 .get(member.member_id.as_str())
                 .map(|agent| agent.name.clone())
@@ -961,6 +968,7 @@ impl TeamManager {
                 display_name,
                 role: member.role,
                 description: member.description,
+                pending_inbox_count,
                 agent_status,
                 session_id,
                 session_status,
@@ -1010,6 +1018,7 @@ impl TeamManager {
                 display_name,
                 role: member.role,
                 description: member.description,
+                pending_inbox_count: 0,
                 agent_status,
                 session_id,
                 session_status,
@@ -3955,6 +3964,7 @@ fn team_run_member_from_runtime_member(member: TeamRuntimeMemberRecord) -> TeamR
         display_name: member.display_name,
         role: member.role,
         description: member.description,
+        pending_inbox_count: member.pending_inbox_count,
         agent_status: member.agent_status,
         session_id: member.session_id,
         session_status: member.session_status,
