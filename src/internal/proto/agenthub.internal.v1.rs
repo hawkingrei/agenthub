@@ -32,6 +32,8 @@ pub struct SendActorMessageResponse {
     pub status: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub idempotency_key: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub message_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListActorInboxRequest {

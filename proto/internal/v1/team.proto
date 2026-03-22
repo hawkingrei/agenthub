@@ -39,6 +39,7 @@ message SendActorMessageResponse {
   int64 message_id = 1;
   string status = 2;
   string idempotency_key = 3;
+  string message_json = 4;
 }
 
 message ListActorInboxRequest {

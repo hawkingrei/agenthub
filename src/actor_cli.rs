@@ -5,7 +5,11 @@ use agenthub_team_actor::{
 };
 use anyhow::Context;
 use serde_json::Value;
+use std::path::PathBuf;
 
+use crate::agent::AGENT_NODE_MAIN_ID;
+use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
 use crate::team::{TeamActorMessageTransport, TeamManager};
 
 const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
@@ -140,6 +144,37 @@ fn parse_i64(value: &str, field: &str) -> anyhow::Result<i64> {
 fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
     serde_json::from_str::<Value>(value)
         .map_err(|err| anyhow::anyhow!("invalid {} JSON: {}", field, err))
+}
+
+fn configure_actor_cli_internal_grpc(
+    manager: &TeamManager,
+    config: &agenthub_config::AppConfig,
+) -> anyhow::Result<()> {
+    if !config.internal_grpc_enabled() {
+        return Ok(());
+    }
+    let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
+    let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
+    let shared_secret = ensure_shared_secret(&cert_dir, config.internal_grpc_auth_shared_secret())?;
+    let _ = ensure_tls_material(&cert_dir, security_mode)?;
+    manager.configure_internal_grpc_relay(&cert_dir, security_mode);
+    manager.configure_internal_grpc_peer_client(Some(InternalGrpcPeerClientConfig {
+        shared_secret,
+        expected_issuer: config.internal_grpc_auth_issuer(),
+        expected_audience: config.internal_grpc_auth_audience(),
+        source_node_id: AGENT_NODE_MAIN_ID.to_string(),
+        cert_dir: cert_dir.to_string_lossy().to_string(),
+        security_mode,
+    }));
+    Ok(())
+}
+
+async fn init_team_manager_for_send() -> anyhow::Result<TeamManager> {
+    let db = agenthub_db::init_db().await?;
+    let manager = TeamManager::new(db);
+    let (config, _) = agenthub_config::AppConfig::load_with_info()?;
+    configure_actor_cli_internal_grpc(&manager, &config)?;
+    Ok(manager)
 }
 
 fn resolve_actor_send_payload(
@@ -699,8 +734,7 @@ async fn run_actor_command(
             payload_source,
             idempotency_key,
         } => {
-            let db = agenthub_db::init_db().await?;
-            let manager = TeamManager::new(db);
+            let manager = init_team_manager_for_send().await?;
             let service = manager.actor_mailbox_service();
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {

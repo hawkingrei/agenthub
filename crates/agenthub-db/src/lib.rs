@@ -557,7 +557,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             source_node_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             stored_at INTEGER NOT NULL,
-            UNIQUE(authority_message_id, conversation_id, task_id)
+            UNIQUE(authority_message_id)
         );
         "#,
     )

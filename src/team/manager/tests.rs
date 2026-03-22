@@ -217,7 +217,7 @@ async fn setup_test_db() -> SqlitePool {
             source_node_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             stored_at INTEGER NOT NULL,
-            UNIQUE(authority_message_id, conversation_id, task_id)
+            UNIQUE(authority_message_id)
         );
         "#,
     )
@@ -2145,6 +2145,90 @@ async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() 
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_channel_send_reuses_canonical_message_on_idempotent_retry() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-channel-idempotent-team".to_string(),
+            description: Some("team for channel mailbox idempotency".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-channel-mailbox-idempotent"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    for _ in 0..2 {
+        service
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: None,
+                to_actor_id: None,
+                channel_id: Some("all".to_string()),
+                to_peer_id: None,
+                channel: Some("coordination".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: json!({
+                    "type":"chat_message",
+                    "text":"@reviewer please validate retry behavior"
+                }),
+                idempotency_key: Some("msg-channel-mailbox-idempotent-1".to_string()),
+            })
+            .await
+            .expect("send channel mailbox message");
+    }
+
+    let shared_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("count shared thread messages");
+    assert_eq!(shared_count, 1);
+
+    let mailbox_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_one(&db)
+    .await
+    .expect("count mailbox rows");
+    assert_eq!(mailbox_count, 2);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p2p() {
     let db = setup_test_db().await;
     sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
@@ -2361,10 +2445,12 @@ async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p
     assert_eq!(route["tls_server_name"], json!("node-east.internal"));
     assert_eq!(route["target_node_id"], json!("node-east"));
     assert!(
-        route["access_token"]
-            .as_str()
-            .is_some_and(|value| !value.trim().is_empty()),
-        "missing access token: {route}"
+        route.get("access_token").is_none(),
+        "persisted route should stay stable and omit access_token: {route}"
+    );
+    assert!(
+        route.get("issued_at").is_none() && route.get("expires_at").is_none(),
+        "persisted route should omit transient credential metadata: {route}"
     );
 
     let worker_payload: Value =

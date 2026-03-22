@@ -25,7 +25,10 @@ use super::{
     TeamConversationStreamEvent, TeamManager, parse_team_member_specs, redact_sensitive_json,
 };
 use crate::agent::normalize_target_node_id;
-use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
+use crate::team::{
+    TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
+    TeamConversationMessageRecord,
+};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
@@ -393,14 +396,26 @@ impl TeamManager {
     }
 
     async fn has_agents_target_node_id_column(&self) -> anyhow::Result<bool> {
+        if let Some(cached) = *self
+            .agents_target_node_id_column
+            .lock()
+            .expect("lock agents target_node_id column cache")
+        {
+            return Ok(cached);
+        }
         let rows = sqlx::query("PRAGMA table_info(agents)")
             .fetch_all(&self.db)
             .await?;
-        Ok(rows.into_iter().any(|row| {
+        let has_column = rows.into_iter().any(|row| {
             row.get::<String, _>("name")
                 .trim()
                 .eq_ignore_ascii_case("target_node_id")
-        }))
+        });
+        *self
+            .agents_target_node_id_column
+            .lock()
+            .expect("lock agents target_node_id column cache") = Some(has_column);
+        Ok(has_column)
     }
 
     async fn resolve_channel_recipient_deliveries(
@@ -469,6 +484,44 @@ impl TeamManager {
         }
         Ok(out)
     }
+
+    async fn find_channel_message_by_correlation_id(
+        &self,
+        conversation_id: &str,
+        from_actor_id: &str,
+        correlation_id: &str,
+    ) -> anyhow::Result<Option<TeamConversationMessageRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                conversation_id,
+                task_id,
+                from_actor_id,
+                to_actor_id,
+                route,
+                payload_json,
+                created_at
+            FROM team_conversation_messages
+            WHERE conversation_id = ?1
+              AND from_actor_id = ?2
+              AND route = 'group_chat'
+              AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) = ?3
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(conversation_id)
+        .bind(from_actor_id)
+        .bind(correlation_id)
+        .fetch_optional(&self.db)
+        .await?;
+        row.map(|row| {
+            super::codec::parse_team_conversation_message_row(&row)
+                .map_err(|err| anyhow::anyhow!(err.to_string()))
+        })
+        .transpose()
+    }
 }
 
 pub struct SendActorMessageInput<'a> {
@@ -521,17 +574,7 @@ impl TeamActorMailboxService {
             .manager
             .extract_channel_mention_actor_ids(run_id, &payload)
             .await?;
-        let canonical_payload = ensure_channel_message_correlation_id(payload);
-        let canonical_message = self
-            .manager
-            .append_task_conversation_message(
-                &target.task_id,
-                from_actor_id,
-                None,
-                "group_chat",
-                canonical_payload.clone(),
-            )
-            .await?;
+        let normalized_payload = normalize_channel_message_payload(payload);
 
         let base_idempotency_key = idempotency_key.map(str::to_string).unwrap_or_else(|| {
             agenthub_team_actor::build_default_actor_channel_idempotency_key(
@@ -542,18 +585,46 @@ impl TeamActorMailboxService {
                 channel,
                 TeamActorMessageTransport::Local.as_str(),
                 None,
-                &canonical_payload,
+                &normalized_payload,
             )
         });
+        let canonical_payload = ensure_channel_message_correlation_id(
+            normalized_payload,
+            Some(base_idempotency_key.as_str()),
+        );
+        let (authority_message_id, source_payload) = if let Some(existing) = self
+            .manager
+            .find_channel_message_by_correlation_id(
+                &target.conversation_id,
+                from_actor_id,
+                channel_payload_correlation_id(&canonical_payload)
+                    .expect("canonical channel payload should carry correlation_id"),
+            )
+            .await?
+        {
+            (existing.message_id, existing.payload)
+        } else {
+            let canonical_message = self
+                .manager
+                .append_task_conversation_message(
+                    &target.task_id,
+                    from_actor_id,
+                    None,
+                    "group_chat",
+                    canonical_payload.clone(),
+                )
+                .await?;
+            (canonical_message.message_id, canonical_payload.clone())
+        };
 
         let mut first_result = None;
         let mut any_created = false;
         for delivery in &recipient_deliveries {
             let forwarded_payload = build_channel_mailbox_forward_payload(
-                &canonical_payload,
+                &source_payload,
                 &target,
                 channel_id,
-                canonical_message.message_id,
+                authority_message_id,
                 mention_actor_ids.as_slice(),
             );
             let fanout_idempotency_key =
@@ -1224,8 +1295,8 @@ fn is_human_actor_id(actor_id: &str) -> bool {
     trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
 }
 
-fn ensure_channel_message_correlation_id(payload: Value) -> Value {
-    let mut payload_obj = match payload {
+fn normalize_channel_message_payload(payload: Value) -> Value {
+    let payload_obj = match payload {
         Value::Object(map) => map,
         Value::String(text) => {
             let mut payload_obj = Map::new();
@@ -1246,6 +1317,17 @@ fn ensure_channel_message_correlation_id(payload: Value) -> Value {
             payload_obj
         }
     };
+    Value::Object(payload_obj)
+}
+
+fn ensure_channel_message_correlation_id(
+    payload: Value,
+    fallback_correlation_id: Option<&str>,
+) -> Value {
+    let mut payload_obj = match normalize_channel_message_payload(payload) {
+        Value::Object(map) => map,
+        _ => unreachable!("channel payload normalization should always yield an object"),
+    };
     let has_correlation_id = payload_obj
         .get("correlation_id")
         .and_then(Value::as_str)
@@ -1254,10 +1336,22 @@ fn ensure_channel_message_correlation_id(payload: Value) -> Value {
     if !has_correlation_id {
         payload_obj.insert(
             "correlation_id".to_string(),
-            Value::String(Uuid::new_v4().to_string()),
+            Value::String(
+                fallback_correlation_id
+                    .map(str::to_string)
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            ),
         );
     }
     Value::Object(payload_obj)
+}
+
+fn channel_payload_correlation_id(payload: &Value) -> Option<&str> {
+    payload
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn build_channel_mailbox_forward_payload(

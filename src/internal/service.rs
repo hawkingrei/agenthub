@@ -5,6 +5,7 @@ use agenthub_team_actor::{
     ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
 };
 use serde_json::Value;
+use sqlx::Row;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::state::AppState;
@@ -81,6 +82,59 @@ impl TeamInternalControlService {
         }
         Ok(())
     }
+
+    async fn validate_channel_replica_request(
+        &self,
+        run_id: &str,
+        replica: &ChannelReplicaRequest,
+    ) -> Result<(), Status> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                tr.team_id AS run_team_id,
+                tt.team_id AS task_team_id,
+                tc.task_id AS conversation_task_id,
+                tc.mode AS conversation_mode
+            FROM team_runs tr
+            LEFT JOIN team_tasks tt ON tt.id = ?2
+            LEFT JOIN team_conversations tc ON tc.id = ?3
+            WHERE tr.id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .bind(&replica.task_id)
+        .bind(&replica.conversation_id)
+        .fetch_optional(&self.state.db)
+        .await
+        .map_err(|err| map_manager_error(err.into()))?
+        .ok_or_else(|| Status::not_found("run not found"))?;
+
+        let run_team_id = row.get::<String, _>("run_team_id");
+        let task_team_id = row
+            .try_get::<Option<String>, _>("task_team_id")
+            .ok()
+            .flatten();
+        let conversation_task_id = row
+            .try_get::<Option<String>, _>("conversation_task_id")
+            .ok()
+            .flatten();
+        let conversation_mode = row
+            .try_get::<Option<String>, _>("conversation_mode")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
+        if replica.team_id != run_team_id
+            || task_team_id.as_deref() != Some(replica.team_id.as_str())
+            || conversation_task_id.as_deref() != Some(replica.task_id.as_str())
+            || conversation_mode.trim() != "group_chat"
+        {
+            return Err(Status::invalid_argument(
+                "channel replica payload does not match run/team context",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -112,6 +166,11 @@ impl TeamInternalControl for TeamInternalControlService {
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
         let from_peer_id = optional_trimmed(&payload.from_peer_id);
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
+
+        if let Some(replica) = channel_replica.as_ref() {
+            self.validate_channel_replica_request(run_id, replica)
+                .await?;
+        }
 
         let message = self
             .state
@@ -157,6 +216,7 @@ impl TeamInternalControl for TeamInternalControlService {
             message_id: message.message_id,
             status: message.state.as_str().to_string(),
             idempotency_key: idempotency_key.unwrap_or("").to_string(),
+            message_json: serde_json::to_string(&message.message).unwrap_or_default(),
         }))
     }
 
@@ -866,6 +926,7 @@ mod tests {
     use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
+    use agenthub_team_actor::ActorMessageStatus;
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";
 
@@ -966,6 +1027,11 @@ mod tests {
         assert!(send.message_id > 0);
         assert_eq!(send.status, "pending");
         assert_eq!(send.idempotency_key, "internal-grpc-msg-1");
+        let sent_message: crate::team::TeamActorMessageRecord =
+            serde_json::from_str(&send.message_json).expect("decode sent message_json");
+        assert_eq!(sent_message.message_id, send.message_id);
+        assert_eq!(sent_message.to_actor_id, "reviewer");
+        assert_eq!(sent_message.status, ActorMessageStatus::Pending);
 
         let pending_inbox = TeamInternalControl::list_actor_inbox(
             &service,
@@ -1060,6 +1126,11 @@ mod tests {
     async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
         let state = build_test_state().await;
         let run = create_team_run(&state).await;
+        let (task_id, conversation_id) = state
+            .teams
+            .ensure_shared_thread_target_for_team(&run.team_id, "planner")
+            .await
+            .expect("ensure shared thread target");
         let authz = build_authz();
         let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
         let service = TeamInternalControlService::new(
@@ -1087,8 +1158,8 @@ mod tests {
                         "delivery_scope": "channel_broadcast",
                         "authority_message_id": authority_message_id,
                         "team_id": run.team_id,
-                        "channel_conversation_id": "conversation-all",
-                        "task_id": "task-all",
+                        "channel_conversation_id": conversation_id,
+                        "task_id": task_id,
                         "channel_id": "all",
                         "mention_actor_ids": ["reviewer"],
                         "mentioned_actor_ids": ["reviewer"]
@@ -1131,6 +1202,59 @@ mod tests {
                 .expect("decode replica payload");
         assert_eq!(payload["delivery_scope"], json!("channel_broadcast"));
         assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let err = TeamInternalControl::send_actor_message(
+            &service,
+            authenticated_request(
+                SendActorMessageRequest {
+                    run_id: run.id,
+                    from_actor_id: "planner".to_string(),
+                    to_actor_id: "reviewer".to_string(),
+                    channel: "coordination".to_string(),
+                    transport: "local".to_string(),
+                    route_json: String::new(),
+                    payload_json: json!({
+                        "type": "chat_message",
+                        "text": "@reviewer please inspect p2p relay",
+                        "delivery_scope": "channel_broadcast",
+                        "authority_message_id": 999_i64,
+                        "team_id": "wrong-team",
+                        "channel_conversation_id": "conversation-all",
+                        "task_id": "task-all",
+                        "channel_id": "all"
+                    })
+                    .to_string(),
+                    idempotency_key: "internal-grpc-channel-replica-bad-1".to_string(),
+                    from_peer_id: "main".to_string(),
+                    to_peer_id: "main".to_string(),
+                    channel_id: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("mismatched replica payload should fail");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message()
+                .contains("channel replica payload does not match run/team context"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]

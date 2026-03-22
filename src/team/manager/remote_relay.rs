@@ -23,8 +23,7 @@ use crate::internal::client::{
     InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalGrpcPeerClientConfig,
 };
 use crate::internal::p2p::{
-    CredentialProvider, NodeCredentialRequest, NodeTransportMetadata, P2PTransport,
-    build_message_metadata,
+    CredentialProvider, NodeCredentialRequest, P2PTransport, build_message_metadata,
 };
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::TeamActorMessageRecord;
@@ -127,7 +126,7 @@ impl TeamRemoteRelayAdapter {
         if normalized_target_node_id.is_empty() || normalized_target_node_id == AGENT_NODE_MAIN_ID {
             anyhow::bail!("target node id must reference a registered remote agent node");
         }
-        let peer_config = self
+        let _peer_config = self
             .grpc_peer_client_config
             .lock()
             .expect("lock grpc peer client config")
@@ -161,44 +160,16 @@ impl TeamRemoteRelayAdapter {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
-        let authz = InternalAuthz::new(InternalAuthzConfig {
-            shared_secret: peer_config.shared_secret.clone(),
-            expected_issuer: peer_config.expected_issuer.clone(),
-            expected_audience: peer_config.expected_audience.clone(),
-        });
-        let issued = authz.issue_node_access_token(NodeCredentialRequest {
-            source_node_id: peer_config.source_node_id.clone(),
-            role: InternalRole::Leader.as_str().to_string(),
-            actor_id: None,
-            run_id: None,
-            permissions: vec![InternalAction::MessageSend.as_str().to_string()],
-            scope: Vec::new(),
-            audience: Vec::new(),
-            ttl_seconds: 600,
-        })?;
-
         let mut route = serde_json::Map::new();
         route.insert("kind".to_string(), json!("grpc"));
         route.insert("grpc_target".to_string(), json!(grpc_target));
-        route.insert("access_token".to_string(), json!(issued.access_token));
+        route.insert(
+            "target_node_id".to_string(),
+            json!(normalized_target_node_id),
+        );
         if let Some(value) = tls_server_name.as_deref() {
             route.insert("tls_server_name".to_string(), json!(value));
         }
-        NodeTransportMetadata {
-            cluster_id: issued.cluster_id,
-            source_node_id: issued.source_node_id,
-            target_node_id: normalized_target_node_id.to_string(),
-            broadcast_id: None,
-            correlation_id: None,
-            idempotency_key: None,
-            scope: issued.scope,
-            audience: issued.audience,
-            issued_at: issued.issued_at,
-            expires_at: issued.expires_at,
-            kid: issued.kid,
-            payload_digest: None,
-        }
-        .apply_to_route(&mut route);
 
         Ok(Value::Object(route))
     }
@@ -286,12 +257,14 @@ impl TeamRemoteRelayAdapter {
         let resolved_route = self
             .resolve_registered_grpc_route(&metadata.target_node_id, &route)
             .await?;
-        let access_token = route.access_token.trim();
-        if access_token.is_empty() {
-            return Err(ActorRelayError::permanent(
-                TeamRemoteRelayError::MissingAccessToken,
-            ));
-        }
+        let access_token = route
+            .access_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .map(Ok)
+            .unwrap_or_else(|| self.issue_registered_grpc_access_token())?;
         let grpc_tls_defaults = self
             .grpc_tls_defaults
             .lock()
@@ -302,7 +275,7 @@ impl TeamRemoteRelayAdapter {
         let client = self
             .grpc_client_for_route(InternalGrpcMailboxClientConfig {
                 target: resolved_route.grpc_target,
-                access_token: access_token.to_string(),
+                access_token,
                 ca_cert_path: grpc_tls_defaults.ca_cert_path,
                 tls_server_name: resolved_route.tls_server_name,
                 client_cert_path: grpc_tls_defaults.client_cert_path,
@@ -418,6 +391,41 @@ impl TeamRemoteRelayAdapter {
         })
     }
 
+    fn issue_registered_grpc_access_token(
+        &self,
+    ) -> Result<String, ActorRelayError<TeamRemoteRelayError>> {
+        let peer_config = self
+            .grpc_peer_client_config
+            .lock()
+            .expect("lock grpc peer client config")
+            .clone()
+            .ok_or_else(|| {
+                ActorRelayError::permanent(TeamRemoteRelayError::GrpcPeerClientUnavailable)
+            })?;
+        let authz = InternalAuthz::new(InternalAuthzConfig {
+            shared_secret: peer_config.shared_secret.clone(),
+            expected_issuer: peer_config.expected_issuer.clone(),
+            expected_audience: peer_config.expected_audience.clone(),
+        });
+        let issued = authz
+            .issue_node_access_token(NodeCredentialRequest {
+                source_node_id: peer_config.source_node_id.clone(),
+                role: InternalRole::Leader.as_str().to_string(),
+                actor_id: None,
+                run_id: None,
+                permissions: vec![InternalAction::MessageSend.as_str().to_string()],
+                scope: Vec::new(),
+                audience: Vec::new(),
+                ttl_seconds: 600,
+            })
+            .map_err(|err| {
+                ActorRelayError::permanent(TeamRemoteRelayError::InvalidRoute(format!(
+                    "issue relay access token failed: {err}"
+                )))
+            })?;
+        Ok(issued.access_token)
+    }
+
     async fn grpc_client_for_route(
         &self,
         config: InternalGrpcMailboxClientConfig,
@@ -475,8 +483,8 @@ pub(super) enum TeamRemoteRelayError {
     MissingGrpcTarget,
     #[error("route.grpc_target must be a valid https URL")]
     InvalidGrpcTarget,
-    #[error("route.access_token is required for gRPC relay")]
-    MissingAccessToken,
+    #[error("internal gRPC peer client config is unavailable")]
+    GrpcPeerClientUnavailable,
     #[error("internal gRPC relay TLS defaults are unavailable")]
     GrpcTlsUnavailable,
     #[error("route.method is invalid or not supported: {0}")]
@@ -544,7 +552,8 @@ struct GrpcRemoteRelayRouteValue {
     #[serde(default)]
     kind: Option<String>,
     grpc_target: String,
-    access_token: String,
+    #[serde(default)]
+    access_token: Option<String>,
     #[serde(default)]
     tls_server_name: Option<String>,
 }
@@ -851,7 +860,9 @@ mod tests {
         TeamRemoteRelayAdapter, apply_route_signing, parse_remote_route, parse_route_header_name,
         parse_route_header_value, relay_timeout_ms,
     };
+    use crate::internal::client::InternalGrpcPeerClientConfig;
     use crate::internal::p2p::NodeTransportMetadata;
+    use crate::internal::tls::InternalGrpcSecurityMode;
     use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
     use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind};
     use chrono::Utc;
@@ -918,7 +929,7 @@ mod tests {
         super::GrpcRemoteRelayRouteValue {
             kind: Some("grpc".to_string()),
             grpc_target: grpc_target.to_string(),
-            access_token: access_token.to_string(),
+            access_token: Some(access_token.to_string()),
             tls_server_name: Some(tls_server_name.to_string()),
         }
     }
@@ -1004,7 +1015,29 @@ mod tests {
         match parsed {
             ParsedRemoteRelayRoute::Grpc(route) => {
                 assert_eq!(route.grpc_target, "https://node.example.internal:50051");
-                assert_eq!(route.access_token, "secret-token");
+                assert_eq!(route.access_token.as_deref(), Some("secret-token"));
+                assert_eq!(
+                    route.tls_server_name.as_deref(),
+                    Some("node.example.internal")
+                );
+            }
+            ParsedRemoteRelayRoute::Http(_) => panic!("expected grpc route"),
+        }
+    }
+
+    #[test]
+    fn parse_remote_route_accepts_grpc_variant_without_access_token() {
+        let parsed = parse_remote_route(&json!({
+            "kind": "grpc",
+            "grpc_target": "https://node.example.internal:50051",
+            "tls_server_name": "node.example.internal",
+            "target_node_id": "node-b",
+        }))
+        .expect("parse grpc route without access token");
+        match parsed {
+            ParsedRemoteRelayRoute::Grpc(route) => {
+                assert_eq!(route.grpc_target, "https://node.example.internal:50051");
+                assert!(route.access_token.is_none());
                 assert_eq!(
                     route.tls_server_name.as_deref(),
                     Some("node.example.internal")
@@ -1053,7 +1086,7 @@ mod tests {
         let route = super::GrpcRemoteRelayRouteValue {
             kind: Some("grpc".to_string()),
             grpc_target: "https://node-b.internal:50051".to_string(),
-            access_token: "secret-token".to_string(),
+            access_token: Some("secret-token".to_string()),
             tls_server_name: Some("node-b.internal".to_string()),
         };
 
@@ -1074,6 +1107,50 @@ mod tests {
             err.to_string()
                 .contains("route.grpc_target must match registered agent node"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_registered_grpc_route_for_target_node_omits_transient_credentials() {
+        let db = test_db().await;
+        create_agent_nodes_table(&db).await;
+        insert_agent_node(
+            &db,
+            "node-b",
+            "https://node-b.internal:50051",
+            Some("node-b.internal"),
+        )
+        .await;
+
+        let adapter = TeamRemoteRelayAdapter::new(db);
+        adapter.configure_grpc_peer_client(Some(InternalGrpcPeerClientConfig {
+            shared_secret: "relay-secret".to_string(),
+            expected_issuer: Some("agenthub".to_string()),
+            expected_audience: Some("agenthub-internal".to_string()),
+            source_node_id: "main".to_string(),
+            cert_dir: std::env::temp_dir().to_string_lossy().to_string(),
+            security_mode: InternalGrpcSecurityMode::Disabled,
+        }));
+
+        let route = adapter
+            .build_registered_grpc_route_for_target_node("node-b")
+            .await
+            .expect("build registered route");
+        assert_eq!(route["kind"], json!("grpc"));
+        assert_eq!(route["grpc_target"], json!("https://node-b.internal:50051"));
+        assert_eq!(route["tls_server_name"], json!("node-b.internal"));
+        assert_eq!(route["target_node_id"], json!("node-b"));
+        assert!(
+            route.get("access_token").is_none(),
+            "route should stay stable: {route}"
+        );
+        assert!(
+            route.get("issued_at").is_none(),
+            "route should omit transient metadata: {route}"
+        );
+        assert!(
+            route.get("expires_at").is_none(),
+            "route should omit transient metadata: {route}"
         );
     }
 
@@ -1184,7 +1261,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deliver_grpc_requires_access_token() {
+    async fn deliver_grpc_requires_peer_client_when_route_omits_access_token() {
         let db = test_db().await;
         create_agent_nodes_table(&db).await;
         insert_agent_node(
@@ -1205,12 +1282,18 @@ mod tests {
         let err = adapter
             .deliver_grpc(
                 &message,
-                grpc_route_value("https://node-b.internal:50051", "   ", "node-b.internal"),
+                super::GrpcRemoteRelayRouteValue {
+                    kind: Some("grpc".to_string()),
+                    grpc_target: "https://node-b.internal:50051".to_string(),
+                    access_token: None,
+                    tls_server_name: Some("node-b.internal".to_string()),
+                },
             )
             .await
-            .expect_err("missing access token should fail");
+            .expect_err("missing peer config should fail");
         assert!(
-            err.to_string().contains("route.access_token is required"),
+            err.to_string()
+                .contains("internal gRPC peer client config is unavailable"),
             "unexpected error: {err}"
         );
     }

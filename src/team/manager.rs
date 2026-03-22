@@ -8,7 +8,7 @@ mod tests;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 pub use agenthub_team_domain::TeamRunResumeError;
@@ -47,6 +47,7 @@ pub struct TeamManager {
     event_dbs: AgentEventDbRouter,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
+    agents_target_node_id_column: Arc<Mutex<Option<bool>>>,
 }
 
 const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
@@ -199,11 +200,13 @@ impl TeamManager {
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
         let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
         let remote_relay_adapter = Arc::new(TeamRemoteRelayAdapter::new(db.clone()));
+        let agents_target_node_id_column = Arc::new(Mutex::new(None));
         Self {
             db,
             event_dbs,
             conversation_events,
             remote_relay_adapter,
+            agents_target_node_id_column,
         }
     }
 
