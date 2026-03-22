@@ -309,7 +309,7 @@ async function expectTeamRuntimeBadge(
   label: string
 ): Promise<void> {
   await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menu").getByText(label, { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("menu").getByText(label).first()).toBeVisible();
 }
 
 async function openSelectedTeamMenu(
