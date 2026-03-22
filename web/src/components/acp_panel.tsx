@@ -91,9 +91,13 @@ function AcpPanelView({
             </div>
           </div>
         ) : null}
-        <div className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle min-h-5 text-xs text-slate-500 max-[720px]:hidden sm:text-sm`}>
-          {subtitle ?? " "}
-        </div>
+        {subtitle ? (
+          <div
+            className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle text-[12px] text-slate-500 max-[720px]:hidden`}
+          >
+            {subtitle}
+          </div>
+        ) : null}
         <div
           className={`${mobileTitle ? "hidden sm:flex " : "flex "}items-center gap-2 max-[720px]:w-full max-[720px]:justify-start max-[720px]:flex-wrap`}
         >

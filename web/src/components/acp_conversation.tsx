@@ -8,7 +8,6 @@ import {
   formatConversationPreview,
   isToolCallLive,
 } from "../conversation";
-import { renderMarkdown } from "../markdown";
 import {
   ACP_BUBBLE_PLAN_CLASS,
   ACP_BUBBLE_THINKING_CLASS,
@@ -23,6 +22,12 @@ import {
   ACP_TOOL_STATUS_CLASS,
   ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS,
 } from "../ui/tailwind_classes";
+import {
+  getThreadMarkdownCacheStats,
+  renderThreadMarkdownCached,
+  resetThreadMarkdownCache,
+  ThreadRichText,
+} from "./thread_rich_text";
 import {
   extractToolCallDetails,
   formatToolCallDurationLabel,
@@ -51,13 +56,10 @@ type AcpConversationProps = {
   ansi: (input: string) => string;
 };
 
-const MARKDOWN_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
-const MARKDOWN_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const ANSI_SEGMENT_CACHE_MAX_BYTES = 4 * 1024 * 1024;
-const MARKDOWN_CACHE_MAX_ENTRY_CHARS = 120_000;
 const ANSI_SEGMENT_CACHE_MAX_ENTRY_CHARS = 120_000;
-const TOOL_PAYLOAD_PREVIEW_LIMIT = 88;
+const TOOL_PAYLOAD_PREVIEW_LIMIT = 64;
 const TOOL_PAYLOAD_MAX_NESTED_DEPTH = 2;
 const TOOL_PAYLOAD_HIDDEN_KEY_NORMALIZED = new Set<string>([
   "turnid",
@@ -88,12 +90,12 @@ const TOOL_PAYLOAD_PLAIN_TEXT_KEY_NORMALIZED = new Set<string>([
   "context",
   "content",
 ]);
-const TOOL_TEXT_INITIAL_LINES = 120;
-const TOOL_TEXT_LINE_CHUNK = 220;
+const TOOL_TEXT_INITIAL_LINES = 36;
+const TOOL_TEXT_LINE_CHUNK = 120;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
-const TOOL_PAYLOAD_INITIAL_ITEMS = 24;
-const TOOL_PAYLOAD_ITEM_CHUNK = 48;
+const TOOL_PAYLOAD_INITIAL_ITEMS = 8;
+const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
 const FAILED_TOOL_STATUSES = new Set([
   "failed",
@@ -102,16 +104,9 @@ const FAILED_TOOL_STATUSES = new Set([
   "interrupted",
   "stopped",
 ]);
-const SKILL_BLOCK_PATTERN = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
-
-const markdownHtmlCache = new Map<string, string>();
-const markdownHtmlCacheSize = new Map<string, number>();
 const ansiSegmentCache = new Map<string, AnsiSegment[]>();
 const ansiSegmentCacheSize = new Map<string, number>();
-let markdownCacheBytes = 0;
 let ansiCacheBytes = 0;
-let markdownCacheHitCount = 0;
-let markdownCacheMissCount = 0;
 let ansiCacheHitCount = 0;
 let ansiCacheMissCount = 0;
 let payloadParseCount = 0;
@@ -127,14 +122,10 @@ type CacheStats = {
 };
 
 export function resetAcpConversationCaches(): void {
-  markdownHtmlCache.clear();
-  markdownHtmlCacheSize.clear();
+  resetThreadMarkdownCache();
   ansiSegmentCache.clear();
   ansiSegmentCacheSize.clear();
-  markdownCacheBytes = 0;
   ansiCacheBytes = 0;
-  markdownCacheHitCount = 0;
-  markdownCacheMissCount = 0;
   ansiCacheHitCount = 0;
   ansiCacheMissCount = 0;
   payloadParseCount = 0;
@@ -142,9 +133,10 @@ export function resetAcpConversationCaches(): void {
 }
 
 export function getAcpConversationCacheStats(): CacheStats {
+  const markdownStats = getThreadMarkdownCacheStats();
   return {
-    markdownHits: markdownCacheHitCount,
-    markdownMisses: markdownCacheMissCount,
+    markdownHits: markdownStats.markdownHits,
+    markdownMisses: markdownStats.markdownMisses,
     ansiHits: ansiCacheHitCount,
     ansiMisses: ansiCacheMissCount,
     payloadParses: payloadParseCount,
@@ -153,78 +145,7 @@ export function getAcpConversationCacheStats(): CacheStats {
 }
 
 export function renderMarkdownCached(text: string): string {
-  if (text.length > MARKDOWN_CACHE_MAX_ENTRY_CHARS) {
-    markdownCacheMissCount += 1;
-    return renderMarkdown(normalizeSkillBlocksForMarkdown(text));
-  }
-  const cached = markdownHtmlCache.get(text);
-  if (cached != null) {
-    markdownCacheHitCount += 1;
-    return cached;
-  }
-  markdownCacheMissCount += 1;
-  const normalized = normalizeSkillBlocksForMarkdown(text);
-  const rendered = renderMarkdown(normalized);
-  const estimatedBytes =
-    estimateStringBytes(text) + estimateStringBytes(rendered);
-  return cacheWithLruBudget(
-    markdownHtmlCache,
-    markdownHtmlCacheSize,
-    () => markdownCacheBytes,
-    (next) => {
-      markdownCacheBytes = next;
-    },
-    text,
-    rendered,
-    estimatedBytes,
-    MARKDOWN_CACHE_LIMIT,
-    MARKDOWN_CACHE_MAX_BYTES
-  );
-}
-
-function normalizeSkillBlocksForMarkdown(text: string): string {
-  return text.replace(SKILL_BLOCK_PATTERN, (block) => {
-    const name = extractSkillField(block, "name");
-    const path = extractSkillField(block, "path");
-    if (!name && !path) return block;
-    const lines = ["**Skill**"];
-    if (name) lines.push(`- Name: ${formatInlineCode(name)}`);
-    if (path) lines.push(`- Path: ${formatInlineCode(path)}`);
-    return `\n${lines.join("\n")}\n`;
-  });
-}
-
-function extractSkillField(block: string, tag: "name" | "path"): string {
-  const pattern = new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*<\\/${tag}>`, "i");
-  const match = block.match(pattern);
-  if (!match) return "";
-  return match[1].trim();
-}
-
-function formatInlineCode(value: string): string {
-  const maxBacktickRun = maxBacktickSequenceLength(value);
-  const fence = "`".repeat(Math.max(1, maxBacktickRun + 1));
-  const needsPadding =
-    value.startsWith("`") ||
-    value.endsWith("`") ||
-    value.startsWith(" ") ||
-    value.endsWith(" ");
-  const content = needsPadding ? ` ${value} ` : value;
-  return `${fence}${content}${fence}`;
-}
-
-function maxBacktickSequenceLength(value: string): number {
-  let maxRun = 0;
-  let currentRun = 0;
-  for (const ch of value) {
-    if (ch === "`") {
-      currentRun += 1;
-      if (currentRun > maxRun) maxRun = currentRun;
-      continue;
-    }
-    currentRun = 0;
-  }
-  return maxRun;
+  return renderThreadMarkdownCached(text);
 }
 
 export function AcpConversation({
@@ -247,11 +168,11 @@ export function AcpConversation({
 }: AcpConversationProps) {
   return (
     <div
-      className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-3"
+      className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-1.5"
       ref={containerRef}
       onScroll={onScroll}
     >
-      <div className="acp-conversation-inner flex w-full flex-col gap-3">
+      <div className="acp-conversation-inner flex w-full flex-col gap-2">
         {topHint ? (
           <div className={ACP_CONVERSATION_TOP_HINT_CLASS}>
             {topHint}
@@ -394,12 +315,7 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
       : "border-[#d8dee7] bg-[#f7f9fc] text-slate-800";
   return (
     <div className={`acp-bubble ${className} rounded-xl border px-3 py-2 shadow-sm ${bubbleToneClassName}`}>
-      <div
-        className="acp-text text-sm leading-6"
-        dangerouslySetInnerHTML={{
-          __html: renderMarkdownCached(text),
-        }}
-      />
+      <ThreadRichText text={text} />
     </div>
   );
 });
@@ -513,7 +429,7 @@ const ToolCallBubble = React.memo(
               key="content"
               label="Content"
               preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
-              defaultOpen={isLive}
+              defaultOpen={false}
               lazyRender={true}
             >
               <ToolTextContent
@@ -540,7 +456,7 @@ const ToolCallBubble = React.memo(
               key="output"
               label="Output"
               preview={outputPreview}
-              defaultOpen={!isLive}
+              defaultOpen={false}
               parentOpen={open}
               lazyRender={true}
             >
@@ -566,7 +482,7 @@ const ToolCallBubble = React.memo(
               key="terminal"
               label="Terminal"
               preview={formatConversationPreview(unescapeLineBreaks(msg.terminal_output), 88)}
-              defaultOpen={isLive}
+              defaultOpen={false}
               lazyRender={true}
             >
               <TerminalOutputView
@@ -915,10 +831,7 @@ const ThinkingBubble = React.memo(function ThinkingBubble({
         <summary className="cursor-pointer text-sm font-semibold text-slate-700">
           {summary}
         </summary>
-        <div
-          className="acp-text mt-2 text-sm text-slate-700"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownCached(text) }}
-        />
+        <ThreadRichText text={text} className="mt-2 text-slate-700" />
       </details>
     </div>
   );
@@ -1060,7 +973,7 @@ function FoldSection({
     }
   }, [parentOpen]);
 
-  const shouldRenderBody = !lazyRender || open;
+  const shouldRenderBody = !lazyRender || open || typeof window === "undefined";
   return (
     <details
       className="acp-subfold"
@@ -1674,10 +1587,7 @@ function ToolTextContent({
 
   if (markdownText && !tooLargeForMarkdown) {
     return (
-      <div
-        className={`acp-text ${markdownClassName ?? ""}`.trim()}
-        dangerouslySetInnerHTML={{ __html: renderMarkdownCached(text) }}
-      />
+      <ThreadRichText text={text} className={markdownClassName} />
     );
   }
   if (markdownText && tooLargeForMarkdown) {

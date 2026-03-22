@@ -113,19 +113,19 @@ export const TEAM_CREATE_ACTIONS_BAR_CLASS =
   "modal-actions team-create-actions mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-ui-border pt-3";
 
 export const ACP_PANEL_ROOT_CLASS =
-  "acp relative flex min-h-0 flex-1 flex-col rounded-2xl border border-ui-border bg-ui-surface/90 shadow-sm max-[720px]:shadow-none";
+  "acp relative flex min-h-0 flex-1 flex-col rounded-[12px] border border-black/[0.06] bg-[rgba(255,255,255,0.72)] shadow-none";
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal flex flex-wrap items-start justify-between gap-3 border-b border-ui-border px-ctrl-x py-ctrl-y sm:px-4 max-[720px]:gap-1.5 max-[720px]:border-b-0 max-[720px]:px-2 max-[720px]:py-1.5";
+  "acp-head minimal flex flex-wrap items-start justify-between gap-2 border-b border-black/[0.06] px-3 py-2 sm:px-3.5 max-[720px]:gap-1.5 max-[720px]:border-b-0 max-[720px]:px-1.5 max-[720px]:py-1";
 
 export const ACP_PANEL_TABS_CLASS =
-  "acp-tabs flex items-center gap-2 rounded-lg border border-ui-border bg-ui-surface-soft p-1 max-[720px]:w-full max-[720px]:rounded-[10px] max-[720px]:px-[2px] max-[720px]:py-[2px]";
+  "acp-tabs flex items-center gap-1 rounded-[10px] border border-black/[0.06] bg-white/[0.72] p-0.5 max-[720px]:w-full max-[720px]:rounded-[9px] max-[720px]:px-[2px] max-[720px]:py-[2px]";
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
-  "inline-flex min-h-[30px] items-center rounded-md px-ctrl-x py-ctrl-y-sm text-ui-xs font-medium leading-tight transition sm:text-ui-sm";
+  "inline-flex min-h-[28px] items-center rounded-[8px] px-2.5 py-1 text-ui-xs font-medium leading-tight transition sm:text-ui-sm";
 
 export const ACP_TAB_BUTTON_ACTIVE_CLASS =
-  `${ACP_TAB_BUTTON_BASE_CLASS} bg-brand-primary text-ui-text-inverse shadow-sm`;
+  `${ACP_TAB_BUTTON_BASE_CLASS} bg-[rgba(55,53,47,0.08)] text-ui-text-primary shadow-none`;
 
 export const ACP_TAB_BUTTON_IDLE_CLASS =
   `${ACP_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
@@ -134,7 +134,7 @@ export const ACP_TAB_BADGE_CLASS =
   "acp-tab-badge rounded-full border border-current/30 px-1.5 py-0.5 text-[10px] font-semibold leading-none sm:text-xs";
 
 export const ACP_JUMP_BOTTOM_BUTTON_CLASS =
-  "acp-jump-bottom absolute bottom-3 right-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-ui-border-strong bg-ui-surface text-ui-text-secondary shadow-md transition hover:border-ui-border-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong";
+  "acp-jump-bottom absolute bottom-2.5 right-2.5 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.82] text-ui-text-secondary transition hover:border-ui-border-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong";
 
 export const ACP_DEBUG_ROOT_CLASS =
   "acp-debug flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4";
@@ -332,19 +332,19 @@ export const OUTPUT_BODY_EMPTY_CLASS =
   "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-ui-border-strong bg-ui-surface-soft/60 p-4 text-center";
 
 export const INPUT_DOCK_ROOT_CLASS =
-  "input docked rounded-2xl border border-ui-border/80 bg-ui-surface/85 p-2.5 shadow-sm backdrop-blur max-[720px]:rounded-[16px] max-[720px]:p-2 max-[720px]:shadow-none";
+  "input docked rounded-[12px] border border-black/[0.06] bg-[rgba(255,255,255,0.74)] p-2 shadow-none backdrop-blur max-[720px]:rounded-[10px] max-[720px]:p-1.5";
 
 export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
-  "acp-interrupt-button input-interrupt-button rounded-lg border border-state-warning-border bg-state-warning-bg px-ctrl-x py-ctrl-y text-ui-sm font-medium text-state-warning-text hover:border-ui-border-emphasis max-[720px]:px-2 max-[720px]:py-1 max-[720px]:text-[11px]";
+  "acp-interrupt-button input-interrupt-button rounded-full border border-state-warning-border bg-state-warning-bg px-2.5 py-1 text-[11px] font-medium text-state-warning-text hover:border-ui-border-emphasis";
 
 export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
-  "history-toggle rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-secondary hover:border-ui-border-emphasis max-[720px]:px-2 max-[720px]:py-1 max-[720px]:text-[11px]";
+  "history-toggle rounded-full border border-black/[0.08] bg-white/[0.78] px-2.5 py-1 text-[11px] font-medium text-ui-text-secondary hover:border-ui-border-emphasis";
 
 export const INPUT_DOCK_HISTORY_MENU_CLASS =
-  "input-history-menu rounded-lg border border-ui-border-strong bg-ui-surface p-1 shadow max-[720px]:rounded-[10px] max-[720px]:p-0.5";
+  "input-history-menu rounded-[10px] border border-black/[0.08] bg-white/[0.92] p-1 shadow-sm max-[720px]:rounded-[10px] max-[720px]:p-0.5";
 
 export const INPUT_DOCK_HISTORY_ITEM_CLASS =
   "input-history-item block w-full rounded-md px-2 py-1 text-left text-ui-sm hover:bg-ui-surface-muted";
 
 export const INPUT_DOCK_TEXTAREA_CLASS =
-  "min-h-[3.5rem] w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border max-[720px]:min-h-[3.1rem] max-[720px]:rounded-[12px] max-[720px]:px-2.5 max-[720px]:py-2";
+  "min-h-[3rem] w-full rounded-[10px] border border-black/[0.08] bg-white/[0.86] px-3 py-2 text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border max-[720px]:min-h-[2.8rem] max-[720px]:rounded-[10px] max-[720px]:px-2.5 max-[720px]:py-2";

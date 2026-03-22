@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   deriveToolCallOpenState,
   getAcpConversationCacheStats,
@@ -8,6 +8,11 @@ import {
   resetAcpConversationCaches,
   shouldCollapseToolFoldWhenOutOfView,
 } from "./components/acp_conversation";
+import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
+
+beforeAll(async () => {
+  await preloadThreadMarkdownAssets();
+});
 
 describe("deriveToolCallOpenState", () => {
   it("keeps details open while tool call is live", () => {

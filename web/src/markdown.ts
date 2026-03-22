@@ -1,19 +1,11 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
+import { escapeHtml } from "./html_escape";
 
 const GITHUB_PULL_URL_PATTERN =
   /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/pull\/\d+(?:[/?#][^\s<>"']*)?$/;
 const URL_CANDIDATE_PATTERN = /https:\/\/[^\s<>()]+(?:\([^\s<>]*\)[^\s<>()]*)*/g;
 const AUTOLINK_MAX_INPUT_LENGTH = 120_000;
-
-export function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function decodeHtmlEntities(input: string): string {
   const named: Record<string, string> = {

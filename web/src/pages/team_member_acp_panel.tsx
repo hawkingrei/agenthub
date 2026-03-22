@@ -13,7 +13,6 @@ import {
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamMemberAcpPanelProps = {
@@ -105,7 +104,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const terminalRef = React.useRef<HTMLDivElement | null>(null);
   const isComposingRef = React.useRef(false);
   const inputHistoryDraftRef = React.useRef("");
-  const [threadOptionsOpen, setThreadOptionsOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [inputHistory, setInputHistory] = React.useState<string[]>([]);
   const [inputHistoryCursor, setInputHistoryCursor] = React.useState(-1);
@@ -123,7 +121,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   );
 
   React.useEffect(() => {
-    setThreadOptionsOpen(false);
     setAcpTab("conversation");
   }, [selectedMemberId, selectedSessionId]);
   React.useEffect(() => {
@@ -303,10 +300,28 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     acpView.rawEvents.length,
     acpView.toolCalls.length,
   ]);
+  const panelSubtitle = React.useMemo(() => {
+    if (!selectedMemberId.trim()) {
+      return null;
+    }
+    if (!selectedSessionId) {
+      return "No active thread session yet";
+    }
+    if (memberEventsLoading) {
+      return `session ${selectedSessionId} · loading`;
+    }
+    if (!acpView.hasAcp && memberEvents.length === 0) {
+      return `session ${selectedSessionId} · no thread events yet`;
+    }
+    return `session ${selectedSessionId}`;
+  }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
+  const hasSelectedMember = Boolean(selectedMemberId.trim());
+  const canShowThreadOptions =
+    hasSelectedMember || memberEventsLoading || memberEvents.length > 0;
   const acpPanelProps = React.useMemo(
     () => ({
       acpView,
-      subtitle: selectedSessionId ? `session ${selectedSessionId}` : null,
+      subtitle: panelSubtitle,
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
@@ -362,7 +377,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       effectiveAcpTab,
       handleTerminalScroll,
       jumpToTerminalBottom,
-      selectedSessionId,
+      panelSubtitle,
       terminalOutputs,
       terminalShowJump,
     ]
@@ -385,61 +400,46 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       terminalShowJump,
     ]
   );
-  const shouldRenderPanel =
-    Boolean(selectedMemberId.trim() && selectedSessionId) &&
-    (memberEventsLoading || memberEvents.length > 0 || acpView.hasAcp || acpConversation.conversationTotalItems > 0);
+  const shouldRenderPanel = Boolean(selectedMemberId.trim());
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <button
-            type="button"
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={() => setThreadOptionsOpen((current) => !current)}
-            aria-expanded={threadOptionsOpen}
-            aria-label="Toggle thread options"
-            title="Thread options"
-          >
-            <i className="bi bi-three-dots" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      {threadOptionsOpen && (
-        <div className="mt-3 flex flex-col gap-3 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3">
-          <div className="flex flex-wrap items-center gap-2">
+    <div className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col rounded-[12px] border-black/[0.06] p-2.5`}>
+      {canShowThreadOptions && (
+        <div className="flex shrink-0 flex-col gap-2">
+          <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full justify-end gap-2`}>
             <button
               onClick={() => {
                 void onRefresh();
               }}
-              disabled={selectedMemberId.trim() && selectedSessionId ? memberEventsLoading : eventsLoading}
+              disabled={hasSelectedMember && selectedSessionId ? memberEventsLoading : eventsLoading}
               className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
               title="Refresh thread"
               aria-label="Refresh thread"
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              <span>Refresh Thread</span>
+              <span>Refresh</span>
             </button>
-            <button
-              onClick={() => {
-                void onLoadOlder();
-              }}
-              disabled={!canLoadOlder}
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            >
-              Load Older
-            </button>
+            {canLoadOlder && (
+              <button
+                onClick={() => {
+                  void onLoadOlder();
+                }}
+                disabled={!canLoadOlder}
+                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              >
+                Load Older
+              </button>
+            )}
           </div>
           {developerMode && (
             <div className="mono flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 member={selectedMemberId || "-"}
               </div>
-              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 role={selectedMemberSnapshot?.role ?? selectedMemberRole ?? "-"}
               </div>
-              <div className="rounded-lg border border-ui-border bg-ui-surface px-3 py-2">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 session={selectedSessionId ?? "-"}
               </div>
             </div>
@@ -448,31 +448,19 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       )}
 
       {!selectedMemberId.trim() && (
-        <p className={`mt-3 ${TEAM_MUTED_TEXT_CLASS}`}>
+        <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
           Select an agent from the left rail to inspect its thread.
         </p>
       )}
 
-      {selectedMemberId.trim() && !selectedSessionId && (
-        <p className={`mt-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-          Selected agent has no thread session yet.
-        </p>
-      )}
-
-      {selectedMemberId.trim() && selectedSessionId && !memberEventsLoading && !acpView.hasAcp && (
-        <p className={`mt-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-          No thread events found in this agent session.
-        </p>
-      )}
-
       {shouldRenderPanel && (
-        <div className="relative mt-3">
+        <div className="relative mt-2 min-h-0 flex-1">
           <AcpPanel {...acpPanelProps} />
         </div>
       )}
 
       {canSendInput && showInputDock && (
-        <div className="mt-3">
+        <div className="mt-2.5 shrink-0">
           <InputDock
             input={input}
             historyCommands={inputHistory}
@@ -491,7 +479,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
             isComposingRef={isComposingRef}
           />
           {sendingInput && (
-            <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>Sending prompt to selected agent...</p>
+            <p className={`mt-1.5 ${TEAM_MUTED_TEXT_CLASS}`}>Sending prompt to selected agent...</p>
           )}
         </div>
       )}

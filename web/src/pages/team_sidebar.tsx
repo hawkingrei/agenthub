@@ -1,7 +1,6 @@
 import React from "react";
 import { CloseButton, Menu, TextInput } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
-import { StatusBadge, type StatusTone } from "../components/status_badge";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
@@ -63,23 +62,16 @@ type TeamSidebarProps = {
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
 
-function resolveWorkTone(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): StatusTone {
-  if (status === "working") return "active";
-  if (status === "pending") return "warning";
-  if (status === "blocked") return "danger";
-  if (status === "done") return "active";
-  if (status === "idle") return "inactive";
-  return "neutral";
-}
-
-function formatWorkLabel(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): string {
+export function formatWorkLabel(
+  status: ReturnType<typeof normalizeTeamMemberWorkStatus>
+): string {
   if (status === "no_run") {
-    return "no run";
+    return "idle";
   }
   return status;
 }
 
-function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
+export function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
   const agentName = member.agent_name?.trim();
   if (agentName) {
     return agentName;
@@ -87,7 +79,7 @@ function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
   return member.member_id;
 }
 
-function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
+export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
   if (!summary) {
     return null;
   }
@@ -102,27 +94,46 @@ function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[18px] border border-ui-border bg-[linear-gradient(180deg,rgba(252,251,247,0.98)_0%,rgba(244,241,233,0.96)_100%)] p-2.5 shadow-sm";
+  "rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.68)] p-1.5 shadow-none";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[14px] border border-ui-border bg-ui-surface/80 p-1 shadow-sm";
+  "rounded-[10px] bg-ui-surface/[0.34] p-1";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "rounded-[14px] border border-ui-border bg-ui-surface/85 px-2.5 py-2 shadow-sm";
+  "px-1 py-1";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
   "inline-flex items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-ui-border-emphasis bg-ui-surface px-2.5 py-1.5 text-left text-ui-text-primary shadow-sm";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-[rgba(55,53,47,0.08)] px-2 py-1.5 text-left text-ui-text-primary";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-transparent bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:border-ui-border/70 hover:bg-ui-surface";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-transparent px-2 py-1.5 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between border-b border-ui-border px-0 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
+  "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-left text-ui-text-primary shadow-sm transition";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-[rgba(55,53,47,0.08)] px-2 py-1.5 text-left text-ui-text-primary transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-[10px] border border-transparent bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-ui-surface";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-transparent px-2 py-1.5 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
+
+export function resolveMemberIndicatorClassName(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
+  workStatus: ReturnType<typeof normalizeTeamMemberWorkStatus>
+): string {
+  if (lifecycle === "missing" || workStatus === "blocked") {
+    return "bg-rose-500";
+  }
+  if (lifecycle === "working" || workStatus === "working" || workStatus === "pending") {
+    return "bg-emerald-500";
+  }
+  if (workStatus === "done") {
+    return "bg-emerald-400";
+  }
+  if (lifecycle === "stopped") {
+    return "bg-slate-400";
+  }
+  return "bg-slate-300";
+}
 
 export function TeamSidebar(props: TeamSidebarProps) {
   const {
@@ -159,7 +170,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
     teams: true,
     agents: true,
   });
-  const normalizedTeamFilter = teamFilter.trim().toLowerCase();
+  const deferredTeamFilter = React.useDeferredValue(teamFilter);
+  const normalizedTeamFilter = deferredTeamFilter.trim().toLowerCase();
   const selectedTeamWorkerCount = React.useMemo(
     () => memberLiveStates.filter((member) => member.role === "worker").length,
     [memberLiveStates]
@@ -188,11 +200,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
       <div className={TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
-              {showTeamSelector ? "Team Selector" : "Team"}
-            </p>
             {showTeamSelector ? (
-              <div className="mt-1 truncate text-[15px] font-semibold leading-tight text-ui-text-primary">
+              <div className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
@@ -200,14 +209,16 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 <Menu.Target>
                   <button
                     type="button"
-                    className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-ui-border bg-white/80 px-3 py-1.5 text-left text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-white"
+                    className="inline-flex max-w-full items-center gap-1 rounded-[8px] px-1 py-0.5 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
                     aria-label="Open selected team menu"
+                    title="Open selected team menu"
                   >
-                    <span className="truncate">{selectedTeam.name}</span>
-                    <i
-                      className="bi bi-chevron-down text-[11px] text-ui-text-muted"
-                      aria-hidden="true"
-                    />
+                    <span className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
+                      {selectedTeam.name}
+                    </span>
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-ui-text-muted">
+                      <i className="bi bi-three-dots" aria-hidden="true" />
+                    </span>
                   </button>
                 </Menu.Target>
                 <Menu.Dropdown>
@@ -292,12 +303,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 </Menu.Dropdown>
               </Menu>
             ) : (
-              <div className="mt-1 truncate text-[15px] font-semibold leading-tight text-ui-text-primary">
+              <div className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
                 Team workspace
               </div>
             )}
             {showTeamSelector && (
-              <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+              <p className="mt-0.5 text-[12px] leading-5 text-ui-text-secondary">
                 {selectedTeam
                   ? "Switch teams from the index below."
                   : "Choose an existing team or create a new one."}
@@ -493,7 +504,10 @@ export function TeamSidebar(props: TeamSidebarProps) {
               }
               onClick={onSelectKanban}
             >
-              <span className="text-[13px] font-semibold text-ui-text-primary">Kanban</span>
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
+                <i className="bi bi-kanban" aria-hidden="true" />
+                <span>Kanban</span>
+              </span>
             </button>
             <div className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
               Channel
@@ -507,7 +521,10 @@ export function TeamSidebar(props: TeamSidebarProps) {
               }
               onClick={onSelectConversation}
             >
-              <span className="text-[13px] font-semibold text-ui-text-primary"># all</span>
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
+                <i className="bi bi-hash" aria-hidden="true" />
+                <span># all</span>
+              </span>
             </button>
           </div>
 
@@ -564,16 +581,19 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       }
                     >
                       <span className="flex w-full items-start justify-between gap-2">
-                        <span className="truncate text-[13px] font-semibold text-ui-text-primary">
-                          {primaryLabel}
+                        <span className="min-w-0 flex items-center gap-2">
+                          <span
+                            className={`mt-[5px] h-2 w-2 shrink-0 rounded-full ${resolveMemberIndicatorClassName(
+                              lifecycle,
+                              workStatus
+                            )}`}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate text-[13px] font-semibold text-ui-text-primary">
+                            {primaryLabel}
+                          </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
-                          <StatusBadge
-                            label={formatWorkLabel(workStatus)}
-                            tone={resolveWorkTone(workStatus)}
-                            className="text-[10px] uppercase tracking-[0.08em]"
-                            title={`run=${member.run_status} step=${member.step_status}`}
-                          />
                           {(member.pending_inbox_count ?? 0) > 0 && (
                             <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[10px] font-semibold text-ui-text-primary">
                               {member.pending_inbox_count}
@@ -581,6 +601,18 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           )}
                         </span>
                       </span>
+                      <span className="truncate text-[11px] leading-4 text-ui-text-muted">
+                        {[member.role, lifecycle, formatWorkLabel(workStatus)]
+                          .filter((value): value is string => Boolean(value && value !== "unknown"))
+                          .join(" · ")}
+                      </span>
+                      {isActiveMember &&
+                        member.current_work?.trim() &&
+                        member.current_work !== "No active run context." && (
+                        <span className="truncate text-[11px] leading-4 text-ui-text-muted/85">
+                          {member.current_work}
+                        </span>
+                        )}
                       {developerMode && memberMeta && (
                         <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>{memberMeta}</span>
                       )}

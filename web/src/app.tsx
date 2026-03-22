@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   AgentRecord,
@@ -57,7 +57,7 @@ import {
   selectCachedOutputs,
 } from "./output_cache";
 import { isNearBottom } from "./scroll";
-import { escapeHtml } from "./markdown";
+import { escapeHtml } from "./html_escape";
 import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
@@ -83,10 +83,7 @@ import {
   removeLocalStorageItemSafe,
   setLocalStorageItemSafe,
 } from "./storage/safe_storage";
-import { AdminPage } from "./pages/admin_page";
 import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
-import { JoinPage } from "./pages/join_page";
-import { TeamPage } from "./pages/team_page";
 import { ensurePushSubscription } from "./push";
 import {
   INPUT_HISTORY_STORAGE_KEY,
@@ -129,13 +126,13 @@ const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
-const AGENTS_PANEL_DEFAULT_WIDTH = 360;
-const AGENTS_PANEL_MIN_WIDTH = 320;
-const AGENTS_PANEL_MAX_WIDTH = 640;
-const AGENTS_PANEL_MIN_RIGHT_WIDTH = 520;
+const AGENTS_PANEL_DEFAULT_WIDTH = 288;
+const AGENTS_PANEL_MIN_WIDTH = 256;
+const AGENTS_PANEL_MAX_WIDTH = 352;
+const AGENTS_PANEL_MIN_RIGHT_WIDTH = 760;
 const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
-const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 420;
+const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
 const APP_WORKBENCH_HEADER_CLASS =
   "flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#f3f1eb] px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:gap-3 sm:rounded-[20px] sm:px-3.5 sm:py-3 sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
@@ -145,6 +142,37 @@ const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border-[2px] border-black text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] lg:hidden";
 const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
+const ROUTE_FALLBACK_SHELL_CLASS =
+  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-[16px] border border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-6 py-10 text-sm font-medium text-ui-text-muted shadow-sm";
+
+const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
+
+const LazyAdminPage = React.lazy(async () => {
+  const load = routePageLoaders["./pages/admin_page.tsx"];
+  if (!load) {
+    throw new Error("LazyAdminPage loader missing");
+  }
+  const module = (await load()) as typeof import("./pages/admin_page");
+  return { default: module.AdminPage };
+});
+
+const LazyJoinPage = React.lazy(async () => {
+  const load = routePageLoaders["./pages/join_page.tsx"];
+  if (!load) {
+    throw new Error("LazyJoinPage loader missing");
+  }
+  const module = (await load()) as typeof import("./pages/join_page");
+  return { default: module.JoinPage };
+});
+
+const LazyTeamPage = React.lazy(async () => {
+  const load = routePageLoaders["./pages/team_page.tsx"];
+  if (!load) {
+    throw new Error("LazyTeamPage loader missing");
+  }
+  const module = (await load()) as typeof import("./pages/team_page");
+  return { default: module.TeamPage };
+});
 
 function AuthRedirect(): null {
   useEffect(() => {
@@ -158,6 +186,10 @@ function PostLoginRedirect({ target }: { target: string }): null {
     location.replace(target);
   }, [target]);
   return null;
+}
+
+function RouteFallback({ label }: { label: string }) {
+  return <div className={ROUTE_FALLBACK_SHELL_CLASS}>{label}</div>;
 }
 
 export function shouldRedirectTeamsToLogin(
@@ -3143,7 +3175,11 @@ export function App() {
     !agentsCollapsed && agentsPanelWidth <= AGENTS_PANEL_COMPACT_ROWS_THRESHOLD;
 
   if (routeLocation.pathname.startsWith("/join")) {
-    return <JoinPage onComplete={(next) => setAuth(next)} />;
+    return (
+      <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
+        <LazyJoinPage onComplete={(next) => setAuth(next)} />
+      </Suspense>
+    );
   }
 
   if (routeLocation.pathname.startsWith("/admin")) {
@@ -3154,31 +3190,33 @@ export function App() {
       return <ForbiddenPage />;
     }
     return (
-      <AdminPage
-        auth={auth}
-        error={normalizedError}
-        setError={setError}
-        safePaths={safePaths}
-        selectedSafePaths={selectedSafePaths}
-        onToggleSafePath={onToggleSafePath}
-        onToggleAllSafePaths={onToggleAllSafePaths}
-        onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-        devices={devices}
-        audits={audits}
-        vapidInfo={vapidInfo}
-        onRotateVapid={onRotateVapid}
-        onAddSafePath={onAddSafePath}
-        onDeleteSafePath={onDeleteSafePath}
-        onRevokeDevice={onRevokeDevice}
-        onCreateJoin={onCreateJoin}
-        joinQr={joinQr}
-        joinToken={joinToken}
-        joinPin={joinPin}
-        safePathInput={safePathInput}
-        setSafePathInput={setSafePathInput}
-        developerMode={developerMode}
-        onDeveloperModeChange={handleDeveloperModeChange}
-      />
+      <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
+        <LazyAdminPage
+          auth={auth}
+          error={normalizedError}
+          setError={setError}
+          safePaths={safePaths}
+          selectedSafePaths={selectedSafePaths}
+          onToggleSafePath={onToggleSafePath}
+          onToggleAllSafePaths={onToggleAllSafePaths}
+          onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+          devices={devices}
+          audits={audits}
+          vapidInfo={vapidInfo}
+          onRotateVapid={onRotateVapid}
+          onAddSafePath={onAddSafePath}
+          onDeleteSafePath={onDeleteSafePath}
+          onRevokeDevice={onRevokeDevice}
+          onCreateJoin={onCreateJoin}
+          joinQr={joinQr}
+          joinToken={joinToken}
+          joinPin={joinPin}
+          safePathInput={safePathInput}
+          setSafePathInput={setSafePathInput}
+          developerMode={developerMode}
+          onDeveloperModeChange={handleDeveloperModeChange}
+        />
+      </Suspense>
     );
   }
 
@@ -3188,13 +3226,15 @@ export function App() {
     }
     const teamRoute = resolveTeamRoute(routeLocation.pathname);
     return (
-      <TeamPage
-        auth={auth}
-        token={token}
-        onLogout={onLogout}
-        developerMode={developerMode}
-        routeTeamId={teamRoute?.teamId ?? null}
-      />
+      <Suspense fallback={<RouteFallback label="Loading teams..." />}>
+        <LazyTeamPage
+          auth={auth}
+          token={token}
+          onLogout={onLogout}
+          developerMode={developerMode}
+          routeTeamId={teamRoute?.teamId ?? null}
+        />
+      </Suspense>
     );
   }
 
@@ -3402,6 +3442,7 @@ export function App() {
           {canManageAgentNodes(auth) && (
             <AgentNodeSection
               nodes={agentNodes}
+              agents={agents}
               targetNodeId={targetNodeId}
               onTargetNodeIdChange={applyTargetNodeSelection}
               nodeIdInput={nodeIdInput}
