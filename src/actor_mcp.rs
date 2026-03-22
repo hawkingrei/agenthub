@@ -12,25 +12,15 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::{AcpPermissionRespondResult, AcpPermissionService};
 use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
-use crate::internal::client::{
-    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
+use crate::actor_runtime_env::{
+    ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
+    ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, maybe_remote_mailbox_service,
+    normalized_env_var,
 };
 use crate::team::{TEAM_TASK_STATUS_VALUES, TeamManager, TeamTaskStatus};
 
-const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
-const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
-const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
-const ACTOR_RUNTIME_AGENT_ID_ENV: &str = "AGENTHUB_ACTOR_AGENT_ID";
-const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
-const ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV: &str = "AGENTHUB_INTERNAL_GRPC_TARGET";
-const ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV: &str = "AGENTHUB_INTERNAL_GRPC_TOKEN";
-const ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CA_CERT_PATH";
-const ACTOR_RUNTIME_INTERNAL_GRPC_TLS_SERVER_NAME_ENV: &str =
-    "AGENTHUB_INTERNAL_GRPC_TLS_SERVER_NAME";
-const ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CLIENT_CERT_PATH";
-const ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV: &str = "AGENTHUB_INTERNAL_GRPC_CLIENT_KEY_PATH";
 
 const JSONRPC_PARSE_ERROR: i32 = -32700;
 const JSONRPC_INVALID_REQUEST: i32 = -32600;
@@ -146,13 +136,6 @@ Environment fallback:
   AGENTHUB_ACTOR_AGENT_ID
   AGENTHUB_ACTOR_CHANNEL
 "#
-}
-
-fn normalized_env_var(key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
 }
 
 fn take_required(value: Option<String>, env_keys: &[&str], field: &str) -> anyhow::Result<String> {
@@ -1449,43 +1432,6 @@ fn handle_jsonrpc_notification(initialized: &mut bool, method: &str) {
     if method == "notifications/initialized" {
         *initialized = true;
     }
-}
-
-async fn maybe_remote_mailbox_service() -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
-    let Some(target) = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV) else {
-        return Ok(None);
-    };
-    let access_token =
-        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok_or_else(|| {
-            anyhow::anyhow!(
-                "{} is required when {} is set",
-                ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-                ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV
-            )
-        })?;
-    let ca_cert_path = normalize_existing_path(
-        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV).as_deref(),
-        ACTOR_RUNTIME_INTERNAL_GRPC_CA_CERT_ENV,
-    )?;
-    let client_cert_path = normalize_existing_path(
-        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV).as_deref(),
-        ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_CERT_ENV,
-    )?;
-    let client_key_path = normalize_existing_path(
-        normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV).as_deref(),
-        ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV,
-    )?;
-    let tls_server_name = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TLS_SERVER_NAME_ENV);
-    let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
-        target,
-        access_token,
-        ca_cert_path,
-        tls_server_name,
-        client_cert_path,
-        client_key_path,
-    })
-    .await?;
-    Ok(Some(client))
 }
 
 async fn run_actor_mcp_server(context: ActorMcpContext) -> anyhow::Result<()> {

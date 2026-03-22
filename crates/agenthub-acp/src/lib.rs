@@ -11,12 +11,12 @@ use std::time::Duration;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ContentChunk, EnvVariable, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
-    McpServerStdio, NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest,
-    ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionModeRequest, SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate,
-    ToolCallUpdateFields,
+    ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
+    NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
+    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -43,12 +43,6 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
-const ACTOR_MAILBOX_MCP_SERVER_NAME: &str = "agenthub-actor-mailbox";
-const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
-const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
-const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
-const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
@@ -230,122 +224,35 @@ fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
     false
 }
 
-fn build_actor_mailbox_mcp_server(context: &AcpActorSkillContext) -> McpServer {
-    let mut env = vec![
-        EnvVariable::new(
-            ACTOR_RUNTIME_ACTOR_ID_ENV.to_string(),
-            context.actor_id.clone(),
-        ),
-        EnvVariable::new(
-            ACTOR_RUNTIME_CHANNEL_ENV.to_string(),
-            context.default_channel.clone(),
-        ),
-    ];
-    if let Some(team_id) = context
-        .team_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        env.push(EnvVariable::new(
-            ACTOR_RUNTIME_TEAM_ID_ENV.to_string(),
-            team_id.to_string(),
-        ));
-    }
-    if let Some(run_id) = context
-        .current_run_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        env.push(EnvVariable::new(
-            ACTOR_RUNTIME_CURRENT_RUN_ID_ENV.to_string(),
-            run_id.to_string(),
-        ));
-    }
-    let mut args = vec![
-        "actor-mcp".to_string(),
-        "--actor-id".to_string(),
-        context.actor_id.clone(),
-        "--channel".to_string(),
-        context.default_channel.clone(),
-    ];
-    if let Some(team_id) = context
-        .team_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        args.push("--team-id".to_string());
-        args.push(team_id.to_string());
-    }
-    if let Some(run_id) = context
-        .current_run_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        args.push("--run-id".to_string());
-        args.push(run_id.to_string());
-    }
-    let server = McpServerStdio::new(
-        ACTOR_MAILBOX_MCP_SERVER_NAME.to_string(),
-        PathBuf::from(context.actor_cli_path.clone()),
-    )
-    .args(args)
-    .env(env);
-    McpServer::Stdio(server)
-}
-
-fn load_mcp_servers_from_path(
-    path: &Path,
-    actor_context: Option<&AcpActorSkillContext>,
-) -> Vec<McpServer> {
+fn load_mcp_servers_from_path(path: &Path) -> Vec<McpServer> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            if let Some(context) = actor_context {
-                return vec![build_actor_mailbox_mcp_server(context)];
-            }
-            return Vec::new();
-        }
+        Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
         Err(err) => {
             tracing::warn!(
                 "mcp config read failed: path={} error={}",
                 path.display(),
                 err
             );
-            if let Some(context) = actor_context {
-                return vec![build_actor_mailbox_mcp_server(context)];
-            }
             return Vec::new();
         }
     };
     match parse_mcp_config(&contents) {
-        Ok(mut parsed_servers) => {
-            if let Some(context) = actor_context {
-                parsed_servers.push(build_actor_mailbox_mcp_server(context));
-            }
-            parsed_servers
-        }
+        Ok(parsed_servers) => parsed_servers,
         Err(err) => {
             tracing::warn!(
                 "mcp config parse failed: path={} error={}",
                 path.display(),
                 err
             );
-            if let Some(context) = actor_context {
-                vec![build_actor_mailbox_mcp_server(context)]
-            } else {
-                Vec::new()
-            }
+            Vec::new()
         }
     }
 }
 
-fn load_mcp_servers(actor_context: Option<&AcpActorSkillContext>) -> Vec<McpServer> {
+fn load_mcp_servers() -> Vec<McpServer> {
     let path = mcp_config_path();
-    load_mcp_servers_from_path(&path, actor_context)
+    load_mcp_servers_from_path(&path)
 }
 
 fn mcp_server_name(server: &McpServer) -> &str {
@@ -943,7 +850,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
 
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
-            let mcp_servers = load_mcp_servers(actor_context.as_ref());
+            let mcp_servers = load_mcp_servers();
             let mut skills = load_skills(Path::new(&workdir), &safe_paths);
             skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
             let mut attached_team_role_skills = false;
@@ -961,15 +868,12 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     .map(|skill| skill.name.as_str())
                     .collect::<Vec<_>>();
                 let mcp_server_names = mcp_servers.iter().map(mcp_server_name).collect::<Vec<_>>();
-                let has_actor_mailbox_mcp =
-                    mcp_server_names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME);
                 tracing::info!(
                     team_id = %ctx.team_id.as_deref().unwrap_or("none"),
                     current_run_id = %ctx.current_run_id.as_deref().unwrap_or("none"),
                     actor_id = %ctx.actor_id,
                     member_role = %ctx.member_role.as_deref().unwrap_or("none"),
                     attached_team_role_skills,
-                    has_actor_mailbox_mcp,
                     skill_names = ?skill_names,
                     mcp_server_names = ?mcp_server_names,
                     "acp actor session bootstrap prepared runtime capabilities"
@@ -1804,11 +1708,9 @@ fn parse_permission_record_row(
 #[cfg(test)]
 mod tests {
     use super::{
-        ACTOR_MAILBOX_MCP_SERVER_NAME, AcpActorSkillContext, AcpCommand, AcpHandle,
-        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
-        AcpRuntimeLocation, AcpSendError, build_actor_mailbox_mcp_server, dedupe_skills,
-        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        should_queue_while_prompts_active,
+        AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
+        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, load_mcp_servers_from_path,
+        load_skills_from_config, load_workdir_skills, should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
@@ -1821,20 +1723,6 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
     use uuid::Uuid;
-
-    fn test_actor_context() -> AcpActorSkillContext {
-        AcpActorSkillContext {
-            team_id: Some("team-1".to_string()),
-            current_run_id: Some("run-1".to_string()),
-            actor_id: "leader".to_string(),
-            default_channel: "coordination".to_string(),
-            actor_cli_path: "/tmp/agenthub".to_string(),
-            member_role: Some("leader".to_string()),
-            member_skills: Vec::new(),
-            contract_version: None,
-            continuity: None,
-        }
-    }
 
     fn server_name(server: &McpServer) -> &str {
         match server {
@@ -2065,43 +1953,14 @@ mod tests {
     }
 
     #[test]
-    fn build_actor_mailbox_mcp_server_uses_actor_runtime_binary_and_context() {
-        let context = test_actor_context();
-        let server = build_actor_mailbox_mcp_server(&context);
-        match server {
-            McpServer::Stdio(server) => {
-                assert_eq!(server.name, ACTOR_MAILBOX_MCP_SERVER_NAME);
-                assert_eq!(server.command.to_string_lossy(), "/tmp/agenthub");
-                assert_eq!(
-                    server.args,
-                    vec![
-                        "actor-mcp".to_string(),
-                        "--actor-id".to_string(),
-                        "leader".to_string(),
-                        "--channel".to_string(),
-                        "coordination".to_string(),
-                        "--team-id".to_string(),
-                        "team-1".to_string(),
-                        "--run-id".to_string(),
-                        "run-1".to_string(),
-                    ]
-                );
-            }
-            _ => panic!("expected stdio mcp server"),
-        }
-    }
-
-    #[test]
-    fn load_mcp_servers_injects_actor_mailbox_when_config_missing() {
+    fn load_mcp_servers_returns_empty_when_config_missing() {
         let config = TempMcpConfig::new();
-        let context = test_actor_context();
-        let servers = load_mcp_servers_from_path(config.path(), Some(&context));
-        assert_eq!(servers.len(), 1);
-        assert_eq!(server_name(&servers[0]), ACTOR_MAILBOX_MCP_SERVER_NAME);
+        let servers = load_mcp_servers_from_path(config.path());
+        assert!(servers.is_empty());
     }
 
     #[test]
-    fn load_mcp_servers_appends_actor_mailbox_to_existing_config_servers() {
+    fn load_mcp_servers_preserves_existing_config_servers() {
         let config = TempMcpConfig::new();
         fs::create_dir_all(config.path().parent().expect("mcp config parent"))
             .expect("create mcp config parent");
@@ -2120,12 +1979,10 @@ mod tests {
         )
         .expect("write mcp config");
 
-        let context = test_actor_context();
-        let servers = load_mcp_servers_from_path(config.path(), Some(&context));
-        assert_eq!(servers.len(), 2);
+        let servers = load_mcp_servers_from_path(config.path());
+        assert_eq!(servers.len(), 1);
         let names = servers.iter().map(server_name).collect::<Vec<_>>();
         assert!(names.contains(&"local-stdio"));
-        assert!(names.contains(&ACTOR_MAILBOX_MCP_SERVER_NAME));
     }
 
     #[test]

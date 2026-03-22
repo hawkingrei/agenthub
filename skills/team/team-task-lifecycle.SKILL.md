@@ -60,15 +60,15 @@ Do not force task creation for:
 
 Leader may:
 
-- use `team_task_create` to create canonical Team tasks
-- use `team_tasks` to verify the task is actually present in Kanban after creation
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-create` to create canonical Team tasks
+- use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` to verify the task is actually present in Kanban after creation
 - assign or reassign owners
-- use `team_task_update` to move `open -> in_progress`
-- use `team_task_update` to move `in_progress -> in_review`
-- use `team_task_update` to move `in_review -> completed`
-- use `team_task_update` to move `in_review -> in_progress` when changes are requested
-- use `team_task_update` to move any unfinished task to `canceled`
-- use `team_task_update` to reopen `completed|canceled -> open` when follow-up is required
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `open -> in_progress`
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_progress -> in_review`
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_review -> completed`
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_review -> in_progress` when changes are requested
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move any unfinished task to `canceled`
+- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to reopen `completed|canceled -> open` when follow-up is required
 
 Leader review rules:
 
@@ -82,7 +82,7 @@ Leader review rules:
 Workers should:
 
 - treat the leader-owned Team task as the canonical execution record
-- use `team_tasks` when they need to confirm canonical Team task state directly
+- use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` when they need to confirm canonical Team task state directly
 - keep leader informed when work should move from `open` to `in_progress`
 - report evidence as soon as implementation/research materially changes
 - ask or signal for `in_review` when acceptance evidence is ready

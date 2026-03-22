@@ -1,5 +1,13 @@
 # Team MCP Enforcement Specification
 
+> Note
+>
+> Team runtime coordination is now moving to a CLI-first model via
+> `AGENTHUB_ACTOR_CLI` (`agenthub actor ...`) rather than mailbox MCP tool
+> injection. This document is retained as the historical enforcement/design
+> record; where it says "mailbox MCP required", read that as the canonical
+> Team coordination capability requirement for the current runtime.
+
 ## Problem
 
 Team collaboration quality depends on deterministic mailbox usage.
@@ -9,11 +17,11 @@ If agents can bypass MCP mailbox tools, routing and replay contracts become prob
 - ack/evidence chain may be incomplete;
 - leader/worker workflow can drift from Team contracts.
 
-We need a stronger enforcement model so Team sessions are MCP-first by default, not best effort.
+We need a stronger enforcement model so Team sessions stay on the canonical coordination path by default, not best effort.
 
 ## Scope
 
-- Team-session MCP enforcement model (`required`, fail-fast, fallback policy).
+- Team-session coordination enforcement model (`required`, fail-fast, fallback policy).
 - Startup and turn-loop workflow contract for leader/worker agents.
 - Allowed-action policy for mailbox communication.
 - Observability and validation requirements for enforcement rollout.

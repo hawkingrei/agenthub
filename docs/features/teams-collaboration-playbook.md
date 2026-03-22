@@ -14,7 +14,7 @@ This document defines that operational baseline.
 - Team startup/restart behavior and failure handling expectations.
 - Mailbox communication policy and message envelope constraints.
 - Conversation event-bus carrier contract and routing normalization.
-- MCP-first enforcement policy for Team sessions.
+- CLI-first coordination enforcement policy for Team sessions.
 - Context/memory layering and promotion rules.
 - Membership change and member identity-card synchronization.
 
@@ -149,13 +149,13 @@ Mailbox operational priority (suggested):
 - medium: member card/discovery broadcasts
 - low: routine assignment updates
 
-### 5.1) MCP-First Enforcement Profile
+### 5.1) CLI-First Enforcement Profile
 
-Team collaboration should run with mailbox MCP as the primary communication path:
+Team collaboration should run with the canonical actor CLI mailbox path as the primary communication path:
 
-- Team role sessions must prioritize mailbox MCP tools over shell-based message paths.
-- Startup should fail-fast when Team role is enabled but mailbox MCP capability is missing.
-- Startup should also fail-fast when required mailbox tools are incomplete (`actor_inbox`, `actor_ack`, `actor_send`).
+- Team role sessions must prioritize `AGENTHUB_ACTOR_CLI` mailbox/task commands over ad-hoc message paths.
+- Startup should fail-fast when Team role is enabled but the canonical actor CLI coordination capability is missing.
+- Startup should also fail-fast when required actor mailbox commands are unavailable (`actor inbox`, `actor ack`, `actor send`).
 - Turn loop should stay deterministic:
   - pull inbox -> process -> ack -> send/report -> next pull.
 - Team prompt dynamic tail should include an explicit `Allowed actions` block to deny bypass paths.
