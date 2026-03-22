@@ -16,11 +16,13 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, maybe_remote_mailbox_service,
     normalized_env_var,
 };
-use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::agent::AGENT_NODE_MAIN_ID;
+use crate::agent::{AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
-use crate::team::{TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager, TeamTaskStatus};
+use crate::team::{
+    TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManager, TeamTaskStatus,
+};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
@@ -127,7 +129,7 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Confirmation results (`team-task-create`, `team-task-update`, `ack`, `send`, `time-trigger-set`, `time-trigger-cancel`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Human-oriented task and trigger confirmations (`team-task-create`, `team-task-update`, `time-trigger-set`, `time-trigger-cancel`) default to TOON on stdout.\n  Machine-oriented confirmations (`ack`, `send`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
@@ -146,6 +148,23 @@ fn resolve_actor_output_format(
             ActorOutputPreference::ToonPreferred => ActorOutputFormat::Toon,
             ActorOutputPreference::JsonPreferred => ActorOutputFormat::Json,
         },
+    }
+}
+
+fn actor_output_preference_for_command(command: &ActorCommand) -> ActorOutputPreference {
+    match command {
+        ActorCommand::Help => ActorOutputPreference::ToonPreferred,
+        ActorCommand::TeamMembers { .. }
+        | ActorCommand::TeamTasks { .. }
+        | ActorCommand::Inbox { .. }
+        | ActorCommand::TeamTaskCreate { .. }
+        | ActorCommand::TeamTaskUpdate { .. }
+        | ActorCommand::TimeTriggerList { .. }
+        | ActorCommand::TimeTriggerSet { .. }
+        | ActorCommand::TimeTriggerCancel { .. } => ActorOutputPreference::ToonPreferred,
+        ActorCommand::Ack { .. }
+        | ActorCommand::Send { .. }
+        | ActorCommand::PermissionReviewRespond { .. } => ActorOutputPreference::JsonPreferred,
     }
 }
 
@@ -413,7 +432,11 @@ async fn ensure_leader_team_access(
 }
 
 fn is_shared_thread_task(task: &crate::team::TeamTaskRecord) -> bool {
-    if task.title.trim().eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+    if task
+        .title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+    {
         return true;
     }
     task.context
@@ -627,13 +650,15 @@ fn parse_actor_command(
                         context = Some(parse_json(raw, "context_json")?);
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for team-task-create: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-create: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
             }
-            let title = take_optional(title)
-                .ok_or_else(|| anyhow::anyhow!("title is required"))?;
+            let title = take_optional(title).ok_or_else(|| anyhow::anyhow!("title is required"))?;
             Ok(ActorCommand::TeamTaskCreate {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
@@ -686,7 +711,10 @@ fn parse_actor_command(
                         status = Some(parse_team_task_status_argument(raw)?);
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for team-task-update: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-update: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1045,7 +1073,10 @@ fn parse_actor_command(
                         );
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for time-trigger-set: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for time-trigger-set: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1083,7 +1114,10 @@ fn parse_actor_command(
                         limit = parse_i64(raw, "limit")?;
                     }
                     other => {
-                        return Err(anyhow::anyhow!("unknown flag for time-trigger-list: {}", other));
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for time-trigger-list: {}",
+                            other
+                        ));
                     }
                 }
                 idx += 1;
@@ -1163,11 +1197,10 @@ fn parse_actor_command(
                     }
                     "--permission-id" => {
                         idx += 1;
-                        permission_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--permission-id requires a value"))?,
-                        );
+                        permission_id =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--permission-id requires a value")
+                            })?);
                     }
                     "--option-id" => {
                         idx += 1;
@@ -1221,6 +1254,7 @@ async fn run_actor_command(
     command: ActorCommand,
     output_mode: ActorOutputMode,
 ) -> anyhow::Result<()> {
+    let output_preference = actor_output_preference_for_command(&command);
     match command {
         ActorCommand::Help => {
             println!("{}", actor_usage());
@@ -1231,11 +1265,7 @@ async fn run_actor_command(
             let team_context = manager
                 .describe_team_context(team_id.as_deref(), run_id.as_deref())
                 .await?;
-            write_actor_output(
-                &team_context,
-                output_mode,
-                ActorOutputPreference::ToonPreferred,
-            )?;
+            write_actor_output(&team_context, output_mode, output_preference)?;
         }
         ActorCommand::TeamTasks {
             team_id,
@@ -1254,7 +1284,7 @@ async fn run_actor_command(
             if let Some(status) = status {
                 tasks.retain(|task| task.status == status);
             }
-            write_actor_output(&tasks, output_mode, ActorOutputPreference::ToonPreferred)?;
+            write_actor_output(&tasks, output_mode, output_preference)?;
         }
         ActorCommand::TeamTaskCreate {
             team_id,
@@ -1268,7 +1298,14 @@ async fn run_actor_command(
             let manager = TeamManager::new(db);
             let _team = ensure_leader_team_access(&manager, &team_id, &actor_id).await?;
             let (task, conversation) = manager
-                .create_task(&team_id, &title, &actor_id, context, "group_chat", topic.as_deref())
+                .create_task(
+                    &team_id,
+                    &title,
+                    &actor_id,
+                    context,
+                    "group_chat",
+                    topic.as_deref(),
+                )
                 .await?;
             let task = if status == TeamTaskStatus::Open {
                 task
@@ -1279,7 +1316,7 @@ async fn run_actor_command(
                 "task": task,
                 "conversation": conversation,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
         ActorCommand::TeamTaskUpdate {
             team_id,
@@ -1296,7 +1333,7 @@ async fn run_actor_command(
                 "task does not belong to this team"
             );
             let task = manager.update_task_status(&task_id, status).await?;
-            write_actor_output(&task, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&task, output_mode, output_preference)?;
         }
         ActorCommand::Inbox {
             run_id,
@@ -1328,7 +1365,7 @@ async fn run_actor_command(
             )
             .await
             .map_err(|err| map_actor_service_error("actor inbox", err))?;
-            write_actor_output(&inbox, output_mode, ActorOutputPreference::ToonPreferred)?;
+            write_actor_output(&inbox, output_mode, output_preference)?;
         }
         ActorCommand::Ack {
             run_id,
@@ -1414,13 +1451,15 @@ async fn run_actor_command(
                     fire_at: compute_time_trigger_fire_at(now_ts, delay_seconds),
                 })
                 .await?;
-            write_actor_output(&record, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&record, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerList { actor_id, limit } => {
             let db = agenthub_db::init_db().await?;
             let manager = AgentTimeTriggerManager::new(db);
-            let records = manager.list_triggers_for_agent(actor_id.as_str(), limit).await?;
-            write_actor_output(&records, output_mode, ActorOutputPreference::ToonPreferred)?;
+            let records = manager
+                .list_triggers_for_agent(actor_id.as_str(), limit)
+                .await?;
+            write_actor_output(&records, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerCancel {
             actor_id,
@@ -1436,7 +1475,7 @@ async fn run_actor_command(
                 "status": "ok",
                 "trigger_id": trigger_id,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
         ActorCommand::PermissionReviewRespond {
             team_id,
@@ -1497,15 +1536,14 @@ async fn run_actor_command(
             }
 
             let response_outcome = if let Some(option_id) = option_id.as_ref() {
-                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id.clone()))
+                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                    option_id.clone(),
+                ))
             } else {
                 match outcome.as_deref() {
                     Some("cancelled") | None => RequestPermissionOutcome::Cancelled,
                     Some(other) => {
-                        anyhow::bail!(
-                            "unsupported outcome '{}', expected 'cancelled'",
-                            other
-                        );
+                        anyhow::bail!("unsupported outcome '{}', expected 'cancelled'", other);
                     }
                 }
             };
@@ -2263,7 +2301,10 @@ mod tests {
 
     #[test]
     fn compute_time_trigger_fire_at_adds_future_safety_margin() {
-        assert_eq!(compute_time_trigger_fire_at(1_700_000_000, 1), 1_700_000_002);
+        assert_eq!(
+            compute_time_trigger_fire_at(1_700_000_000, 1),
+            1_700_000_002
+        );
         assert_eq!(
             compute_time_trigger_fire_at(1_700_000_000, MAX_TIME_TRIGGER_DELAY_SECONDS),
             1_700_000_000
@@ -2362,5 +2403,100 @@ mod tests {
         )
         .expect("encode inbox response");
         assert!(output.contains("next_cursor: 42"));
+    }
+
+    #[test]
+    fn team_members_defaults_to_toon_output_preference() {
+        let preference = actor_output_preference_for_command(&ActorCommand::TeamMembers {
+            team_id: Some("team-1".to_string()),
+            run_id: Some("run-1".to_string()),
+        });
+        assert_eq!(preference, ActorOutputPreference::ToonPreferred);
+
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Default,
+            preference,
+        )
+        .expect("encode team-members output");
+        assert!(output.contains("name: alpha"));
+        assert!(output.contains("count: 2"));
+        assert!(!output.starts_with('{'));
+    }
+
+    #[test]
+    fn json_flag_still_forces_team_members_json_output() {
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Json,
+            actor_output_preference_for_command(&ActorCommand::TeamMembers {
+                team_id: Some("team-1".to_string()),
+                run_id: Some("run-1".to_string()),
+            }),
+        )
+        .expect("encode forced json team-members output");
+        assert_eq!(output, r#"{"name":"alpha","count":2}"#);
+    }
+
+    #[test]
+    fn task_and_trigger_confirmations_default_to_toon() {
+        let task_create_preference =
+            actor_output_preference_for_command(&ActorCommand::TeamTaskCreate {
+                team_id: "team-1".to_string(),
+                actor_id: "leader".to_string(),
+                title: "Create task".to_string(),
+                status: TeamTaskStatus::Open,
+                topic: None,
+                context: Value::Object(Default::default()),
+            });
+        let time_trigger_preference =
+            actor_output_preference_for_command(&ActorCommand::TimeTriggerSet {
+                actor_id: "leader".to_string(),
+                delay_seconds: 60,
+                message: "follow up".to_string(),
+            });
+        assert_eq!(task_create_preference, ActorOutputPreference::ToonPreferred);
+        assert_eq!(
+            time_trigger_preference,
+            ActorOutputPreference::ToonPreferred
+        );
+    }
+
+    #[test]
+    fn send_ack_and_permission_review_stay_json_preferred() {
+        let send_preference = actor_output_preference_for_command(&ActorCommand::Send {
+            run_id: "run-1".to_string(),
+            from_actor_id: "leader".to_string(),
+            to_actor_id: Some("worker".to_string()),
+            channel_id: None,
+            channel: "default".to_string(),
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: Box::new(Value::String("hello".to_string())),
+            payload_source: ActorSendPayloadSource::Text,
+            idempotency_key: None,
+        });
+        let ack_preference = actor_output_preference_for_command(&ActorCommand::Ack {
+            run_id: "run-1".to_string(),
+            actor_id: "worker".to_string(),
+            message_id: 42,
+        });
+        let permission_preference =
+            actor_output_preference_for_command(&ActorCommand::PermissionReviewRespond {
+                team_id: "team-1".to_string(),
+                actor_id: "leader".to_string(),
+                permission_id: "perm-1".to_string(),
+                option_id: Some("allow".to_string()),
+                outcome: None,
+            });
+        assert_eq!(send_preference, ActorOutputPreference::JsonPreferred);
+        assert_eq!(ack_preference, ActorOutputPreference::JsonPreferred);
+        assert_eq!(permission_preference, ActorOutputPreference::JsonPreferred);
     }
 }
