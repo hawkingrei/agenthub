@@ -80,7 +80,7 @@ Actor semantic contract remains stable in both topologies:
 
 ### 1) Identity Contract
 
-- Canonical field names: `actor_id`, `from_actor_id`, `to_actor_id`.
+- Canonical field names: `actor_id`, `from_actor_id`, `to_actor_id`, `channel_id`.
 - Tool boundary aliases (`agent_id`) are additive compatibility aliases only.
 - `run_id` is required partition key and cannot be dropped.
 
@@ -90,7 +90,7 @@ Minimum envelope fields:
 
 - `run_id`
 - `from_actor_id`
-- `to_actor_id`
+- exactly one of `to_actor_id` or `channel_id`
 - `from_peer_id`
 - `to_peer_id`
 - `channel`
@@ -121,6 +121,15 @@ Identity-kind projection (for UX/policy):
 - Team leader/worker coordination should route through Actor mailbox in run scope.
 - Team run/step state updates must not bypass actor delivery evidence for cross-actor communication.
 - Human actor is a first-class actor kind and should be represented explicitly.
+- Human mailbox delivery (`to_actor_id = user` / `user:<id>`) is the notification path for urgent
+  operator-facing escalation.
+- Group chat / channel sends should fan out by channel scope, while `@member_id` is preserved as
+  mention metadata for receivers instead of narrowing the recipient set.
+- Channel fan-out should persist one canonical conversation message on the AgentHub authority node
+  before mailbox delivery, then auto-route each recipient mailbox hop as local or p2p remote based
+  on the recipient agent target node.
+- Remote nodes should persist channel fan-out as replica history keyed by the canonical authority
+  message so node-local actors can query backup/history data without becoming the authority source.
 - Conversation event-bus transport is allowed for realtime UI/visibility, but execution command truth remains mailbox-backed.
 
 ### 5) Observability Contract

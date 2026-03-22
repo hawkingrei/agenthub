@@ -17,13 +17,13 @@ use sqlx::{Row, SqlitePool};
 use tower::util::ServiceExt;
 use uuid::Uuid;
 
-use crate::agenthub_binary::resolve_agenthub_binary_path;
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::acp::default_actor_cli_path;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
+use crate::agenthub_binary::resolve_agenthub_binary_path;
 use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::state::AppState;
@@ -523,6 +523,28 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_channel_message_replicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            authority_message_id INTEGER NOT NULL,
+            run_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            source_node_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            stored_at INTEGER NOT NULL,
+            UNIQUE(authority_message_id, conversation_id, task_id)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_channel_message_replicas");
 
     sqlx::query(
         r#"

@@ -37,13 +37,17 @@ Team mailbox tools:
    `actor_inbox` with `{{"run_id":"<run-id>","limit": 20}}`
 2. Acknowledge a message after processing:
    `actor_ack` with `{{"run_id":"<run-id>","message_id": 123}}`
-3. Send a local message:
+3. Send a local direct message:
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
-4. Send a remote message:
+4. Send a channel message:
+   `actor_send` with `{{"run_id":"<run-id>","channel_id":"all","text":"@worker Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
+5. Send a remote direct message:
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"remote-worker","transport":"remote","route":{{"endpoint":"https://..."}},"text":"Please review this patch.\n\n- verify API shape\n- call out blockers"}}`
-5. Force duplicate delivery when business logic requires repeated send:
+6. Send an urgent human notification:
+   `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"user","text":"Urgent: permission review timed out. Please check Channel for details."}}`
+7. Force duplicate delivery when business logic requires repeated send:
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","allow_duplicate":true,"text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
-6. Use explicit idempotency key when coordinating retries across workers:
+8. Use explicit idempotency key when coordinating retries across workers:
    `actor_send` with `{{"run_id":"<run-id>","to_actor_id":"worker","idempotency_key":"stable-key","text":"Reminder:\n\n- update the test evidence\n- reply when done"}}`
 
 Team context tool:
@@ -64,6 +68,9 @@ Protocol rules:
 - Acknowledge each consumed message exactly once.
 - Keep payload JSON compact and deterministic.
 - Prefer `actor_send.text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
+- For group chat / channel sends, use `channel_id`; the message will still fan out to all relevant teammates even when `@member_id` appears in the text.
+- Treat `@member_id` in channel text as mention metadata for receivers, not as a routing override.
+- Use `to_actor_id = "user"` or `user:<id>` only when you intentionally want a human notification.
 - Use `channel` only when a non-default channel is required.
 - By default, `actor_send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
 - Reuse the same payload and routing fields when retrying; changing payload under the same idempotency key will be rejected.
@@ -140,6 +147,8 @@ mod tests {
         assert!(skill.instructions.contains("actor_inbox"));
         assert!(skill.instructions.contains("actor_ack"));
         assert!(skill.instructions.contains("actor_send"));
+        assert!(skill.instructions.contains("\"channel_id\":\"all\""));
+        assert!(skill.instructions.contains("\"to_actor_id\":\"user\""));
         assert!(skill.instructions.contains("team_members"));
         assert!(
             skill

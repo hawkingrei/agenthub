@@ -172,7 +172,7 @@ Conversation lane should use event bus as the realtime chat/timeline carrier, wh
 as execution command authority:
 
 - user-facing input should not require user-provided `run_id` or `from_actor_id`;
-- backend normalizes sender identity from session and resolves recipients from `@member_id`;
+- backend normalizes sender identity from session, keeps channel fan-out broadcast, and extracts `@member_id` as mention metadata;
 - `conversation_id` is required for chat scope, `run_id` is optional until execution starts;
 - `correlation_id` should link one intent chain across chat events and mailbox/run evidence;
 - execution command types still require mailbox path (`assignment`, `approval`, `step_action`, execution results).

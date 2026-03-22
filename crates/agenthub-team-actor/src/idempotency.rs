@@ -60,6 +60,46 @@ pub fn build_default_actor_message_idempotency_key(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn build_default_actor_channel_idempotency_key(
+    run_id: &str,
+    from_actor_id: &str,
+    from_peer_id: &str,
+    channel_id: &str,
+    channel: &str,
+    transport: &str,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    let route_canonical = route
+        .map(canonical_json)
+        .unwrap_or_else(|| "null".to_string());
+    let payload_canonical = canonical_json(payload);
+
+    let mut hasher = Sha256::new();
+    hasher.update("actor-channel-idempotency:v1");
+    push_component(&mut hasher, run_id);
+    push_component(&mut hasher, from_actor_id);
+    push_component(&mut hasher, from_peer_id);
+    push_component(&mut hasher, channel_id);
+    push_component(&mut hasher, channel);
+    push_component(&mut hasher, transport);
+    push_component(&mut hasher, &route_canonical);
+    push_component(&mut hasher, &payload_canonical);
+    format!("auto:channel:v1:{:x}", hasher.finalize())
+}
+
+pub fn build_actor_channel_fanout_idempotency_key(
+    channel_idempotency_key: &str,
+    to_actor_id: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update("actor-channel-fanout:v1");
+    push_component(&mut hasher, channel_idempotency_key);
+    push_component(&mut hasher, to_actor_id);
+    format!("fanout:v1:{:x}", hasher.finalize())
+}
+
 pub fn canonical_json(value: &Value) -> String {
     let mut out = String::new();
     write_canonical_json(value, &mut out);
@@ -177,5 +217,36 @@ mod tests {
         assert_eq!(key_a, key_b);
         assert_ne!(key_a, key_c);
         assert!(key_a.starts_with("auto:v1:"));
+    }
+
+    #[test]
+    fn default_channel_idempotency_key_is_stable_for_equivalent_payloads() {
+        let route_a = json!({"endpoint":"https://a.example","meta":{"b":2,"a":1}});
+        let route_b = json!({"meta":{"a":1,"b":2},"endpoint":"https://a.example"});
+        let payload_a = json!({"text":"hello","data":{"k2":"v2","k1":"v1"}});
+        let payload_b = json!({"data":{"k1":"v1","k2":"v2"},"text":"hello"});
+
+        let key_a = build_default_actor_channel_idempotency_key(
+            "run-1",
+            "planner",
+            ACTOR_MAIN_PEER_ID,
+            "all",
+            "coordination",
+            "local",
+            Some(&route_a),
+            &payload_a,
+        );
+        let key_b = build_default_actor_channel_idempotency_key(
+            "run-1",
+            "planner",
+            ACTOR_MAIN_PEER_ID,
+            "all",
+            "coordination",
+            "local",
+            Some(&route_b),
+            &payload_b,
+        );
+        assert_eq!(key_a, key_b);
+        assert!(key_a.starts_with("auto:channel:v1:"));
     }
 }

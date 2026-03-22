@@ -24,10 +24,10 @@ restating the same rules.
   - persist each message once in conversation history
   - forward via actor mailbox transport
 - Mention routing:
-  - `@member_id` = directed recipients only
-  - no `@` = broadcast to all team members
-  - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context
-  - prefer directed `@member_id` over broadcast for execution collaboration
+  - group chat / channel messages always broadcast to all relevant team members
+  - `@member_id` inside a channel message does not narrow mailbox fan-out; it annotates mention metadata for receivers
+  - direct mailbox sends still use explicit `to_actor_id`
+  - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context when a direct message is surfaced back into chat
   - leader should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
   - workers should actively mention leader plus impacted peers when reporting blockers, dependency changes, or evidence handoff
 - Human-facing reply contract:

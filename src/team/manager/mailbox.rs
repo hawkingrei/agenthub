@@ -1,11 +1,12 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, AckActorMessageCommand, AckActorMessageResult, ActorAckRequest,
-    ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox, ActorMailboxError,
-    ActorMailboxService, ActorMailboxStore, ActorSendRequest, ActorSendResponse, ActorServiceError,
-    ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, AckActorMessageCommand, AckActorMessageResult,
+    ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox,
+    ActorMailboxError, ActorMailboxService, ActorMailboxStore, ActorSendRequest, ActorSendResponse,
+    ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
     PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
     SendActorMessageCommand, actor_message_fingerprint,
 };
@@ -20,7 +21,10 @@ use super::codec::{
     parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
-use super::{TeamConversationStreamEvent, TeamManager, redact_sensitive_json};
+use super::{
+    TeamConversationStreamEvent, TeamManager, parse_team_member_specs, redact_sensitive_json,
+};
+use crate::agent::normalize_target_node_id;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
@@ -39,6 +43,22 @@ struct CanonicalChatReply {
 struct SharedThreadTarget {
     task_id: String,
     conversation_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedChannelMailboxTarget {
+    team_id: String,
+    task_id: String,
+    conversation_id: String,
+    recipient_actor_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedMailboxRecipientDelivery {
+    actor_id: String,
+    to_peer_id: String,
+    transport: TeamActorMessageTransport,
+    route: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -105,6 +125,7 @@ impl TeamManager {
         });
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub async fn send_actor_message(
         &self,
         request: SendActorMessageInput<'_>,
@@ -279,6 +300,175 @@ impl TeamManager {
             db: self.db.clone(),
         })
     }
+
+    async fn resolve_channel_mailbox_target(
+        &self,
+        run_id: &str,
+        channel_id: &str,
+        from_actor_id: &str,
+    ) -> anyhow::Result<ResolvedChannelMailboxTarget> {
+        let trimmed_channel_id = channel_id.trim();
+        if trimmed_channel_id.is_empty() {
+            anyhow::bail!("channel_id must be a non-empty string");
+        }
+
+        let team_id =
+            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+                .bind(run_id)
+                .fetch_optional(&self.db)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+
+        let (task_id, conversation_id, mode) =
+            if trimmed_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+                let (task_id, conversation_id) = self
+                    .ensure_shared_thread_target_for_team(&team_id, from_actor_id)
+                    .await?;
+                (task_id, conversation_id, "group_chat".to_string())
+            } else {
+                let row = sqlx::query(
+                    r#"
+                SELECT task_id, id AS conversation_id, mode
+                FROM team_conversations
+                WHERE team_id = ?1 AND id = ?2
+                LIMIT 1
+                "#,
+                )
+                .bind(&team_id)
+                .bind(trimmed_channel_id)
+                .fetch_optional(&self.db)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "channel '{}' not found for current team",
+                        trimmed_channel_id
+                    )
+                })?;
+                (
+                    row.get::<String, _>("task_id"),
+                    row.get::<String, _>("conversation_id"),
+                    row.get::<String, _>("mode"),
+                )
+            };
+
+        if mode.trim() != "group_chat" {
+            anyhow::bail!(
+                "channel '{}' is not a group_chat channel",
+                trimmed_channel_id
+            );
+        }
+
+        let team = self.get_team(&team_id).await?;
+        let member_ids = parse_team_member_specs(&team.spec)?
+            .into_iter()
+            .map(|member| member.member_id)
+            .filter(|member_id| member_id != from_actor_id)
+            .collect::<Vec<_>>();
+
+        Ok(ResolvedChannelMailboxTarget {
+            team_id,
+            task_id,
+            conversation_id,
+            recipient_actor_ids: member_ids,
+        })
+    }
+
+    async fn extract_channel_mention_actor_ids(
+        &self,
+        run_id: &str,
+        payload: &Value,
+    ) -> anyhow::Result<Vec<String>> {
+        let team_id =
+            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+                .bind(run_id)
+                .fetch_optional(&self.db)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+        let team = self.get_team(&team_id).await?;
+        let member_ids = parse_team_member_specs(&team.spec)?
+            .into_iter()
+            .map(|member| member.member_id)
+            .collect::<BTreeSet<_>>();
+        Ok(collect_channel_mention_actor_ids(payload, &member_ids))
+    }
+
+    async fn has_agents_target_node_id_column(&self) -> anyhow::Result<bool> {
+        let rows = sqlx::query("PRAGMA table_info(agents)")
+            .fetch_all(&self.db)
+            .await?;
+        Ok(rows.into_iter().any(|row| {
+            row.get::<String, _>("name")
+                .trim()
+                .eq_ignore_ascii_case("target_node_id")
+        }))
+    }
+
+    async fn resolve_channel_recipient_deliveries(
+        &self,
+        recipient_actor_ids: &[String],
+    ) -> anyhow::Result<Vec<ResolvedMailboxRecipientDelivery>> {
+        if recipient_actor_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !self.has_agents_target_node_id_column().await? {
+            return Ok(recipient_actor_ids
+                .iter()
+                .map(|actor_id| ResolvedMailboxRecipientDelivery {
+                    actor_id: actor_id.clone(),
+                    to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                    transport: TeamActorMessageTransport::Local,
+                    route: None,
+                })
+                .collect());
+        }
+
+        let mut builder =
+            QueryBuilder::<Sqlite>::new("SELECT id, target_node_id FROM agents WHERE id IN (");
+        let mut separated = builder.separated(", ");
+        for actor_id in recipient_actor_ids {
+            separated.push_bind(actor_id.as_str());
+        }
+        separated.push_unseparated(")");
+        let rows = builder.build().fetch_all(&self.db).await?;
+        let mut target_node_by_actor = std::collections::HashMap::with_capacity(rows.len());
+        for row in rows {
+            let actor_id: String = row.get("id");
+            let target_node_id = normalize_target_node_id(
+                row.try_get::<Option<String>, _>("target_node_id")
+                    .ok()
+                    .flatten()
+                    .as_deref(),
+            );
+            target_node_by_actor.insert(actor_id, target_node_id);
+        }
+
+        let mut out = Vec::with_capacity(recipient_actor_ids.len());
+        for actor_id in recipient_actor_ids {
+            if let Some(target_node_id) = target_node_by_actor
+                .get(actor_id.as_str())
+                .and_then(|value| value.as_deref())
+            {
+                out.push(ResolvedMailboxRecipientDelivery {
+                    actor_id: actor_id.clone(),
+                    to_peer_id: ACTOR_NODE_PEER_ID.to_string(),
+                    transport: TeamActorMessageTransport::Remote,
+                    route: Some(
+                        self.remote_relay_adapter
+                            .build_registered_grpc_route_for_target_node(target_node_id)
+                            .await?,
+                    ),
+                });
+            } else {
+                out.push(ResolvedMailboxRecipientDelivery {
+                    actor_id: actor_id.clone(),
+                    to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                    transport: TeamActorMessageTransport::Local,
+                    route: None,
+                });
+            }
+        }
+        Ok(out)
+    }
 }
 
 pub struct SendActorMessageInput<'a> {
@@ -303,6 +493,104 @@ impl TeamActorMailboxService {
     pub fn new(manager: TeamManager) -> Self {
         Self { manager }
     }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn send_channel_message(
+        &self,
+        run_id: &str,
+        from_actor_id: &str,
+        from_peer_id: &str,
+        channel_id: &str,
+        channel: &str,
+        payload: Value,
+        idempotency_key: Option<&str>,
+    ) -> anyhow::Result<ActorSendResponse> {
+        let target = self
+            .manager
+            .resolve_channel_mailbox_target(run_id, channel_id, from_actor_id)
+            .await?;
+        if target.recipient_actor_ids.is_empty() {
+            anyhow::bail!("channel '{}' has no recipient agents", channel_id);
+        }
+        let recipient_deliveries = self
+            .manager
+            .resolve_channel_recipient_deliveries(&target.recipient_actor_ids)
+            .await?;
+
+        let mention_actor_ids = self
+            .manager
+            .extract_channel_mention_actor_ids(run_id, &payload)
+            .await?;
+        let canonical_payload = ensure_channel_message_correlation_id(payload);
+        let canonical_message = self
+            .manager
+            .append_task_conversation_message(
+                &target.task_id,
+                from_actor_id,
+                None,
+                "group_chat",
+                canonical_payload.clone(),
+            )
+            .await?;
+
+        let base_idempotency_key = idempotency_key.map(str::to_string).unwrap_or_else(|| {
+            agenthub_team_actor::build_default_actor_channel_idempotency_key(
+                run_id,
+                from_actor_id,
+                from_peer_id,
+                channel_id,
+                channel,
+                TeamActorMessageTransport::Local.as_str(),
+                None,
+                &canonical_payload,
+            )
+        });
+
+        let mut first_result = None;
+        let mut any_created = false;
+        for delivery in &recipient_deliveries {
+            let forwarded_payload = build_channel_mailbox_forward_payload(
+                &canonical_payload,
+                &target,
+                channel_id,
+                canonical_message.message_id,
+                mention_actor_ids.as_slice(),
+            );
+            let fanout_idempotency_key =
+                agenthub_team_actor::build_actor_channel_fanout_idempotency_key(
+                    &base_idempotency_key,
+                    delivery.actor_id.as_str(),
+                );
+            let result = self
+                .manager
+                .send_actor_message_with_created(SendActorMessageInput {
+                    run_id,
+                    from_actor_id,
+                    from_peer_id,
+                    to_actor_id: delivery.actor_id.as_str(),
+                    to_peer_id: delivery.to_peer_id.as_str(),
+                    channel,
+                    transport: delivery.transport.clone(),
+                    route: delivery.route.clone(),
+                    payload: forwarded_payload,
+                    idempotency_key: Some(fanout_idempotency_key.as_str()),
+                })
+                .await?;
+            any_created |= result.1;
+            if first_result.is_none() {
+                first_result = Some(result);
+            }
+        }
+
+        let (message, created) = first_result.expect("channel fanout should produce a message");
+        Ok(ActorSendResponse {
+            message_id: message.message_id,
+            state: message.status.clone(),
+            deduped: !created && !any_created,
+            created_at: message.created_at,
+            message,
+        })
+    }
 }
 
 #[async_trait]
@@ -315,7 +603,24 @@ impl ActorMailboxService for TeamActorMailboxService {
         let from_actor_id = required_trimmed_field(&request.from_actor_id, "from_actor_id")?;
         let from_peer_id =
             optional_trimmed(request.from_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
-        let to_actor_id = required_trimmed_field(&request.to_actor_id, "to_actor_id")?;
+        let to_actor_id = optional_trimmed(request.to_actor_id.as_deref());
+        let channel_id = optional_trimmed(request.channel_id.as_deref());
+        let (to_actor_id, channel_id) = match (to_actor_id, channel_id) {
+            (Some(to_actor_id), None) => (Some(to_actor_id), None),
+            (None, Some(channel_id)) => (None, Some(channel_id)),
+            (Some(_), Some(_)) => {
+                return Err(ActorServiceError::new(
+                    ActorServiceErrorCode::BadRequest,
+                    "to_actor_id and channel_id cannot be used together",
+                ));
+            }
+            (None, None) => {
+                return Err(ActorServiceError::new(
+                    ActorServiceErrorCode::BadRequest,
+                    "to_actor_id or channel_id is required",
+                ));
+            }
+        };
         let to_peer_id =
             optional_trimmed(request.to_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
         let channel = request
@@ -328,6 +633,28 @@ impl ActorMailboxService for TeamActorMailboxService {
             .transport
             .unwrap_or(TeamActorMessageTransport::Local);
         let idempotency_key = optional_trimmed(request.idempotency_key.as_deref());
+
+        if request.route.is_some() && channel_id.is_some() {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "channel mailbox target does not support route",
+            ));
+        }
+        if let Some(channel_id) = channel_id {
+            return self
+                .send_channel_message(
+                    run_id,
+                    from_actor_id,
+                    from_peer_id,
+                    channel_id,
+                    channel,
+                    request.payload,
+                    idempotency_key,
+                )
+                .await
+                .map_err(map_actor_service_error);
+        }
+        let to_actor_id = to_actor_id.expect("validated actor target");
 
         let (message, created) = self
             .manager
@@ -895,6 +1222,143 @@ pub(super) fn should_persist_human_visible_chat_reply_for_payload(
 fn is_human_actor_id(actor_id: &str) -> bool {
     let trimmed = actor_id.trim();
     trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+}
+
+fn ensure_channel_message_correlation_id(payload: Value) -> Value {
+    let mut payload_obj = match payload {
+        Value::Object(map) => map,
+        Value::String(text) => {
+            let mut payload_obj = Map::new();
+            payload_obj.insert(
+                "type".to_string(),
+                Value::String("chat_message".to_string()),
+            );
+            payload_obj.insert("text".to_string(), Value::String(text));
+            payload_obj
+        }
+        other => {
+            let mut payload_obj = Map::new();
+            payload_obj.insert(
+                "type".to_string(),
+                Value::String("chat_message".to_string()),
+            );
+            payload_obj.insert("text".to_string(), Value::String(other.to_string()));
+            payload_obj
+        }
+    };
+    let has_correlation_id = payload_obj
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    if !has_correlation_id {
+        payload_obj.insert(
+            "correlation_id".to_string(),
+            Value::String(Uuid::new_v4().to_string()),
+        );
+    }
+    Value::Object(payload_obj)
+}
+
+fn build_channel_mailbox_forward_payload(
+    source_payload: &Value,
+    target: &ResolvedChannelMailboxTarget,
+    channel_id: &str,
+    authority_message_id: i64,
+    mention_actor_ids: &[String],
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    let mentions = mention_actor_ids
+        .iter()
+        .cloned()
+        .map(Value::String)
+        .collect::<Vec<_>>();
+    payload_obj.insert(
+        "channel_id".to_string(),
+        Value::String(channel_id.to_string()),
+    );
+    payload_obj.insert("team_id".to_string(), Value::String(target.team_id.clone()));
+    payload_obj.insert(
+        "channel_conversation_id".to_string(),
+        Value::String(target.conversation_id.clone()),
+    );
+    payload_obj.insert("task_id".to_string(), Value::String(target.task_id.clone()));
+    payload_obj.insert(
+        "authority_message_id".to_string(),
+        Value::Number(authority_message_id.into()),
+    );
+    payload_obj.insert(
+        "delivery_scope".to_string(),
+        Value::String("channel_broadcast".to_string()),
+    );
+    payload_obj.insert(
+        "mention_actor_ids".to_string(),
+        Value::Array(mentions.clone()),
+    );
+    payload_obj.insert("mentioned_actor_ids".to_string(), Value::Array(mentions));
+    Value::Object(payload_obj)
+}
+
+fn collect_channel_mention_actor_ids(
+    payload: &Value,
+    member_ids: &BTreeSet<String>,
+) -> Vec<String> {
+    let mut mentioned = BTreeSet::new();
+    if let Some(explicit_mentions) = payload.get("mention_actor_ids").and_then(Value::as_array) {
+        for mention in explicit_mentions {
+            if let Some(actor_id) = mention.as_str().map(str::trim)
+                && member_ids.contains(actor_id)
+            {
+                mentioned.insert(actor_id.to_string());
+            }
+        }
+    }
+
+    let text = match payload {
+        Value::String(text) => Some(text.as_str()),
+        Value::Object(map) => map.get("text").and_then(Value::as_str),
+        _ => None,
+    };
+    if let Some(text) = text {
+        for actor_id in member_ids {
+            if find_raw_actor_mention_range(text, actor_id).is_some() {
+                mentioned.insert(actor_id.clone());
+            }
+        }
+    }
+
+    mentioned.into_iter().collect()
+}
+
+fn is_valid_mention_char(raw: u8) -> bool {
+    matches!(raw, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_')
+}
+
+fn is_email_local_char(raw: u8) -> bool {
+    matches!(
+        raw,
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b'%' | b'+' | b'-'
+    )
+}
+
+fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, usize)> {
+    let needle = format!("@{actor_id}");
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+    while let Some(found) = text[cursor..].find(needle.as_str()) {
+        let start = cursor + found;
+        let end = start + needle.len();
+        let left_ok = start == 0 || !is_email_local_char(bytes[start - 1]);
+        let right_ok = end >= bytes.len() || !is_valid_mention_char(bytes[end]);
+        if left_ok && right_ok {
+            return Some((start, end));
+        }
+        cursor = end;
+    }
+    None
 }
 
 fn resolve_canonical_chat_reply(payload: &Value) -> Option<CanonicalChatReply> {

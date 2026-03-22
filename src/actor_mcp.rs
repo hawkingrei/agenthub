@@ -2,8 +2,8 @@ use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome}
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
-    ActorServiceError, ActorServiceErrorCode, build_default_actor_message_idempotency_key,
-    parse_actor_transport,
+    ActorServiceError, ActorServiceErrorCode, build_default_actor_channel_idempotency_key,
+    build_default_actor_message_idempotency_key, parse_actor_transport,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -66,6 +66,7 @@ struct ActorAckToolArgs {
 struct ActorSendToolArgs {
     run_id: Option<String>,
     to_actor_id: Option<String>,
+    channel_id: Option<String>,
     text: Option<String>,
     payload: Option<Value>,
     channel: Option<String>,
@@ -296,17 +297,20 @@ fn actor_tools() -> Vec<Value> {
         }),
         json!({
             "name": "actor_send",
-            "description": "Send a mailbox message from current actor to another actor. Prefer text for markdown-rich replies; use payload only for structured machine-readable coordination.",
+            "description": "Send a mailbox message to another actor, a team channel, or a human mailbox notification. Prefer text for markdown-rich replies; use payload only for structured machine-readable coordination.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
                 "oneOf": [
                     { "required": ["to_actor_id", "text"] },
-                    { "required": ["to_actor_id", "payload"] }
+                    { "required": ["to_actor_id", "payload"] },
+                    { "required": ["channel_id", "text"] },
+                    { "required": ["channel_id", "payload"] }
                 ],
                 "properties": {
                     "run_id": { "type": "string", "minLength": 1 },
                     "to_actor_id": { "type": "string", "minLength": 1 },
+                    "channel_id": { "type": "string", "minLength": 1 },
                     "text": {
                         "type": "string",
                         "minLength": 1,
@@ -551,7 +555,8 @@ struct ResolveIdempotencyKeyInput<'a> {
     run_id: &'a str,
     from_actor_id: &'a str,
     from_peer_id: &'a str,
-    to_actor_id: &'a str,
+    to_actor_id: Option<&'a str>,
+    channel_id: Option<&'a str>,
     to_peer_id: &'a str,
     channel: &'a str,
     transport: &'a ActorMessageTransport,
@@ -584,17 +589,30 @@ fn resolve_idempotency_key(
         return Ok(None);
     }
     Ok(Some(explicit_idempotency_key.unwrap_or_else(|| {
-        build_default_actor_message_idempotency_key(
-            input.run_id,
-            input.from_actor_id,
-            input.from_peer_id,
-            input.to_actor_id,
-            input.to_peer_id,
-            input.channel,
-            input.transport.as_str(),
-            input.route,
-            input.payload,
-        )
+        match (input.to_actor_id, input.channel_id) {
+            (Some(to_actor_id), None) => build_default_actor_message_idempotency_key(
+                input.run_id,
+                input.from_actor_id,
+                input.from_peer_id,
+                to_actor_id,
+                input.to_peer_id,
+                input.channel,
+                input.transport.as_str(),
+                input.route,
+                input.payload,
+            ),
+            (None, Some(channel_id)) => build_default_actor_channel_idempotency_key(
+                input.run_id,
+                input.from_actor_id,
+                input.from_peer_id,
+                channel_id,
+                input.channel,
+                input.transport.as_str(),
+                input.route,
+                input.payload,
+            ),
+            _ => unreachable!("actor send target already validated"),
+        }
     })))
 }
 
@@ -710,10 +728,17 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
         Ok(args) => args,
         Err(err) => return tool_result_error(err, None),
     };
-    let to_actor_id = match take_required(args.to_actor_id, &[], "to_actor_id") {
-        Ok(value) => value,
-        Err(err) => return tool_result_error(err.to_string(), None),
-    };
+    let to_actor_id = take_optional(args.to_actor_id);
+    let channel_id = take_optional(args.channel_id);
+    match (to_actor_id.as_deref(), channel_id.as_deref()) {
+        (Some(_), None) | (None, Some(_)) => {}
+        (Some(_), Some(_)) => {
+            return tool_result_error("to_actor_id and channel_id cannot be used together", None);
+        }
+        (None, None) => {
+            return tool_result_error("to_actor_id or channel_id is required", None);
+        }
+    }
     let (mut payload, payload_source) = match resolve_actor_send_payload(args.text, args.payload) {
         Ok(payload) => payload,
         Err(err) => return tool_result_error(err, None),
@@ -736,17 +761,21 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
     let channel =
         take_optional(args.channel).unwrap_or_else(|| context.default_channel.to_string());
     let allow_duplicate = args.allow_duplicate.unwrap_or(false);
-    let permission_review_request_id = match maybe_prepare_permission_review_delegation(
-        manager,
-        permissions,
-        context,
-        &to_actor_id,
-        &mut payload,
-    )
-    .await
-    {
-        Ok(request_id) => request_id,
-        Err(err) => return tool_result_error(format!("actor_send failed: {err}"), None),
+    let permission_review_request_id = if let Some(to_actor_id) = to_actor_id.as_deref() {
+        match maybe_prepare_permission_review_delegation(
+            manager,
+            permissions,
+            context,
+            to_actor_id,
+            &mut payload,
+        )
+        .await
+        {
+            Ok(request_id) => request_id,
+            Err(err) => return tool_result_error(format!("actor_send failed: {err}"), None),
+        }
+    } else {
+        None
     };
     let to_peer_id = if transport == ActorMessageTransport::Remote {
         ACTOR_NODE_PEER_ID
@@ -757,7 +786,8 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
         run_id: &run_id,
         from_actor_id: &context.actor_id,
         from_peer_id: ACTOR_MAIN_PEER_ID,
-        to_actor_id: &to_actor_id,
+        to_actor_id: to_actor_id.as_deref(),
+        channel_id: channel_id.as_deref(),
         to_peer_id,
         channel: &channel,
         transport: &transport,
@@ -775,6 +805,7 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
             from_actor_id: context.actor_id.clone(),
             from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
             to_actor_id: to_actor_id.clone(),
+            channel_id: channel_id.clone(),
             to_peer_id: Some(to_peer_id.to_string()),
             channel: Some(channel),
             transport: Some(transport),
@@ -802,7 +833,7 @@ async fn tool_actor_send<S: ActorMailboxService + ?Sized>(
                 && let Err(err) = permissions
                     .record_review_dispatch(
                         permission_id,
-                        Some(to_actor_id.as_str()),
+                        to_actor_id.as_deref(),
                         "leader_delegated",
                         Some(run_id.as_str()),
                         Some(response.message_id),
@@ -2369,7 +2400,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
@@ -2427,7 +2459,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
@@ -2446,7 +2479,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
@@ -2462,7 +2496,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_MAIN_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Local,
@@ -2487,7 +2522,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Remote,
@@ -2503,7 +2539,8 @@ mod tests {
             run_id: "run-1",
             from_actor_id: "leader",
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "worker",
+            to_actor_id: Some("worker"),
+            channel_id: None,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "default",
             transport: &ActorMessageTransport::Remote,
@@ -2826,6 +2863,110 @@ mod tests {
                 .is_some_and(|warning| warning.contains("Prefer actor_send.text")),
             "missing payload warning: {response}"
         );
+    }
+
+    #[tokio::test]
+    async fn actor_send_channel_target_broadcasts_and_preserves_mentions() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("actor-mcp-send-channel-{}", Uuid::new_v4()),
+                description: Some("actor mcp channel target".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner"},
+                        {"member_id":"reviewer"},
+                        {"member_id":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-actor-mcp-channel-send"),
+                json!({"prompt":"go"}),
+            )
+            .await
+            .expect("create run");
+        let service = state.teams.actor_mailbox_service();
+        let permissions = AcpPermissionService::new(state.db.clone());
+        let team_id = team.id.clone();
+        let context = ActorMcpContext {
+            team_id: Some(team_id.clone()),
+            current_run_id: Some(run.id.clone()),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+        };
+
+        let response = tool_actor_send(
+            &service,
+            &state.teams,
+            &permissions,
+            &context,
+            Some(
+                json!({
+                    "channel_id":"all",
+                    "text":"@reviewer please validate api contract"
+                })
+                .as_object()
+                .expect("channel args"),
+            ),
+        )
+        .await;
+        assert_eq!(response["isError"], Value::Bool(false), "{response}");
+        assert!(
+            response["structuredContent"]["message_id"]
+                .as_i64()
+                .is_some_and(|value| value > 0),
+            "missing message id: {response}"
+        );
+
+        let rows = sqlx::query(
+            r#"
+            SELECT to_actor_id, payload_json
+            FROM team_actor_messages
+            WHERE run_id = ?1
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(&run.id)
+        .fetch_all(&state.db)
+        .await
+        .expect("load channel mailbox rows");
+        assert_eq!(rows.len(), 2);
+        let recipients = rows
+            .iter()
+            .map(|row| row.get::<String, _>("to_actor_id"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            recipients,
+            vec!["reviewer".to_string(), "worker".to_string()]
+        );
+        for row in &rows {
+            let payload: Value =
+                serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+                    .expect("decode channel payload");
+            assert_eq!(payload["delivery_scope"], json!("channel_broadcast"));
+            assert_eq!(payload["channel_id"], json!("all"));
+            assert_eq!(payload["team_id"], json!(team_id));
+            assert!(
+                payload["authority_message_id"]
+                    .as_i64()
+                    .is_some_and(|value| value > 0),
+                "missing authority_message_id: {payload}"
+            );
+            assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
+            assert_eq!(payload["mentioned_actor_ids"], json!(["reviewer"]));
+            assert_eq!(
+                payload["text"],
+                json!("@reviewer please validate api contract")
+            );
+        }
     }
 
     #[tokio::test]

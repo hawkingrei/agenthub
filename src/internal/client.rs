@@ -410,9 +410,11 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
     ) -> Result<ActorSendResponse, ActorServiceError> {
         let from_actor_kind =
             agenthub_team_actor::infer_actor_identity_kind(&request.from_actor_id);
-        let to_actor_kind = agenthub_team_actor::infer_actor_identity_kind(&request.to_actor_id);
+        let to_actor_id = request.to_actor_id.clone().unwrap_or_default();
+        let to_actor_kind = agenthub_team_actor::infer_actor_identity_kind(&to_actor_id);
         let request_channel = request.channel.clone();
         let request_transport = request.transport.clone();
+        let request_channel_id = request.channel_id.clone();
         let grpc_channel = request_channel
             .clone()
             .unwrap_or_else(|| "default".to_string());
@@ -444,7 +446,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             .send_actor_message(self.request(GrpcSendActorMessageRequest {
                 run_id: request.run_id.clone(),
                 from_actor_id: request.from_actor_id.clone(),
-                to_actor_id: request.to_actor_id.clone(),
+                to_actor_id: to_actor_id.clone(),
                 channel: grpc_channel,
                 transport: grpc_transport,
                 route_json,
@@ -452,6 +454,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 idempotency_key: request.idempotency_key.unwrap_or_default(),
                 from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
                 to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
+                channel_id: request_channel_id.unwrap_or_default(),
             })?)
             .await
             .map_err(map_grpc_status)?
@@ -467,7 +470,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 from_actor_id: request.from_actor_id,
                 from_peer_id: request.from_peer_id.unwrap_or_else(|| "main".to_string()),
                 from_actor_kind,
-                to_actor_id: request.to_actor_id,
+                to_actor_id,
                 to_peer_id: request.to_peer_id.unwrap_or_else(|| "main".to_string()),
                 to_actor_kind,
                 channel: request_channel.unwrap_or_else(|| "default".to_string()),

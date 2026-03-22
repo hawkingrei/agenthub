@@ -91,13 +91,14 @@ For human/agent chat input in conversation lane:
 - gateway must enrich:
   - `from_actor_id`: derived from authenticated human session or agent session identity;
   - `run_id`: optional; bind active run if exists, otherwise keep null (conversation-scoped);
-  - `to_actor_ids`: derived from `@member_id` mentions;
+  - `to_actor_ids`: derived from channel fan-out rules, not from `@member_id` mentions;
+  - `mention_actor_ids`: derived from `@member_id` mentions and preserved for receivers;
   - `conversation_id`: required.
 
 Routing by mention:
 
-- with `@member_id`: directed recipients only.
-- without `@`: team broadcast scope.
+- with or without `@member_id`: group chat still uses team broadcast scope.
+- `@member_id` is preserved as mention metadata for receivers and UI.
 
 ### 3) Event Envelope Contract
 
@@ -167,7 +168,7 @@ Rule:
 
 1. Conversation-first input
 - user sends message without `run_id`/`from_actor_id`, gateway fills required fields correctly.
-- `@member` is resolved into directed recipient set; no-mention is broadcast.
+- `@member` is preserved as mention metadata while channel mailbox fan-out stays broadcast.
 - current baseline implementation: task conversation send API accepts omitted `from_actor_id`
   and defaults to authenticated canonical user actor.
 - current baseline implementation: task conversation payload ensures `correlation_id`

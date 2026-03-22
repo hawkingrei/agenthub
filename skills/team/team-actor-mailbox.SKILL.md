@@ -26,7 +26,12 @@ Shared routing, mention, and human-visible reply policy remain canonical in
 - `agent_id` is a compatibility alias only.
 - `run_id` is the execution partition key for routing/replay.
 - For Team coordination, route by stable `spec.members[].member_id`.
-- Mention routing should prefer explicit `@member_id` recipients for actionable collaboration.
+- `channel_id` targets a Team channel mailbox surface (for example `all`) and broadcasts to the
+  channel's agent recipients.
+- Human mailbox targets use `to_actor_id = "user"` or `to_actor_id = "user:<user-id>"` and should
+  be treated as notification delivery, not as agent identity.
+- `@member_id` in a channel message is mention metadata only; it does not narrow the channel
+  broadcast recipient set.
 
 ## Envelope Contract
 
@@ -34,7 +39,7 @@ Minimum fields:
 
 - `run_id`
 - `from_actor_id`
-- `to_actor_id`
+- exactly one of `to_actor_id` or `channel_id`
 - `channel`
 - `payload`
 
@@ -55,6 +60,11 @@ Recommended fields:
    `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
 5. Use structured payloads only when the receiver truly needs machine-readable fields:
    `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+6. Broadcast into the shared Team channel while preserving mentions as metadata:
+   `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; "$AGENTHUB_ACTOR_CLI" actor send --channel-id all --text "$MESSAGE"`
+7. Escalate to human notifications when urgent coordination cannot wait:
+   `MESSAGE="Urgent: permission review timed out.\n\nPlease check Channel for details."; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id user --text "$MESSAGE"`
 
 ## Reply Modes
 
@@ -88,8 +98,11 @@ Recommended fields:
   the active reviewer; other members should not approve it.
 - If agent review cannot complete in time, the system may surface the same permission request in
   `Channel` (`all`) for human review without blocking the original run.
+- If the matter is urgent and needs immediate operator attention, send a concise notification to the
+  human mailbox (`to_actor_id = user` or `user:<id>`) in addition to any channel update.
 - Shared group chat and direct-human reply boundaries follow `skills/team/AGENTS.md`.
-- For collaboration-intensive work, proactively mention impacted peers (`@member_id`) instead of relying on broadcast.
+- For collaboration-intensive work, proactively mention impacted peers (`@member_id`) so receivers
+  can see who is being called out, even though the channel mailbox fan-out remains broadcast.
 
 ## Output Contract Examples
 

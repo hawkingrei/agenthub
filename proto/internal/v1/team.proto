@@ -32,6 +32,7 @@ message SendActorMessageRequest {
   string idempotency_key = 8;
   string from_peer_id = 9;
   string to_peer_id = 10;
+  string channel_id = 11;
 }
 
 message SendActorMessageResponse {

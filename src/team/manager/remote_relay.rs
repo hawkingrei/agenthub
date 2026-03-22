@@ -18,8 +18,14 @@ use sha2::Sha256;
 use sqlx::{Row, SqlitePool};
 
 use crate::agent::AGENT_NODE_MAIN_ID;
-use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig};
-use crate::internal::p2p::{P2PTransport, build_message_metadata};
+use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
+use crate::internal::client::{
+    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalGrpcPeerClientConfig,
+};
+use crate::internal::p2p::{
+    CredentialProvider, NodeCredentialRequest, NodeTransportMetadata, P2PTransport,
+    build_message_metadata,
+};
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::TeamActorMessageRecord;
 
@@ -32,6 +38,7 @@ pub(super) struct TeamRemoteRelayAdapter {
     db: SqlitePool,
     http_client: reqwest::Client,
     grpc_tls_defaults: Arc<Mutex<Option<GrpcRelayTlsDefaults>>>,
+    grpc_peer_client_config: Arc<Mutex<Option<InternalGrpcPeerClientConfig>>>,
     grpc_client_cache: Arc<Mutex<HashMap<GrpcRelayClientCacheKey, InternalGrpcMailboxClient>>>,
 }
 
@@ -89,6 +96,7 @@ impl TeamRemoteRelayAdapter {
             db,
             http_client,
             grpc_tls_defaults: Arc::new(Mutex::new(None)),
+            grpc_peer_client_config: Arc::new(Mutex::new(None)),
             grpc_client_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -102,6 +110,97 @@ impl TeamRemoteRelayAdapter {
             .lock()
             .expect("lock grpc client cache")
             .clear();
+    }
+
+    pub(super) fn configure_grpc_peer_client(&self, config: Option<InternalGrpcPeerClientConfig>) {
+        *self
+            .grpc_peer_client_config
+            .lock()
+            .expect("lock grpc peer client config") = config;
+    }
+
+    pub(super) async fn build_registered_grpc_route_for_target_node(
+        &self,
+        target_node_id: &str,
+    ) -> anyhow::Result<Value> {
+        let normalized_target_node_id = target_node_id.trim();
+        if normalized_target_node_id.is_empty() || normalized_target_node_id == AGENT_NODE_MAIN_ID {
+            anyhow::bail!("target node id must reference a registered remote agent node");
+        }
+        let peer_config = self
+            .grpc_peer_client_config
+            .lock()
+            .expect("lock grpc peer client config")
+            .clone()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "internal gRPC peer config is missing; remote channel mailbox delivery is unavailable"
+                )
+            })?;
+        let row = sqlx::query(
+            r#"
+            SELECT grpc_target, tls_server_name
+            FROM agent_nodes
+            WHERE id = ?1
+            "#,
+        )
+        .bind(normalized_target_node_id)
+        .fetch_optional(&self.db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("agent node '{}' not found", normalized_target_node_id))?;
+        let grpc_target = row.get::<String, _>("grpc_target").trim().to_string();
+        anyhow::ensure!(
+            !grpc_target.is_empty(),
+            "agent node '{}' does not have a valid gRPC target",
+            normalized_target_node_id
+        );
+        let tls_server_name = row
+            .try_get::<Option<String>, _>("tls_server_name")
+            .ok()
+            .flatten()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let authz = InternalAuthz::new(InternalAuthzConfig {
+            shared_secret: peer_config.shared_secret.clone(),
+            expected_issuer: peer_config.expected_issuer.clone(),
+            expected_audience: peer_config.expected_audience.clone(),
+        });
+        let issued = authz.issue_node_access_token(NodeCredentialRequest {
+            source_node_id: peer_config.source_node_id.clone(),
+            role: InternalRole::Leader.as_str().to_string(),
+            actor_id: None,
+            run_id: None,
+            permissions: vec![InternalAction::MessageSend.as_str().to_string()],
+            scope: Vec::new(),
+            audience: Vec::new(),
+            ttl_seconds: 600,
+        })?;
+
+        let mut route = serde_json::Map::new();
+        route.insert("kind".to_string(), json!("grpc"));
+        route.insert("grpc_target".to_string(), json!(grpc_target));
+        route.insert("access_token".to_string(), json!(issued.access_token));
+        if let Some(value) = tls_server_name.as_deref() {
+            route.insert("tls_server_name".to_string(), json!(value));
+        }
+        NodeTransportMetadata {
+            cluster_id: issued.cluster_id,
+            source_node_id: issued.source_node_id,
+            target_node_id: normalized_target_node_id.to_string(),
+            broadcast_id: None,
+            correlation_id: None,
+            idempotency_key: None,
+            scope: issued.scope,
+            audience: issued.audience,
+            issued_at: issued.issued_at,
+            expires_at: issued.expires_at,
+            kid: issued.kid,
+            payload_digest: None,
+        }
+        .apply_to_route(&mut route);
+
+        Ok(Value::Object(route))
     }
 
     async fn deliver_http(
@@ -216,7 +315,8 @@ impl TeamRemoteRelayAdapter {
                 run_id: message.run_id.clone(),
                 from_actor_id: message.from_actor_id.clone(),
                 from_peer_id: Some(metadata.source_node_id),
-                to_actor_id: message.to_actor_id.clone(),
+                to_actor_id: Some(message.to_actor_id.clone()),
+                channel_id: None,
                 to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
                 channel: Some(message.channel.clone()),
                 transport: Some(ActorMessageTransport::Local),

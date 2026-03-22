@@ -545,6 +545,27 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS team_channel_message_replicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            authority_message_id INTEGER NOT NULL,
+            run_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            from_actor_id TEXT NOT NULL,
+            source_node_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            stored_at INTEGER NOT NULL,
+            UNIQUE(authority_message_id, conversation_id, task_id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS team_actor_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -849,6 +870,21 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_conversation_messages_conv_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_channel_message_replicas_run_channel
+        ON team_channel_message_replicas(run_id, channel_id, stored_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_channel_message_replicas_run_channel: {}",
             err
         );
     }

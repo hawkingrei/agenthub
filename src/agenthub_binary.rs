@@ -116,10 +116,14 @@ mod tests {
         std::fs::create_dir_all(&env_dir).expect("create env dir");
 
         let current_exe = deps_dir.join(format!("agenthub-tests{}", std::env::consts::EXE_SUFFIX));
-        let sibling_binary =
-            debug_dir.join(format!("{AGENTHUB_BINARY_NAME}{}", std::env::consts::EXE_SUFFIX));
-        let env_binary =
-            env_dir.join(format!("{AGENTHUB_BINARY_NAME}{}", std::env::consts::EXE_SUFFIX));
+        let sibling_binary = debug_dir.join(format!(
+            "{AGENTHUB_BINARY_NAME}{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        let env_binary = env_dir.join(format!(
+            "{AGENTHUB_BINARY_NAME}{}",
+            std::env::consts::EXE_SUFFIX
+        ));
 
         std::fs::write(&current_exe, b"test").expect("write current exe marker");
         std::fs::write(&sibling_binary, b"test").expect("write sibling binary marker");
