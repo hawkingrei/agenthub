@@ -94,6 +94,9 @@ restating the same rules.
   update instead of waiting for the final result.
 - Leader owns integrated progress updates to the human/channel and must ensure each active
   assignment has a next checkpoint and fresh evidence.
+- Use shared-channel status when the update needs team-wide visibility; use direct mailbox for
+  routine owner-to-owner coordination; use the human mailbox only for urgent operator-facing
+  notification that cannot wait for normal channel review.
 - Documents and tasks are the source of truth for execution state; channel updates should summarize
   that recorded state instead of becoming the only copy.
 - This durability rule applies to state/progress updates, not to every internal mailbox exchange.

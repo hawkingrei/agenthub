@@ -33,6 +33,17 @@ Shared routing, mention, and human-visible reply policy remain canonical in
 - `@member_id` in a channel message is mention metadata only; it does not narrow the channel
   broadcast recipient set.
 
+## Delivery Topology Contract
+
+- Channel sends persist one canonical conversation message on AgentHub first; this is the
+  authority copy for human-visible history.
+- After the canonical write succeeds, mailbox fan-out auto-routes each recipient hop as local or
+  p2p remote based on the recipient agent target node.
+- Remote nodes may persist replica history for node-local backup/query use, but those replicas do
+  not replace AgentHub as the canonical authority.
+- Treat successful channel delivery as: canonical AgentHub write succeeded and each mailbox relay
+  hop was accepted; do not wait for every receiver to read/ack before reporting send success.
+
 ## Envelope Contract
 
 Minimum fields:
@@ -59,7 +70,6 @@ Recommended fields:
 4. For human-readable coordination, prefer markdown text and preserve it verbatim:
    `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
 5. Use structured payloads only when the receiver truly needs machine-readable fields:
-   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
    `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
 6. Broadcast into the shared Team channel while preserving mentions as metadata:
    `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; "$AGENTHUB_ACTOR_CLI" actor send --channel-id all --text "$MESSAGE"`

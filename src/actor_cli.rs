@@ -65,7 +65,7 @@ enum ActorCommand {
         channel: String,
         transport: TeamActorMessageTransport,
         route: Option<Value>,
-        payload: Value,
+        payload: Box<Value>,
         payload_source: ActorSendPayloadSource,
         idempotency_key: Option<String>,
     },
@@ -606,7 +606,7 @@ fn parse_actor_command(
                 channel,
                 transport,
                 route,
-                payload,
+                payload: Box::new(payload),
                 payload_source,
                 idempotency_key: resolved_idempotency_key,
             })
@@ -720,7 +720,7 @@ async fn run_actor_command(
                     channel: Some(channel),
                     transport: Some(transport),
                     route,
-                    payload,
+                    payload: *payload,
                     idempotency_key,
                 })
                 .await
@@ -1195,7 +1195,7 @@ mod tests {
                 payload_source,
                 ..
             } => {
-                assert_eq!(payload, Value::String(markdown.to_string()));
+                assert_eq!(*payload, Value::String(markdown.to_string()));
                 assert_eq!(payload_source, ActorSendPayloadSource::Text);
             }
             _ => panic!("expected send command"),

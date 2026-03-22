@@ -29,6 +29,10 @@
 - Remote nodes now persist a deduplicated channel replica row keyed by the authority message so
   node-local history queries can use backup/query data without changing canonical ownership
 - Team mailbox skill examples now recommend markdown text for task briefs and status updates, and keep structured payloads only for machine-readable coordination
+- Follow-up after merging the reporting-guidance work: shared Team skills now spell out that
+  channel mailbox sends are authority-first, `@member_id` in channel text is metadata only, and
+  urgent operator escalation should use the human mailbox notification path instead of inventing a
+  new routing mode
 
 ## Validation
 

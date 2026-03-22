@@ -142,8 +142,14 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
   additionally notify impacted peers or the shared channel when the discovery affects shared plans,
   dependencies, or future debugging work.
+- When posting to a shared channel, use `channel_id` (for example `all`) as the transport target;
+  keep `@member_id` in the message body as mention metadata for ownership context rather than as a
+  recipient filter.
 - When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
   or human stakeholder so the update has clear recipients.
+- If a blocker or risk needs immediate operator attention, send a concise human-mailbox
+  notification (`to_actor_id = user` / `user:<id>`) in addition to the normal leader/channel
+  update.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
   summarize them back to leader so the rest of the team can use them.
 - If the task-to-card fit is poor, report that mismatch early instead of silently continuing with an

@@ -4097,21 +4097,42 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
     .fetch_all(&state.db)
     .await
     .expect("load mailbox rows");
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].get::<String, _>("from_actor_id"), "planner");
-    assert_eq!(rows[0].get::<String, _>("to_actor_id"), "worker-1");
-    let forwarded_payload: Value =
-        serde_json::from_str(rows[0].get::<String, _>("payload_json").as_str())
-            .expect("parse forwarded payload");
-    assert_eq!(forwarded_payload["delivery_scope"], Value::from("mention"));
+    assert_eq!(rows.len(), 3);
+    let recipients = rows
+        .iter()
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        forwarded_payload["task_message_id"],
-        Value::from(directed_message.message_id)
+        recipients,
+        vec![
+            "planner".to_string(),
+            "worker-1".to_string(),
+            "worker-2".to_string()
+        ]
     );
-    assert_eq!(
-        forwarded_payload["task_conversation_id"],
-        Value::from(directed_message.conversation_id.clone())
-    );
+    for row in &rows {
+        assert_eq!(row.get::<String, _>("from_actor_id"), "planner");
+        let forwarded_payload: Value =
+            serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+                .expect("parse forwarded payload");
+        assert_eq!(forwarded_payload["delivery_scope"], Value::from("broadcast"));
+        assert_eq!(
+            forwarded_payload["task_message_id"],
+            Value::from(directed_message.message_id)
+        );
+        assert_eq!(
+            forwarded_payload["task_conversation_id"],
+            Value::from(directed_message.conversation_id.clone())
+        );
+        assert_eq!(
+            forwarded_payload["mention_actor_ids"],
+            json!(["worker-1"])
+        );
+        assert_eq!(
+            forwarded_payload["mentioned_actor_ids"],
+            json!(["worker-1"])
+        );
+    }
 
     let service = state.teams.actor_mailbox_service();
     let inbox = service
@@ -4122,10 +4143,13 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             limit: Some(50),
             states: None,
         })
-        .await
-        .expect("load worker inbox");
+    .await
+    .expect("load worker inbox");
     assert_eq!(inbox.messages.len(), 1);
-    assert_eq!(inbox.messages[0].message_id, directed_message.message_id);
+    assert_eq!(
+        inbox.messages[0].payload["task_message_id"],
+        Value::from(directed_message.message_id)
+    );
 
     let acked = service
         .actor_ack(ActorAckRequest {

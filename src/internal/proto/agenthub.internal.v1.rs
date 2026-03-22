@@ -281,10 +281,10 @@ pub mod team_internal_control_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct TeamInternalControlClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -323,13 +323,14 @@ pub mod team_internal_control_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                    http::Request<tonic::body::Body>,
-                    Response = http::Response<
-                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                    >,
+                http::Request<tonic::body::Body>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
                 >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             TeamInternalControlClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -367,229 +368,349 @@ pub mod team_internal_control_client {
         pub async fn send_actor_message(
             &mut self,
             request: impl tonic::IntoRequest<super::SendActorMessageRequest>,
-        ) -> std::result::Result<tonic::Response<super::SendActorMessageResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::SendActorMessageResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/SendActorMessage",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "SendActorMessage",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "SendActorMessage",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn list_actor_inbox(
             &mut self,
             request: impl tonic::IntoRequest<super::ListActorInboxRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListActorInboxResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::ListActorInboxResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/ListActorInbox",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "ListActorInbox",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ListActorInbox",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn ack_actor_message(
             &mut self,
             request: impl tonic::IntoRequest<super::AckActorMessageRequest>,
-        ) -> std::result::Result<tonic::Response<super::AckActorMessageResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::AckActorMessageResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/AckActorMessage",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "AckActorMessage",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "AckActorMessage",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn transition_step(
             &mut self,
             request: impl tonic::IntoRequest<super::TransitionStepRequest>,
-        ) -> std::result::Result<tonic::Response<super::TransitionStepResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::TransitionStepResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/TransitionStep",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "TransitionStep",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "TransitionStep",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn issue_node_credential(
             &mut self,
             request: impl tonic::IntoRequest<super::IssueNodeCredentialRequest>,
-        ) -> std::result::Result<tonic::Response<super::IssueNodeCredentialResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::IssueNodeCredentialResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/IssueNodeCredential",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "IssueNodeCredential",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "IssueNodeCredential",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn ensure_agent_record(
             &mut self,
             request: impl tonic::IntoRequest<super::EnsureAgentRecordRequest>,
-        ) -> std::result::Result<tonic::Response<super::EnsureAgentRecordResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::EnsureAgentRecordResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/EnsureAgentRecord",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "EnsureAgentRecord",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "EnsureAgentRecord",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn get_agent_record(
             &mut self,
             request: impl tonic::IntoRequest<super::GetAgentRecordRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetAgentRecordResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::GetAgentRecordResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/GetAgentRecord",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "GetAgentRecord",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "GetAgentRecord",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn start_managed_agent(
             &mut self,
             request: impl tonic::IntoRequest<super::StartManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::StartManagedAgentResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::StartManagedAgentResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/StartManagedAgent",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "StartManagedAgent",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "StartManagedAgent",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn stop_managed_agent(
             &mut self,
             request: impl tonic::IntoRequest<super::StopManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::StopManagedAgentResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::StopManagedAgentResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/StopManagedAgent",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "StopManagedAgent",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "StopManagedAgent",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn delete_managed_agent(
             &mut self,
             request: impl tonic::IntoRequest<super::DeleteManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeleteManagedAgentResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::DeleteManagedAgentResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/DeleteManagedAgent",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "DeleteManagedAgent",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "DeleteManagedAgent",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn send_agent_input(
             &mut self,
             request: impl tonic::IntoRequest<super::SendAgentInputRequest>,
-        ) -> std::result::Result<tonic::Response<super::SendAgentInputResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::SendAgentInputResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/SendAgentInput",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "SendAgentInput",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "SendAgentInput",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn list_agent_events(
             &mut self,
             request: impl tonic::IntoRequest<super::ListAgentEventsRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListAgentEventsResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::ListAgentEventsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/ListAgentEvents",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "agenthub.internal.v1.TeamInternalControl",
-                "ListAgentEvents",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ListAgentEvents",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
@@ -601,7 +722,7 @@ pub mod team_internal_control_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
     use tonic::codegen::*;
     /// Generated trait containing gRPC methods that should be implemented for use with TeamInternalControlServer.
@@ -610,51 +731,87 @@ pub mod team_internal_control_server {
         async fn send_actor_message(
             &self,
             request: tonic::Request<super::SendActorMessageRequest>,
-        ) -> std::result::Result<tonic::Response<super::SendActorMessageResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::SendActorMessageResponse>,
+            tonic::Status,
+        >;
         async fn list_actor_inbox(
             &self,
             request: tonic::Request<super::ListActorInboxRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListActorInboxResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::ListActorInboxResponse>,
+            tonic::Status,
+        >;
         async fn ack_actor_message(
             &self,
             request: tonic::Request<super::AckActorMessageRequest>,
-        ) -> std::result::Result<tonic::Response<super::AckActorMessageResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::AckActorMessageResponse>,
+            tonic::Status,
+        >;
         async fn transition_step(
             &self,
             request: tonic::Request<super::TransitionStepRequest>,
-        ) -> std::result::Result<tonic::Response<super::TransitionStepResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::TransitionStepResponse>,
+            tonic::Status,
+        >;
         async fn issue_node_credential(
             &self,
             request: tonic::Request<super::IssueNodeCredentialRequest>,
-        ) -> std::result::Result<tonic::Response<super::IssueNodeCredentialResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::IssueNodeCredentialResponse>,
+            tonic::Status,
+        >;
         async fn ensure_agent_record(
             &self,
             request: tonic::Request<super::EnsureAgentRecordRequest>,
-        ) -> std::result::Result<tonic::Response<super::EnsureAgentRecordResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::EnsureAgentRecordResponse>,
+            tonic::Status,
+        >;
         async fn get_agent_record(
             &self,
             request: tonic::Request<super::GetAgentRecordRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetAgentRecordResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::GetAgentRecordResponse>,
+            tonic::Status,
+        >;
         async fn start_managed_agent(
             &self,
             request: tonic::Request<super::StartManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::StartManagedAgentResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::StartManagedAgentResponse>,
+            tonic::Status,
+        >;
         async fn stop_managed_agent(
             &self,
             request: tonic::Request<super::StopManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::StopManagedAgentResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::StopManagedAgentResponse>,
+            tonic::Status,
+        >;
         async fn delete_managed_agent(
             &self,
             request: tonic::Request<super::DeleteManagedAgentRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeleteManagedAgentResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::DeleteManagedAgentResponse>,
+            tonic::Status,
+        >;
         async fn send_agent_input(
             &self,
             request: tonic::Request<super::SendAgentInputRequest>,
-        ) -> std::result::Result<tonic::Response<super::SendAgentInputResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::SendAgentInputResponse>,
+            tonic::Status,
+        >;
         async fn list_agent_events(
             &self,
             request: tonic::Request<super::ListAgentEventsRequest>,
-        ) -> std::result::Result<tonic::Response<super::ListAgentEventsResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::ListAgentEventsResponse>,
+            tonic::Status,
+        >;
     }
     #[derive(Debug)]
     pub struct TeamInternalControlServer<T> {
@@ -677,7 +834,10 @@ pub mod team_internal_control_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -732,19 +892,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/SendActorMessage" => {
                     #[allow(non_camel_case_types)]
                     struct SendActorMessageSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::SendActorMessageRequest>
-                        for SendActorMessageSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::SendActorMessageRequest>
+                    for SendActorMessageSvc<T> {
                         type Response = super::SendActorMessageResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::SendActorMessageRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::send_actor_message(&inner, request)
+                                <T as TeamInternalControl>::send_actor_message(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -775,19 +941,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/ListActorInbox" => {
                     #[allow(non_camel_case_types)]
                     struct ListActorInboxSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::ListActorInboxRequest>
-                        for ListActorInboxSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ListActorInboxRequest>
+                    for ListActorInboxSvc<T> {
                         type Response = super::ListActorInboxResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ListActorInboxRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::list_actor_inbox(&inner, request).await
+                                <T as TeamInternalControl>::list_actor_inbox(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -817,19 +990,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/AckActorMessage" => {
                     #[allow(non_camel_case_types)]
                     struct AckActorMessageSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::AckActorMessageRequest>
-                        for AckActorMessageSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::AckActorMessageRequest>
+                    for AckActorMessageSvc<T> {
                         type Response = super::AckActorMessageResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::AckActorMessageRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::ack_actor_message(&inner, request).await
+                                <T as TeamInternalControl>::ack_actor_message(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -859,19 +1039,23 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/TransitionStep" => {
                     #[allow(non_camel_case_types)]
                     struct TransitionStepSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::TransitionStepRequest>
-                        for TransitionStepSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::TransitionStepRequest>
+                    for TransitionStepSvc<T> {
                         type Response = super::TransitionStepResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::TransitionStepRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::transition_step(&inner, request).await
+                                <T as TeamInternalControl>::transition_step(&inner, request)
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -901,19 +1085,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/IssueNodeCredential" => {
                     #[allow(non_camel_case_types)]
                     struct IssueNodeCredentialSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::IssueNodeCredentialRequest>
-                        for IssueNodeCredentialSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::IssueNodeCredentialRequest>
+                    for IssueNodeCredentialSvc<T> {
                         type Response = super::IssueNodeCredentialResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::IssueNodeCredentialRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::issue_node_credential(&inner, request)
+                                <T as TeamInternalControl>::issue_node_credential(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -944,19 +1134,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/EnsureAgentRecord" => {
                     #[allow(non_camel_case_types)]
                     struct EnsureAgentRecordSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::EnsureAgentRecordRequest>
-                        for EnsureAgentRecordSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::EnsureAgentRecordRequest>
+                    for EnsureAgentRecordSvc<T> {
                         type Response = super::EnsureAgentRecordResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::EnsureAgentRecordRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::ensure_agent_record(&inner, request)
+                                <T as TeamInternalControl>::ensure_agent_record(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -987,19 +1183,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/GetAgentRecord" => {
                     #[allow(non_camel_case_types)]
                     struct GetAgentRecordSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::GetAgentRecordRequest>
-                        for GetAgentRecordSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::GetAgentRecordRequest>
+                    for GetAgentRecordSvc<T> {
                         type Response = super::GetAgentRecordResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetAgentRecordRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::get_agent_record(&inner, request).await
+                                <T as TeamInternalControl>::get_agent_record(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -1029,19 +1232,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/StartManagedAgent" => {
                     #[allow(non_camel_case_types)]
                     struct StartManagedAgentSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::StartManagedAgentRequest>
-                        for StartManagedAgentSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::StartManagedAgentRequest>
+                    for StartManagedAgentSvc<T> {
                         type Response = super::StartManagedAgentResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::StartManagedAgentRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::start_managed_agent(&inner, request)
+                                <T as TeamInternalControl>::start_managed_agent(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -1072,19 +1281,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/StopManagedAgent" => {
                     #[allow(non_camel_case_types)]
                     struct StopManagedAgentSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::StopManagedAgentRequest>
-                        for StopManagedAgentSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::StopManagedAgentRequest>
+                    for StopManagedAgentSvc<T> {
                         type Response = super::StopManagedAgentResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::StopManagedAgentRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::stop_managed_agent(&inner, request)
+                                <T as TeamInternalControl>::stop_managed_agent(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -1115,19 +1330,25 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/DeleteManagedAgent" => {
                     #[allow(non_camel_case_types)]
                     struct DeleteManagedAgentSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::DeleteManagedAgentRequest>
-                        for DeleteManagedAgentSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::DeleteManagedAgentRequest>
+                    for DeleteManagedAgentSvc<T> {
                         type Response = super::DeleteManagedAgentResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::DeleteManagedAgentRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::delete_managed_agent(&inner, request)
+                                <T as TeamInternalControl>::delete_managed_agent(
+                                        &inner,
+                                        request,
+                                    )
                                     .await
                             };
                             Box::pin(fut)
@@ -1158,19 +1379,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/SendAgentInput" => {
                     #[allow(non_camel_case_types)]
                     struct SendAgentInputSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::SendAgentInputRequest>
-                        for SendAgentInputSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::SendAgentInputRequest>
+                    for SendAgentInputSvc<T> {
                         type Response = super::SendAgentInputResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::SendAgentInputRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::send_agent_input(&inner, request).await
+                                <T as TeamInternalControl>::send_agent_input(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -1200,19 +1428,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/ListAgentEvents" => {
                     #[allow(non_camel_case_types)]
                     struct ListAgentEventsSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl>
-                        tonic::server::UnaryService<super::ListAgentEventsRequest>
-                        for ListAgentEventsSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ListAgentEventsRequest>
+                    for ListAgentEventsSvc<T> {
                         type Response = super::ListAgentEventsResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ListAgentEventsRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::list_agent_events(&inner, request).await
+                                <T as TeamInternalControl>::list_agent_events(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -1239,19 +1474,25 @@ pub mod team_internal_control_server {
                     };
                     Box::pin(fut)
                 }
-                _ => Box::pin(async move {
-                    let mut response = http::Response::new(tonic::body::Body::default());
-                    let headers = response.headers_mut();
-                    headers.insert(
-                        tonic::Status::GRPC_STATUS,
-                        (tonic::Code::Unimplemented as i32).into(),
-                    );
-                    headers.insert(
-                        http::header::CONTENT_TYPE,
-                        tonic::metadata::GRPC_CONTENT_TYPE,
-                    );
-                    Ok(response)
-                }),
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
             }
         }
     }

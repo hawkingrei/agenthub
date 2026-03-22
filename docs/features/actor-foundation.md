@@ -128,6 +128,9 @@ Identity-kind projection (for UX/policy):
 - Channel fan-out should persist one canonical conversation message on the AgentHub authority node
   before mailbox delivery, then auto-route each recipient mailbox hop as local or p2p remote based
   on the recipient agent target node.
+- Channel send success should be defined as: canonical authority write succeeded and every mailbox
+  relay hop accepted the delivery for enqueue/replica persistence; consumer read/ack remains a
+  later lifecycle step.
 - Remote nodes should persist channel fan-out as replica history keyed by the canonical authority
   message so node-local actors can query backup/history data without becoming the authority source.
 - Conversation event-bus transport is allowed for realtime UI/visibility, but execution command truth remains mailbox-backed.
