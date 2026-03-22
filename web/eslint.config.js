@@ -1,12 +1,13 @@
 import js from "@eslint/js";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 // Keep the project hook lint contract stable across plugin upgrades.
 // New compiler-oriented rules should be adopted intentionally in follow-up changes.
+// `eslint-plugin-react` does not yet advertise ESLint 10 support, so keep the
+// React-specific lint surface on `react-hooks` until upstream catches up.
 const stableReactHookRules = {
   "react-hooks/rules-of-hooks": "error",
   "react-hooks/exhaustive-deps": "warn",
@@ -40,20 +41,11 @@ export default [
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     languageOptions: baseLanguageOptions,
-    settings: {
-      react: {
-        version: "detect",
-      },
-    },
     plugins: {
-      react,
       "react-hooks": reactHooks,
     },
     rules: {
-      ...react.configs.recommended.rules,
       ...stableReactHookRules,
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
     },
   },
   {
