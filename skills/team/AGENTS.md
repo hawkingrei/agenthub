@@ -55,7 +55,9 @@ restating the same rules.
   - use `target="team"` for durable identity-card changes and `target="run"` for temporary run-scoped overrides
   - do not patch another member's identity/profile from your own context
 - Deferred follow-up:
-  - use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set/list/cancel` for one-shot timed reminders that should arrive later as ACP messages
+  - use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel` for one-shot timed reminders that should arrive later as ACP messages
   - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
 - Agent loop:
   - `agent_loop` is a human/operator-controlled idle watchdog, disabled by default

@@ -7,7 +7,7 @@ name: team-actor-mailbox
 Use this skill for Team mailbox communication. It is the protocol reference for
 `actor inbox`, `actor send`, and `actor ack`.
 
-For Team runtime/roster context, use the single `"$AGENTHUB_ACTOR_CLI" actor team-members"`
+For Team runtime/roster context, use the single `"$AGENTHUB_ACTOR_CLI" actor team-members`
 command. It exposes runtime summary, roster/card data, and per-member
 `pending_inbox_count`. Do not invent a second Team context query path.
 Shared routing, mention, and human-visible reply policy remain canonical in

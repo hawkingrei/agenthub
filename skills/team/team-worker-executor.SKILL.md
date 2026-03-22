@@ -37,8 +37,11 @@ findings.
 - Use `target="team"` for durable identity-card changes and `target="run"` for temporary
   run-scoped overrides.
 - Do not overwrite another member's identity description from worker context.
-- Use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set/list/cancel` for timed
-  rechecks, reminders, or future follow-up work that should come back as ACP prompts later.
+- Use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel` for timed rechecks,
+  reminders, or future follow-up work that should come back as ACP prompts
+  later.
 - `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
   configured ACP reminder. Treat that reminder as a follow-up nudge for the same assignment and
   not as a new human request.
@@ -197,7 +200,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Use `team-task-lifecycle` as the canonical Team task state contract.
 - Keep the task moving with timely progress/blocker updates so the leader can maintain correct
   Kanban state.
-- Do not call `actor team-task-create` or `actor team-task-update`; raise the lifecycle change to leader.
+- Do not call `"$AGENTHUB_ACTOR_CLI" actor team-task-create` or `"$AGENTHUB_ACTOR_CLI" actor team-task-update`; raise the lifecycle change to leader.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - For developer/code tasks, "ready for review" should normally mean merge-ready or very close to

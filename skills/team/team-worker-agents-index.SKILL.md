@@ -19,7 +19,9 @@ Primary references:
 - Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.
 - Keep worker updates routed to leader unless explicit escalation policy applies.
 - Keep pointers for self-profile maintenance (`profile_patch_proposal`) and timed follow-up
-  reminders (`"$AGENTHUB_ACTOR_CLI" actor time-trigger-set/list/cancel`) when they are active.
+  reminders (`"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel`) when they are active.
 - Keep `team-task-lifecycle` in the active skill set whenever worker execution must advance a
   leader-owned Team task toward review.
 

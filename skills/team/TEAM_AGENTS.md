@@ -41,7 +41,9 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - Mailbox transport and payload details live in `team-actor-mailbox`.
 - Canonical Team task creation/state rules live in `team-task-lifecycle`.
 - Self-profile updates use `profile_patch_proposal`.
-- Timed self-reminders use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set/list/cancel`.
+- Timed self-reminders use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
+  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel`.
 - Operator-controlled idle reminders use `agent_loop`; treat them as follow-up nudges, not new human intent.
 - Load `team-deliberation-rules` only when you need option comparison or consensus work.
 

@@ -25,6 +25,7 @@ use crate::team::{TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManage
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActorOutputMode {
@@ -554,12 +555,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--limit" => {
@@ -616,12 +617,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--title" => {
@@ -690,12 +691,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--task-id" => {
@@ -747,12 +748,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--limit" => {
@@ -804,12 +805,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--message-id" => {
@@ -1049,12 +1050,12 @@ fn parse_actor_command(
                     "--json" => {
                         *output_mode = ActorOutputMode::Json;
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--delay-seconds" => {
@@ -1095,12 +1096,12 @@ fn parse_actor_command(
                     "--json" => {
                         *output_mode = ActorOutputMode::Json;
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--limit" => {
@@ -1130,12 +1131,12 @@ fn parse_actor_command(
                     "--json" => {
                         *output_mode = ActorOutputMode::Json;
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--trigger-id" => {
@@ -1181,12 +1182,12 @@ fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
                         );
                     }
-                    "--actor-id" | "--agent-id" => {
+                    flag @ ("--actor-id" | "--agent-id") => {
                         idx += 1;
                         actor_id = Some(
                             args.get(idx)
                                 .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--actor-id requires a value"))?,
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     "--permission-id" => {
@@ -1427,8 +1428,9 @@ async fn run_actor_command(
             message,
         } => {
             anyhow::ensure!(
-                (1..=60 * 60 * 24 * 30).contains(&delay_seconds),
-                "delay_seconds must be between 1 and 2592000"
+                (1..=MAX_TIME_TRIGGER_DELAY_SECONDS).contains(&delay_seconds),
+                "delay_seconds must be between 1 and {}",
+                MAX_TIME_TRIGGER_DELAY_SECONDS
             );
             let db = agenthub_db::init_db().await?;
             let manager = AgentTimeTriggerManager::new(db);
@@ -1486,12 +1488,7 @@ async fn run_actor_command(
                 "current actor is not a member of this team"
             );
             let team = manager.get_team(&team_id).await?;
-            let leader_member_id = team
-                .spec
-                .get("leader_member_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
+            let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
             anyhow::ensure!(
                 record.requester_actor_id.as_deref() != Some(actor_id.as_str()),
                 "requester cannot review its own permission request"
@@ -1505,7 +1502,7 @@ async fn run_actor_command(
                     .review_target_actor_id
                     .as_deref()
                     .or(if worker_originated_request {
-                        leader_member_id
+                        Some(leader_member_id.as_str())
                     } else {
                         None
                     });
