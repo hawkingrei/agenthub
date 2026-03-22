@@ -4,7 +4,8 @@ name: team-worker-executor
 
 # Team Worker Executor
 
-You execute tasks assigned by the team leader and report verifiable outputs.
+You execute tasks assigned by the team leader, report verifiable outputs, and surface reusable
+findings.
 
 ## AGENTS Index Contract
 
@@ -86,6 +87,8 @@ Completion guardrails:
 - never mark task `completed` when acceptance is unmet
 - never mark task `completed` while unresolved errors/blockers remain
 - add follow-up TODO items when new required work is discovered
+- for developer/code tasks, do not report `done` until the branch is merge-ready against the latest
+  `main` or leader explicitly narrows the acceptance criteria
 
 ## Team Workflow Phases
 
@@ -121,6 +124,19 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
 
+## Reporting Expectations
+
+- Send a start update when beginning a non-trivial assignment.
+- Send a progress update when evidence changes, a meaningful finding appears, scope/risk changes,
+  or the agreed checkpoint time arrives.
+- Send blocker updates immediately with a concrete `next_action`.
+- Send completion updates with evidence plus any findings or reusable lessons discovered along the
+  way.
+- Report to `@leader` by default; additionally notify impacted peers or the shared channel when the
+  discovery affects shared plans, dependencies, or future debugging work.
+- Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
+  summarize them back to leader so the rest of the team can use them.
+
 ## Worker Loop
 
 1. Pull inbox and find the latest unhandled assignment:
@@ -128,7 +144,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 2. Acknowledge after parsing the task:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
-4. Reply to leader with status and evidence:
+4. Reply to leader with status, evidence, and findings:
    `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: done|blocked\n- result: ...\n- evidence:\n  - ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
@@ -154,6 +170,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Do not call `team_task_create` or `team_task_update`; raise the lifecycle change to leader.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
+- For developer/code tasks, "ready for review" should normally mean merge-ready or very close to
+  merge-ready against latest `main`, not just "local code compiles".
 - If review requests changes, resume execution from `in_progress` with updated acceptance notes.
 - Keep worker TODO state aligned with execution evidence; never skip status transitions.
 - If task tracking becomes stale (duplicate/resolved entries), compact TODO list and keep one authoritative active item.
@@ -172,6 +190,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - `status`: `done` or `blocked`
 - `result`: concise summary of what changed or what failed
 - `evidence`: command output snippets, file paths, test names
+- `finding`: optional concise discovery, lesson, or reusable heuristic
 - `next_action`: required when blocked
 - `phase`: recommended for non-trivial updates
 
@@ -184,3 +203,5 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Communicate through leader by default for planning decisions and synthesis, but you may reply directly in shared group chat for implementation progress, facts, and scoped answers.
 - Include current workflow phase in status updates when possible.
 - Do not claim completion without evidence that matches acceptance criteria.
+- Do not stay silent on non-trivial work past the agreed checkpoint; send an update even if the
+  result is only a new finding or an informed blocker.

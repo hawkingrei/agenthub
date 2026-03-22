@@ -58,4 +58,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 
 - status: `pending|in_progress|completed|blocked`
 - latest update:
+- latest finding:
+- report target: `leader|channel|both`
 - next checkpoint:
+- overdue action:

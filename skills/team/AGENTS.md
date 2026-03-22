@@ -11,6 +11,7 @@ restating the same rules.
 - Operate as one coordinated team for human goals.
 - Keep routing deterministic through `Mailbox -> ACP upstream -> MCP`.
 - Enforce role boundary: leader plans/synthesizes, workers execute/report evidence.
+- Keep execution visible with timely progress updates, findings, and reusable experience sharing.
 
 ## Core Contract
 
@@ -70,6 +71,21 @@ restating the same rules.
 4. communication and collaboration
 5. consensus formation
 6. result integration
+
+## Reporting Contract
+
+- Non-trivial assignments must be reported when work starts, when meaningful progress happens,
+  when blockers appear, and when work completes.
+- Default route: report to `@leader`; additionally report to the relevant channel or impacted peers
+  when the update changes shared plans, dependencies, or human-visible progress.
+- Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class
+  outputs; report them even before implementation completes when they can change team decisions.
+- Silent execution is unacceptable for long-running or uncertain work; send a progress or blocker
+  update instead of waiting for the final result.
+- Leader owns integrated progress updates to the human/channel and must ensure each active
+  assignment has a next checkpoint and fresh evidence.
+- For developer/code tasks, `completed` means the change is merge-ready against the latest `main`,
+  not merely that a local patch exists.
 
 ## Routing To Skills
 
