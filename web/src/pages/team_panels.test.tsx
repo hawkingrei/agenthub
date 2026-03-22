@@ -4,6 +4,7 @@ import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import {
+  api,
   AgentEvent,
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
@@ -1786,6 +1787,308 @@ describe("team panels interactions", () => {
     expect(pendingButton).not.toBeNull();
     expect(pendingButton?.getAttribute("title")).toBe("Pending delivery");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
+  });
+
+  it("TeamTaskPanel renders permission review cards in channel and collapses to status after response", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const listPermissionsSpy = vi
+      .spyOn(api, "listAcpPermissions")
+      .mockResolvedValue([
+        {
+          id: "perm-1",
+          agent_id: "worker-agent",
+          session_id: "worker-session",
+          acp_session_id: "acp-session",
+          tool_call_id: "tool-call-1",
+          options: [
+            { option_id: "allow", name: "Allow once", kind: "allow_once" },
+            { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+          ],
+          tool_call: { title: "git push" },
+          status: "pending",
+          selected_option_id: null,
+          created_at: 1,
+          responded_at: null,
+        },
+      ]);
+    const respondPermissionSpy = vi.spyOn(api, "respondAcpPermission").mockResolvedValue({
+      status: "ok",
+    });
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          token="token-1"
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "permission_review_card",
+                permission_id: "perm-1",
+                agent_id: "worker-agent",
+                tool_name: "git push",
+                summary: "worker requests permission to execute git push.",
+                reason: "review_timeout",
+                reason_text: "Agent review timed out",
+                status: "pending",
+                options: [
+                  { option_id: "allow", name: "Allow once", kind: "allow_once" },
+                  { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+                ],
+              },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "WorkerAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "waiting for review",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+
+      await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
+      expect(container.textContent).toContain("git push");
+      expect(container.textContent).toContain("Agent review timed out");
+      expect(container.textContent).toContain("Awaiting human review");
+      expect(queryButtonByText(container, "Allow once")).not.toBeNull();
+      clickElement(queryButtonByText(container, "Allow once"));
+
+      await waitForCondition(() => respondPermissionSpy.mock.calls.length > 0);
+      expect(respondPermissionSpy).toHaveBeenCalledWith("token-1", "worker-agent", "perm-1", {
+        option_id: "allow",
+        outcome: undefined,
+      });
+      await waitForCondition(() =>
+        container.textContent?.includes("Approved · Allow once") ?? false
+      );
+      expect(container.textContent).toContain("Approved · Allow once");
+      expect(queryButtonByText(container, "Allow once")).toBeNull();
+      expect(queryButtonByText(container, "Cancel")).toBeNull();
+    } finally {
+      listPermissionsSpy.mockRestore();
+      respondPermissionSpy.mockRestore();
+    }
+  });
+
+  it("TeamTaskPanel filters malformed permission review options before rendering actions", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([
+      {
+        id: "perm-2",
+        agent_id: "worker-agent",
+        session_id: "worker-session",
+        acp_session_id: "acp-session",
+        tool_call_id: "tool-call-2",
+        options: [
+          { option_id: "allow", name: "Allow once", kind: "allow_once" },
+          null,
+          { option_id: "   ", name: "Blank id", kind: "deny" },
+          { option_id: 7, name: "Broken id", kind: "allow_once" },
+          { option_id: "allow_always", name: 99, kind: "allow_always" },
+        ] as unknown as {
+          option_id: string;
+          name: string;
+          kind: string;
+        }[],
+        tool_call: { title: "git push" },
+        status: "pending",
+        selected_option_id: null,
+        created_at: 1,
+        responded_at: null,
+      },
+    ]);
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          token="token-1"
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "permission_review_card",
+                permission_id: "perm-2",
+                agent_id: "worker-agent",
+                tool_name: "git push",
+                summary: "worker requests permission to execute git push.",
+                status: "pending",
+                options: [
+                  { option_id: "allow", name: "Allow once", kind: "allow_once" },
+                  null,
+                  { option_id: "   ", name: "Blank id", kind: "deny" },
+                  { option_id: 7, name: "Broken id", kind: "allow_once" },
+                  { option_id: "allow_always", name: 99, kind: "allow_always" },
+                ],
+              },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "WorkerAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "waiting for review",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+
+      await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
+      const permissionCard = required(
+        container.querySelector("[data-team-permission-card='true']"),
+        "permission card missing"
+      ) as HTMLElement;
+      expect(queryButtonByText(permissionCard, "Allow once")).not.toBeNull();
+      expect(queryButtonByText(permissionCard, "Broken id")).toBeNull();
+      expect(queryButtonByText(permissionCard, "99")).toBeNull();
+      expect(queryButtonByText(permissionCard, "Cancel")).not.toBeNull();
+      expect(
+        Array.from(permissionCard.querySelectorAll("button")).filter(
+          (button) => button.textContent?.trim() === "Allow once"
+        )
+      ).toHaveLength(1);
+    } finally {
+      listPermissionsSpy.mockRestore();
+    }
+  });
+
+  it("TeamTaskPanel tolerates malformed permission record options after refresh", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([
+      {
+        id: "perm-3",
+        agent_id: "worker-agent",
+        session_id: "worker-session",
+        acp_session_id: "acp-session",
+        tool_call_id: "tool-call-3",
+        options: [
+          { option_id: 7, name: "Broken id", kind: "allow_once" },
+          { option_id: "allow", name: "Allow once", kind: "allow_once" },
+        ] as unknown as {
+          option_id: string;
+          name: string;
+          kind: string;
+        }[],
+        tool_call: { title: "git push" },
+        status: "responded",
+        selected_option_id: "allow",
+        created_at: 1,
+        responded_at: 2,
+      },
+    ]);
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          token="token-1"
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "permission_review_card",
+                permission_id: "perm-3",
+                agent_id: "worker-agent",
+                tool_name: "git push",
+                summary: "worker requests permission to execute git push.",
+                status: "pending",
+                options: [{ option_id: "allow", name: "Allow once", kind: "allow_once" }],
+              },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "WorkerAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "waiting for review",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+
+      await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
+      await waitForCondition(
+        () => container.textContent?.includes("Approved · Allow once") ?? false
+      );
+      const permissionCard = required(
+        container.querySelector("[data-team-permission-card='true']"),
+        "permission card missing"
+      ) as HTMLElement;
+      expect(permissionCard.textContent).toContain("Approved · Allow once");
+      expect(queryButtonByText(permissionCard, "Allow once")).toBeNull();
+      expect(queryButtonByText(permissionCard, "Cancel")).toBeNull();
+    } finally {
+      listPermissionsSpy.mockRestore();
+    }
   });
 
   it("TeamTaskPanel excludes the author from seen-progress counts", () => {

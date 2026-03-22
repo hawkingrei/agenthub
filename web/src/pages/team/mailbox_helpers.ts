@@ -331,7 +331,7 @@ type MailboxChatPayload = {
   mention_actor_ids?: string[];
 };
 
-function parseStructuredMailboxPayload(payload: unknown): unknown {
+export function parseStructuredTeamPayload(payload: unknown): unknown {
   if (typeof payload !== "string") {
     return payload;
   }
@@ -347,7 +347,7 @@ function parseStructuredMailboxPayload(payload: unknown): unknown {
 }
 
 export function resolveChatMessageText(payload: unknown): string | null {
-  const parsed = parseStructuredMailboxPayload(payload);
+  const parsed = parseStructuredTeamPayload(payload);
   if (typeof parsed === "string") {
     return parsed;
   }

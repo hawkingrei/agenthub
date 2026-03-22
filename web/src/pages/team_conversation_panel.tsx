@@ -10,6 +10,7 @@ import { resolveTaskMessageSeenByActors } from "./team/page_helpers";
 
 type TeamConversationPanelProps = {
   developerMode: boolean;
+  token?: string | null;
   tasksLoading?: boolean;
   onRefreshTasks?: () => Promise<void> | void;
   messageDraft: string;
@@ -51,6 +52,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
     <div className="space-y-3">
       <TeamTaskPanel
         developerMode={props.developerMode}
+        token={props.token}
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}

@@ -1,6 +1,11 @@
 import { HoverCard } from "@mantine/core";
 import React from "react";
-import { TeamConversationMessageRecord } from "../api";
+import {
+  type AcpPermissionOption,
+  type AcpPermissionRecord,
+  TeamConversationMessageRecord,
+  api,
+} from "../api";
 import { ThreadRichText } from "../components/thread_rich_text";
 import { windowConversation } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
@@ -10,6 +15,7 @@ import {
   canonicalizeMentionDraft,
   createDisplayNameLookup,
   isHumanMailboxActor,
+  parseStructuredTeamPayload,
   type MentionCandidate,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
@@ -25,6 +31,7 @@ import {
 
 type TeamTaskPanelProps = {
   developerMode: boolean;
+  token?: string | null;
   tasksLoading?: boolean;
   onRefreshTasks?: () => Promise<void> | void;
   messageDraft: string;
@@ -40,6 +47,24 @@ type TeamTaskPanelProps = {
   busy: string | null;
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
+};
+
+type PermissionReviewCardPayload = {
+  type: "permission_review_card";
+  permission_id: string;
+  agent_id: string;
+  agent_session_id?: string | null;
+  acp_session_id?: string | null;
+  tool_call_id?: string | null;
+  tool_call?: unknown;
+  tool_name?: string | null;
+  requester_actor_id?: string | null;
+  requester_role?: string | null;
+  options: AcpPermissionOption[];
+  summary?: string | null;
+  reason?: string | null;
+  reason_text?: string | null;
+  status?: string | null;
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
@@ -73,6 +98,23 @@ const TEAM_TASK_ACTIVITY_TIME_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
   "mt-2 overflow-hidden text-ui-text-primary";
+const TEAM_TASK_PERMISSION_CARD_CLASS =
+  "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-3 py-3";
+const TEAM_TASK_PERMISSION_CARD_HEADER_CLASS =
+  "flex flex-wrap items-center justify-between gap-2";
+const TEAM_TASK_PERMISSION_CARD_TITLE_CLASS =
+  "text-sm font-semibold tracking-tight text-ui-text-primary";
+const TEAM_TASK_PERMISSION_CARD_STATUS_CLASS =
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.82] px-2 py-0.5 text-[11px] font-medium text-ui-text-muted";
+const TEAM_TASK_PERMISSION_CARD_BODY_CLASS =
+  "mt-2 space-y-2 text-sm text-ui-text-secondary";
+const TEAM_TASK_PERMISSION_CARD_REASON_CLASS =
+  "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
+const TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS =
+  "mt-3 flex flex-wrap items-center gap-2";
+const TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS =
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.78] px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary disabled:cursor-not-allowed disabled:opacity-60";
+const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS = "text-xs text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
@@ -153,6 +195,169 @@ function resolveActivityItemClassName(
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
 }
 
+function normalizeTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizePermissionOption(value: unknown): AcpPermissionOption | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const optionId = normalizeTrimmedString(record.option_id);
+  const name = normalizeTrimmedString(record.name);
+  if (!optionId || !name) {
+    return null;
+  }
+  return {
+    option_id: optionId,
+    name,
+    kind: typeof record.kind === "string" ? record.kind.trim() : "",
+  };
+}
+
+function normalizePermissionOptions(value: unknown): AcpPermissionOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    const option = normalizePermissionOption(candidate);
+    return option ? [option] : [];
+  });
+}
+
+function normalizePermissionRecord(record: AcpPermissionRecord): AcpPermissionRecord {
+  const raw = record as Record<string, unknown>;
+  return {
+    ...record,
+    options: normalizePermissionOptions(raw.options),
+    selected_option_id: normalizeTrimmedString(raw.selected_option_id),
+    status: typeof raw.status === "string" ? raw.status : String(raw.status ?? ""),
+  };
+}
+
+function equalPermissionOptions(
+  left: AcpPermissionOption[],
+  right: AcpPermissionOption[]
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((option, index) => {
+    const candidate = right[index];
+    return (
+      candidate?.option_id === option.option_id &&
+      candidate.name === option.name &&
+      candidate.kind === option.kind
+    );
+  });
+}
+
+function equalPermissionRecords(
+  left: AcpPermissionRecord,
+  right: AcpPermissionRecord
+): boolean {
+  return (
+    left.id === right.id &&
+    left.agent_id === right.agent_id &&
+    left.session_id === right.session_id &&
+    (left.acp_session_id ?? null) === (right.acp_session_id ?? null) &&
+    (left.tool_call_id ?? null) === (right.tool_call_id ?? null) &&
+    left.status === right.status &&
+    (left.selected_option_id ?? null) === (right.selected_option_id ?? null) &&
+    left.created_at === right.created_at &&
+    (left.responded_at ?? null) === (right.responded_at ?? null) &&
+    equalPermissionOptions(left.options, right.options)
+  );
+}
+
+function parsePermissionReviewCardPayload(payload: unknown): PermissionReviewCardPayload | null {
+  const parsed = parseStructuredTeamPayload(payload);
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const value = parsed as Record<string, unknown>;
+  if (value.type !== "permission_review_card") {
+    return null;
+  }
+  const permissionId = String(value.permission_id ?? "").trim();
+  const agentId = String(value.agent_id ?? "").trim();
+  if (!permissionId || !agentId) {
+    return null;
+  }
+  const options = normalizePermissionOptions(value.options);
+  return {
+    type: "permission_review_card",
+    permission_id: permissionId,
+    agent_id: agentId,
+    agent_session_id:
+      typeof value.agent_session_id === "string" ? value.agent_session_id : null,
+    acp_session_id:
+      typeof value.acp_session_id === "string" ? value.acp_session_id : null,
+    tool_call_id: typeof value.tool_call_id === "string" ? value.tool_call_id : null,
+    tool_call: value.tool_call,
+    tool_name: typeof value.tool_name === "string" ? value.tool_name : null,
+    requester_actor_id:
+      typeof value.requester_actor_id === "string" ? value.requester_actor_id : null,
+    requester_role:
+      typeof value.requester_role === "string" ? value.requester_role : null,
+    options,
+    summary: typeof value.summary === "string" ? value.summary : null,
+    reason: typeof value.reason === "string" ? value.reason : null,
+    reason_text: typeof value.reason_text === "string" ? value.reason_text : null,
+    status: typeof value.status === "string" ? value.status : null,
+  };
+}
+
+function buildPermissionRecordStub(
+  payload: PermissionReviewCardPayload,
+  optionId?: string
+): AcpPermissionRecord {
+  return {
+    id: payload.permission_id,
+    agent_id: payload.agent_id,
+    session_id: payload.agent_session_id ?? "",
+    acp_session_id: payload.acp_session_id ?? null,
+    tool_call_id: payload.tool_call_id ?? null,
+    options: payload.options,
+    tool_call: payload.tool_call ?? null,
+    status: "responded",
+    selected_option_id: optionId ?? null,
+    created_at: Math.floor(Date.now() / 1000),
+    responded_at: Math.floor(Date.now() / 1000),
+  };
+}
+
+function resolvePermissionStatusText(
+  payload: PermissionReviewCardPayload,
+  record?: AcpPermissionRecord
+): string {
+  if (!record) {
+    return "Awaiting human review";
+  }
+  if (record.status === "responded") {
+    const selectedOptionId = normalizeTrimmedString(record.selected_option_id);
+    if (!selectedOptionId) {
+      return "Cancelled";
+    }
+    const option = record.options.find(
+      (candidate) => candidate.option_id === selectedOptionId
+    );
+    return option ? `Approved · ${option.name}` : "Approved";
+  }
+  if (record.status === "timeout") {
+    return "Timed out";
+  }
+  if (record.status === "pending") {
+    return "Awaiting human review";
+  }
+  return payload.status?.trim() || record.status;
+}
+
 type SeenProgressState = {
   readActorIds: string[];
   unreadActorIds: string[];
@@ -167,6 +372,66 @@ type SeenDialStyle = React.CSSProperties & {
   "--size": string;
   "--thickness": string;
 };
+
+type PermissionReviewCardProps = {
+  payload: PermissionReviewCardPayload;
+  permissionRecord?: AcpPermissionRecord;
+  busy: boolean;
+  errorText?: string;
+  onRespond: (payload: PermissionReviewCardPayload, optionId?: string) => void;
+};
+
+function PermissionReviewCard(props: PermissionReviewCardProps) {
+  const { payload, permissionRecord, busy, errorText, onRespond } = props;
+  const statusText = resolvePermissionStatusText(payload, permissionRecord);
+  const isPending = (permissionRecord?.status ?? payload.status ?? "pending") === "pending";
+  const toolLabel =
+    payload.tool_name?.trim() || payload.tool_call_id?.trim() || "Permission review";
+
+  return (
+    <div className={TEAM_TASK_PERMISSION_CARD_CLASS} data-team-permission-card="true">
+      <div className={TEAM_TASK_PERMISSION_CARD_HEADER_CLASS}>
+        <span className={TEAM_TASK_PERMISSION_CARD_TITLE_CLASS}>{toolLabel}</span>
+        <span className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</span>
+      </div>
+      {isPending ? (
+        <div className={TEAM_TASK_PERMISSION_CARD_BODY_CLASS}>
+          {payload.reason_text && (
+            <div className={TEAM_TASK_PERMISSION_CARD_REASON_CLASS}>{payload.reason_text}</div>
+          )}
+          <>
+            {payload.summary && <div>{payload.summary}</div>}
+            <div className={TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS}>
+              {payload.options.map((option, index) => {
+                const optionId = option.option_id.trim();
+                return (
+                  <button
+                    key={`${optionId}:${index}`}
+                    type="button"
+                    className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                    disabled={busy || !optionId}
+                    onClick={() => onRespond(payload, optionId)}
+                  >
+                    {option.name}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className={TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS}
+                disabled={busy}
+                onClick={() => onRespond(payload)}
+              >
+                Cancel
+              </button>
+            </div>
+            {errorText ? <div className={TEAM_TASK_PERMISSION_CARD_ERROR_CLASS}>{errorText}</div> : null}
+          </>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function resolveSeenProgressState(
   seenActorIds: string[],
@@ -218,6 +483,7 @@ function resolveSeenProgressState(
 function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const {
     developerMode,
+    token = null,
     messageDraft,
     onMessageDraftChange,
     onSendMessage,
@@ -235,6 +501,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
+  const [permissionRecordsById, setPermissionRecordsById] = React.useState<
+    Record<string, AcpPermissionRecord>
+  >({});
+  const [permissionBusyId, setPermissionBusyId] = React.useState<string | null>(null);
+  const [permissionErrorById, setPermissionErrorById] = React.useState<Record<string, string>>({});
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
   const [stickToBottom, setStickToBottom] = React.useState(true);
@@ -339,6 +610,70 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       }),
     [messages]
   );
+  const permissionCardTargets = React.useMemo(
+    () =>
+      orderedMessages.flatMap((message) => {
+        const payload = parsePermissionReviewCardPayload(message.payload);
+        return payload
+          ? [{ permissionId: payload.permission_id, agentId: payload.agent_id }]
+          : [];
+      }),
+    [orderedMessages]
+  );
+  const permissionCardTargetKey = React.useMemo(
+    () =>
+      permissionCardTargets
+        .map((target) => `${target.agentId}:${target.permissionId}`)
+        .sort()
+        .join("|"),
+    [permissionCardTargets]
+  );
+  const refreshPermissionCards = React.useCallback(async () => {
+    if (!token || permissionCardTargets.length === 0) {
+      return;
+    }
+    const permissionIds = new Set(permissionCardTargets.map((target) => target.permissionId));
+    const agentIds = [...new Set(permissionCardTargets.map((target) => target.agentId))];
+    const results = await Promise.allSettled(
+      agentIds.map(async (agentId) => ({
+        agentId,
+        items: await api.listAcpPermissions(token, agentId),
+      }))
+    );
+    const nextRecords: Record<string, AcpPermissionRecord> = {};
+    for (const result of results) {
+      if (result.status !== "fulfilled") {
+        continue;
+      }
+      for (const item of result.value.items) {
+        if (!permissionIds.has(item.id)) {
+          continue;
+        }
+        nextRecords[item.id] = normalizePermissionRecord(item);
+      }
+    }
+    setPermissionRecordsById((current) => {
+      let next: Record<string, AcpPermissionRecord> | null = null;
+      for (const target of permissionCardTargets) {
+        const incoming = nextRecords[target.permissionId];
+        if (!incoming) {
+          continue;
+        }
+        const existing = current[target.permissionId];
+        if (existing?.status === "responded" && incoming.status === "pending") {
+          continue;
+        }
+        if (existing && equalPermissionRecords(existing, incoming)) {
+          continue;
+        }
+        if (next === null) {
+          next = { ...current };
+        }
+        next[target.permissionId] = incoming;
+      }
+      return next ?? current;
+    });
+  }, [permissionCardTargets, token]);
   const activityWindow = React.useMemo(
     () => windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
     [orderedMessages, stickToBottom]
@@ -346,6 +681,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const visibleWaterfallItems = React.useMemo(
     () =>
       activityWindow.items.map((message) => {
+        const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
         return {
           key: `conversation-${message.message_id}`,
           sequence: message.message_id,
@@ -354,7 +690,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           toActorId: message.to_actor_id ?? null,
           routeOrStatus: message.route,
           streamLabel: "conversation",
-          text: resolveMessageText(message, toPrettyJson),
+          payload: message.payload,
+          text: permissionCardPayload ? "" : resolveMessageText(message, toPrettyJson),
         };
       }),
     [activityWindow.items, toPrettyJson]
@@ -387,6 +724,49 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     (text: string) => renderMarkdownWithMentions(text, memberDisplayNamesById),
     [memberDisplayNamesById]
   );
+  const onRespondPermission = React.useCallback(
+    async (payload: PermissionReviewCardPayload, optionId?: string) => {
+      if (!token) {
+        return;
+      }
+      setPermissionBusyId(payload.permission_id);
+      setPermissionErrorById((current) => {
+        if (!(payload.permission_id in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[payload.permission_id];
+        return next;
+      });
+      try {
+        await api.respondAcpPermission(token, payload.agent_id, payload.permission_id, {
+          option_id: optionId ?? null,
+          outcome: optionId ? undefined : "cancelled",
+        });
+        setPermissionRecordsById((current) => ({
+          ...current,
+          [payload.permission_id]: {
+            ...(current[payload.permission_id] ?? buildPermissionRecordStub(payload, optionId)),
+            status: "responded",
+            selected_option_id: optionId ?? null,
+            responded_at: Math.floor(Date.now() / 1000),
+          },
+        }));
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message.trim()
+            : "Failed to respond to permission request";
+        setPermissionErrorById((current) => ({
+          ...current,
+          [payload.permission_id]: message,
+        }));
+      } finally {
+        setPermissionBusyId(null);
+      }
+    },
+    [token]
+  );
 
   const scrollActivityToBottom = React.useCallback(() => {
     const node = activityListRef.current;
@@ -404,6 +784,37 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     node.scrollTop = 0;
     lastActivityScrollTopRef.current = node.scrollTop;
   }, []);
+
+  React.useEffect(() => {
+    if (!token || permissionCardTargets.length === 0) {
+      return;
+    }
+    void refreshPermissionCards();
+  }, [permissionCardTargetKey, permissionCardTargets.length, refreshPermissionCards, token]);
+
+  React.useEffect(() => {
+    if (!token || permissionCardTargets.length === 0) {
+      return;
+    }
+    const hasPendingPermission = permissionCardTargets.some((target) => {
+      const record = permissionRecordsById[target.permissionId];
+      return !record || record.status === "pending";
+    });
+    if (!hasPendingPermission) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshPermissionCards();
+    }, 5000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    permissionCardTargets,
+    permissionRecordsById,
+    refreshPermissionCards,
+    token,
+  ]);
 
   React.useEffect(() => {
     if (messagesLoading || orderedMessages.length === 0 || !stickToBottom) {
@@ -461,6 +872,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               humanActorId,
               liveStateByMemberId
             );
+            const permissionCardPayload = parsePermissionReviewCardPayload(item.payload);
             const seenActorIds = seenByMessageId[item.sequence] ?? [];
             const seenProgress = resolveSeenProgressState(
               seenActorIds,
@@ -484,11 +896,21 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                   </div>
                   <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
                 </div>
-                <ThreadRichText
-                  className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                  text={item.text}
-                  renderHtml={renderTeamMessageHtml}
-                />
+                {permissionCardPayload ? (
+                  <PermissionReviewCard
+                    payload={permissionCardPayload}
+                    permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
+                    busy={permissionBusyId === permissionCardPayload.permission_id}
+                    errorText={permissionErrorById[permissionCardPayload.permission_id]}
+                    onRespond={onRespondPermission}
+                  />
+                ) : (
+                  <ThreadRichText
+                    className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+                    text={item.text}
+                    renderHtml={renderTeamMessageHtml}
+                  />
+                )}
                 {shouldShowSeenMeta && (
                   <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
                     <HoverCard
