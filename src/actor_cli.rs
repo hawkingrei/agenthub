@@ -1,8 +1,7 @@
 use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
-    ActorInboxResponse, ActorMailboxService, ActorMessageStatus, ActorServiceError,
-    ActorServiceErrorCode,
+    ActorMailboxService, ActorMessageStatus, ActorServiceError, actor_inbox_with_auto_ack,
     build_default_actor_channel_idempotency_key, build_default_actor_message_idempotency_key,
     parse_actor_transport,
 };
@@ -26,6 +25,7 @@ use crate::team::{TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamManage
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
+const TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS: i64 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActorOutputMode {
@@ -234,39 +234,6 @@ fn map_actor_service_error(operation: &str, err: ActorServiceError) -> anyhow::E
     anyhow::anyhow!("{operation} failed ({:?}): {}", err.code, err.message)
 }
 
-async fn actor_inbox_with_auto_ack_dyn(
-    service: &dyn ActorMailboxService,
-    request: ActorInboxRequest,
-) -> Result<ActorInboxResponse, ActorServiceError> {
-    let run_id = request.run_id.clone();
-    let response = service.actor_inbox(request).await?;
-    let mut messages = Vec::with_capacity(response.messages.len());
-    for message in response.messages {
-        if message.status != ActorMessageStatus::Pending {
-            messages.push(message);
-            continue;
-        }
-        let acked = service
-            .actor_ack(ActorAckRequest {
-                run_id: run_id.clone(),
-                actor_id: message.to_actor_id.clone(),
-                message_id: message.message_id,
-                ack_token: None,
-                result: None,
-            })
-            .await;
-        match acked {
-            Ok(acked) => messages.push(acked.message),
-            Err(err) if err.code == ActorServiceErrorCode::NotFound => messages.push(message),
-            Err(err) => return Err(err),
-        }
-    }
-    Ok(ActorInboxResponse {
-        messages,
-        next_cursor: response.next_cursor,
-    })
-}
-
 fn resolve_actor_send_payload(
     text: Option<String>,
     payload: Option<Value>,
@@ -408,6 +375,10 @@ fn resolve_team_leader_member_id(spec: &Value) -> anyhow::Result<String> {
     }
 
     Err(anyhow::anyhow!("team has no leader configured"))
+}
+
+fn compute_time_trigger_fire_at(now_ts: i64, delay_seconds: i64) -> i64 {
+    now_ts + delay_seconds + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
 }
 
 async fn load_team_for_context(
@@ -1345,7 +1316,7 @@ async fn run_actor_command(
             } else {
                 Some(vec![ActorMessageStatus::Pending])
             };
-            let inbox = actor_inbox_with_auto_ack_dyn(
+            let inbox = actor_inbox_with_auto_ack(
                 service.as_ref(),
                 ActorInboxRequest {
                     run_id,
@@ -1434,12 +1405,13 @@ async fn run_actor_command(
             );
             let db = agenthub_db::init_db().await?;
             let manager = AgentTimeTriggerManager::new(db);
+            let now_ts = Utc::now().timestamp();
             let record = manager
                 .create_time_trigger(AgentTimeTriggerCreateInput {
                     agent_id: actor_id.clone(),
                     created_by_actor_id: actor_id,
                     message_text: message,
-                    fire_at: Utc::now().timestamp() + delay_seconds,
+                    fire_at: compute_time_trigger_fire_at(now_ts, delay_seconds),
                 })
                 .await?;
             write_actor_output(&record, output_mode, ActorOutputPreference::JsonPreferred)?;
@@ -2287,6 +2259,17 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn compute_time_trigger_fire_at_adds_future_safety_margin() {
+        assert_eq!(compute_time_trigger_fire_at(1_700_000_000, 1), 1_700_000_002);
+        assert_eq!(
+            compute_time_trigger_fire_at(1_700_000_000, MAX_TIME_TRIGGER_DELAY_SECONDS),
+            1_700_000_000
+                + MAX_TIME_TRIGGER_DELAY_SECONDS
+                + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
+        );
     }
 
     #[test]

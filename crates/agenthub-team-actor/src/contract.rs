@@ -107,7 +107,7 @@ pub trait ActorMailboxService: Send + Sync {
     ) -> Result<ActorAckResponse, ActorServiceError>;
 }
 
-pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService>(
+pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService + ?Sized>(
     service: &S,
     request: ActorInboxRequest,
 ) -> Result<ActorInboxResponse, ActorServiceError> {
