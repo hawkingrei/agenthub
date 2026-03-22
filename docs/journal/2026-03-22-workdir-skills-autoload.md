@@ -25,4 +25,9 @@ skills and user-level `~/.agenthub/skills.json` config.
 
 - `cargo test -p agenthub-acp load_workdir_skills_discovers_nested_skill_markdown_files -- --nocapture`
 - `cargo test -p agenthub-acp load_workdir_skills_uses_parent_directory_name_as_fallback -- --nocapture`
+- `cargo test -p agenthub-acp load_workdir_skills_respects_safe_paths -- --nocapture`
+- `cargo test -p agenthub-acp load_workdir_skills_skips_symlinked_directories -- --nocapture`
+- `cargo test -p agenthub-acp load_workdir_skills_skips_symlinked_skills_root -- --nocapture`
 - `cargo test -p agenthub-acp repo_local_skills_take_precedence_over_global_config_skills -- --nocapture`
+- `cargo fmt --all --check`
+- `git -c core.fsmonitor=false diff --check`

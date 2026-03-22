@@ -505,6 +505,24 @@ fn load_workdir_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
         tracing::warn!("workdir skills skipped: no safe paths configured");
         return Vec::new();
     }
+    match fs::symlink_metadata(&skills_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            tracing::warn!(
+                "workdir skills skipped: skills_dir is a symlink: path={}",
+                skills_dir.display()
+            );
+            return Vec::new();
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(
+                "workdir skills skipped: failed to stat skills_dir: path={} error={}",
+                skills_dir.display(),
+                err
+            );
+            return Vec::new();
+        }
+    }
 
     let mut skill_paths = Vec::new();
     collect_workdir_skill_paths(&skills_dir, &mut skill_paths);
@@ -2197,6 +2215,30 @@ Use the repo-local primary workflow.
             .map(|skill| skill.name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["primary-skill"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_workdir_skills_skips_symlinked_skills_root() {
+        let workspace = TempSkillWorkspace::new();
+        let real_dir = workspace.root.join("detached-skills-root");
+        fs::create_dir_all(real_dir.join("shadow")).expect("create detached root");
+        fs::write(
+            real_dir.join("shadow").join("SKILL.md"),
+            r#"---
+name: "shadow-skill"
+---
+Use the detached skill root.
+"#,
+        )
+        .expect("write detached root skill");
+
+        let agents_dir = workspace.workdir().join(".agents");
+        fs::create_dir_all(&agents_dir).expect("create .agents directory");
+        unix_fs::symlink(&real_dir, agents_dir.join("skills")).expect("symlink skills root");
+
+        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        assert!(skills.is_empty());
     }
 
     #[test]
