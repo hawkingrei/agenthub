@@ -98,6 +98,13 @@ describe("AgentNodeSection", () => {
       })
     ).toBeNull();
     expect(
+      validateAgentNodeDraft({
+        nodeId: "x".repeat(129),
+        nodeName: "Node East",
+        grpcTarget: "https://node-east.internal:50051",
+      })
+    ).toBe("Node ID must be at most 128 characters.");
+    expect(
       validateAgentNodeUpdateDraft({
         nodeName: "",
         grpcTarget: "https://node-east.internal:50051",
@@ -152,5 +159,135 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Blank create-worktree workdirs default to:");
     expect(html).toContain("~/.agenthub/worktrees/node-east");
     expect(html).toContain("Save");
+  });
+
+  it("renders machine summaries and attached agents for local and remote nodes", () => {
+    const html = renderSection({
+      nodes: [
+        baseProps.nodes[0],
+        {
+          id: "node-east",
+          name: "Node East",
+          grpc_target: "https://node-east.internal:50051",
+          tls_server_name: "node-east.internal",
+          default_worktree_root: "~/.agenthub/worktrees/node-east",
+          is_main: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+      agents: [
+        {
+          id: "agent-main-1",
+          name: "Planner",
+          workdir: "/tmp/planner",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: null,
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-remote-1",
+          name: "Worker A",
+          workdir: "/tmp/worker-a",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "node-east",
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-remote-2",
+          name: "Worker B",
+          workdir: "/tmp/worker-b",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "node-east",
+          created_at: 1,
+          updated_at: 1,
+        },
+      ] as typeof baseProps.agents,
+      targetNodeId: "node-east",
+    });
+
+    expect(html).toContain("Machines &amp; Agents");
+    expect(html).toContain("Main Node");
+    expect(html).toContain("Node East");
+    expect(html).toContain("Planner");
+    expect(html).toContain("Worker A");
+    expect(html).toContain("Worker B");
+    expect(html).toContain("Selected");
+    expect(html).toContain("Bind the agent to Node East via encrypted gRPC (node-east.internal).");
+  });
+
+  it("falls back to the main node chooser and truncates long agent lists", () => {
+    const html = renderSection({
+      nodes: [],
+      agents: [
+        {
+          id: "agent-1",
+          name: "One",
+          workdir: "/tmp/one",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "main",
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-2",
+          name: "Two",
+          workdir: "/tmp/two",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "main",
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-3",
+          name: "Three",
+          workdir: "/tmp/three",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "main",
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-4",
+          name: "Four",
+          workdir: "/tmp/four",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "main",
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-5",
+          name: "Five",
+          workdir: "/tmp/five",
+          status: "running",
+          mode: "normal",
+          source: null,
+          target_node_id: "main",
+          created_at: 1,
+          updated_at: 1,
+        },
+      ] as typeof baseProps.agents,
+    });
+
+    expect(html).toContain("Run on this AgentHub instance.");
+    expect(html).toContain("+1 more");
+    expect(html).not.toContain("No agents assigned yet.");
   });
 });

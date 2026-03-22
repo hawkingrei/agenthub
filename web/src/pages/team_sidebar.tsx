@@ -62,14 +62,16 @@ type TeamSidebarProps = {
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
 
-function formatWorkLabel(status: ReturnType<typeof normalizeTeamMemberWorkStatus>): string {
+export function formatWorkLabel(
+  status: ReturnType<typeof normalizeTeamMemberWorkStatus>
+): string {
   if (status === "no_run") {
     return "idle";
   }
   return status;
 }
 
-function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
+export function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
   const agentName = member.agent_name?.trim();
   if (agentName) {
     return agentName;
@@ -77,7 +79,7 @@ function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
   return member.member_id;
 }
 
-function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
+export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
   if (!summary) {
     return null;
   }
@@ -114,7 +116,7 @@ const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
 
-function resolveMemberIndicatorClassName(
+export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
   workStatus: ReturnType<typeof normalizeTeamMemberWorkStatus>
 ): string {

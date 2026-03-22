@@ -43,6 +43,8 @@
 - restored tablet-sized input history/interrupt chips to a 26px minimum while keeping the mobile override at 24px, matching the dock layout Playwright checks without bringing back the thicker desktop shell
 - updated the Team runtime-badge E2E helper to fall back to the slimmer inline badge text when the status is no longer exposed via a dedicated `role="status"` node
 - added focused unit coverage for `thread_rich_text` cache/fallback behavior and `thread_viewport` jump/stick helpers to lift diff coverage on the shared Team/ACP primitives
+- moved the Team runtime-badge E2E expectation to the selected-team menu, which is where the slimmer shell now exposes runtime status
+- added helper-focused coverage for `team_page`, `team_sidebar`, and `agent_node_section` so diff coverage follows the newly introduced chooser/layout helpers instead of only the large panel integration tests
 
 ## Validation
 
@@ -52,5 +54,6 @@
 - `cd web && npm run lint -- src/components/thread_rich_text.tsx src/components/acp_conversation.tsx src/acp_conversation.test.ts src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/app.permission_scope.test.ts`
 - `cd web && npm run lint -- src/pages/team_page.smoke.test.tsx tests/e2e/team_page.e2e.ts`
 - `cd web && npx vitest run src/components/thread_rich_text.test.tsx src/hooks/thread_viewport.test.ts`
+- `cd web && npx vitest run src/pages/team_page.helpers.test.ts src/pages/team_sidebar.helpers.test.ts src/components/agent_node_section.test.tsx src/app.route_auth.test.ts`
 - `cd web && npm run test:coverage:core`
 - inspected `web/dist/index.html` to confirm the initial preload set no longer includes `route-auth`, `route-teams`, or `vendor-markdown`

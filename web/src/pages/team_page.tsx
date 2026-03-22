@@ -232,7 +232,7 @@ type TeamPageProps = {
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 type TeamCreateNoteTone = "info" | "warning";
 
-function parseTeamAgentInputSessionMismatch(
+export function parseTeamAgentInputSessionMismatch(
   message: string
 ): { expected: string; running: string } | null {
   const match = message.match(
@@ -249,7 +249,7 @@ function parseTeamAgentInputSessionMismatch(
   return { expected, running };
 }
 
-function buildTeamDetailPath(teamId: string): string {
+export function buildTeamDetailPath(teamId: string): string {
   return `/teams/${encodeURIComponent(teamId)}`;
 }
 
@@ -290,7 +290,7 @@ type RunInputValidation = {
   error: string | null;
 };
 
-function formatTeamRuntimeActionSummary(
+export function formatTeamRuntimeActionSummary(
   action: "start" | "stop",
   members: ReadonlyArray<{ action: string }>
 ): string {
@@ -305,7 +305,7 @@ function formatTeamRuntimeActionSummary(
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
 }
 
-function validateRunInputJson(raw: string): RunInputValidation {
+export function validateRunInputJson(raw: string): RunInputValidation {
   const trimmed = raw.trim();
   if (!trimmed) {
     return { parsed: undefined, error: null };

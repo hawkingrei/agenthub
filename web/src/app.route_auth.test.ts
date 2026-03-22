@@ -65,6 +65,10 @@ describe("team route auth redirect", () => {
       mode: "detail",
       teamId: "team/1",
     });
+    expect(resolveTeamRoute("/teams/%E0%A4%A")).toEqual({
+      mode: "detail",
+      teamId: "%E0%A4%A",
+    });
     expect(resolveTeamRoute("/teams-workbench")).toBeNull();
     expect(resolveTeamRoute("/agents")).toBeNull();
   });
@@ -137,6 +141,16 @@ describe("team route auth redirect", () => {
       makeNode("main"),
       makeNode("node-b", "node-b", 20),
       makeNode("node-a", "new-a", 10),
+    ]);
+    expect(
+      upsertAgentNodeRecord(
+        [makeNode("node-b", "node-b", 20), makeNode("node-a", "node-a", 20)],
+        makeNode("main")
+      )
+    ).toEqual([
+      makeNode("main"),
+      makeNode("node-a", "node-a", 20),
+      makeNode("node-b", "node-b", 20),
     ]);
   });
 

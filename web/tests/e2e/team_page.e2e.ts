@@ -308,12 +308,8 @@ async function expectTeamRuntimeBadge(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  const statusBadge = page.locator('[role="status"]').filter({ hasText: label }).first();
-  if ((await statusBadge.count()) > 0) {
-    await expect(statusBadge).toBeVisible();
-    return;
-  }
-  await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menu").getByText(label, { exact: true }).first()).toBeVisible();
 }
 
 async function openSelectedTeamMenu(
