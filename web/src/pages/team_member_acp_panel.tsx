@@ -403,7 +403,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const shouldRenderPanel = Boolean(selectedMemberId.trim());
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col rounded-[12px] border-black/6 p-2.5`}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col rounded-[12px] border-black/[0.06] p-2.5`}>
       {canShowThreadOptions && (
         <div className="flex shrink-0 flex-col gap-2">
           <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full justify-end gap-2`}>
@@ -433,13 +433,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
           </div>
           {developerMode && (
             <div className="mono flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 member={selectedMemberId || "-"}
               </div>
-              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 role={selectedMemberSnapshot?.role ?? selectedMemberRole ?? "-"}
               </div>
-              <div className="rounded-lg border border-black/6 bg-ui-surface/70 px-2.5 py-1.5">
+              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
                 session={selectedSessionId ?? "-"}
               </div>
             </div>

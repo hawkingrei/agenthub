@@ -1737,6 +1737,106 @@ describe("team panels interactions", () => {
     expect(activityKinds).toEqual(["human", "agent"]);
   });
 
+  it("TeamTaskPanel renders pending delivery state before any member read receipts arrive", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "queued update" },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "LeaderAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "broadcasting update",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    expect(container.textContent).toContain("queued update");
+    const pendingButton = container.querySelector('button[aria-label="Pending delivery"]');
+    expect(pendingButton).not.toBeNull();
+    expect(pendingButton?.getAttribute("title")).toBe("Pending delivery");
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+  });
+
+  it("TeamTaskPanel excludes the author from seen-progress counts", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "progress update" },
+            }),
+          ]}
+          seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "LeaderAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "broadcasting update",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    const progressbar = container.querySelector('[role="progressbar"]');
+    expect(progressbar?.getAttribute("aria-valuenow")).toBe("1");
+    expect(progressbar?.getAttribute("aria-valuemax")).toBe("1");
+  });
+
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const rafSpy = vi

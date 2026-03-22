@@ -94,9 +94,9 @@ export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | n
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[14px] border border-black/6 bg-[rgba(252,251,247,0.68)] p-1.5 shadow-none";
+  "rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.68)] p-1.5 shadow-none";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[10px] bg-ui-surface/34 p-1";
+  "rounded-[10px] bg-ui-surface/[0.34] p-1";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
   "px-1 py-1";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =

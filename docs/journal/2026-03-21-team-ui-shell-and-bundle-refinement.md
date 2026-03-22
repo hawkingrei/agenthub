@@ -45,6 +45,9 @@
 - added focused unit coverage for `thread_rich_text` cache/fallback behavior and `thread_viewport` jump/stick helpers to lift diff coverage on the shared Team/ACP primitives
 - moved the Team runtime-badge E2E expectation to the selected-team menu, which is where the slimmer shell now exposes runtime status
 - added helper-focused coverage for `team_page`, `team_sidebar`, and `agent_node_section` so diff coverage follows the newly introduced chooser/layout helpers instead of only the large panel integration tests
+- replaced invalid Tailwind slash-opacity shorthands with explicit arbitrary opacity values so the thinner Team shell styling survives production builds
+- kept `Pending delivery` separate from seen-progress rendering so unread outbound messages do not appear as a 0% read indicator
+- marked Machines & Agents selection buttons with `aria-pressed` so the chooser state remains accessible in the slimmer node picker
 
 ## Validation
 

@@ -321,9 +321,9 @@ export function validateRunInputJson(raw: string): RunInputValidation {
 const panelSecondaryButtonClassName =
   "inline-flex items-center justify-center rounded-[12px] border border-ui-border bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[14px] border border-black/6 bg-[rgba(252,251,247,0.7)] p-2 shadow-none sm:p-2.5";
+  "min-h-0 min-w-0 rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.7)] p-2 shadow-none sm:p-2.5";
 const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[16px] border border-black/6 bg-[rgba(252,251,247,0.72)] p-2.5 shadow-none sm:p-3";
+  "min-h-0 rounded-[16px] border border-black/[0.06] bg-[rgba(252,251,247,0.72)] p-2.5 shadow-none sm:p-3";
 const teamSectionHeadingClassName =
   "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
@@ -402,7 +402,7 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
 });
 
 const teamWorkbenchPanelClassName =
-  "rounded-[14px] border border-black/6 bg-[rgba(252,251,247,0.74)] p-2 shadow-none";
+  "rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] p-2 shadow-none";
 const teamWorkbenchAccentButtonClassName =
   "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
 const teamWorkbenchMutedButtonClassName =
@@ -411,17 +411,17 @@ const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-2 border-b border-black/8 bg-[rgba(252,251,247,0.84)] px-1 py-1.5 backdrop-blur-sm";
+  "flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-1 py-1.5 backdrop-blur-sm";
 const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-black/8 bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-black/[0.08] bg-white/[0.75] text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-white/72 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
+  "inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white/[0.72] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)]";
 const teamWorkbenchDetailLayoutExpandedClassName =
   "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(256px,312px)_minmax(0,1fr)]";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[12px] border border-black/6 bg-[rgba(252,251,247,0.74)] px-2 py-1.5";
+  "rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] px-2 py-1.5";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
 const teamWorkbenchInfoStripGridClassName =
@@ -3182,7 +3182,7 @@ export function TeamPage(props: TeamPageProps) {
                 />
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-black/8 bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-black/[0.08] bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
                   onClick={() => {
                     void refreshTeams();
                   }}

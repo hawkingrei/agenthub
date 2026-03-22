@@ -161,6 +161,28 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Save");
   });
 
+  it("marks the selected node chooser button with aria-pressed", () => {
+    const html = renderSection({
+      nodes: [
+        baseProps.nodes[0],
+        {
+          id: "node-east",
+          name: "Node East",
+          grpc_target: "https://node-east.internal:50051",
+          tls_server_name: "node-east.internal",
+          default_worktree_root: "~/.agenthub/worktrees/node-east",
+          is_main: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+      targetNodeId: "node-east",
+    });
+
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('aria-pressed="false"');
+  });
+
   it("renders machine summaries and attached agents for local and remote nodes", () => {
     const html = renderSection({
       nodes: [

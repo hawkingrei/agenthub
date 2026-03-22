@@ -143,7 +143,7 @@ const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
 const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
 const ROUTE_FALLBACK_SHELL_CLASS =
-  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-[16px] border border-black/8 bg-[rgba(252,251,247,0.84)] px-6 py-10 text-sm font-medium text-ui-text-muted shadow-sm";
+  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-[16px] border border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-6 py-10 text-sm font-medium text-ui-text-muted shadow-sm";
 
 const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
 

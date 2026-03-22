@@ -43,7 +43,7 @@ type TeamTaskPanelProps = {
 };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-2.5 flex flex-col gap-2 rounded-[12px] border border-black/6 bg-white/72 px-2.5 py-2";
+  "mt-2.5 flex flex-col gap-2 rounded-[12px] border border-black/[0.06] bg-white/[0.72] px-2.5 py-2";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
@@ -54,7 +54,7 @@ const TEAM_TASK_ACTIVITY_LIST_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
   "mt-2 min-h-[120px] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[12px] border border-black/6 bg-[rgba(255,255,255,0.68)] px-2.5 py-2";
+  "rounded-[12px] border border-black/[0.06] bg-[rgba(255,255,255,0.68)] px-2.5 py-2";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
   "flex w-full flex-col gap-2";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
@@ -62,7 +62,7 @@ const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(31,122,61,0.12)] bg-[rgba(31,122,61,0.04)] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-black/6 bg-white/74 text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-black/[0.06] bg-white/[0.74] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
@@ -82,7 +82,7 @@ const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-medium text-ui-text-secondary";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/6 bg-white/78 p-0.5 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.78] p-0.5 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute bottom-2.5 right-2.5 z-[1]";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
@@ -91,7 +91,7 @@ const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
   "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
-  "min-w-[220px] rounded-[12px] border border-black/6 bg-[rgba(252,251,247,0.98)] p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
+  "min-w-[220px] rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.98)] p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
   "text-[11px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =
@@ -100,7 +100,7 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_JUMP_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/6 bg-white/82 px-2 py-0.5 text-[11px] font-medium text-ui-text-muted backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.82] px-2 py-0.5 text-[11px] font-medium text-ui-text-muted backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
 const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
 const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
@@ -177,7 +177,7 @@ function resolveSeenProgressState(
   const seen = new Set<string>();
   for (const actorId of seenActorIds) {
     const normalized = actorId.trim();
-    if (!normalized || seen.has(normalized)) {
+    if (!normalized || normalized === authorActorId || seen.has(normalized)) {
       continue;
     }
     seen.add(normalized);
@@ -462,13 +462,13 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               liveStateByMemberId
             );
             const seenActorIds = seenByMessageId[item.sequence] ?? [];
-            const shouldShowSeenMeta =
-              isHumanMailboxActor(item.fromActorId, humanActorId) || seenActorIds.length > 0;
             const seenProgress = resolveSeenProgressState(
               seenActorIds,
               memberIds,
               item.fromActorId
             );
+            const shouldShowSeenMeta =
+              isHumanMailboxActor(item.fromActorId, humanActorId) || seenProgress.totalCount > 0;
             return (
               <div
                 key={item.key}
@@ -499,7 +499,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       radius="md"
                     >
                       <HoverCard.Target>
-                        {seenProgress.totalCount === 0 && seenActorIds.length === 0 ? (
+                        {seenActorIds.length === 0 ? (
                           <button
                             type="button"
                             className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
@@ -536,7 +536,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         )}
                       </HoverCard.Target>
                       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
-                        {seenProgress.totalCount === 0 && seenActorIds.length === 0 ? (
+                        {seenActorIds.length === 0 ? (
                           <>
                             <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
                             <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>

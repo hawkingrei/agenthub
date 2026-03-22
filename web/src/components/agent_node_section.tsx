@@ -195,6 +195,7 @@ export function AgentNodeSection({
                 <button
                   key={node.id}
                   type="button"
+                  aria-pressed={isSelected}
                   className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                     isSelected
                       ? "border-ui-border-emphasis bg-white shadow-sm"
