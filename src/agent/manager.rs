@@ -2,6 +2,7 @@ mod acp_provider;
 mod codec;
 mod executor;
 mod runtime;
+mod start_plan;
 
 #[cfg(test)]
 mod tests;
@@ -30,6 +31,7 @@ use self::codec::{
     status_from_str, status_to_str, stream_from_str, worktree_mode_from_opt, worktree_mode_to_str,
 };
 use self::executor::{AgentExecutor, LocalExecutionRequest, LocalExecutor};
+use self::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
@@ -2223,40 +2225,42 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
-        if let Some(target_node_id) = agent.target_node_id.as_deref() {
-            self.reserve_agent_start(agent_id).await?;
-            let result = self
-                .start_remote_agent(&agent, target_node_id, actor_context.as_ref())
-                .await;
-            self.release_agent_start(agent_id).await;
-            return result;
-        }
-        if let Some(session_id) = self.get_running_session_id(agent_id).await {
-            if actor_context.is_some() {
-                return Err(anyhow::anyhow!(
-                    "agent already running with session '{}'; cannot start with new actor context",
-                    session_id
-                ));
-            }
-            return Ok(session_id);
+        let running_session_id = self.get_running_session_id(agent_id).await;
+        let start_plan =
+            build_agent_start_plan(agent, actor_context, running_session_id.as_deref())?;
+        if let AgentStartPlan::ReuseRunningSession { session_id } = &start_plan {
+            return Ok(session_id.clone());
         }
         self.reserve_agent_start(agent_id).await?;
-        let result = self.start_agent_inner(agent_id, actor_context).await;
+        let result = match start_plan {
+            AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
+            AgentStartPlan::StartLocal {
+                agent,
+                actor_context,
+            } => self.start_local_agent(agent, actor_context).await,
+            AgentStartPlan::StartRemote {
+                agent,
+                target_node_id,
+                actor_context,
+            } => {
+                self.start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
+                    .await
+            }
+        };
         self.release_agent_start(agent_id).await;
         result
     }
 
     #[tracing::instrument(
-        skip(self, actor_context),
-        fields(agent_id = %agent_id),
+        skip(self, agent, actor_context),
+        fields(agent_id = %agent.id),
         err
     )]
-    async fn start_agent_inner(
+    async fn start_local_agent(
         &self,
-        agent_id: &str,
+        agent: AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
-        let agent = self.get_agent(agent_id).await?;
         let session_id = Uuid::new_v4().to_string();
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = expand_tilde(&agent.workdir);

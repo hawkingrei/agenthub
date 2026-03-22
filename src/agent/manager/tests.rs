@@ -1,5 +1,6 @@
 use super::acp_provider::{AcpDefaultModeBehavior, acp_provider_spec_for_agent_with_binary};
 use super::codec::is_acp_message;
+use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AgentRecord, AgentStatus,
     OutputStream, WorktreeMode, acp_provider_for_agent_with_binary, build_runtime_start_policy,
@@ -145,6 +146,60 @@ fn runtime_location_defaults_to_local_process() {
         AcpRuntimeLocation::default(),
         AcpRuntimeLocation::LocalProcess
     );
+}
+
+#[test]
+fn build_agent_start_plan_reuses_running_local_session() {
+    let agent = build_agent_record_for_policy(WorktreeMode::UseExisting, "/tmp/agent", None);
+    let plan = build_agent_start_plan(agent, None, Some("session-1")).expect("build start plan");
+    match plan {
+        AgentStartPlan::ReuseRunningSession { session_id } => {
+            assert_eq!(session_id, "session-1");
+        }
+        other => panic!("expected running-session reuse, got {other:?}"),
+    }
+}
+
+#[test]
+fn build_agent_start_plan_requires_idle_session_for_new_actor_context() {
+    let agent = build_agent_record_for_policy(WorktreeMode::UseExisting, "/tmp/agent", None);
+    let actor_context = AcpActorSkillContext {
+        team_id: Some("team-1".to_string()),
+        current_run_id: Some("run-1".to_string()),
+        actor_id: "leader-1".to_string(),
+        default_channel: "default".to_string(),
+        actor_cli_path: "/tmp/agenthub".to_string(),
+        member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
+        contract_version: None,
+        continuity: None,
+    };
+    let err = build_agent_start_plan(agent, Some(actor_context), Some("session-1"))
+        .expect_err("reject new actor context for running local agent");
+    assert!(
+        err.to_string()
+            .contains("agent already running with session 'session-1'"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn build_agent_start_plan_prioritizes_remote_target_over_local_reuse() {
+    let mut agent = build_agent_record_for_policy(WorktreeMode::UseExisting, "/tmp/agent", None);
+    agent.target_node_id = Some("node-east".to_string());
+
+    let plan = build_agent_start_plan(agent, None, Some("session-1")).expect("build start plan");
+    match plan {
+        AgentStartPlan::StartRemote {
+            target_node_id,
+            actor_context,
+            ..
+        } => {
+            assert_eq!(target_node_id, "node-east");
+            assert!(actor_context.is_none());
+        }
+        other => panic!("expected remote start plan, got {other:?}"),
+    }
 }
 
 #[test]

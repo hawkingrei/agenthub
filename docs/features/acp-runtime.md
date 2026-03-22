@@ -43,6 +43,7 @@ ACP runtime concerns should stay split across three orthogonal layers:
 - Runtime placement layer:
   - Decides where the ACP runtime executes and how AgentHub connects to it.
   - The current baseline is explicit local-process execution.
+  - Startup planning should stay explicit so "reuse running session", "start local", and "start remote" remain a named boundary instead of an inlined branch chain.
   - Local subprocess launch should stay behind an executor seam so AgentHub can add remote placements without re-expanding manager logic.
   - Future remote-node/P2P support must extend this axis instead of adding provider-specific transport stacks.
 - Proxy policy layer:

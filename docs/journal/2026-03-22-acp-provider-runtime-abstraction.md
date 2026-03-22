@@ -40,12 +40,15 @@ Before implementing P2P execution, AgentHub needs one stable split:
   so the egress policy can later be reused for remote runtimes.
 - Introduce `AgentExecutor` with a `LocalExecutor` implementation so
   `AgentManager` no longer owns raw subprocess spawn wiring directly.
+- Build an explicit `AgentStartPlan` before reservation so local reuse versus
+  remote start is visible as a first-class decision boundary.
 
 ## Scope
 
 - `src/agent/manager.rs`
 - `src/agent/manager/acp_provider.rs`
 - `src/agent/manager/executor.rs`
+- `src/agent/manager/start_plan.rs`
 - `src/agent/manager/tests.rs`
 - `crates/agenthub-acp/src/lib.rs`
 - `docs/features/acp-runtime.md`
