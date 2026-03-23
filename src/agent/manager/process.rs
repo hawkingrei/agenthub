@@ -312,8 +312,13 @@ impl AgentManager {
                     "finalize_process_exit failed to persist run-status event"
                 );
                 let mut guard = inner.write().await;
-                guard.remove(agent_id);
-                if let Some(idle_gc) = &idle_gc {
+                let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id);
+                    true
+                } else {
+                    false
+                };
+                if removed && let Some(idle_gc) = &idle_gc {
                     idle_gc.remove_agent(agent_id).await;
                 }
                 return;
@@ -360,6 +365,7 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
+    use agenthub_db::AgentEventDbRouter;
     use chrono::Utc;
     use sqlx::{Row, SqlitePool};
     use tokio::io::AsyncWriteExt;
@@ -513,6 +519,7 @@ mod tests {
         .await;
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn finalize_process_exit_keeps_newer_running_handle_for_different_session() {
         let state = crate::api::team_tests::build_test_state().await;
@@ -547,7 +554,7 @@ mod tests {
         .await
         .expect("mark old session ended");
 
-        let child = Command::new("/bin/sh")
+        let child = Command::new("sh")
             .arg("-lc")
             .arg("sleep 5")
             .spawn()
@@ -571,6 +578,87 @@ mod tests {
         super::AgentManager::finalize_process_exit(
             &state.db,
             &state.agents.event_dbs,
+            state.agents.idle_gc.clone(),
+            &state.agents.inner,
+            &state.push,
+            &agent_id,
+            &old_session_id,
+            false,
+        )
+        .await;
+
+        let running_handle_session = state
+            .agents
+            .inner
+            .read()
+            .await
+            .get(&agent_id)
+            .map(|handle| handle.session_id.clone());
+        assert_eq!(
+            running_handle_session.as_deref(),
+            Some(new_session_id.as_str())
+        );
+
+        if let Some(handle) = state.agents.inner.write().await.remove(&agent_id) {
+            let mut child_guard = handle.child.lock().await;
+            if let Some(mut child) = child_guard.take() {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn finalize_process_exit_keeps_newer_handle_when_event_persist_fails() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, old_session_id) =
+            insert_agent_and_session(&state.db, "finalize-persist-fail-old").await;
+        let now = Utc::now().timestamp();
+        let new_session_id = format!("session-process-finalize-persist-new-{}", Uuid::new_v4());
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(&new_session_id)
+        .bind(&agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert newer session");
+
+        let child = Command::new("sh")
+            .arg("-lc")
+            .arg("sleep 5")
+            .spawn()
+            .expect("spawn newer child");
+        let (output_tx, _rx) = broadcast::channel::<AgentOutput>(8);
+        let handle = AgentHandle {
+            child: std::sync::Arc::new(Mutex::new(Some(child))),
+            output_tx,
+            input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
+            session_id: new_session_id.clone(),
+            actor_context: None,
+            loop_controller: None,
+        };
+        state
+            .agents
+            .inner
+            .write()
+            .await
+            .insert(agent_id.clone(), handle);
+
+        let broken_router_root =
+            std::env::temp_dir().join(format!("agenthub-event-router-file-{}", Uuid::new_v4()));
+        std::fs::write(&broken_router_root, b"not-a-directory").expect("create router root file");
+        let broken_router = AgentEventDbRouter::new(broken_router_root);
+
+        super::AgentManager::finalize_process_exit(
+            &state.db,
+            &broken_router,
             state.agents.idle_gc.clone(),
             &state.agents.inner,
             &state.push,

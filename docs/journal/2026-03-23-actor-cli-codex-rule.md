@@ -1,32 +1,40 @@
-Added a user-facing Team Workbench note for local Codex environments that run
-the canonical actor CLI mailbox path.
+## Summary
 
-Updated:
+- documented a local Codex allow-rule for repeated `agenthub actor ...` mailbox commands
+- standardized agent-facing actor CLI examples around the shorter `agenthub actor ...` form
+- recorded follow-up review fixes for actor help parsing and permission-review validation
 
-- `userdocs/docs/advanced/team-workbench.md`
+## Why
 
-New guidance:
+- Team runtime mailbox coordination is now CLI-first, so local Codex approval prompts should not
+  interrupt repeated `agenthub actor inbox/ack/send` usage
+- runtime prompts and skills should converge on a single canonical actor CLI form to reduce token
+  waste and avoid mixed examples
+- the follow-up review fixes changed user-visible parsing and server-side validation behavior and
+  should be tracked with the same operator-facing note
 
-- append `prefix_rule(pattern=["agenthub", "actor"], decision="allow")`
-  to `~/.codex/rules/default.rules`
-- prefer the short actor CLI workflow:
+## What Changed
+
+- appended `prefix_rule(pattern=["agenthub", "actor"], decision="allow")` guidance for
+  `~/.codex/rules/default.rules`
+- documented the short actor CLI workflow:
   - `agenthub actor inbox`
   - `agenthub actor ack --message-id <id>`
   - `agenthub actor send --to-actor-id <actor_id> --text "<markdown>"`
+- noted review follow-ups:
+  - literal `help` is only treated as the explicit help subcommand position
+  - generic flag parsing only recognizes `--help` / `-h`
+  - worker execution examples now use `agenthub actor ack/send ...` consistently
+  - internal permission-review control rejects requests that set both `option_id` and `outcome`
 
-Rationale:
+## Validation
 
-- Team runtime coordination is now CLI-first for mailbox work
-- local Codex approval prompts should not interrupt repeated mailbox commands
-- agent-facing reminders and runtime examples now prefer the shorter
-  `agenthub actor ...` form instead of spelling out `"$AGENTHUB_ACTOR_CLI"`
-
-Review follow-ups:
-
-- `actor help` now reserves literal `help` for the explicit help subcommand position only;
-  generic flag-value parsing only treats `--help` / `-h` as help flags so values like
-  `--team-id help` continue to parse normally.
-- worker execution examples now use `agenthub actor ack/send ...` consistently after the
-  canonical `agenthub actor inbox` entrypoint.
-- internal permission-review control now rejects requests that set both `option_id` and
-  `outcome`, so the server-side contract matches the CLI's mutual-exclusion rule.
+- manually reviewed:
+  - `userdocs/docs/advanced/team-workbench.md`
+  - `skills/team/team-worker-executor.SKILL.md`
+  - `crates/agenthub-acp/src/actor_runtime_skill.rs`
+- `cargo test -p agenthub actor_cli::tests -- --nocapture`
+- `cargo test -p agenthub internal_grpc_permission_review_respond_rejects_conflicting_outcome_fields -- --nocapture`
+- `cargo clippy --locked -p agenthub --all-targets -- -D warnings`
+- `cargo fmt --all --check`
+- `git -c core.fsmonitor=false diff --check`

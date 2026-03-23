@@ -1004,9 +1004,10 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn observe_resumed_session_startup_detects_early_failure() {
-        let child = Command::new("/bin/sh")
+        let child = Command::new("sh")
             .arg("-lc")
             .arg("exit 1")
             .spawn()
@@ -1025,9 +1026,10 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn observe_resumed_session_startup_treats_running_child_as_healthy() {
-        let child = Command::new("/bin/sh")
+        let child = Command::new("sh")
             .arg("-lc")
             .arg("sleep 1")
             .spawn()
