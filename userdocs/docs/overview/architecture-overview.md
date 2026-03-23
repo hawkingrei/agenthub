@@ -61,7 +61,7 @@ When one machine is not enough, AgentHub can add remote Agent Nodes:
 
 - the main AgentHub instance stays the control plane
 - remote nodes run the same `agenthub` binary
-- control and mailbox relay use internal gRPC
+- actor control and mailbox relay use internal gRPC on a p2p-aware path
 - node-local execution data stays on the selected node
 
 This lets operators keep one main UI and API surface while execution happens

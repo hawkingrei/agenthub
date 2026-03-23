@@ -46,16 +46,19 @@ Key concepts:
 Use this when planning, implementation, and review should be coordinated rather
 than collapsed into one session.
 
-## Agent Nodes
+## Agent Nodes And Actor P2P
 
 AgentHub can register remote execution nodes and route agent execution to them
-over internal gRPC.
+over internal gRPC, while keeping actor control and mailbox delivery on the
+same p2p-aware control path.
 
 Use this when:
 
 - repositories or compute live on other machines
 - you want one main control plane but many execution targets
 - node-specific default worktree roots are required
+- actor-to-actor coordination should still work even when execution leaves the
+  main machine
 
 ## Automation And Integration
 
