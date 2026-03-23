@@ -6,7 +6,7 @@ use sqlx::Row;
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
-use super::acp_provider::AcpDefaultModeBehavior;
+use super::acp_provider::{AcpDefaultModeBehavior, default_env_for_acp_provider};
 use super::executor::LocalExecutionRequest;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
@@ -443,6 +443,7 @@ impl AgentManager {
             args: agent.args.clone(),
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
+            extra_env: default_env_for_acp_provider(acp_provider),
         };
         let local_execution = match self
             .local_executor
