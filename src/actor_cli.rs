@@ -351,14 +351,8 @@ async fn init_team_manager() -> anyhow::Result<(TeamManager, agenthub_config::Ap
     Ok((manager, config))
 }
 
-async fn init_actor_mailbox_service(
-    manager: &TeamManager,
-) -> anyhow::Result<Arc<dyn ActorMailboxService>> {
-    let service: Arc<dyn ActorMailboxService> = match maybe_remote_mailbox_service().await? {
-        Some(client) => Arc::new(client),
-        None => Arc::new(manager.actor_mailbox_service()),
-    };
-    Ok(service)
+fn init_actor_mailbox_service(manager: &TeamManager) -> Arc<dyn ActorMailboxService> {
+    Arc::new(manager.actor_mailbox_service())
 }
 
 fn map_actor_service_error(operation: &str, err: ActorServiceError) -> anyhow::Error {
@@ -1455,7 +1449,7 @@ async fn run_actor_command(
             include_delivered,
         } => {
             let (manager, _) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let states = if include_delivered {
                 Some(vec![
                     ActorMessageStatus::Pending,
@@ -1485,7 +1479,7 @@ async fn run_actor_command(
             message_id,
         } => {
             let (manager, _) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let message = service
                 .actor_ack(ActorAckRequest {
                     run_id,
@@ -1511,7 +1505,7 @@ async fn run_actor_command(
             idempotency_key,
         } => {
             let (manager, config) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {
                     run_id,
@@ -1718,6 +1712,7 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::team_tests::build_test_state;
     use agenthub_team_actor::ActorInboxResponse;
     use serde::Serialize;
     use std::sync::OnceLock;
@@ -2331,6 +2326,52 @@ mod tests {
         maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &config, &send_result)
             .await
             .expect("best-effort mailbox hint should not fail");
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
+    #[tokio::test]
+    async fn init_actor_mailbox_service_ignores_remote_mailbox_env_for_cli_commands() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+                "https://127.0.0.1:9",
+            );
+            std::env::set_var(
+                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+                "test-token",
+            );
+        }
+
+        let state = build_test_state().await;
+        let service = init_actor_mailbox_service(state.teams.as_ref());
+        let inbox = service
+            .actor_inbox(ActorInboxRequest {
+                run_id: "missing-run".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(5),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            })
+            .await
+            .expect("local mailbox service should ignore remote env and remain usable");
+        assert!(inbox.messages.is_empty());
+        assert!(
+            inbox.pending_count == 0,
+            "unexpected inbox response: {inbox:?}"
+        );
+
         restore_env(
             crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
             prev_target,
