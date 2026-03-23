@@ -167,7 +167,7 @@ Required visibility:
 - Keep actor semantics stable even when topology evolves (`main`-only -> `main` + `node`).
 - Keep operator-facing docs explicit: `run_id` partitions mailbox, `actor_id` identifies sender/receiver.
 - Prefer compatibility aliasing (`agent_id`) over field renaming in storage/API internals.
-- For Team sessions, prefer the canonical actor CLI mailbox workflow (`AGENTHUB_ACTOR_CLI`, `agenthub actor ...`) and avoid ad-hoc bypass paths (`docs/features/team-mcp-enforcement.md`).
+- For Team sessions, prefer the canonical actor CLI mailbox workflow (`AGENTHUB_ACTOR_CLI`, `agenthub actor ...`) and avoid ad-hoc bypass paths.
 - Keep conversation event-bus design aligned with `docs/features/team-conversation-event-bus.md`.
 
 ## Open Risks

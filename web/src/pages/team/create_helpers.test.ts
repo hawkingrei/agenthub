@@ -41,7 +41,7 @@ function buildForgeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
     name: `${id}-name`,
     workdir: `/tmp/${id}`,
     command: "agenthub",
-    args: ["actor-mcp"],
+    args: ["actor"],
     worktree_mode: "use_existing",
     worktree_repo: null,
     worktree_ref: null,

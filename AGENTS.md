@@ -162,7 +162,7 @@ agenthub/
   - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
   - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
   - Context and memory sections in `AGENTS.md` should stay concise as index pointers; append implementation details to dedicated skills/docs.
-  - Team runtime coordination details live in `docs/features/team-mcp-enforcement.md` until the CLI-first rename cleanup lands.
+  - Team runtime coordination details live in `docs/features/actor-foundation.md` and the Team mailbox/role skills; `docs/features/team-mcp-enforcement.md` is historical background only.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
   - Do not split into tiny crates without clear domain boundaries or ownership

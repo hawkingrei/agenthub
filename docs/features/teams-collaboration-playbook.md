@@ -168,7 +168,7 @@ Team collaboration should run with the canonical actor CLI mailbox path as the p
 
 Detailed enforcement design:
 
-- `docs/features/team-mcp-enforcement.md`
+- `docs/features/actor-foundation.md`
 
 ### 5.2) Conversation Event Bus Profile
 
@@ -293,7 +293,6 @@ Kind projections:
 - Keep this playbook aligned with:
   - `docs/features/agents-teams.md`
   - `docs/features/actor-foundation.md`
-  - `docs/features/team-mcp-enforcement.md`
   - `docs/features/team-conversation-event-bus.md`
   - `docs/features/backend-runtime-logic.md`
 - Prefer small, explicit delegation payloads over broad open-ended assignments.

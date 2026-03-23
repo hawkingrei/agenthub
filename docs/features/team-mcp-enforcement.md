@@ -1,12 +1,15 @@
 # Team MCP Enforcement Specification
 
-> Note
+> Historical Note
 >
-> Team runtime coordination is now moving to a CLI-first model via
-> `AGENTHUB_ACTOR_CLI` (`agenthub actor ...`) rather than mailbox MCP tool
-> injection. This document is retained as the historical enforcement/design
-> record; where it says "mailbox MCP required", read that as the canonical
-> Team coordination capability requirement for the current runtime.
+> Team runtime coordination is now CLI-first via `AGENTHUB_ACTOR_CLI`
+> (`agenthub actor ...`). Actor MCP injection is no longer part of the active
+> mainline runtime. This document is retained only as historical
+> enforcement/design background; current Team coordination contracts live in
+> `docs/features/actor-foundation.md` plus the Team mailbox/role skills.
+> The remainder of this document describes the deprecated MCP-based
+> enforcement approach and is not the current contract; in any conflict, the
+> CLI-first model and the canonical docs above take precedence.
 
 ## Problem
 
