@@ -137,6 +137,9 @@ ACP permission requests are first-class runtime records:
 
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
+- `agenthub-codex-acp` should enable Codex `multi_agent` / `Feature::Collab` by default so
+  AgentHub ACP sessions expose subagent tools without requiring per-user `~/.codex/config.toml`
+  toggles; retain a follow-up to surface this as an explicit AgentHub-owned config knob later.
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
