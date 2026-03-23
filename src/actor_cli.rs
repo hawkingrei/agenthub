@@ -438,6 +438,10 @@ fn take_actor_id(value: Option<String>) -> anyhow::Result<String> {
     )
 }
 
+fn take_mailbox_actor_id(value: Option<String>) -> anyhow::Result<String> {
+    take_required_with_env_keys(value, &[ACTOR_RUNTIME_ACTOR_ID_ENV], "actor_id")
+}
+
 fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> {
     match raw.trim() {
         "open" => Ok(TeamTaskStatus::Open),
@@ -886,7 +890,7 @@ fn parse_actor_command(
             }
             Ok(ActorCommand::Inbox {
                 run_id: take_run_id(run_id)?,
-                actor_id: take_actor_id(actor_id)?,
+                actor_id: take_mailbox_actor_id(actor_id)?,
                 limit: limit.max(1),
                 after_id,
                 include_delivered,
@@ -931,7 +935,7 @@ fn parse_actor_command(
             }
             Ok(ActorCommand::Ack {
                 run_id: take_run_id(run_id)?,
-                actor_id: take_actor_id(actor_id)?,
+                actor_id: take_mailbox_actor_id(actor_id)?,
                 message_id: message_id.ok_or_else(|| anyhow::anyhow!("message_id is required"))?,
             })
         }
@@ -1068,7 +1072,7 @@ fn parse_actor_command(
             let run_id = take_run_id(run_id)?;
             let from_actor_id = take_required_with_env_keys(
                 from_actor_id,
-                &[ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV],
+                &[ACTOR_RUNTIME_ACTOR_ID_ENV],
                 "from_actor_id",
             )?;
             let (to_actor_id, channel_id) = resolve_actor_send_target(to_actor_id, channel_id)?;
@@ -2087,7 +2091,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_inbox_uses_agent_id_env_fallback() {
+    fn parse_inbox_rejects_agent_id_env_fallback() {
         let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
@@ -2098,14 +2102,39 @@ mod tests {
             std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "planner-agent");
         }
         let args = vec!["inbox".to_string()];
-        let parsed =
-            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
-        match parsed {
-            ActorCommand::Inbox { actor_id, .. } => {
-                assert_eq!(actor_id, "planner-agent");
-            }
-            _ => panic!("expected inbox command"),
+        let err =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect_err("reject inbox");
+        assert!(
+            err.to_string().contains("actor_id is required"),
+            "unexpected error: {err}"
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_ack_rejects_agent_id_env_fallback() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-x");
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "planner-agent");
         }
+        let args = vec![
+            "ack".to_string(),
+            "--message-id".to_string(),
+            "42".to_string(),
+        ];
+        let err =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect_err("reject ack");
+        assert!(
+            err.to_string().contains("actor_id is required"),
+            "unexpected error: {err}"
+        );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
@@ -2147,6 +2176,35 @@ mod tests {
             }
             _ => panic!("expected send command"),
         }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_rejects_agent_id_env_fallback_for_from_actor() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-env");
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "leader-agent");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
+        ];
+        let err =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect_err("reject send");
+        assert!(
+            err.to_string().contains("from_actor_id is required"),
+            "unexpected error: {err}"
+        );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
