@@ -2,6 +2,7 @@
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
 use agent_client_protocol::AgentSideConnection;
+use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
 use codex_core::features::{Feature, Features};
 use codex_utils_cli::CliConfigOverrides;
@@ -142,6 +143,42 @@ fn normalize_responses_websocket_support(config: &mut Config) {
     }
 }
 
+trait CollabFeatureState {
+    fn collab_enabled(&self) -> bool;
+    fn try_enable_collab(&mut self) -> Result<(), String>;
+}
+
+impl CollabFeatureState for Features {
+    fn collab_enabled(&self) -> bool {
+        self.enabled(Feature::Collab)
+    }
+
+    fn try_enable_collab(&mut self) -> Result<(), String> {
+        self.enable(Feature::Collab);
+        Ok(())
+    }
+}
+
+impl CollabFeatureState for ManagedFeatures {
+    fn collab_enabled(&self) -> bool {
+        self.enabled(Feature::Collab)
+    }
+
+    fn try_enable_collab(&mut self) -> Result<(), String> {
+        self.enable(Feature::Collab).map_err(|err| err.to_string())
+    }
+}
+
+fn enable_default_multi_agent_collab<T: CollabFeatureState>(
+    features: &mut T,
+) -> Result<bool, String> {
+    if features.collab_enabled() {
+        return Ok(false);
+    }
+    features.try_enable_collab()?;
+    Ok(true)
+}
+
 /// Run the Codex ACP agent.
 ///
 /// This sets up an ACP agent that communicates over stdio, bridging
@@ -187,6 +224,12 @@ pub async fn run_main(
                     format!("error loading config: {e}"),
                 )
             })?;
+    if let Err(err) = enable_default_multi_agent_collab(&mut config.features) {
+        tracing::warn!(
+            error = %err,
+            "failed to enable multi_agent feature by default for agenthub-codex-acp",
+        );
+    }
     normalize_responses_websocket_support(&mut config);
 
     // Create our Agent implementation with notification channel
@@ -225,11 +268,58 @@ pub use codex_mcp_server::{
 #[cfg(test)]
 mod tests {
     use super::{
-        responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
-        should_disable_implicit_responses_websockets,
+        enable_default_multi_agent_collab, responses_websocket_feature_opt_in_enabled,
+        rewrite_misleading_timeout_message, should_disable_implicit_responses_websockets,
     };
-    use codex_core::features::Features;
+    use codex_core::features::{Feature, Features};
     use tracing::Level;
+
+    struct FailingCollabFeatureState {
+        enabled: bool,
+    }
+
+    impl super::CollabFeatureState for FailingCollabFeatureState {
+        fn collab_enabled(&self) -> bool {
+            self.enabled
+        }
+
+        fn try_enable_collab(&mut self) -> Result<(), String> {
+            Err("pinned by test".to_string())
+        }
+    }
+
+    #[test]
+    fn agenthub_codex_acp_enables_multi_agent_by_default() {
+        let mut features = Features::with_defaults();
+
+        let changed =
+            enable_default_multi_agent_collab(&mut features).expect("enable collab succeeds");
+
+        assert!(changed);
+        assert!(features.enabled(Feature::Collab));
+    }
+
+    #[test]
+    fn agenthub_codex_acp_leaves_existing_multi_agent_enabled() {
+        let mut features = Features::with_defaults();
+        features.enable(Feature::Collab);
+
+        let changed =
+            enable_default_multi_agent_collab(&mut features).expect("no-op enable succeeds");
+
+        assert!(!changed);
+        assert!(features.enabled(Feature::Collab));
+    }
+
+    #[test]
+    fn agenthub_codex_acp_surfaces_collab_enable_failures() {
+        let mut features = FailingCollabFeatureState { enabled: false };
+
+        let err = enable_default_multi_agent_collab(&mut features)
+            .expect_err("failing feature gate should be surfaced");
+
+        assert!(err.contains("pinned by test"));
+    }
 
     #[test]
     fn implicit_responses_websockets_are_disabled_without_feature_opt_in() {
