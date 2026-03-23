@@ -19,7 +19,7 @@ describe("team member prompt mirrors", () => {
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team_task_update");
     expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("in_review");
     expect(DEFAULT_TEAM_LEADER_PROMPT).not.toContain("acp_permission_review_respond");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("human-review card");
+    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("human review card");
   });
 
   it("keeps worker prompt self-maintenance and time-trigger contract", () => {

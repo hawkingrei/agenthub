@@ -28,9 +28,15 @@
 - Updated active feature docs and TODO references so `actor-foundation.md`
   is the canonical CLI-first runtime reference and
   `team-mcp-enforcement.md` is explicitly historical background.
+- Standardized Team prompt wording around the human review card so leader and
+  worker guidance stay aligned and tests do not rely on divergent strings.
+- Expanded the historical banner in `team-mcp-enforcement.md` to state that the
+  remainder of the document describes the deprecated MCP-based approach and
+  that CLI-first canonical docs take precedence.
 
 ## Validation
 
+- `cargo test -p agenthub team_run_messages_api_chat_type_hints_repeat_while_other_types_still_suppress -- --nocapture`
 - `cargo test -p agenthub actor_cli::tests -- --nocapture`
 - `cargo test -p agenthub api::teams::tests -- --nocapture`
 - `cd web && npx vitest run src/pages/team/member_helpers.test.ts src/pages/team/create_helpers.test.ts`

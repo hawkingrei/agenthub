@@ -7,6 +7,9 @@
 > mainline runtime. This document is retained only as historical
 > enforcement/design background; current Team coordination contracts live in
 > `docs/features/actor-foundation.md` plus the Team mailbox/role skills.
+> The remainder of this document describes the deprecated MCP-based
+> enforcement approach and is not the current contract; in any conflict, the
+> CLI-first model and the canonical docs above take precedence.
 
 ## Problem
 
