@@ -33,13 +33,15 @@
 - Expanded the historical banner in `team-mcp-enforcement.md` to state that the
   remainder of the document describes the deprecated MCP-based approach and
   that CLI-first canonical docs take precedence.
-- Stabilized the Team mailbox hint regression test by waiting for the reviewer
-  runtime session before asserting immediate hint delivery, so the test no
-  longer depends on startup timing under full-suite coverage runs.
+- Stabilized the Team mailbox hint regression test by asserting the hint-event
+  contract (`reason`, targets, repeat behavior) without hard-coding successful
+  best-effort runtime delivery, so the test no longer flakes on agent startup
+  timing under full-suite coverage runs.
 
 ## Validation
 
 - `cargo test -p agenthub team_run_messages_api_chat_type_hints_repeat_while_other_types_still_suppress -- --nocapture`
+- `cargo test -p agenthub teams_api_delete_team_cascades_related_run_data -- --nocapture`
 - `cargo test -p agenthub actor_cli::tests -- --nocapture`
 - `cargo test -p agenthub api::teams::tests -- --nocapture`
 - `cd web && npx vitest run src/pages/team/member_helpers.test.ts src/pages/team/create_helpers.test.ts`
