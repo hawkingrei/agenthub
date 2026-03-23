@@ -44,8 +44,12 @@ validation errors.
 - Keep `safe_paths` as short and explicit as possible.
 - Prefer repository roots over broad paths such as `/` or your full home
   directory.
-- AgentHub always keeps the default worktree root reachable so
-  `create_worktree` mode can derive safe execution paths cleanly.
+- By default, `~/.agenthub/worktrees` is automatically included in the
+  effective safe-path allowlist, so the default `create_worktree` layout works
+  without extra configuration.
+- If you change `worktree.default_root` to another location, add that root or a
+  containing directory to `safe_paths` as well, or `create_worktree` path
+  validation will fail.
 
 ## Optional Remote-Node Settings
 
