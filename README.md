@@ -44,13 +44,14 @@ for the operational side of agent workflows:
 ### Start Locally
 
 ```bash
-# 1) Install web dependencies and build the UI
+# 1) Install web dependencies
 npm --prefix web ci
-npm --prefix web run build
 
 # 2) Start AgentHub
 make run
 ```
+
+`make run` builds the embedded web UI as part of the normal local startup path.
 
 Open `http://localhost:8080`.
 
@@ -67,16 +68,16 @@ cargo run -- actor team-members --help
 AgentHub reads config from `~/.agenthub/config.toml`.
 
 ```toml
+safe_paths = [
+  "/home/foo",
+  "/home/foo/projects"
+]
+
 [server]
 listen = "0.0.0.0:8080"
 
 [worktree]
 default_root = "~/.agenthub/worktrees"
-
-safe_paths = [
-  "/home/foo",
-  "/home/foo/projects"
-]
 
 [history]
 event_retention_days = 5

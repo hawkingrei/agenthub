@@ -14,13 +14,13 @@ AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 Start from a minimal single-node baseline:
 
 ```toml
-[server]
-listen = "127.0.0.1:8080"
-
 safe_paths = [
   "/home/you/projects",
   "/home/you/sandboxes",
 ]
+
+[server]
+listen = "127.0.0.1:8080"
 
 [worktree]
 default_root = "/home/you/.agenthub/worktrees"
@@ -33,7 +33,7 @@ vacuum_on_cleanup = false
 ## Required Fields For Daily Use
 
 - `server.listen`: where the UI and API are served
-- `safe_paths`: allowed workdir roots for agent runs
+- `safe_paths`: top-level allowlist of workdir roots for agent runs
 - `worktree.default_root`: default base for `create_worktree` mode
 
 If these are missing or incorrect, users usually see login, start, or path

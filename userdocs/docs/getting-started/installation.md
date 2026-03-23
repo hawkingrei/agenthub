@@ -10,11 +10,10 @@ sidebar_position: 1
 - Node.js 20+
 - Git
 
-## Build The Web UI
+## Install Web Dependencies
 
 ```bash
 npm --prefix web ci
-npm --prefix web run build
 ```
 
 ## Create A Minimal Config
@@ -24,13 +23,13 @@ AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 Start with a minimal single-node config:
 
 ```toml
-[server]
-listen = "127.0.0.1:8080"
-
 safe_paths = [
   "/home/you/projects",
   "/home/you/sandboxes",
 ]
+
+[server]
+listen = "127.0.0.1:8080"
 
 [worktree]
 default_root = "/home/you/.agenthub/worktrees"
@@ -46,6 +45,9 @@ For the standard local workflow:
 ```bash
 make run
 ```
+
+`make run` builds the web UI as part of the normal startup path, so you do not
+need a separate `npm --prefix web run build` step for the default local setup.
 
 If you want to point at an explicit config file:
 
